@@ -196,6 +196,6 @@ class DiagnosticsFoundationContractTest {
         val events = sink.snapshot()
         assertNotEquals(events[0].context.correlationId, events[1].context.correlationId)
         assertEquals("root-id", events[1].context.parentCorrelationId)
-        assertTrue(events.all { it.context.correlationId.isNotBlank() })
+        assertTrue(events.all { !it.context.correlationId.isNullOrBlank() })
     }
 }
