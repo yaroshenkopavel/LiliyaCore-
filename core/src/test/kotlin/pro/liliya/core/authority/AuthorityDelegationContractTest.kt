@@ -35,7 +35,7 @@ class AuthorityDelegationContractTest {
     fun delegation_is_denied_without_exact_active_source_grant() {
         val policy = AuthorityDelegationPolicy(
             sourceGrants = listOf(
-                ScopedAuthorityGrant(
+                DirectAuthorityGrant(
                     principal = delegator,
                     capability = capability,
                     scope = AuthorityScope("app:browser")
@@ -56,7 +56,7 @@ class AuthorityDelegationContractTest {
         val sourceExpiry = now.plusSeconds(60)
         val policy = AuthorityDelegationPolicy(
             sourceGrants = listOf(
-                ScopedAuthorityGrant(delegator, capability, scope, sourceExpiry)
+                DirectAuthorityGrant(delegator, capability, scope, sourceExpiry)
             ),
             now = { now }
         )
@@ -91,7 +91,7 @@ class AuthorityDelegationContractTest {
         val expiry = now.plusSeconds(30)
         val decision = AuthorityDelegationPolicy(
             sourceGrants = listOf(
-                ScopedAuthorityGrant(delegator, capability, scope, now.plusSeconds(60))
+                DirectAuthorityGrant(delegator, capability, scope, now.plusSeconds(60))
             ),
             now = { now }
         ).decide(
@@ -108,6 +108,7 @@ class AuthorityDelegationContractTest {
         val granted = assertIs<AuthorityDelegationDecision.Granted>(decision)
         assertEquals(delegate, granted.grant.principal)
         assertEquals(expiry, granted.grant.expiresAt)
+        assertEquals(AuthorityGrantOrigin.DELEGATED, granted.grant.asScopedGrant().origin)
         assertEquals(
             AuthorityDecision.Granted,
             ScopedGrantAuthorityPolicy(
@@ -129,7 +130,7 @@ class AuthorityDelegationContractTest {
         )
         val manager = AuthorityDelegationManager(
             policy = AuthorityDelegationPolicy(
-                sourceGrants = listOf(ScopedAuthorityGrant(delegator, capability, scope)),
+                sourceGrants = listOf(DirectAuthorityGrant(delegator, capability, scope)),
                 now = { now }
             ),
             observability = observability

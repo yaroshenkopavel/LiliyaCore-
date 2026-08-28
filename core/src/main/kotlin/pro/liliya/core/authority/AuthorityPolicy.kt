@@ -21,11 +21,14 @@ class ExplicitGrantAuthorityPolicy(
     private val grants = grants.mapValues { (_, capabilities) -> capabilities.toSet() }.toMap()
 
     override fun decide(request: AuthorityRequest): AuthorityDecision =
-        if (request.capability in grants[request.principal].orEmpty()) {
+        if (
+            request.scope == AuthorityScope.GLOBAL &&
+            request.capability in grants[request.principal].orEmpty()
+        ) {
             AuthorityDecision.Granted
         } else {
             AuthorityDecision.Denied(
-                "capability ${request.capability} is not granted to ${request.principal}"
+                "capability ${request.capability} is not granted to ${request.principal} in scope ${request.scope}"
             )
         }
 }

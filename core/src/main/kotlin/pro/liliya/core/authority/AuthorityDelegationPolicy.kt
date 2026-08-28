@@ -3,15 +3,14 @@ package pro.liliya.core.authority
 import java.time.Instant
 
 class AuthorityDelegationPolicy(
-    sourceGrants: Collection<ScopedAuthorityGrant>,
+    sourceGrants: Collection<DirectAuthorityGrant>,
     private val now: () -> Instant = Instant::now
 ) {
     private val sourceGrants = sourceGrants.toList()
 
     fun decide(request: AuthorityDelegationRequest): AuthorityDelegationDecision {
         val candidates = sourceGrants.filter { grant ->
-            grant.origin == AuthorityGrantOrigin.DIRECT &&
-                grant.principal == request.delegator &&
+            grant.principal == request.delegator &&
                 grant.capability == request.capability &&
                 grant.scope == request.scope
         }
