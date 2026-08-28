@@ -18,10 +18,24 @@ value class AuthorityPrincipal(val value: String) {
     override fun toString(): String = value
 }
 
+@JvmInline
+value class AuthorityScope(val value: String) {
+    init {
+        require(value.isNotBlank()) { "authority scope must not be blank" }
+    }
+
+    override fun toString(): String = value
+
+    companion object {
+        val GLOBAL = AuthorityScope("global")
+    }
+}
+
 data class AuthorityRequest(
     val principal: AuthorityPrincipal,
     val capability: CapabilityId,
-    val reason: String
+    val reason: String,
+    val scope: AuthorityScope = AuthorityScope.GLOBAL
 ) {
     init {
         require(reason.isNotBlank()) { "authority reason must not be blank" }
