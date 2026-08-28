@@ -4,6 +4,7 @@ import pro.liliya.core.foundation.FoundationComposition
 
 interface MemoryOwnership {
     val record: MemoryRecord
+    val generation: MemoryGeneration
     fun remove(): Boolean
 }
 
@@ -27,12 +28,15 @@ class MemoryComposition(
             is MemoryRegistrationResult.Registered -> MemoryRememberResult.Remembered(
                 ownership = object : MemoryOwnership {
                     override val record: MemoryRecord = result.registration.record
+                    override val generation: MemoryGeneration = result.registration.generation
 
                     override fun remove(): Boolean = result.registration.remove(
                         foundation.rootContext(
                             operation = "removeMemory",
                             component = "Memory",
-                            metadata = provenanceMetadata(record)
+                            metadata = provenanceMetadata(record) + mapOf(
+                                "memoryGeneration" to generation.value.toString()
+                            )
                         )
                     )
                 }
@@ -44,9 +48,13 @@ class MemoryComposition(
 
     fun find(id: MemoryRecordId): MemoryRecord? = store.find(id)
 
+    fun inspect(id: MemoryRecordId): MemoryRecordSnapshot? = store.inspect(id)
+
     fun contains(id: MemoryRecordId): Boolean = store.contains(id)
 
     fun snapshot(): List<MemoryRecord> = store.snapshot()
+
+    fun snapshotEntries(): List<MemoryRecordSnapshot> = store.snapshotEntries()
 
     private fun provenanceMetadata(record: MemoryRecord): Map<String, String> = buildMap {
         put("memoryRecordId", record.id.value)

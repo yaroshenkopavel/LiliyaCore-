@@ -8,6 +8,7 @@ import pro.liliya.core.observability.CoreObservability
 
 internal interface MemoryRegistration {
     val record: MemoryRecord
+    val generation: MemoryGeneration
     fun remove(context: LogContext): Boolean
 }
 
@@ -20,16 +21,16 @@ internal class MemoryStore(
     private val observability: CoreObservability
 ) {
     private data class Entry(
-        val token: Long,
+        val generation: MemoryGeneration,
         val record: MemoryRecord
     )
 
-    private val nextToken = AtomicLong(0)
+    private val nextGeneration = AtomicLong(0)
     private val records = ConcurrentHashMap<MemoryRecordId, Entry>()
 
     fun register(record: MemoryRecord, context: LogContext): MemoryRegistrationResult {
         val entry = Entry(
-            token = nextToken.incrementAndGet(),
+            generation = MemoryGeneration(nextGeneration.incrementAndGet()),
             record = record
         )
         val existing = records.putIfAbsent(record.id, entry)
@@ -40,7 +41,7 @@ internal class MemoryStore(
                 code = "MEMORY_REGISTRATION_REJECTED",
                 message = reason,
                 context = context,
-                metadata = metadata(record) + ("rejectionReason" to reason)
+                metadata = metadata(record, entry.generation) + ("rejectionReason" to reason)
             )
             return MemoryRegistrationResult.Rejected(reason)
         }
@@ -50,12 +51,13 @@ internal class MemoryStore(
             code = "MEMORY_REGISTERED",
             message = "memory record registered",
             context = context,
-            metadata = metadata(record)
+            metadata = metadata(record, entry.generation)
         )
 
         return MemoryRegistrationResult.Registered(
             registration = object : MemoryRegistration {
                 override val record: MemoryRecord = record
+                override val generation: MemoryGeneration = entry.generation
 
                 override fun remove(context: LogContext): Boolean {
                     val removed = records.remove(record.id, entry)
@@ -68,7 +70,7 @@ internal class MemoryStore(
                             "memory registration is no longer current"
                         },
                         context = context,
-                        metadata = metadata(record)
+                        metadata = metadata(record, entry.generation)
                     )
                     return removed
                 }
@@ -78,19 +80,37 @@ internal class MemoryStore(
 
     fun find(id: MemoryRecordId): MemoryRecord? = records[id]?.record
 
+    fun inspect(id: MemoryRecordId): MemoryRecordSnapshot? = records[id]?.let { entry ->
+        MemoryRecordSnapshot(
+            record = entry.record,
+            generation = entry.generation
+        )
+    }
+
     fun contains(id: MemoryRecordId): Boolean = records.containsKey(id)
 
-    fun snapshot(): List<MemoryRecord> = records.values
-        .map { it.record }
+    fun snapshot(): List<MemoryRecord> = snapshotEntries().map { it.record }
+
+    fun snapshotEntries(): List<MemoryRecordSnapshot> = records.values
+        .map { entry ->
+            MemoryRecordSnapshot(
+                record = entry.record,
+                generation = entry.generation
+            )
+        }
         .sortedWith(
-            compareBy<MemoryRecord>(
-                { it.createdAt },
-                { it.id.value }
+            compareBy<MemoryRecordSnapshot>(
+                { it.record.createdAt },
+                { it.record.id.value }
             )
         )
 
-    private fun metadata(record: MemoryRecord): Map<String, String> = buildMap {
+    private fun metadata(
+        record: MemoryRecord,
+        generation: MemoryGeneration
+    ): Map<String, String> = buildMap {
         put("memoryRecordId", record.id.value)
+        put("memoryGeneration", generation.value.toString())
         put("memorySourceId", record.provenance.sourceId.value)
         record.provenance.sourceReference?.let { reference ->
             put("memorySourceReference", reference.value)

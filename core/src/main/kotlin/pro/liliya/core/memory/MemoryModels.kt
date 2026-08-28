@@ -29,6 +29,15 @@ value class MemorySourceReference(val value: String) {
     override fun toString(): String = value
 }
 
+@JvmInline
+value class MemoryGeneration(val value: Long) {
+    init {
+        require(value > 0L) { "memory generation must be positive" }
+    }
+
+    override fun toString(): String = value.toString()
+}
+
 data class MemoryProvenance(
     val sourceId: MemorySourceId,
     val sourceReference: MemorySourceReference? = null
@@ -59,3 +68,8 @@ data class MemoryRecord(
         require(content.isNotBlank()) { "memory content must not be blank" }
     }
 }
+
+data class MemoryRecordSnapshot(
+    val record: MemoryRecord,
+    val generation: MemoryGeneration
+)
