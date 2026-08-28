@@ -2,11 +2,18 @@ package pro.liliya.core.events
 
 import pro.liliya.core.diagnostics.DiagnosticRecorder
 import pro.liliya.core.diagnostics.DiagnosticSeverity
+import pro.liliya.core.logging.LoggerFactory
+import pro.liliya.core.observability.CoreObservability
+import pro.liliya.core.observability.LoggerProvider
 import java.util.concurrent.atomic.AtomicLong
 
 class EventBus(
-    private val diagnostics: DiagnosticRecorder,
-    private val clock: () -> Long = System::currentTimeMillis
+    diagnostics: DiagnosticRecorder,
+    private val clock: () -> Long = System::currentTimeMillis,
+    private val observability: CoreObservability = CoreObservability(
+        loggerProvider = LoggerProvider { context -> LoggerFactory.create(context) },
+        diagnostics = diagnostics
+    )
 ) {
     private data class ListenerEntry(
         val id: Long,
@@ -52,7 +59,7 @@ class EventBus(
                 delivered += 1
             } catch (throwable: Throwable) {
                 failed += 1
-                diagnostics.record(
+                observability.record(
                     severity = DiagnosticSeverity.ERROR,
                     code = "EVENT_LISTENER_FAILED",
                     message = "Event listener failed during delivery",
@@ -67,7 +74,7 @@ class EventBus(
             }
         }
 
-        diagnostics.record(
+        observability.record(
             severity = if (failed == 0) DiagnosticSeverity.INFO else DiagnosticSeverity.WARNING,
             code = "EVENT_PUBLISHED",
             message = "Event publication completed",
