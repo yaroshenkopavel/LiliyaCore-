@@ -8,11 +8,11 @@ import pro.liliya.core.diagnostics.DiagnosticSeverity
 import pro.liliya.core.logging.LogContext
 import pro.liliya.core.observability.CoreObservability
 
-fun interface ExecutionAuthorizer {
+internal fun interface ExecutionAuthorizer {
     fun authorize(request: AuthorityRequest, context: LogContext): AuthorityDecision
 }
 
-class ExecutionManager(
+class ExecutionManager internal constructor(
     private val authorizer: ExecutionAuthorizer,
     private val executor: ExecutionExecutor,
     actionCapabilities: Map<ExecutionActionId, CapabilityId>,
