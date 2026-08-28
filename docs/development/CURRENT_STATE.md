@@ -4,61 +4,105 @@ Last journal update: 2026-08-28
 
 ## Main baseline
 
-`main` SHA: `ce5205d9345678ef80089ef60a5b9b096790dcca`
+`main` implementation SHA: `1180730981a8ffb729887312847d56c835929a55`
 
-This commit merged PR #20 `Execution v0.1: Authority-Gated Execution Foundation`.
+This is the verified implementation checkpoint after PR #25 `Authority v0.1: Strict Delegation Expiry`.
 
 Status:
 
 - Core Foundation v0.1: FROZEN.
-- Authority v0.1: FROZEN.
-- Execution Foundation: MERGED.
-- Execution v0.1: NOT FROZEN — composition ownership remains the next readiness gate.
+- Authority policy layer v0.1: FROZEN semantics retained and hardened.
+- Capability Registry v0.1: MERGED.
+- Broader Capability & Authority stage: IN PROGRESS / NOT FROZEN.
+- Execution Foundation: MERGED as a low-level primitive.
+- Execution composition ownership PR #23: PARKED / CLOSED WITHOUT MERGE.
+- Execution v0.1: NOT FROZEN and must not advance until Capability & Authority is completed.
 
-## Execution Foundation checkpoint
+## Capability Registry checkpoint
 
-PR #20 merged after Core CI #313 succeeded for exact head `ab085624c07ce527254369cb69e9cbf1d88a48d2`.
+PR #24 `Capability v0.1: Observable Exact-Ownership Registry` merged after Core CI #326 succeeded for exact head `43bc28032ae104e95cba1ce34a9f58862383aaa2`.
 
-Merged execution boundary:
+Merge commit:
 
-`ExecutionRequest → action/capability binding → AuthorityManager → ExecutionExecutor → ExecutionResult`
+`a1429661e5bb827d8898d3702808b4433e656df4`
 
 Confirmed invariants:
 
-- unknown action IDs are rejected before authority and before executor invocation;
-- action/capability mismatch is rejected before authority and before executor invocation;
-- denied authority means zero executor calls;
-- successful authorization invokes the executor through `ExecutionManager`;
-- executor `Exception` is isolated into `ExecutionResult.Failed`;
-- success/rejection/failure is recorded through `CoreObservability`;
-- authority and execution observations preserve the same correlation context;
-- action-to-capability configuration is copied into an immutable map snapshot inside `ExecutionManager`.
+- capability identity remains compatible with Authority `CapabilityId`;
+- provider identity is explicit through `CapabilityProviderId`;
+- duplicate capability IDs are rejected without replacing the current owner;
+- exact registration ownership prevents stale/ABA unregister from removing a replacement owner;
+- concurrent registration of one capability produces exactly one winner;
+- register/reject/unregister/stale-unregister transitions are observable through injected `CoreObservability`;
+- the registry contains metadata/ownership only and has no execution callback;
+- capability presence does not grant Authority;
+- no global/singleton registry is introduced.
 
-## Readiness finding still open
+## Authority delegation expiry hardening
 
-`ExecutionExecutor` is intentionally a public adapter SPI. The foundation itself is safe when called through `ExecutionManager`, but production wiring must ensure callers do not receive the concrete executor instance and bypass the manager.
+PR #25 `Authority v0.1: Strict Delegation Expiry` passed Core CI #330 for exact head `1180730981a8ffb729887312847d56c835929a55` and was merged through the PR gate.
 
-Therefore Execution is not frozen yet.
+Hardening rule:
 
-Next required architectural gate:
+- a bounded delegated grant must satisfy `expiresAt > now` at creation time;
+- `expiresAt < now` is denied;
+- `expiresAt == now` is denied;
+- existing source-grant activity checks remain unchanged;
+- delegated grants still cannot outlive bounded source grants.
 
-1. introduce an execution composition/ownership boundary above the executor;
-2. composition owns the concrete `ExecutionExecutor` instance;
-3. production callers receive only the authority-gated execution entry point;
-4. prove by contracts that production composition cannot expose a raw executor bypass;
-5. preserve observability and correlation through that composition boundary;
-6. run Core CI and a final Execution readiness audit before declaring Execution v0.1 frozen.
+This closes the previously identified edge case where an already-expired delegated grant could be returned as granted.
 
-## Historical CI note
+## Execution status
 
-The first PR #20 run, Core CI #304, failed only at test compilation because the test incorrectly referenced a nonexistent `throwable` property on `LogEvent` and `DiagnosticEvent`. Those event models intentionally store `throwableType` and `throwableMessage` instead. The test was corrected without changing the production Execution result contract.
+PR #20 `Execution v0.1: Authority-Gated Execution Foundation` is already merged in `main` as a low-level primitive.
 
-Core CI #309 then passed.
+Its verified boundary remains:
 
-A subsequent readiness audit found the action/capability binding bypass. That bypass was closed and regression-tested; Core CI #313 passed on the final head before merge.
+`ExecutionRequest → trusted action/capability binding → AuthorityManager → ExecutionExecutor → ExecutionResult`
+
+Important: this does NOT mean the Execution stage is complete.
+
+PR #23 `Execution v0.1: Composition Ownership` reached GREEN Core CI #321 and passed its local composition audit, but a broader roadmap audit found that Execution had advanced before Capability & Authority was complete. PR #23 was therefore intentionally closed without merge. Its branch is preserved for later reuse.
+
+Do not reopen or reimplement Execution composition until the Capability & Authority stage is frozen.
+
+## Current stage: Capability & Authority completion
+
+The active architecture work is NOT Execution and NOT Memory yet.
+
+Remaining mandatory gates:
+
+1. Introduce `AuthorityGrantRegistry` / controlled grant lifecycle with exact ownership handles.
+2. Direct grant creation and revocation must be observable and stale/ABA-safe.
+3. Expiry semantics must remain fail-closed.
+4. Delegation must consume trusted direct-grant state without enabling transitive redelegation.
+5. Introduce upper Capability & Authority composition ownership without modifying frozen Foundation internals.
+6. Production callers should receive controlled managers/facades rather than raw mutable policy/registry internals.
+7. Run Core CI and final cross-layer readiness audit.
+8. Only then declare Capability & Authority frozen and advance to Memory.
 
 ## Current development direction
 
-Do not add Android/device/shell adapters yet.
+Immediate next implementation:
 
-The immediate next code work is Execution composition ownership/readiness hardening. Only after that gate should Execution v0.1 be considered for freeze and the roadmap advance further.
+`AuthorityGrantRegistry v0.1`
+
+Required properties:
+
+- exact registration/revocation handle;
+- stale/ABA revoke prevention;
+- deterministic snapshot of active direct grants;
+- explicit expiry-aware visibility;
+- injected `CoreObservability` for grant/revoke/reject transitions;
+- no hidden global state;
+- no privilege amplification;
+- direct grants remain structurally distinct from delegated grants;
+- registry must not itself execute capabilities.
+
+After that, integrate Capability Registry + Authority lifecycle through an upper composition boundary and perform a full Capability & Authority readiness audit.
+
+## Workflow note
+
+During PR #25 handling, `main` was briefly moved directly to the PR head by mistake. The ref was immediately restored to the previous verified merge checkpoint before performing the normal PR merge with exact-head verification. GitHub then marked PR #25 merged while `main` still reflected the restored checkpoint, so `main` was fast-forwarded to the already verified merged commit to reconcile repository state. No additional production changes were introduced during this recovery.
+
+Durable workflow remains: feature branch → PR → GREEN CI → audit → exact-head merge; no intentional direct-to-main development.
