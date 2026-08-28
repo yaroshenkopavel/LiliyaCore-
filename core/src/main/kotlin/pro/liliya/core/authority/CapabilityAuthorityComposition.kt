@@ -74,6 +74,7 @@ class CapabilityAuthorityComposition(
         val grant: DelegatedAuthorityGrant
     )
 
+    private val ownershipLock = Any()
     private val capabilityRegistry = CapabilityRegistry(foundation.observability)
     private val directGrantRegistry = AuthorityGrantRegistry(
         observability = foundation.observability,
@@ -88,12 +89,12 @@ class CapabilityAuthorityComposition(
     private val directSources = ConcurrentHashMap<DirectGrantKey, DirectSourceEntry>()
     private val delegatedGrants = ConcurrentHashMap<Long, DelegatedEntry>()
 
-    fun registerCapability(descriptor: CapabilityDescriptor): CapabilityOwnershipResult {
+    fun registerCapability(descriptor: CapabilityDescriptor): CapabilityOwnershipResult = synchronized(ownershipLock) {
         val context = foundation.rootContext(
             operation = "register-capability",
             component = "CapabilityAuthority"
         )
-        return when (val result = capabilityRegistry.register(descriptor, context)) {
+        when (val result = capabilityRegistry.register(descriptor, context)) {
             is CapabilityRegistrationResult.Registered -> {
                 val generation = CapabilityGeneration(
                     token = nextCapabilityToken.incrementAndGet(),
@@ -105,7 +106,7 @@ class CapabilityAuthorityComposition(
                     ownership = object : CapabilityOwnership {
                         override val descriptor: CapabilityDescriptor = descriptor
 
-                        override fun unregister(): Boolean {
+                        override fun unregister(): Boolean = synchronized(ownershipLock) {
                             val removed = generation.registration.unregister(
                                 foundation.rootContext(
                                     operation = "unregister-capability",
@@ -116,7 +117,7 @@ class CapabilityAuthorityComposition(
                                 capabilityGenerations.remove(descriptor.id, generation)
                                 revokeDirectSourcesForCapabilityGeneration(generation)
                             }
-                            return removed
+                            removed
                         }
                     }
                 )
@@ -126,56 +127,59 @@ class CapabilityAuthorityComposition(
         }
     }
 
-    fun registerDirectGrant(grant: DirectAuthorityGrant): DirectAuthorityGrantOwnershipResult {
-        val capabilityGeneration = capabilityGenerations[grant.capability]
-        if (capabilityGeneration == null) {
-            val reason = "capability ${grant.capability} is not registered"
-            recordDirectGrantRejected(grant, reason)
-            return DirectAuthorityGrantOwnershipResult.Rejected(reason)
-        }
-
-        val result = directGrantRegistry.register(
-            grant = grant,
-            context = foundation.rootContext(
-                operation = "register-direct-grant",
-                component = "CapabilityAuthority"
-            )
-        )
-        return when (result) {
-            is AuthorityGrantRegistrationResult.Registered -> {
-                val key = grant.key()
-                val entry = DirectSourceEntry(
-                    token = nextDirectSourceToken.incrementAndGet(),
-                    capabilityToken = capabilityGeneration.token,
-                    grant = grant,
-                    registration = result.registration
-                )
-                directSources[key] = entry
-                DirectAuthorityGrantOwnershipResult.Registered(
-                    ownership = object : DirectAuthorityGrantOwnership {
-                        override val grant: DirectAuthorityGrant = grant
-
-                        override fun revoke(): Boolean {
-                            val removed = entry.registration.revoke(
-                                foundation.rootContext(
-                                    operation = "revoke-direct-grant",
-                                    component = "CapabilityAuthority"
-                                )
-                            )
-                            if (removed) {
-                                directSources.remove(key, entry)
-                            }
-                            return removed
-                        }
-                    }
-                )
+    fun registerDirectGrant(grant: DirectAuthorityGrant): DirectAuthorityGrantOwnershipResult =
+        synchronized(ownershipLock) {
+            val capabilityGeneration = capabilityGenerations[grant.capability]
+            if (capabilityGeneration == null) {
+                val reason = "capability ${grant.capability} is not registered"
+                recordDirectGrantRejected(grant, reason)
+                return@synchronized DirectAuthorityGrantOwnershipResult.Rejected(reason)
             }
 
-            is AuthorityGrantRegistrationResult.Rejected -> DirectAuthorityGrantOwnershipResult.Rejected(result.reason)
-        }
-    }
+            when (
+                val result = directGrantRegistry.register(
+                    grant = grant,
+                    context = foundation.rootContext(
+                        operation = "register-direct-grant",
+                        component = "CapabilityAuthority"
+                    )
+                )
+            ) {
+                is AuthorityGrantRegistrationResult.Registered -> {
+                    val key = grant.key()
+                    val entry = DirectSourceEntry(
+                        token = nextDirectSourceToken.incrementAndGet(),
+                        capabilityToken = capabilityGeneration.token,
+                        grant = grant,
+                        registration = result.registration
+                    )
+                    directSources[key] = entry
+                    DirectAuthorityGrantOwnershipResult.Registered(
+                        ownership = object : DirectAuthorityGrantOwnership {
+                            override val grant: DirectAuthorityGrant = grant
 
-    fun authorize(request: AuthorityRequest): AuthorityDecision {
+                            override fun revoke(): Boolean = synchronized(ownershipLock) {
+                                val removed = entry.registration.revoke(
+                                    foundation.rootContext(
+                                        operation = "revoke-direct-grant",
+                                        component = "CapabilityAuthority"
+                                    )
+                                )
+                                if (removed) {
+                                    directSources.remove(key, entry)
+                                }
+                                removed
+                            }
+                        }
+                    )
+                }
+
+                is AuthorityGrantRegistrationResult.Rejected ->
+                    DirectAuthorityGrantOwnershipResult.Rejected(result.reason)
+            }
+        }
+
+    fun authorize(request: AuthorityRequest): AuthorityDecision = synchronized(ownershipLock) {
         val capabilityGeneration = capabilityGenerations[request.capability]
         val policy = if (capabilityGeneration == null) {
             AuthorityPolicy {
@@ -187,7 +191,7 @@ class CapabilityAuthorityComposition(
                 now = now
             )
         }
-        return AuthorityManager(
+        AuthorityManager(
             policy = policy,
             observability = foundation.observability
         ).authorize(
@@ -199,92 +203,97 @@ class CapabilityAuthorityComposition(
         )
     }
 
-    fun delegate(request: AuthorityDelegationRequest): CapabilityAuthorityDelegationResult {
-        val capabilityGeneration = capabilityGenerations[request.capability]
-        if (capabilityGeneration == null) {
-            val reason = "capability ${request.capability} is not registered"
-            recordDelegationDenied(request, reason)
-            return CapabilityAuthorityDelegationResult.Denied(reason)
-        }
-
-        val sourceKey = DirectGrantKey(
-            principal = request.delegator,
-            capability = request.capability,
-            scope = request.scope
-        )
-        val sourceEntry = directSources[sourceKey]
-            ?.takeIf { source ->
-                source.capabilityToken == capabilityGeneration.token &&
-                    source.grant.isActiveAt(now())
+    fun delegate(request: AuthorityDelegationRequest): CapabilityAuthorityDelegationResult =
+        synchronized(ownershipLock) {
+            val capabilityGeneration = capabilityGenerations[request.capability]
+            if (capabilityGeneration == null) {
+                val reason = "capability ${request.capability} is not registered"
+                recordDelegationDenied(request, reason)
+                return@synchronized CapabilityAuthorityDelegationResult.Denied(reason)
             }
 
-        val decision = AuthorityDelegationManager(
-            policy = AuthorityDelegationPolicy(
-                sourceGrants = sourceEntry?.let { listOf(it.grant) }.orEmpty(),
-                now = now
-            ),
-            observability = foundation.observability
-        ).delegate(
-            request = request,
-            context = foundation.rootContext(
-                operation = "delegate",
-                component = "CapabilityAuthority"
+            val sourceKey = DirectGrantKey(
+                principal = request.delegator,
+                capability = request.capability,
+                scope = request.scope
             )
-        )
+            val sourceEntry = directSources[sourceKey]
+                ?.takeIf { source ->
+                    source.capabilityToken == capabilityGeneration.token &&
+                        source.grant.isActiveAt(now())
+                }
 
-        return when (decision) {
-            is AuthorityDelegationDecision.Denied ->
-                CapabilityAuthorityDelegationResult.Denied(decision.reason)
-
-            is AuthorityDelegationDecision.Granted -> {
-                val exactSource = requireNotNull(sourceEntry)
-                val entry = DelegatedEntry(
-                    token = nextDelegationToken.incrementAndGet(),
-                    capabilityToken = capabilityGeneration.token,
-                    sourceToken = exactSource.token,
-                    grant = decision.grant
+            val decision = AuthorityDelegationManager(
+                policy = AuthorityDelegationPolicy(
+                    sourceGrants = sourceEntry?.let { listOf(it.grant) }.orEmpty(),
+                    now = now
+                ),
+                observability = foundation.observability
+            ).delegate(
+                request = request,
+                context = foundation.rootContext(
+                    operation = "delegate",
+                    component = "CapabilityAuthority"
                 )
-                delegatedGrants[entry.token] = entry
-                CapabilityAuthorityDelegationResult.Granted(
-                    grant = entry.grant,
-                    ownership = object : DelegatedAuthorityGrantOwnership {
-                        override val grant: DelegatedAuthorityGrant = entry.grant
+            )
 
-                        override fun revoke(): Boolean {
-                            val removed = delegatedGrants.remove(entry.token, entry)
-                            foundation.observability.record(
-                                severity = if (removed) DiagnosticSeverity.INFO else DiagnosticSeverity.WARNING,
-                                code = if (removed) {
-                                    "AUTHORITY_DELEGATION_REVOKED"
-                                } else {
-                                    "AUTHORITY_DELEGATION_REVOCATION_REJECTED"
-                                },
-                                message = if (removed) {
-                                    "delegated authority grant revoked"
-                                } else {
-                                    "delegated authority grant registration is no longer current"
-                                },
-                                context = foundation.rootContext(
-                                    operation = "revoke-delegation",
-                                    component = "CapabilityAuthority"
-                                ),
-                                metadata = delegationMetadata(entry.grant)
-                            )
-                            return removed
+            when (decision) {
+                is AuthorityDelegationDecision.Denied ->
+                    CapabilityAuthorityDelegationResult.Denied(decision.reason)
+
+                is AuthorityDelegationDecision.Granted -> {
+                    val exactSource = requireNotNull(sourceEntry)
+                    val entry = DelegatedEntry(
+                        token = nextDelegationToken.incrementAndGet(),
+                        capabilityToken = capabilityGeneration.token,
+                        sourceToken = exactSource.token,
+                        grant = decision.grant
+                    )
+                    delegatedGrants[entry.token] = entry
+                    CapabilityAuthorityDelegationResult.Granted(
+                        grant = entry.grant,
+                        ownership = object : DelegatedAuthorityGrantOwnership {
+                            override val grant: DelegatedAuthorityGrant = entry.grant
+
+                            override fun revoke(): Boolean = synchronized(ownershipLock) {
+                                val removed = delegatedGrants.remove(entry.token, entry)
+                                foundation.observability.record(
+                                    severity = if (removed) DiagnosticSeverity.INFO else DiagnosticSeverity.WARNING,
+                                    code = if (removed) {
+                                        "AUTHORITY_DELEGATION_REVOKED"
+                                    } else {
+                                        "AUTHORITY_DELEGATION_REVOCATION_REJECTED"
+                                    },
+                                    message = if (removed) {
+                                        "delegated authority grant revoked"
+                                    } else {
+                                        "delegated authority grant registration is no longer current"
+                                    },
+                                    context = foundation.rootContext(
+                                        operation = "revoke-delegation",
+                                        component = "CapabilityAuthority"
+                                    ),
+                                    metadata = delegationMetadata(entry.grant)
+                                )
+                                removed
+                            }
                         }
-                    }
-                )
+                    )
+                }
             }
         }
+
+    fun findCapability(id: CapabilityId): CapabilityDescriptor? = synchronized(ownershipLock) {
+        capabilityGenerations[id]?.descriptor
     }
 
-    fun findCapability(id: CapabilityId): CapabilityDescriptor? =
-        capabilityGenerations[id]?.descriptor
-
-    fun capabilitySnapshot(): Map<CapabilityId, CapabilityDescriptor> =
+    fun capabilitySnapshot(): Map<CapabilityId, CapabilityDescriptor> = synchronized(ownershipLock) {
         capabilityGenerations.mapValues { (_, generation) -> generation.descriptor }
+    }
 
-    fun directGrantSnapshot(): List<DirectAuthorityGrant> = activeDirectGrants()
+    fun directGrantSnapshot(): List<DirectAuthorityGrant> = synchronized(ownershipLock) {
+        activeDirectGrants()
+    }
 
     private fun activeAuthorizationGrants(): List<ScopedAuthorityGrant> {
         val current = now()
