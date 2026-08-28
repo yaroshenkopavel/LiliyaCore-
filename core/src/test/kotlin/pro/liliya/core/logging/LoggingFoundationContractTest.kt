@@ -11,7 +11,7 @@ import kotlin.test.assertTrue
 class LoggingFoundationContractTest {
 
     @AfterTest
-    fun resetGlobalLoggingState() {
+    fun resetGlobalSequence() {
         GlobalLogSequence.resetForTest()
     }
 
@@ -186,7 +186,7 @@ class LoggingFoundationContractTest {
             component = "Interaction",
             operation = "request",
             metadata = mapOf("requestType" to "user"),
-            correlationIdGenerator = generator
+            generator = generator
         )
 
         val child = LogContextPropagation.child(
@@ -194,7 +194,7 @@ class LoggingFoundationContractTest {
             component = "Cognition",
             operation = "interpret",
             metadata = mapOf("stage" to "meaning"),
-            correlationIdGenerator = generator
+            generator = generator
         )
 
         assertEquals("root-id", root.correlationId)
