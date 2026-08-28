@@ -9,5 +9,6 @@ data class LogEvent(
     val message: String,
     val threadName: String,
     val throwableType: String? = null,
-    val throwableMessage: String? = null
+    val throwableMessage: String? = null,
+    val metadata: Map<String, String> = context.metadata.toMap()
 )
