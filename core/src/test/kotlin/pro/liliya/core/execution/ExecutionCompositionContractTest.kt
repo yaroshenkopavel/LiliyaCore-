@@ -1,12 +1,12 @@
 package pro.liliya.core.execution
 
 import java.lang.reflect.Modifier
+import pro.liliya.core.authority.AuthorityManager
 import pro.liliya.core.authority.AuthorityPrincipal
 import pro.liliya.core.authority.AuthorityScope
 import pro.liliya.core.authority.CapabilityId
 import pro.liliya.core.authority.ScopedAuthorityGrant
 import pro.liliya.core.authority.ScopedGrantAuthorityPolicy
-import pro.liliya.core.authority.AuthorityManager
 import pro.liliya.core.diagnostics.DiagnosticRecorder
 import pro.liliya.core.diagnostics.InMemoryDiagnosticSink
 import pro.liliya.core.foundation.FoundationComposition
@@ -102,7 +102,7 @@ class ExecutionCompositionContractTest {
             f.logs.snapshot().map { it.context.correlationId } +
                 f.diagnostics.snapshot().map { it.context.correlationId }
         assertEquals(1, correlations.toSet().size)
-        assertTrue(correlations.singleOrNull()?.isNotBlank() ?: correlations.first().isNotBlank())
+        assertTrue(correlations.all { correlationId -> !correlationId.isNullOrBlank() })
     }
 
     @Test
