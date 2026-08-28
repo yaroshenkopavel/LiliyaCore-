@@ -4,49 +4,61 @@ Last journal update: 2026-08-28
 
 ## Main baseline
 
-`main` SHA: `638bbfdc51b9446f637a11c922a050b5289e63d7`
+`main` SHA: `ce5205d9345678ef80089ef60a5b9b096790dcca`
 
-This commit merged PR #19 `Authority v0.1: Final Readiness Hardening`.
+This commit merged PR #20 `Execution v0.1: Authority-Gated Execution Foundation`.
 
 Status:
 
 - Core Foundation v0.1: FROZEN.
 - Authority v0.1: FROZEN.
-- Execution v0.1: NOT MERGED / NOT READY.
+- Execution Foundation: MERGED.
+- Execution v0.1: NOT FROZEN — composition ownership remains the next readiness gate.
 
-## Open work
+## Execution Foundation checkpoint
 
-PR #20: `Execution v0.1: Authority-Gated Execution Foundation`
+PR #20 merged after Core CI #313 succeeded for exact head `ab085624c07ce527254369cb69e9cbf1d88a48d2`.
 
-- branch: `foundation/execution-v0.1`
-- head SHA: `8117df9a6476e9826674e0e2dbbdffeb279bfcb8`
-- state: OPEN
-- commits: 1
-- intended scope: Execution request/result/executor boundary, mandatory AuthorityManager gate, fail-closed denied path, exception isolation, correlation-aware observability.
-- deliberately out of scope: Android adapters, device control, shell, retries, queues, cancellation, background scheduling.
+Merged execution boundary:
 
-## CI checkpoint
+`ExecutionRequest → action/capability binding → AuthorityManager → ExecutionExecutor → ExecutionResult`
 
-Core CI run #304 (`33192528038`) for PR #20: FAILURE.
+Confirmed invariants:
 
-Failure stage: `:core:compileTestKotlin`.
+- unknown action IDs are rejected before authority and before executor invocation;
+- action/capability mismatch is rejected before authority and before executor invocation;
+- denied authority means zero executor calls;
+- successful authorization invokes the executor through `ExecutionManager`;
+- executor `Exception` is isolated into `ExecutionResult.Failed`;
+- success/rejection/failure is recorded through `CoreObservability`;
+- authority and execution observations preserve the same correlation context;
+- action-to-capability configuration is copied into an immutable map snapshot inside `ExecutionManager`.
 
-Known compiler errors:
+## Readiness finding still open
 
-- `core/src/test/kotlin/pro/liliya/core/execution/ExecutionFoundationContractTest.kt:153:56` — unresolved reference `throwable`.
-- `core/src/test/kotlin/pro/liliya/core/execution/ExecutionFoundationContractTest.kt:154:63` — unresolved reference `throwable`.
+`ExecutionExecutor` is intentionally a public adapter SPI. The foundation itself is safe when called through `ExecutionManager`, but production wiring must ensure callers do not receive the concrete executor instance and bypass the manager.
 
-This failure has NOT been fixed yet because development was intentionally paused.
+Therefore Execution is not frozen yet.
 
-## Exact next action when development resumes
+Next required architectural gate:
 
-1. Fetch the current PR #20 head and `ExecutionFoundationContractTest.kt`; do not assume it is unchanged.
-2. Fix only the demonstrated test compile issue first.
-3. Run/rely on targeted/full Core CI gate.
-4. Do not merge PR #20 until Core CI is GREEN.
-5. If GREEN, perform an Execution readiness audit before freezing Execution v0.1.
-6. Update this file immediately after the checkpoint changes.
+1. introduce an execution composition/ownership boundary above the executor;
+2. composition owns the concrete `ExecutionExecutor` instance;
+3. production callers receive only the authority-gated execution entry point;
+4. prove by contracts that production composition cannot expose a raw executor bypass;
+5. preserve observability and correlation through that composition boundary;
+6. run Core CI and a final Execution readiness audit before declaring Execution v0.1 frozen.
 
-## Pause marker
+## Historical CI note
 
-User explicitly requested a development pause before introducing this journal system. Journal/documentation work is allowed; Execution implementation should remain paused until the user resumes it.
+The first PR #20 run, Core CI #304, failed only at test compilation because the test incorrectly referenced a nonexistent `throwable` property on `LogEvent` and `DiagnosticEvent`. Those event models intentionally store `throwableType` and `throwableMessage` instead. The test was corrected without changing the production Execution result contract.
+
+Core CI #309 then passed.
+
+A subsequent readiness audit found the action/capability binding bypass. That bypass was closed and regression-tested; Core CI #313 passed on the final head before merge.
+
+## Current development direction
+
+Do not add Android/device/shell adapters yet.
+
+The immediate next code work is Execution composition ownership/readiness hardening. Only after that gate should Execution v0.1 be considered for freeze and the roadmap advance further.
