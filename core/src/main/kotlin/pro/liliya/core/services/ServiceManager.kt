@@ -20,6 +20,10 @@ class ServiceManager(
 
     fun startAll(context: LogContext): ServiceLifecycleResult = synchronized(lock) {
         when (val resolution = resolver.resolve(registry.snapshot().values)) {
+            is ServiceResolutionResult.DuplicateService -> reject(
+                "duplicate service ${resolution.serviceId}",
+                context
+            )
             is ServiceResolutionResult.MissingDependency -> reject(
                 "missing dependency ${resolution.dependencyId} for ${resolution.serviceId}",
                 context
