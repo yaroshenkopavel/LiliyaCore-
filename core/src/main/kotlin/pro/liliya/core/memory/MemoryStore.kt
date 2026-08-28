@@ -89,9 +89,12 @@ internal class MemoryStore(
             )
         )
 
-    private fun metadata(record: MemoryRecord): Map<String, String> = mapOf(
-        "memoryRecordId" to record.id.value,
-        "memorySourceId" to record.sourceId.value,
-        "createdAt" to record.createdAt.toString()
-    )
+    private fun metadata(record: MemoryRecord): Map<String, String> = buildMap {
+        put("memoryRecordId", record.id.value)
+        put("memorySourceId", record.provenance.sourceId.value)
+        record.provenance.sourceReference?.let { reference ->
+            put("memorySourceReference", reference.value)
+        }
+        put("createdAt", record.createdAt.toString())
+    }
 }
