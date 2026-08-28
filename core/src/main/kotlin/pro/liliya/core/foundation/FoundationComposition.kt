@@ -9,6 +9,7 @@ import pro.liliya.core.logging.LogContextPropagation
 import pro.liliya.core.logging.UuidCorrelationIdGenerator
 import pro.liliya.core.modules.ModuleDependencyResolver
 import pro.liliya.core.modules.ModuleRegistry
+import pro.liliya.core.modules.ModuleServiceInstaller
 import pro.liliya.core.observability.CoreObservability
 import pro.liliya.core.observability.LoggerProvider
 import pro.liliya.core.recovery.RecoveryCoordinator
@@ -67,6 +68,13 @@ class FoundationComposition(
 
     val modules = ModuleRegistry()
     val moduleDependencyResolver = ModuleDependencyResolver()
+    val moduleServiceInstaller = ModuleServiceInstaller(
+        moduleRegistry = modules,
+        moduleResolver = moduleDependencyResolver,
+        serviceRegistry = services,
+        serviceManager = serviceManager,
+        observability = observability
+    )
 
     fun rootContext(
         operation: String,
