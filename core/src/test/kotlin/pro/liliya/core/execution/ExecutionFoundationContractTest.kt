@@ -43,6 +43,7 @@ class ExecutionFoundationContractTest {
     private val capability = CapabilityId("device.launch")
     private val scope = AuthorityScope("app:maps")
     private val actionId = ExecutionActionId("launch.maps")
+    private val actionCapabilities = mapOf(actionId to capability)
 
     @Test
     fun action_id_and_reason_require_explicit_identity() {
@@ -50,6 +51,73 @@ class ExecutionFoundationContractTest {
         assertFailsWith<IllegalArgumentException> {
             ExecutionRequest(principal, capability, scope, actionId, " ")
         }
+    }
+
+    @Test
+    fun unknown_action_is_rejected_before_authority_and_executor() {
+        val f = fixture()
+        var calls = 0
+        val manager = ExecutionManager(
+            authorityManager = AuthorityManager(
+                policy = ScopedGrantAuthorityPolicy(
+                    listOf(ScopedAuthorityGrant(principal, capability, scope))
+                ),
+                observability = f.observability
+            ),
+            executor = ExecutionExecutor { _, _ ->
+                calls += 1
+                ExecutionResult.Succeeded
+            },
+            actionCapabilities = actionCapabilities,
+            observability = f.observability
+        )
+
+        val result = manager.execute(
+            ExecutionRequest(
+                principal,
+                capability,
+                scope,
+                ExecutionActionId("launch.unknown"),
+                "launch unknown"
+            ),
+            context("execution-unknown-action")
+        )
+
+        assertIs<ExecutionResult.Rejected>(result)
+        assertEquals(0, calls)
+        assertEquals(listOf("EXECUTION_REJECTED"), f.logs.snapshot().map { it.marker })
+        assertEquals(listOf("EXECUTION_REJECTED"), f.diagnostics.snapshot().map { it.code })
+    }
+
+    @Test
+    fun action_capability_mismatch_is_rejected_before_authority_and_executor() {
+        val f = fixture()
+        var calls = 0
+        val differentCapability = CapabilityId("memory.write")
+        val manager = ExecutionManager(
+            authorityManager = AuthorityManager(
+                policy = ScopedGrantAuthorityPolicy(
+                    listOf(ScopedAuthorityGrant(principal, differentCapability, scope))
+                ),
+                observability = f.observability
+            ),
+            executor = ExecutionExecutor { _, _ ->
+                calls += 1
+                ExecutionResult.Succeeded
+            },
+            actionCapabilities = actionCapabilities,
+            observability = f.observability
+        )
+
+        val result = manager.execute(
+            ExecutionRequest(principal, differentCapability, scope, actionId, "launch maps"),
+            context("execution-capability-mismatch")
+        )
+
+        assertIs<ExecutionResult.Rejected>(result)
+        assertEquals(0, calls)
+        assertEquals(listOf("EXECUTION_REJECTED"), f.logs.snapshot().map { it.marker })
+        assertEquals(listOf("EXECUTION_REJECTED"), f.diagnostics.snapshot().map { it.code })
     }
 
     @Test
@@ -65,6 +133,7 @@ class ExecutionFoundationContractTest {
                 calls += 1
                 ExecutionResult.Succeeded
             },
+            actionCapabilities = actionCapabilities,
             observability = f.observability
         )
 
@@ -96,6 +165,7 @@ class ExecutionFoundationContractTest {
                 calls += 1
                 ExecutionResult.Succeeded
             },
+            actionCapabilities = actionCapabilities,
             observability = f.observability
         )
 
@@ -134,6 +204,7 @@ class ExecutionFoundationContractTest {
                 observability = f.observability
             ),
             executor = ExecutionExecutor { _, _ -> throw failure },
+            actionCapabilities = actionCapabilities,
             observability = f.observability
         )
 
