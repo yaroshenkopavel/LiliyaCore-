@@ -87,6 +87,51 @@ class AuthorityDelegationContractTest {
     }
 
     @Test
+    fun delegated_expiry_must_be_strictly_in_the_future() {
+        val policy = AuthorityDelegationPolicy(
+            sourceGrants = listOf(DirectAuthorityGrant(delegator, capability, scope)),
+            now = { now }
+        )
+
+        assertIs<AuthorityDelegationDecision.Denied>(
+            policy.decide(
+                AuthorityDelegationRequest(
+                    delegator = delegator,
+                    delegate = delegate,
+                    capability = capability,
+                    scope = scope,
+                    reason = "launch maps",
+                    expiresAt = now
+                )
+            )
+        )
+        assertIs<AuthorityDelegationDecision.Denied>(
+            policy.decide(
+                AuthorityDelegationRequest(
+                    delegator = delegator,
+                    delegate = delegate,
+                    capability = capability,
+                    scope = scope,
+                    reason = "launch maps",
+                    expiresAt = now.minusSeconds(1)
+                )
+            )
+        )
+        assertIs<AuthorityDelegationDecision.Granted>(
+            policy.decide(
+                AuthorityDelegationRequest(
+                    delegator = delegator,
+                    delegate = delegate,
+                    capability = capability,
+                    scope = scope,
+                    reason = "launch maps",
+                    expiresAt = now.plusSeconds(1)
+                )
+            )
+        )
+    }
+
+    @Test
     fun bounded_delegation_can_be_used_as_scoped_grant_without_becoming_delegation_source() {
         val expiry = now.plusSeconds(30)
         val decision = AuthorityDelegationPolicy(

@@ -22,6 +22,12 @@ class AuthorityDelegationPolicy(
         }
 
         val current = now()
+        if (request.expiresAt != null && !current.isBefore(request.expiresAt)) {
+            return AuthorityDelegationDecision.Denied(
+                "delegated grant must expire after the current time"
+            )
+        }
+
         val active = candidates.filter { grant ->
             grant.expiresAt == null || current.isBefore(grant.expiresAt)
         }
