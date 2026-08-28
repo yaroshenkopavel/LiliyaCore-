@@ -1,5 +1,7 @@
 package pro.liliya.core.capability
 
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
 import pro.liliya.core.authority.AuthorityDecision
 import pro.liliya.core.authority.AuthorityManager
 import pro.liliya.core.authority.AuthorityPrincipal
@@ -94,6 +96,44 @@ class CapabilityRegistryContractTest {
             listOf("CAPABILITY_REGISTERED", "CAPABILITY_REGISTRATION_REJECTED"),
             f.logs.snapshot().map { it.marker }
         )
+    }
+
+    @Test
+    fun concurrent_duplicate_registration_has_exactly_one_owner() {
+        val f = fixture()
+        val registry = CapabilityRegistry(f.observability)
+        val pool = Executors.newFixedThreadPool(8)
+        val start = CountDownLatch(1)
+
+        try {
+            val futures = (0 until 32).map { index ->
+                pool.submit<CapabilityRegistrationResult> {
+                    start.await()
+                    registry.register(
+                        CapabilityDescriptor(
+                            capabilityId,
+                            CapabilityProviderId("provider-$index")
+                        ),
+                        context("capability-concurrent-$index")
+                    )
+                }
+            }
+
+            start.countDown()
+            val results = futures.map { future -> future.get() }
+
+            assertEquals(
+                1,
+                results.count { result -> result is CapabilityRegistrationResult.Registered }
+            )
+            assertEquals(
+                31,
+                results.count { result -> result is CapabilityRegistrationResult.Rejected }
+            )
+            assertTrue(registry.contains(capabilityId))
+        } finally {
+            pool.shutdownNow()
+        }
     }
 
     @Test
