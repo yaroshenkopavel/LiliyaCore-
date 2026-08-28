@@ -1,10 +1,13 @@
 package pro.liliya.core.logging
 
 object LoggerFactory {
+    private val bootstrapWriter = BootstrapLogWriter()
+
     @Volatile
-    private var writer: LogWriter = InMemoryLogWriter()
+    private var writer: LogWriter = bootstrapWriter
 
     fun installWriter(newWriter: LogWriter) {
+        bootstrapWriter.install(newWriter)
         writer = newWriter
     }
 
@@ -13,4 +16,8 @@ object LoggerFactory {
             context = context,
             writer = writer
         )
+
+    internal fun resetForTest() {
+        writer = bootstrapWriter
+    }
 }
