@@ -94,7 +94,7 @@ class ReflectionCompositionContractTest {
         val ownership = assertIs<ReflectionInstallResult.Installed>(f.composition.install(record())).ownership
         assertTrue(ownership.remove())
 
-        val correlations = f.logs.snapshot().map { it.context.correlationId.value }.distinct()
+        val correlations = f.logs.snapshot().map { event -> event.context.correlationId }.distinct()
         assertTrue(correlations.size >= 2)
     }
 
@@ -117,16 +117,16 @@ class ReflectionCompositionContractTest {
         assertIs<ReflectionInstallResult.Installed>(f.composition.install(knowledgeRecord))
 
         val events = f.logs.snapshot()
-        assertFalse(events.flatMap { it.metadata.values }.any { it == secret })
-        assertTrue(events.any { it.metadata["memoryGeneration"] == "999" })
-        assertTrue(events.any { it.metadata["knowledgeGeneration"] == "999" })
-        assertFalse(events.flatMap { it.metadata.keys }.any {
-            it.contains("truth", ignoreCase = true) ||
-                it.contains("confidence", ignoreCase = true) ||
-                it.contains("learning", ignoreCase = true) ||
-                it.contains("personality", ignoreCase = true) ||
-                it.contains("authority", ignoreCase = true) ||
-                it.contains("execution", ignoreCase = true)
+        assertFalse(events.flatMap { event -> event.metadata.values }.any { value -> value == secret })
+        assertTrue(events.any { event -> event.metadata["memoryGeneration"] == "999" })
+        assertTrue(events.any { event -> event.metadata["knowledgeGeneration"] == "999" })
+        assertFalse(events.flatMap { event -> event.metadata.keys }.any { key ->
+            key.contains("truth", ignoreCase = true) ||
+                key.contains("confidence", ignoreCase = true) ||
+                key.contains("learning", ignoreCase = true) ||
+                key.contains("personality", ignoreCase = true) ||
+                key.contains("authority", ignoreCase = true) ||
+                key.contains("execution", ignoreCase = true)
         })
     }
 
