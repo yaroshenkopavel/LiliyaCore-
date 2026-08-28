@@ -9,7 +9,7 @@ class RuntimeStateController(
     private val transitionPolicy: RuntimeTransitionPolicy,
     private val diagnostics: DiagnosticRecorder
 ) {
-    fun currentState(): RuntimeState = stateHolder.get()
+    fun currentState(): RuntimeState = stateHolder.current()
 
     fun transition(
         to: RuntimeState,
@@ -17,7 +17,7 @@ class RuntimeStateController(
         context: LogContext
     ): RuntimeTransitionResult {
         while (true) {
-            val from = stateHolder.get()
+            val from = stateHolder.current()
             val transition = RuntimeTransition(
                 from = from,
                 to = to,
@@ -25,7 +25,7 @@ class RuntimeStateController(
                 context = context
             )
 
-            if (!transitionPolicy.isAllowed(from, to)) {
+            if (!transitionPolicy.allows(from, to)) {
                 diagnostics.record(
                     severity = DiagnosticSeverity.WARNING,
                     code = "RUNTIME_TRANSITION_REJECTED",
@@ -37,7 +37,11 @@ class RuntimeStateController(
                         "reason" to reason
                     )
                 )
-                return RuntimeTransitionResult.Rejected(transition)
+                return RuntimeTransitionResult.Rejected(
+                    from = from,
+                    to = to,
+                    reason = reason
+                )
             }
 
             if (stateHolder.compareAndSet(from, to)) {
