@@ -7,12 +7,19 @@ import pro.liliya.core.lifecycle.LifecyclePhase
 import pro.liliya.core.lifecycle.LifecycleResult
 import pro.liliya.core.logging.CorrelationIdGenerator
 import pro.liliya.core.logging.InMemoryLogWriter
+import pro.liliya.core.logging.LogContext
 import pro.liliya.core.logging.StructuredLogger
+import pro.liliya.core.modules.CoreModule
+import pro.liliya.core.modules.ModuleDescriptor
+import pro.liliya.core.modules.ModuleInstallResult
 import pro.liliya.core.observability.LoggerProvider
+import pro.liliya.core.services.CoreService
+import pro.liliya.core.services.ServiceDescriptor
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertSame
 
 class FoundationCompositionContractTest {
@@ -51,6 +58,37 @@ class FoundationCompositionContractTest {
         )
         assertEquals(setOf("foundation-1"), logs.snapshot().map { it.context.correlationId }.toSet())
         assertEquals(setOf("foundation-1"), diagnostics.snapshot().map { it.context.correlationId }.toSet())
+    }
+
+    @Test
+    fun module_service_ownership_is_observable_through_composition_root() {
+        val logs = InMemoryLogWriter()
+        val diagnostics = InMemoryDiagnosticSink()
+        val composition = FoundationComposition(
+            diagnostics = DiagnosticRecorder(diagnostics),
+            loggerProvider = LoggerProvider { context -> StructuredLogger(context, logs) },
+            correlationIds = CorrelationIdGenerator { "foundation-module" }
+        )
+        val service = object : CoreService {
+            override val descriptor = ServiceDescriptor("memory")
+            override fun start(context: LogContext) = Unit
+            override fun stop(context: LogContext) = Unit
+        }
+        val module = object : CoreModule {
+            override val descriptor = ModuleDescriptor("memory-module")
+            override val services = listOf(service)
+        }
+        val context = composition.rootContext(operation = "install-module")
+
+        assertIs<ModuleInstallResult.Installed>(
+            composition.moduleServiceInstaller.install(module, context)
+        )
+        assertSame(service, composition.findService("memory"))
+        assertNotNull(composition.findModule("memory-module"))
+        assertEquals(listOf("MODULE_INSTALLED"), logs.snapshot().map { it.marker })
+        assertEquals(listOf("MODULE_INSTALLED"), diagnostics.snapshot().map { it.code })
+        assertEquals(setOf("foundation-module"), logs.snapshot().map { it.context.correlationId }.toSet())
+        assertEquals(setOf("foundation-module"), diagnostics.snapshot().map { it.context.correlationId }.toSet())
     }
 
     @Test

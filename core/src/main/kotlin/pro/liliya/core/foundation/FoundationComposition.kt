@@ -7,6 +7,7 @@ import pro.liliya.core.logging.CorrelationIdGenerator
 import pro.liliya.core.logging.LogContext
 import pro.liliya.core.logging.LogContextPropagation
 import pro.liliya.core.logging.UuidCorrelationIdGenerator
+import pro.liliya.core.modules.CoreModule
 import pro.liliya.core.modules.ModuleDependencyResolver
 import pro.liliya.core.modules.ModuleRegistry
 import pro.liliya.core.modules.ModuleServiceInstaller
@@ -17,6 +18,7 @@ import pro.liliya.core.recovery.RecoveryPolicy
 import pro.liliya.core.runtime.RuntimeStateController
 import pro.liliya.core.runtime.RuntimeStateHolder
 import pro.liliya.core.runtime.RuntimeTransitionPolicy
+import pro.liliya.core.services.CoreService
 import pro.liliya.core.services.ServiceDependencyResolver
 import pro.liliya.core.services.ServiceManager
 import pro.liliya.core.services.ServiceRegistry
@@ -57,24 +59,30 @@ class FoundationComposition(
         observability = observability
     )
 
-    val services = ServiceRegistry()
+    private val serviceRegistry = ServiceRegistry()
     val serviceDependencyResolver = ServiceDependencyResolver()
     val serviceManager = ServiceManager(
-        registry = services,
+        registry = serviceRegistry,
         resolver = serviceDependencyResolver,
         diagnostics = diagnostics,
         observability = observability
     )
 
-    val modules = ModuleRegistry()
+    private val moduleRegistry = ModuleRegistry()
     val moduleDependencyResolver = ModuleDependencyResolver()
     val moduleServiceInstaller = ModuleServiceInstaller(
-        moduleRegistry = modules,
+        moduleRegistry = moduleRegistry,
         moduleResolver = moduleDependencyResolver,
-        serviceRegistry = services,
+        serviceRegistry = serviceRegistry,
         serviceManager = serviceManager,
         observability = observability
     )
+
+    fun findService(serviceId: String): CoreService? =
+        serviceRegistry.find(serviceId)
+
+    fun findModule(moduleId: String): CoreModule? =
+        moduleRegistry.find(moduleId)
 
     fun rootContext(
         operation: String,
