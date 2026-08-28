@@ -8,12 +8,30 @@ import pro.liliya.core.diagnostics.DiagnosticSeverity
 import pro.liliya.core.logging.LogContext
 import pro.liliya.core.observability.CoreObservability
 
-class ExecutionManager(
-    private val authorityManager: AuthorityManager,
+internal fun interface ExecutionAuthorizer {
+    fun authorize(request: AuthorityRequest, context: LogContext): AuthorityDecision
+}
+
+class ExecutionManager internal constructor(
+    private val authorizer: ExecutionAuthorizer,
     private val executor: ExecutionExecutor,
     actionCapabilities: Map<ExecutionActionId, CapabilityId>,
     private val observability: CoreObservability
 ) {
+    constructor(
+        authorityManager: AuthorityManager,
+        executor: ExecutionExecutor,
+        actionCapabilities: Map<ExecutionActionId, CapabilityId>,
+        observability: CoreObservability
+    ) : this(
+        authorizer = ExecutionAuthorizer { request, context ->
+            authorityManager.authorize(request, context)
+        },
+        executor = executor,
+        actionCapabilities = actionCapabilities,
+        observability = observability
+    )
+
     private val actionCapabilities = actionCapabilities.toMap()
 
     fun execute(request: ExecutionRequest, context: LogContext): ExecutionResult {
@@ -34,7 +52,7 @@ class ExecutionManager(
             )
         }
 
-        val authority = authorityManager.authorize(
+        val authority = authorizer.authorize(
             AuthorityRequest(
                 principal = request.principal,
                 capability = requiredCapability,

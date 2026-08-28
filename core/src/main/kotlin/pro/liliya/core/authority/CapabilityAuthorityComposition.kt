@@ -9,6 +9,7 @@ import pro.liliya.core.capability.CapabilityRegistrationResult
 import pro.liliya.core.capability.CapabilityRegistry
 import pro.liliya.core.diagnostics.DiagnosticSeverity
 import pro.liliya.core.foundation.FoundationComposition
+import pro.liliya.core.logging.LogContext
 
 interface CapabilityOwnership {
     val descriptor: CapabilityDescriptor
@@ -179,7 +180,15 @@ class CapabilityAuthorityComposition(
             }
         }
 
-    fun authorize(request: AuthorityRequest): AuthorityDecision = synchronized(ownershipLock) {
+    fun authorize(request: AuthorityRequest): AuthorityDecision = authorize(
+        request = request,
+        context = foundation.rootContext(
+            operation = "authorize",
+            component = "CapabilityAuthority"
+        )
+    )
+
+    fun authorize(request: AuthorityRequest, context: LogContext): AuthorityDecision = synchronized(ownershipLock) {
         val capabilityGeneration = capabilityGenerations[request.capability]
         val policy = if (capabilityGeneration == null) {
             AuthorityPolicy {
@@ -196,10 +205,7 @@ class CapabilityAuthorityComposition(
             observability = foundation.observability
         ).authorize(
             request = request,
-            context = foundation.rootContext(
-                operation = "authorize",
-                component = "CapabilityAuthority"
-            )
+            context = context
         )
     }
 
