@@ -30,11 +30,17 @@ class ExplicitGrantAuthorityPolicy(
         }
 }
 
+enum class AuthorityGrantOrigin {
+    DIRECT,
+    DELEGATED
+}
+
 data class ScopedAuthorityGrant(
     val principal: AuthorityPrincipal,
     val capability: CapabilityId,
     val scope: AuthorityScope,
-    val expiresAt: Instant? = null
+    val expiresAt: Instant? = null,
+    val origin: AuthorityGrantOrigin = AuthorityGrantOrigin.DIRECT
 )
 
 class ScopedGrantAuthorityPolicy(
