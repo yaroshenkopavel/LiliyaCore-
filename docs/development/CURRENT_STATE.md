@@ -4,11 +4,9 @@ Last journal update: 2026-08-28
 
 ## Current verified baseline
 
-Pre-freeze implementation baseline: `4366edcc1f124e4cba715a5d0f882a2eb20f20a2`.
+Identity / Self implementation baseline before the freeze documentation merge: `4366edcc1f124e4cba715a5d0f882a2eb20f20a2`.
 
 This commit merged PR #46 `Identity v0.1: Readiness Contract Hardening` after Core CI #443 succeeded for exact head `71c89255337376e4b053443c1f5e64d2584188e8` and the final test-only readiness diff audit passed.
-
-Current documentation branch: `docs/freeze-self-v0.1`.
 
 Identity / Self Foundation v0.1 freeze record: `docs/development/IDENTITY_SELF_V0_1_FREEZE.md`.
 
@@ -19,7 +17,7 @@ Status:
 - Execution v0.1: FROZEN.
 - Memory Foundation v0.1: FROZEN.
 - Knowledge Foundation v0.1: FROZEN.
-- Identity / Self Foundation v0.1: FREEZE CHECKPOINT IN REVIEW.
+- Identity / Self Foundation v0.1: FROZEN by this documentation checkpoint.
 - Trust / Security stage: NOT STARTED.
 - Personality stage: NOT STARTED.
 - Reflection / Learning stage: NOT STARTED.
@@ -59,9 +57,7 @@ Test-only hardening locked two final readiness boundaries:
 - `SelfOrigin.Knowledge(itemId, generation)` is structural only and performs no hidden Knowledge lookup or verification.
 - `SelfIdentity.createdAt` is caller-supplied and preserved unchanged; it is not a trusted runtime/source clock.
 
-## Identity / Self v0.1 freeze boundaries
-
-The freeze checkpoint records these intended stable semantics:
+## Identity / Self v0.1 frozen boundaries
 
 - at most one current Self exists per Self store/composition at a time, regardless of identity ID;
 - successful installation owns one exact positive in-memory `SelfGeneration`;
@@ -79,15 +75,7 @@ The freeze checkpoint records these intended stable semantics:
 
 ## Current next action
 
-Merge the docs-only Identity / Self v0.1 freeze checkpoint only after:
-
-1. exact-head Core CI is GREEN for the freeze PR;
-2. the freeze diff is audited against PRs #44-#46 and current source;
-3. the PR head is rechecked immediately before merge.
-
-After that merge, Identity / Self Foundation v0.1 becomes officially FROZEN.
-
-Next allowed architecture stage after the freeze: `Trust / Security Foundation v0.1`.
+Next allowed architecture stage: `Trust / Security Foundation v0.1`.
 
 Trust / Security must begin conservatively and must not be retroactively implied by existing provenance/origin fields. Initial work should define explicit trust/security primitives and boundaries before personality, reflection/learning, planning/autonomy/agents, or Android integration.
 
