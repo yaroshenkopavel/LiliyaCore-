@@ -111,7 +111,7 @@ class PersonalityProfile(
     }
 
     override fun toString(): String =
-        "PersonalityProfile(id=$id, target=$target, attributes=$attributes, provenance=$provenance, createdAt=$createdAt)"
+        "PersonalityProfile(id=$id, target=$target, attributeCount=${attributes.size}, provenance=$provenance, createdAt=$createdAt)"
 }
 
 data class PersonalityProfileSnapshot(
