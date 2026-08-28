@@ -10,14 +10,15 @@ class AuthorityDelegationPolicy(
 
     fun decide(request: AuthorityDelegationRequest): AuthorityDelegationDecision {
         val candidates = sourceGrants.filter { grant ->
-            grant.principal == request.delegator &&
+            grant.origin == AuthorityGrantOrigin.DIRECT &&
+                grant.principal == request.delegator &&
                 grant.capability == request.capability &&
                 grant.scope == request.scope
         }
 
         if (candidates.isEmpty()) {
             return AuthorityDelegationDecision.Denied(
-                "delegator ${request.delegator} does not own capability ${request.capability} in scope ${request.scope}"
+                "delegator ${request.delegator} does not own a direct capability ${request.capability} grant in scope ${request.scope}"
             )
         }
 

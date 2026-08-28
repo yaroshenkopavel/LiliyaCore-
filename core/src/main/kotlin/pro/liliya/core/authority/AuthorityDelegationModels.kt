@@ -27,7 +27,8 @@ data class DelegatedAuthorityGrant(
         principal = principal,
         capability = capability,
         scope = scope,
-        expiresAt = expiresAt
+        expiresAt = expiresAt,
+        origin = AuthorityGrantOrigin.DELEGATED
     )
 }
 
