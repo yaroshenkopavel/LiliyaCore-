@@ -39,6 +39,7 @@ class StructuredLogger(
                 marker = marker,
                 message = message,
                 threadName = Thread.currentThread().name,
+                metadata = context.metadata.toMap(),
                 throwableType = throwable?.javaClass?.name,
                 throwableMessage = throwable?.message
             )
