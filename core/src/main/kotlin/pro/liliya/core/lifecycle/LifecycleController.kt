@@ -2,13 +2,20 @@ package pro.liliya.core.lifecycle
 
 import pro.liliya.core.diagnostics.DiagnosticRecorder
 import pro.liliya.core.diagnostics.DiagnosticSeverity
+import pro.liliya.core.logging.LoggerFactory
+import pro.liliya.core.observability.CoreObservability
+import pro.liliya.core.observability.LoggerProvider
 import pro.liliya.core.runtime.RuntimeState
 import pro.liliya.core.runtime.RuntimeStateController
 import pro.liliya.core.runtime.RuntimeTransitionResult
 
 class LifecycleController(
     private val runtime: RuntimeStateController,
-    private val diagnostics: DiagnosticRecorder
+    diagnostics: DiagnosticRecorder,
+    private val observability: CoreObservability = CoreObservability(
+        loggerProvider = LoggerProvider { context -> LoggerFactory.create(context) },
+        diagnostics = diagnostics
+    )
 ) {
     fun execute(command: LifecycleCommand): LifecycleResult {
         val target = targetState(command.phase)
@@ -20,7 +27,7 @@ class LifecycleController(
 
         return when (result) {
             is RuntimeTransitionResult.Applied -> {
-                diagnostics.record(
+                observability.record(
                     severity = DiagnosticSeverity.INFO,
                     code = "LIFECYCLE_COMMAND_APPLIED",
                     message = "Lifecycle command applied: ${command.phase}",
@@ -38,7 +45,7 @@ class LifecycleController(
             }
 
             is RuntimeTransitionResult.Rejected -> {
-                diagnostics.record(
+                observability.record(
                     severity = DiagnosticSeverity.WARNING,
                     code = "LIFECYCLE_COMMAND_REJECTED",
                     message = "Lifecycle command rejected: ${command.phase}",
