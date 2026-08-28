@@ -202,9 +202,10 @@ class SelfStoreContractTest {
     }
 
     private fun context(operation: String) = LogContextPropagation.root(
-        correlationIds = CorrelationIdGenerator { "self-$operation" },
+        module = "identity",
         operation = operation,
-        component = "SelfStore"
+        component = "SelfStore",
+        generator = CorrelationIdGenerator { "self-$operation" }
     )
 
     private inline fun assertFails(block: () -> Unit) {
