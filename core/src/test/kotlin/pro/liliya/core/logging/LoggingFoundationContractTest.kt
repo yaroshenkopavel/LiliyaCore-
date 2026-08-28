@@ -1,11 +1,20 @@
 package pro.liliya.core.logging
 
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class LoggingFoundationContractTest {
+
+    @AfterTest
+    fun resetSequence() {
+        GlobalLogSequence.resetForTest()
+    }
 
     private fun event(
         level: LogLevel = LogLevel.INFO,
@@ -110,5 +119,80 @@ class LoggingFoundationContractTest {
             listOf(2L, 3L),
             bootstrap.bufferedEvents().map { it.sequence }
         )
+    }
+
+    @Test
+    fun sequence_is_global_across_logger_instances() {
+        val writer = InMemoryLogWriter()
+        val first = StructuredLogger(
+            context = LogContext("CORE", "First", "one"),
+            writer = writer
+        )
+        val second = StructuredLogger(
+            context = LogContext("CORE", "Second", "two"),
+            writer = writer
+        )
+
+        first.info("FIRST", "first")
+        second.info("SECOND", "second")
+        first.info("THIRD", "third")
+
+        assertEquals(listOf(1L, 2L, 3L), writer.snapshot().map { it.sequence })
+    }
+
+    @Test
+    fun global_sequence_remains_unique_under_concurrent_logging() {
+        val writer = InMemoryLogWriter()
+        val workers = 8
+        val eventsPerWorker = 50
+        val start = CountDownLatch(1)
+        val done = CountDownLatch(workers)
+        val executor = Executors.newFixedThreadPool(workers)
+
+        repeat(workers) { index ->
+            executor.execute {
+                val logger = StructuredLogger(
+                    context = LogContext("CORE", "Worker-$index", "concurrent"),
+                    writer = writer
+                )
+                start.await()
+                repeat(eventsPerWorker) { eventIndex ->
+                    logger.debug("EVENT", "$index:$eventIndex")
+                }
+                done.countDown()
+            }
+        }
+
+        start.countDown()
+        done.await()
+        executor.shutdown()
+
+        val sequences = writer.snapshot().map { it.sequence }
+        assertEquals(workers * eventsPerWorker, sequences.size)
+        assertEquals(sequences.size, sequences.toSet().size)
+        assertTrue(sequences.all { it > 0 })
+    }
+
+    @Test
+    fun child_context_links_to_parent_and_inherits_metadata() {
+        val root = LogContextPropagation.root(
+            module = "CORE",
+            component = "Interaction",
+            operation = "request",
+            metadata = mapOf("requestType" to "user")
+        )
+
+        val child = LogContextPropagation.child(
+            parent = root,
+            component = "Cognition",
+            operation = "interpret",
+            metadata = mapOf("stage" to "meaning")
+        )
+
+        assertNull(root.parentCorrelationId)
+        assertEquals(root.correlationId, child.parentCorrelationId)
+        assertNotEquals(root.correlationId, child.correlationId)
+        assertEquals("user", child.metadata["requestType"])
+        assertEquals("meaning", child.metadata["stage"])
     }
 }
