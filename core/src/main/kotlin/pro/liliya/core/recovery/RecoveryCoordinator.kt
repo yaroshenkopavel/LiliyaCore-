@@ -2,17 +2,24 @@ package pro.liliya.core.recovery
 
 import pro.liliya.core.diagnostics.DiagnosticRecorder
 import pro.liliya.core.diagnostics.DiagnosticSeverity
+import pro.liliya.core.logging.LoggerFactory
+import pro.liliya.core.observability.CoreObservability
+import pro.liliya.core.observability.LoggerProvider
 import java.util.concurrent.ConcurrentHashMap
 
 class RecoveryCoordinator(
     private val policy: RecoveryPolicy,
-    private val diagnostics: DiagnosticRecorder
+    diagnostics: DiagnosticRecorder,
+    private val observability: CoreObservability = CoreObservability(
+        loggerProvider = LoggerProvider { context -> LoggerFactory.create(context) },
+        diagnostics = diagnostics
+    )
 ) {
     private val activeTargets = ConcurrentHashMap.newKeySet<String>()
 
     fun decide(request: RecoveryRequest): RecoveryDecision {
         if (!activeTargets.add(request.target)) {
-            diagnostics.record(
+            observability.record(
                 severity = DiagnosticSeverity.WARNING,
                 code = "RECOVERY_DUPLICATE_REJECTED",
                 message = "Recovery request rejected because target is already active",
@@ -30,7 +37,7 @@ class RecoveryCoordinator(
         }
 
         val action = policy.select(request.attempt)
-        diagnostics.record(
+        observability.record(
             severity = DiagnosticSeverity.INFO,
             code = "RECOVERY_DECISION_SELECTED",
             message = "Recovery action selected",
@@ -50,7 +57,7 @@ class RecoveryCoordinator(
 
     fun complete(request: RecoveryRequest): Boolean {
         val released = activeTargets.remove(request.target)
-        diagnostics.record(
+        observability.record(
             severity = if (released) DiagnosticSeverity.INFO else DiagnosticSeverity.WARNING,
             code = if (released) "RECOVERY_COMPLETED" else "RECOVERY_COMPLETION_IGNORED",
             message = if (released) {
