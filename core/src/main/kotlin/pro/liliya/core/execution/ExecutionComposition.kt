@@ -11,8 +11,8 @@ class ExecutionComposition(
     actionCapabilities: Map<ExecutionActionId, CapabilityId>
 ) {
     private val executionManager = ExecutionManager(
-        authorizer = ExecutionAuthorizer { request, _ ->
-            capabilityAuthority.authorize(request)
+        authorizer = ExecutionAuthorizer { request, context ->
+            capabilityAuthority.authorize(request, context)
         },
         executor = executor,
         actionCapabilities = actionCapabilities,
