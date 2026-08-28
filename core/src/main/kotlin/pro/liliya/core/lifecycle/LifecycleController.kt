@@ -2,13 +2,15 @@ package pro.liliya.core.lifecycle
 
 import pro.liliya.core.diagnostics.DiagnosticRecorder
 import pro.liliya.core.diagnostics.DiagnosticSeverity
+import pro.liliya.core.observability.CoreObservability
 import pro.liliya.core.runtime.RuntimeState
 import pro.liliya.core.runtime.RuntimeStateController
 import pro.liliya.core.runtime.RuntimeTransitionResult
 
 class LifecycleController(
     private val runtime: RuntimeStateController,
-    private val diagnostics: DiagnosticRecorder
+    private val diagnostics: DiagnosticRecorder,
+    private val observability: CoreObservability? = null
 ) {
     fun execute(command: LifecycleCommand): LifecycleResult {
         val target = targetState(command.phase)
@@ -20,11 +22,11 @@ class LifecycleController(
 
         return when (result) {
             is RuntimeTransitionResult.Applied -> {
-                diagnostics.record(
+                record(
                     severity = DiagnosticSeverity.INFO,
                     code = "LIFECYCLE_COMMAND_APPLIED",
                     message = "Lifecycle command applied: ${command.phase}",
-                    context = command.context,
+                    command = command,
                     metadata = mapOf(
                         "phase" to command.phase.name,
                         "state" to result.transition.to.name,
@@ -38,11 +40,11 @@ class LifecycleController(
             }
 
             is RuntimeTransitionResult.Rejected -> {
-                diagnostics.record(
+                record(
                     severity = DiagnosticSeverity.WARNING,
                     code = "LIFECYCLE_COMMAND_REJECTED",
                     message = "Lifecycle command rejected: ${command.phase}",
-                    context = command.context,
+                    command = command,
                     metadata = mapOf(
                         "phase" to command.phase.name,
                         "state" to result.from.name,
@@ -56,6 +58,21 @@ class LifecycleController(
                     reason = command.reason
                 )
             }
+        }
+    }
+
+    private fun record(
+        severity: DiagnosticSeverity,
+        code: String,
+        message: String,
+        command: LifecycleCommand,
+        metadata: Map<String, String>
+    ) {
+        val bridge = observability
+        if (bridge != null) {
+            bridge.record(severity, code, message, command.context, metadata)
+        } else {
+            diagnostics.record(severity, code, message, command.context, metadata)
         }
     }
 
