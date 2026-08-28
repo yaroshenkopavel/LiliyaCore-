@@ -21,10 +21,7 @@ class MemoryComposition(
         val context = foundation.rootContext(
             operation = "remember",
             component = "Memory",
-            metadata = mapOf(
-                "memoryRecordId" to record.id.value,
-                "memorySourceId" to record.sourceId.value
-            )
+            metadata = provenanceMetadata(record)
         )
         return when (val result = store.register(record, context)) {
             is MemoryRegistrationResult.Registered -> MemoryRememberResult.Remembered(
@@ -35,10 +32,7 @@ class MemoryComposition(
                         foundation.rootContext(
                             operation = "removeMemory",
                             component = "Memory",
-                            metadata = mapOf(
-                                "memoryRecordId" to record.id.value,
-                                "memorySourceId" to record.sourceId.value
-                            )
+                            metadata = provenanceMetadata(record)
                         )
                     )
                 }
@@ -53,4 +47,12 @@ class MemoryComposition(
     fun contains(id: MemoryRecordId): Boolean = store.contains(id)
 
     fun snapshot(): List<MemoryRecord> = store.snapshot()
+
+    private fun provenanceMetadata(record: MemoryRecord): Map<String, String> = buildMap {
+        put("memoryRecordId", record.id.value)
+        put("memorySourceId", record.provenance.sourceId.value)
+        record.provenance.sourceReference?.let { reference ->
+            put("memorySourceReference", reference.value)
+        }
+    }
 }
