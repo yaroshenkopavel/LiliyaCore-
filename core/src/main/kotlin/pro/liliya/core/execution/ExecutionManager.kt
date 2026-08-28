@@ -3,6 +3,7 @@ package pro.liliya.core.execution
 import pro.liliya.core.authority.AuthorityDecision
 import pro.liliya.core.authority.AuthorityManager
 import pro.liliya.core.authority.AuthorityRequest
+import pro.liliya.core.authority.CapabilityId
 import pro.liliya.core.diagnostics.DiagnosticSeverity
 import pro.liliya.core.logging.LogContext
 import pro.liliya.core.observability.CoreObservability
@@ -10,13 +11,33 @@ import pro.liliya.core.observability.CoreObservability
 class ExecutionManager(
     private val authorityManager: AuthorityManager,
     private val executor: ExecutionExecutor,
+    actionCapabilities: Map<ExecutionActionId, CapabilityId>,
     private val observability: CoreObservability
 ) {
+    private val actionCapabilities = actionCapabilities.toMap()
+
     fun execute(request: ExecutionRequest, context: LogContext): ExecutionResult {
+        val requiredCapability = actionCapabilities[request.actionId]
+        if (requiredCapability == null) {
+            return reject(
+                request = request,
+                context = context,
+                reason = "execution action ${request.actionId} is not registered"
+            )
+        }
+
+        if (requiredCapability != request.capability) {
+            return reject(
+                request = request,
+                context = context,
+                reason = "execution action ${request.actionId} requires capability $requiredCapability"
+            )
+        }
+
         val authority = authorityManager.authorize(
             AuthorityRequest(
                 principal = request.principal,
-                capability = request.capability,
+                capability = requiredCapability,
                 reason = request.reason,
                 scope = request.scope
             ),
@@ -24,15 +45,7 @@ class ExecutionManager(
         )
 
         if (authority is AuthorityDecision.Denied) {
-            val rejected = ExecutionResult.Rejected(authority.reason)
-            observability.record(
-                severity = DiagnosticSeverity.WARNING,
-                code = "EXECUTION_REJECTED",
-                message = authority.reason,
-                context = context,
-                metadata = metadata(request) + ("rejectionReason" to authority.reason)
-            )
-            return rejected
+            return reject(request, context, authority.reason)
         }
 
         val result = try {
@@ -72,6 +85,22 @@ class ExecutionManager(
         }
 
         return result
+    }
+
+    private fun reject(
+        request: ExecutionRequest,
+        context: LogContext,
+        reason: String
+    ): ExecutionResult.Rejected {
+        val rejected = ExecutionResult.Rejected(reason)
+        observability.record(
+            severity = DiagnosticSeverity.WARNING,
+            code = "EXECUTION_REJECTED",
+            message = reason,
+            context = context,
+            metadata = metadata(request) + ("rejectionReason" to reason)
+        )
+        return rejected
     }
 
     private fun metadata(request: ExecutionRequest): Map<String, String> = mapOf(
