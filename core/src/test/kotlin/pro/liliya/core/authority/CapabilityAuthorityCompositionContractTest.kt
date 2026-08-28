@@ -109,6 +109,34 @@ class CapabilityAuthorityCompositionContractTest {
         )
         assertTrue(capabilityOwnership.unregister())
         assertNull(f.composition.findCapability(capability))
+        assertEquals(emptyList(), f.composition.directGrantSnapshot())
+        assertIs<AuthorityDecision.Denied>(
+            f.composition.authorize(
+                AuthorityRequest(planner, capability, "launch maps", scope)
+            )
+        )
+    }
+
+    @Test
+    fun capability_re_registration_does_not_resurrect_old_direct_grant() {
+        val f = fixture()
+        val firstCapability = assertIs<CapabilityOwnershipResult.Registered>(
+            f.composition.registerCapability(CapabilityDescriptor(capability, provider))
+        ).ownership
+        val oldGrant = assertIs<DirectAuthorityGrantOwnershipResult.Registered>(
+            f.composition.registerDirectGrant(DirectAuthorityGrant(planner, capability, scope))
+        ).ownership
+
+        assertTrue(firstCapability.unregister())
+        assertFalse(oldGrant.revoke())
+
+        assertIs<CapabilityOwnershipResult.Registered>(
+            f.composition.registerCapability(
+                CapabilityDescriptor(capability, CapabilityProviderId("android.accessibility"))
+            )
+        )
+
+        assertEquals(emptyList(), f.composition.directGrantSnapshot())
         assertIs<AuthorityDecision.Denied>(
             f.composition.authorize(
                 AuthorityRequest(planner, capability, "launch maps", scope)
@@ -153,6 +181,39 @@ class CapabilityAuthorityCompositionContractTest {
             )
         )
         assertFalse(delegated.grant.asScopedGrant().origin == AuthorityGrantOrigin.DIRECT)
+    }
+
+    @Test
+    fun direct_source_replacement_does_not_resurrect_old_delegation() {
+        val f = fixture()
+        f.composition.registerCapability(CapabilityDescriptor(capability, provider))
+        val firstSource = assertIs<DirectAuthorityGrantOwnershipResult.Registered>(
+            f.composition.registerDirectGrant(DirectAuthorityGrant(planner, capability, scope))
+        ).ownership
+        val delegated = assertIs<CapabilityAuthorityDelegationResult.Granted>(
+            f.composition.delegate(
+                AuthorityDelegationRequest(
+                    planner,
+                    executor,
+                    capability,
+                    scope,
+                    "execute launch",
+                    now.plusSeconds(60)
+                )
+            )
+        )
+
+        assertTrue(firstSource.revoke())
+        assertIs<DirectAuthorityGrantOwnershipResult.Registered>(
+            f.composition.registerDirectGrant(DirectAuthorityGrant(planner, capability, scope))
+        )
+
+        assertIs<AuthorityDecision.Denied>(
+            f.composition.authorize(
+                AuthorityRequest(executor, capability, "launch maps", scope)
+            )
+        )
+        assertTrue(delegated.ownership.revoke())
     }
 
     @Test
