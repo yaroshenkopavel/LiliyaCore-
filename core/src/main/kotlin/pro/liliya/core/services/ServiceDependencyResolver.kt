@@ -13,24 +13,26 @@ class ServiceDependencyResolver {
         val duplicateId = serviceList
             .groupingBy { it.descriptor.id }
             .eachCount()
-            .entries
-            .firstOrNull { it.value > 1 }
-            ?.key
+            .filterValues { it > 1 }
+            .keys
+            .minOrNull()
         if (duplicateId != null) {
             return ServiceResolutionResult.DuplicateService(duplicateId)
         }
 
         val byId = serviceList.associateBy { it.descriptor.id }
-
-        for (service in serviceList) {
-            for (dependency in service.descriptor.dependencies) {
-                if (dependency !in byId) {
-                    return ServiceResolutionResult.MissingDependency(
-                        serviceId = service.descriptor.id,
-                        dependencyId = dependency
-                    )
-                }
+        val missing = serviceList
+            .flatMap { service ->
+                service.descriptor.dependencies
+                    .filter { dependency -> dependency !in byId }
+                    .map { dependency -> service.descriptor.id to dependency }
             }
+            .minWithOrNull(compareBy<Pair<String, String>>({ it.first }, { it.second }))
+        if (missing != null) {
+            return ServiceResolutionResult.MissingDependency(
+                serviceId = missing.first,
+                dependencyId = missing.second
+            )
         }
 
         val remaining = serviceList.associate { service ->
