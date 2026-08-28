@@ -129,7 +129,7 @@ class MemoryStoreContractTest {
     fun concurrent_same_id_registration_has_exactly_one_winner() {
         val f = fixture()
         val attempts = 32
-        val executor = Executors.newFixedThreadPool(8)
+        val executor = Executors.newFixedThreadPool(attempts)
         val ready = CountDownLatch(attempts)
         val start = CountDownLatch(1)
         val done = CountDownLatch(attempts)
