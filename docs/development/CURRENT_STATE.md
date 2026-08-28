@@ -2,9 +2,9 @@
 
 Last journal update: 2026-08-28
 
-## Main baseline
+## Pre-freeze main baseline
 
-`main` SHA: `2e2805d21dfaba02ecd652747507e9accf725b19`
+`main` SHA before the Memory freeze documentation merge: `2e2805d21dfaba02ecd652747507e9accf725b19`
 
 This commit merged PR #38 `Memory v0.1: Readiness Contract Hardening` after Core CI #406 succeeded for exact head `d540ceebaad282e3931e69e72596a6be5665bea3` and the final test-only diff audit passed.
 
@@ -13,7 +13,7 @@ Status:
 - Core Foundation v0.1: FROZEN.
 - Capability & Authority v0.1: FROZEN.
 - Execution v0.1: FROZEN.
-- Memory Foundation v0.1: READY FOR FREEZE.
+- Memory Foundation v0.1: FROZEN.
 - Knowledge stage: NOT STARTED.
 - Identity/Self stage: NOT STARTED.
 - Trust/Security stage: NOT STARTED.
@@ -42,7 +42,7 @@ PR #32 recorded the Execution v0.1 freeze and merged as `0d76dd5be7f9171b2e11d10
 
 Frozen Execution guarantees include exact action-to-capability binding, authority re-evaluation for each execution attempt, fail-before-executor behavior for unknown/mismatched actions, direct/delegated revoke invalidation for subsequent execution, shared Authority/Execution correlation context, observable executor failure isolation, and no Android/device/background/autonomous behavior.
 
-## Memory Foundation v0.1 freeze candidate
+## Memory Foundation v0.1 freeze
 
 Memory began only after Execution v0.1 was frozen.
 
@@ -86,7 +86,7 @@ Merge commit: `2e2805d21dfaba02ecd652747507e9accf725b19`.
 
 Test-only hardening locked duplicate registration and stale removal rejection observability, generation metadata, and reliable concurrent-test cleanup. Production Memory API/behavior did not change.
 
-## Memory Foundation v0.1 freeze guarantees
+## Memory Foundation v0.1 frozen guarantees
 
 - `MemoryRecordId`, `MemorySourceId`, and optional `MemorySourceReference` are explicit nonblank identities.
 - `MemoryRecord` is immutable and keeps content separate from lifecycle generation identity.
@@ -104,9 +104,9 @@ Test-only hardening locked duplicate registration and stale removal rejection ob
 
 ## Current development direction
 
-Memory Foundation v0.1 has completed its readiness audit. This documentation PR is the explicit freeze checkpoint; after its exact-head Core CI and docs audit pass, Memory v0.1 may be marked FROZEN.
+Memory Foundation v0.1 is frozen by this documentation checkpoint. Frozen Memory semantics must remain stable unless a later explicitly scoped Memory revision reopens them through the normal PR/CI/audit process.
 
-Next allowed architecture stage after Memory freeze:
+Next allowed architecture stage:
 
 `Knowledge Foundation v0.1`
 
