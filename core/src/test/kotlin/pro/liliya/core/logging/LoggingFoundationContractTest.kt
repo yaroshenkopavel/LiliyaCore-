@@ -6,13 +6,12 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class LoggingFoundationContractTest {
 
     @AfterTest
-    fun resetSequence() {
+    fun resetGlobalLoggingState() {
         GlobalLogSequence.resetForTest()
     }
 
@@ -123,6 +122,8 @@ class LoggingFoundationContractTest {
 
     @Test
     fun sequence_is_global_across_logger_instances() {
+        GlobalLogSequence.resetForTest()
+
         val writer = InMemoryLogWriter()
         val first = StructuredLogger(
             context = LogContext("CORE", "First", "one"),
@@ -142,6 +143,8 @@ class LoggingFoundationContractTest {
 
     @Test
     fun global_sequence_remains_unique_under_concurrent_logging() {
+        GlobalLogSequence.resetForTest()
+
         val writer = InMemoryLogWriter()
         val workers = 8
         val eventsPerWorker = 50
@@ -170,29 +173,37 @@ class LoggingFoundationContractTest {
         val sequences = writer.snapshot().map { it.sequence }
         assertEquals(workers * eventsPerWorker, sequences.size)
         assertEquals(sequences.size, sequences.toSet().size)
-        assertTrue(sequences.all { it > 0 })
+        assertEquals((1L..sequences.size.toLong()).toSet(), sequences.toSet())
     }
 
     @Test
-    fun child_context_links_to_parent_and_inherits_metadata() {
+    fun child_context_links_to_parent_and_merges_metadata() {
+        val ids = ArrayDeque(listOf("root-id", "child-id"))
+        val generator = CorrelationIdGenerator { ids.removeFirst() }
+
         val root = LogContextPropagation.root(
             module = "CORE",
             component = "Interaction",
             operation = "request",
-            metadata = mapOf("requestType" to "user")
+            metadata = mapOf("requestType" to "user"),
+            correlationIdGenerator = generator
         )
 
         val child = LogContextPropagation.child(
             parent = root,
             component = "Cognition",
             operation = "interpret",
-            metadata = mapOf("stage" to "meaning")
+            metadata = mapOf("stage" to "meaning"),
+            correlationIdGenerator = generator
         )
 
-        assertNull(root.parentCorrelationId)
-        assertEquals(root.correlationId, child.parentCorrelationId)
-        assertNotEquals(root.correlationId, child.correlationId)
-        assertEquals("user", child.metadata["requestType"])
-        assertEquals("meaning", child.metadata["stage"])
+        assertEquals("root-id", root.correlationId)
+        assertEquals(null, root.parentCorrelationId)
+        assertEquals("child-id", child.correlationId)
+        assertEquals("root-id", child.parentCorrelationId)
+        assertEquals(
+            mapOf("requestType" to "user", "stage" to "meaning"),
+            child.metadata
+        )
     }
 }
