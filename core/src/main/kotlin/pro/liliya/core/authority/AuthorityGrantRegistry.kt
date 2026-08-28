@@ -45,7 +45,7 @@ class AuthorityGrantRegistry(
         context: LogContext
     ): AuthorityGrantRegistrationResult {
         val current = now()
-        if (grant.expiresAt != null && !current.isBefore(grant.expiresAt)) {
+        if (!grant.isActiveAt(current)) {
             val reason = "direct authority grant must expire after the current time"
             record(
                 severity = DiagnosticSeverity.WARNING,
@@ -62,17 +62,31 @@ class AuthorityGrantRegistry(
             token = nextToken.incrementAndGet(),
             grant = grant
         )
-        val previous = grants.putIfAbsent(key, entry)
-        if (previous != null) {
-            val reason = "direct authority grant already registered"
-            record(
-                severity = DiagnosticSeverity.WARNING,
-                code = "AUTHORITY_GRANT_REGISTRATION_REJECTED",
-                message = reason,
-                grant = grant,
-                context = context
-            )
-            return AuthorityGrantRegistrationResult.Rejected(reason)
+
+        while (true) {
+            val existing = grants[key]
+            if (existing == null) {
+                if (grants.putIfAbsent(key, entry) == null) {
+                    break
+                }
+                continue
+            }
+
+            if (existing.grant.isActiveAt(current)) {
+                val reason = "direct authority grant already registered"
+                record(
+                    severity = DiagnosticSeverity.WARNING,
+                    code = "AUTHORITY_GRANT_REGISTRATION_REJECTED",
+                    message = reason,
+                    grant = grant,
+                    context = context
+                )
+                return AuthorityGrantRegistrationResult.Rejected(reason)
+            }
+
+            if (grants.replace(key, existing, entry)) {
+                break
+            }
         }
 
         record(
@@ -114,11 +128,18 @@ class AuthorityGrantRegistry(
         principal: AuthorityPrincipal,
         capability: CapabilityId,
         scope: AuthorityScope
-    ): DirectAuthorityGrant? = grants[GrantKey(principal, capability, scope)]?.grant
+    ): DirectAuthorityGrant? {
+        val current = now()
+        return grants[GrantKey(principal, capability, scope)]
+            ?.grant
+            ?.takeIf { grant -> grant.isActiveAt(current) }
+    }
 
-    fun snapshot(): List<DirectAuthorityGrant> =
-        grants.values
+    fun snapshot(): List<DirectAuthorityGrant> {
+        val current = now()
+        return grants.values
             .map { entry -> entry.grant }
+            .filter { grant -> grant.isActiveAt(current) }
             .sortedWith(
                 compareBy<DirectAuthorityGrant>(
                     { it.principal.value },
@@ -127,6 +148,10 @@ class AuthorityGrantRegistry(
                     { it.expiresAt?.toString() ?: "" }
                 )
             )
+    }
+
+    private fun DirectAuthorityGrant.isActiveAt(current: Instant): Boolean =
+        expiresAt == null || current.isBefore(expiresAt)
 
     private fun DirectAuthorityGrant.key(): GrantKey = GrantKey(
         principal = principal,
