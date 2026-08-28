@@ -6,17 +6,17 @@ import pro.liliya.core.diagnostics.DiagnosticSeverity
 import pro.liliya.core.logging.LogContext
 import pro.liliya.core.observability.CoreObservability
 
-interface MemoryRegistration {
+internal interface MemoryRegistration {
     val record: MemoryRecord
     fun remove(context: LogContext): Boolean
 }
 
-sealed interface MemoryRegistrationResult {
+internal sealed interface MemoryRegistrationResult {
     data class Registered(val registration: MemoryRegistration) : MemoryRegistrationResult
     data class Rejected(val reason: String) : MemoryRegistrationResult
 }
 
-class MemoryStore(
+internal class MemoryStore(
     private val observability: CoreObservability
 ) {
     private data class Entry(
