@@ -150,8 +150,10 @@ class ExecutionFoundationContractTest {
             listOf("AUTHORITY_GRANTED", "EXECUTION_FAILED"),
             f.logs.snapshot().map { it.marker }
         )
-        assertEquals(failure, f.logs.snapshot().last().throwable)
-        assertEquals(failure, f.diagnostics.snapshot().last().throwable)
+        assertEquals(failure.javaClass.name, f.logs.snapshot().last().throwableType)
+        assertEquals(failure.message, f.logs.snapshot().last().throwableMessage)
+        assertEquals(failure.javaClass.name, f.diagnostics.snapshot().last().throwableType)
+        assertEquals(failure.message, f.diagnostics.snapshot().last().throwableMessage)
     }
 
     private fun context(correlationId: String) = LogContextPropagation.root(
