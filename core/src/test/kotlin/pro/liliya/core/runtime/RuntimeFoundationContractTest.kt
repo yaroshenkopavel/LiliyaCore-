@@ -23,8 +23,8 @@ class RuntimeFoundationContractTest {
         val diagnostics = InMemoryDiagnosticSink()
         val controller = RuntimeStateController(
             stateHolder = RuntimeStateHolder(RuntimeState.CREATED),
-            transitionPolicy = RuntimeTransitionPolicy.default(),
-            diagnosticRecorder = DiagnosticRecorder(diagnostics)
+            transitionPolicy = RuntimeTransitionPolicy(),
+            diagnostics = DiagnosticRecorder(diagnostics)
         )
 
         val result = controller.transition(
@@ -50,8 +50,8 @@ class RuntimeFoundationContractTest {
         val diagnostics = InMemoryDiagnosticSink()
         val controller = RuntimeStateController(
             stateHolder = RuntimeStateHolder(RuntimeState.CREATED),
-            transitionPolicy = RuntimeTransitionPolicy.default(),
-            diagnosticRecorder = DiagnosticRecorder(diagnostics)
+            transitionPolicy = RuntimeTransitionPolicy(),
+            diagnostics = DiagnosticRecorder(diagnostics)
         )
 
         val result = controller.transition(
@@ -75,8 +75,8 @@ class RuntimeFoundationContractTest {
     fun runtime_can_follow_nominal_lifecycle() {
         val controller = RuntimeStateController(
             stateHolder = RuntimeStateHolder(RuntimeState.CREATED),
-            transitionPolicy = RuntimeTransitionPolicy.default(),
-            diagnosticRecorder = DiagnosticRecorder(InMemoryDiagnosticSink())
+            transitionPolicy = RuntimeTransitionPolicy(),
+            diagnostics = DiagnosticRecorder(InMemoryDiagnosticSink())
         )
 
         val states = listOf(
@@ -108,8 +108,8 @@ class RuntimeFoundationContractTest {
         ).forEach { initial ->
             val controller = RuntimeStateController(
                 stateHolder = RuntimeStateHolder(initial),
-                transitionPolicy = RuntimeTransitionPolicy.default(),
-                diagnosticRecorder = DiagnosticRecorder(InMemoryDiagnosticSink())
+                transitionPolicy = RuntimeTransitionPolicy(),
+                diagnostics = DiagnosticRecorder(InMemoryDiagnosticSink())
             )
 
             assertIs<RuntimeTransitionResult.Applied>(
@@ -128,8 +128,8 @@ class RuntimeFoundationContractTest {
         val diagnostics = InMemoryDiagnosticSink()
         val controller = RuntimeStateController(
             stateHolder = RuntimeStateHolder(RuntimeState.STARTING),
-            transitionPolicy = RuntimeTransitionPolicy.default(),
-            diagnosticRecorder = DiagnosticRecorder(diagnostics)
+            transitionPolicy = RuntimeTransitionPolicy(),
+            diagnostics = DiagnosticRecorder(diagnostics)
         )
         val start = java.util.concurrent.CountDownLatch(1)
         val done = java.util.concurrent.CountDownLatch(2)
