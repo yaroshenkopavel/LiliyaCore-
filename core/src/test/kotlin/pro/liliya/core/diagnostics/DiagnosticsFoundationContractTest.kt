@@ -5,7 +5,7 @@ import pro.liliya.core.logging.LogContextPropagation
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNotSame
+import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 class DiagnosticsFoundationContractTest {
@@ -16,64 +16,89 @@ class DiagnosticsFoundationContractTest {
     }
 
     @Test
-    fun recorder_captures_structured_diagnostic_event() {
+    fun recorder_creates_structured_diagnostic_event() {
         GlobalDiagnosticSequence.resetForTest()
         val sink = InMemoryDiagnosticSink()
-        val recorder = DiagnosticRecorder(sink = sink, clock = { 1234L })
         val context = LogContextPropagation.root(
             module = "CORE",
             component = "Diagnostics",
             operation = "record",
-            generator = CorrelationIdGenerator { "diag-root" }
+            metadata = mapOf("request" to "42"),
+            generator = CorrelationIdGenerator { "root-id" }
+        )
+        val recorder = DiagnosticRecorder(
+            sink = sink,
+            clock = { 1234L }
         )
 
         recorder.record(
             severity = DiagnosticSeverity.WARNING,
-            code = "CORE_WARN",
-            message = "warning observed",
+            code = "TEST_WARNING",
+            message = "warning",
             context = context,
-            metadata = mapOf("service" to "memory")
+            metadata = mapOf("stage" to "validation")
         )
 
         val event = sink.snapshot().single()
         assertEquals(1234L, event.timestampMillis)
         assertEquals(1L, event.sequence)
         assertEquals(DiagnosticSeverity.WARNING, event.severity)
-        assertEquals("CORE_WARN", event.code)
-        assertEquals("warning observed", event.message)
-        assertEquals("diag-root", event.context.correlationId)
-        assertEquals(mapOf("service" to "memory"), event.metadata)
+        assertEquals("TEST_WARNING", event.code)
+        assertEquals("warning", event.message)
+        assertEquals("root-id", event.context.correlationId)
+        assertEquals(
+            mapOf("request" to "42", "stage" to "validation"),
+            event.metadata
+        )
     }
 
     @Test
-    fun recorder_snapshots_metadata_and_throwable_details() {
-        GlobalDiagnosticSequence.resetForTest()
+    fun recorder_snapshots_metadata() {
         val sink = InMemoryDiagnosticSink()
+        val context = LogContextPropagation.root(
+            module = "CORE",
+            component = "Diagnostics",
+            operation = "metadata",
+            generator = CorrelationIdGenerator { "metadata-root" }
+        )
+        val metadata = linkedMapOf("state" to "before")
         val recorder = DiagnosticRecorder(sink = sink)
-        val mutableMetadata = linkedMapOf("stage" to "before")
+
+        recorder.record(
+            severity = DiagnosticSeverity.INFO,
+            code = "METADATA",
+            message = "snapshot",
+            context = context,
+            metadata = metadata
+        )
+        metadata["state"] = "after"
+
+        assertEquals("before", sink.snapshot().single().metadata["state"])
+    }
+
+    @Test
+    fun recorder_preserves_throwable_details() {
+        val sink = InMemoryDiagnosticSink()
         val context = LogContextPropagation.root(
             module = "CORE",
             component = "Diagnostics",
             operation = "failure",
-            generator = CorrelationIdGenerator { "diag-failure" }
+            generator = CorrelationIdGenerator { "failure-root" }
         )
-        val failure = IllegalStateException("boom")
+        val recorder = DiagnosticRecorder(sink = sink)
+        val error = IllegalStateException("diagnostic failure")
 
         recorder.record(
             severity = DiagnosticSeverity.ERROR,
-            code = "CORE_FAILURE",
-            message = "failure observed",
+            code = "FAILURE",
+            message = "failed",
             context = context,
-            metadata = mutableMetadata,
-            throwable = failure
+            throwable = error
         )
-        mutableMetadata["stage"] = "after"
 
         val event = sink.snapshot().single()
-        assertEquals(mapOf("stage" to "before"), event.metadata)
-        assertNotSame(mutableMetadata, event.metadata)
         assertEquals(IllegalStateException::class.java.name, event.throwableType)
-        assertEquals("boom", event.throwableMessage)
+        assertEquals("diagnostic failure", event.throwableMessage)
     }
 
     @Test
@@ -101,7 +126,7 @@ class DiagnosticsFoundationContractTest {
         safeSink.record(event)
 
         val failure = observer.snapshot().single()
-        assertEquals(7L, failure.eventSequence)
+        assertEquals(7L, failure.sequence)
         assertEquals("SINK_FAILURE_TEST", failure.code)
         assertEquals(IllegalArgumentException::class.java.name, failure.throwableType)
         assertEquals("sink failed", failure.throwableMessage)
@@ -133,6 +158,44 @@ class DiagnosticsFoundationContractTest {
 
         assertEquals(workers * perWorker, values.size)
         assertEquals(values.size, values.toSet().size)
-        assertTrue(values.all { it > 0L })
+        assertEquals((1L..values.size.toLong()).toSet(), values.toSet())
+    }
+
+    @Test
+    fun correlation_context_is_preserved_across_diagnostics() {
+        val sink = InMemoryDiagnosticSink()
+        val ids = ArrayDeque(listOf("root-id", "child-id"))
+        val generator = CorrelationIdGenerator { ids.removeFirst() }
+        val root = LogContextPropagation.root(
+            module = "CORE",
+            component = "Runtime",
+            operation = "start",
+            generator = generator
+        )
+        val child = LogContextPropagation.child(
+            parent = root,
+            component = "Diagnostics",
+            operation = "inspect",
+            generator = generator
+        )
+        val recorder = DiagnosticRecorder(sink = sink)
+
+        recorder.record(
+            severity = DiagnosticSeverity.INFO,
+            code = "ROOT",
+            message = "root",
+            context = root
+        )
+        recorder.record(
+            severity = DiagnosticSeverity.INFO,
+            code = "CHILD",
+            message = "child",
+            context = child
+        )
+
+        val events = sink.snapshot()
+        assertNotEquals(events[0].context.correlationId, events[1].context.correlationId)
+        assertEquals("root-id", events[1].context.parentCorrelationId)
+        assertTrue(events.all { it.context.correlationId.isNotBlank() })
     }
 }
