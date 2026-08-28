@@ -1,12 +1,9 @@
 package pro.liliya.core.logging
 
-import java.util.concurrent.atomic.AtomicLong
-
 class StructuredLogger(
     private val context: LogContext,
     private val writer: LogWriter,
-    private val clock: () -> Long = System::currentTimeMillis,
-    private val sequence: AtomicLong = AtomicLong(0)
+    private val clock: () -> Long = System::currentTimeMillis
 ) : Logger {
 
     override fun trace(marker: String, message: String) =
@@ -36,7 +33,7 @@ class StructuredLogger(
         writer.write(
             LogEvent(
                 timestampMillis = clock(),
-                sequence = sequence.incrementAndGet(),
+                sequence = GlobalLogSequence.next(),
                 level = level,
                 context = context,
                 marker = marker,
