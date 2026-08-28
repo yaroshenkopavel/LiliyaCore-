@@ -142,6 +142,14 @@ class PersonalityProfileStoreContractTest {
     }
 
     @Test
+    fun profile_string_redacts_attribute_values() {
+        val rendered = profile().toString()
+        assertTrue(rendered.contains("attributeCount=2"))
+        assertFalse(rendered.contains("warm"))
+        assertFalse(rendered.contains("concise"))
+    }
+
+    @Test
     fun duplicate_attribute_keys_are_rejected() {
         val duplicate = listOf(
             PersonalityAttribute(PersonalityAttributeKey("tone"), PersonalityAttributeValue("warm")),
