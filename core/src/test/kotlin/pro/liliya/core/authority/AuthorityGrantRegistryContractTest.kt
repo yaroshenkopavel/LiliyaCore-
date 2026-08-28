@@ -131,6 +131,32 @@ class AuthorityGrantRegistryContractTest {
     }
 
     @Test
+    fun expired_grant_is_hidden_and_can_be_atomically_replaced() {
+        val f = fixture()
+        var current = now
+        val registry = AuthorityGrantRegistry(f.observability, now = { current })
+        val context = context("grant-expired-replacement")
+        val firstGrant = DirectAuthorityGrant(principal, capability, scope, now.plusSeconds(1))
+        val first = assertIs<AuthorityGrantRegistrationResult.Registered>(
+            registry.register(firstGrant, context)
+        ).registration
+
+        current = now.plusSeconds(1)
+        assertNull(registry.find(principal, capability, scope))
+        assertEquals(emptyList(), registry.snapshot())
+
+        val replacement = DirectAuthorityGrant(principal, capability, scope, current.plusSeconds(60))
+        assertIs<AuthorityGrantRegistrationResult.Registered>(
+            registry.register(replacement, context)
+        )
+
+        assertEquals(replacement, registry.find(principal, capability, scope))
+        assertEquals(listOf(replacement), registry.snapshot())
+        assertEquals(false, first.revoke(context))
+        assertEquals(replacement, registry.find(principal, capability, scope))
+    }
+
+    @Test
     fun concurrent_registration_of_same_tuple_has_exactly_one_owner() {
         val f = fixture()
         val registry = AuthorityGrantRegistry(f.observability, now = { now })
