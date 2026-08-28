@@ -2,18 +2,14 @@ package pro.liliya.core.events
 
 import pro.liliya.core.diagnostics.DiagnosticRecorder
 import pro.liliya.core.diagnostics.DiagnosticSeverity
-import pro.liliya.core.logging.LoggerFactory
+import pro.liliya.core.logging.LogContext
 import pro.liliya.core.observability.CoreObservability
-import pro.liliya.core.observability.LoggerProvider
 import java.util.concurrent.atomic.AtomicLong
 
 class EventBus(
-    diagnostics: DiagnosticRecorder,
+    private val diagnostics: DiagnosticRecorder,
     private val clock: () -> Long = System::currentTimeMillis,
-    private val observability: CoreObservability = CoreObservability(
-        loggerProvider = LoggerProvider { context -> LoggerFactory.create(context) },
-        diagnostics = diagnostics
-    )
+    private val observability: CoreObservability? = null
 ) {
     private data class ListenerEntry(
         val id: Long,
@@ -59,7 +55,7 @@ class EventBus(
                 delivered += 1
             } catch (throwable: Throwable) {
                 failed += 1
-                observability.record(
+                record(
                     severity = DiagnosticSeverity.ERROR,
                     code = "EVENT_LISTENER_FAILED",
                     message = "Event listener failed during delivery",
@@ -74,7 +70,7 @@ class EventBus(
             }
         }
 
-        observability.record(
+        record(
             severity = if (failed == 0) DiagnosticSeverity.INFO else DiagnosticSeverity.WARNING,
             code = "EVENT_PUBLISHED",
             message = "Event publication completed",
@@ -94,4 +90,20 @@ class EventBus(
     }
 
     fun subscriberCount(): Int = synchronized(lock) { listeners.size }
+
+    private fun record(
+        severity: DiagnosticSeverity,
+        code: String,
+        message: String,
+        context: LogContext,
+        metadata: Map<String, String>,
+        throwable: Throwable? = null
+    ) {
+        val bridge = observability
+        if (bridge != null) {
+            bridge.record(severity, code, message, context, metadata, throwable)
+        } else {
+            diagnostics.record(severity, code, message, context, metadata, throwable)
+        }
+    }
 }
