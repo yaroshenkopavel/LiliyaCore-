@@ -33,6 +33,7 @@ class AuthorityManager(
     private fun metadata(request: AuthorityRequest): Map<String, String> = mapOf(
         "principal" to request.principal.value,
         "capabilityId" to request.capability.value,
+        "scope" to request.scope.value,
         "reason" to request.reason
     )
 }
