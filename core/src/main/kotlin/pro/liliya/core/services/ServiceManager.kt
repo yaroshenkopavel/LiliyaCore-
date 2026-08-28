@@ -3,9 +3,7 @@ package pro.liliya.core.services
 import pro.liliya.core.diagnostics.DiagnosticRecorder
 import pro.liliya.core.diagnostics.DiagnosticSeverity
 import pro.liliya.core.logging.LogContext
-import pro.liliya.core.logging.LoggerFactory
 import pro.liliya.core.observability.CoreObservability
-import pro.liliya.core.observability.LoggerProvider
 
 sealed interface ServiceLifecycleResult {
     data class Applied(val serviceIds: List<String>) : ServiceLifecycleResult
@@ -16,11 +14,8 @@ sealed interface ServiceLifecycleResult {
 class ServiceManager(
     private val registry: ServiceRegistry,
     private val resolver: ServiceDependencyResolver,
-    diagnostics: DiagnosticRecorder,
-    private val observability: CoreObservability = CoreObservability(
-        loggerProvider = LoggerProvider { context -> LoggerFactory.create(context) },
-        diagnostics = diagnostics
-    )
+    private val diagnostics: DiagnosticRecorder,
+    private val observability: CoreObservability? = null
 ) {
     private val lock = Any()
     private val started = LinkedHashSet<String>()
@@ -45,7 +40,7 @@ class ServiceManager(
                         service.start(context)
                         started += id
                         newlyStarted += id
-                        observability.record(
+                        record(
                             severity = DiagnosticSeverity.INFO,
                             code = "SERVICE_STARTED",
                             message = "service started",
@@ -53,7 +48,7 @@ class ServiceManager(
                             metadata = mapOf("serviceId" to id)
                         )
                     } catch (error: Throwable) {
-                        observability.record(
+                        record(
                             severity = DiagnosticSeverity.ERROR,
                             code = "SERVICE_START_FAILED",
                             message = "service start failed",
@@ -84,7 +79,7 @@ class ServiceManager(
                 service.stop(context)
                 started.remove(id)
                 stopped += id
-                observability.record(
+                record(
                     severity = DiagnosticSeverity.INFO,
                     code = "SERVICE_STOPPED",
                     message = "service stopped",
@@ -92,7 +87,7 @@ class ServiceManager(
                     metadata = mapOf("serviceId" to id)
                 )
             } catch (error: Throwable) {
-                observability.record(
+                record(
                     severity = DiagnosticSeverity.ERROR,
                     code = "SERVICE_STOP_FAILED",
                     message = "service stop failed",
@@ -114,7 +109,7 @@ class ServiceManager(
             try {
                 service.stop(context)
                 started.remove(id)
-                observability.record(
+                record(
                     severity = DiagnosticSeverity.WARNING,
                     code = "SERVICE_START_ROLLED_BACK",
                     message = "service start rolled back",
@@ -122,7 +117,7 @@ class ServiceManager(
                     metadata = mapOf("serviceId" to id)
                 )
             } catch (error: Throwable) {
-                observability.record(
+                record(
                     severity = DiagnosticSeverity.ERROR,
                     code = "SERVICE_ROLLBACK_FAILED",
                     message = "service rollback failed",
@@ -135,12 +130,28 @@ class ServiceManager(
     }
 
     private fun reject(reason: String, context: LogContext): ServiceLifecycleResult.Rejected {
-        observability.record(
+        record(
             severity = DiagnosticSeverity.WARNING,
             code = "SERVICE_LIFECYCLE_REJECTED",
             message = reason,
             context = context
         )
         return ServiceLifecycleResult.Rejected(reason)
+    }
+
+    private fun record(
+        severity: DiagnosticSeverity,
+        code: String,
+        message: String,
+        context: LogContext,
+        metadata: Map<String, String> = emptyMap(),
+        throwable: Throwable? = null
+    ) {
+        val bridge = observability
+        if (bridge != null) {
+            bridge.record(severity, code, message, context, metadata, throwable)
+        } else {
+            diagnostics.record(severity, code, message, context, metadata, throwable)
+        }
     }
 }
