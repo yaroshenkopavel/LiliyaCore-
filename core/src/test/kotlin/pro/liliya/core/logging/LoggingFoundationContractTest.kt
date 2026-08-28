@@ -78,6 +78,38 @@ class LoggingFoundationContractTest {
     }
 
     @Test
+    fun writer_failure_can_be_recorded_as_structured_diagnostic() {
+        val observer = InMemoryLogFailureObserver()
+        val failingWriter = object : LogWriter {
+            override fun write(event: LogEvent) {
+                throw IllegalStateException("disk unavailable")
+            }
+        }
+        val writer = SafeLogWriter(
+            delegate = failingWriter,
+            onFailure = { error, failedEvent ->
+                observer.record(
+                    LogWriterFailure(
+                        writerType = failingWriter.javaClass.name,
+                        eventSequence = failedEvent.sequence,
+                        marker = failedEvent.marker,
+                        throwableType = error.javaClass.name,
+                        throwableMessage = error.message
+                    )
+                )
+            }
+        )
+
+        writer.write(event(sequence = 7L))
+
+        val failure = observer.snapshot().single()
+        assertEquals(7L, failure.eventSequence)
+        assertEquals("TEST", failure.marker)
+        assertEquals(IllegalStateException::class.java.name, failure.throwableType)
+        assertEquals("disk unavailable", failure.throwableMessage)
+    }
+
+    @Test
     fun composite_writer_attempts_all_delegates() {
         val first = InMemoryLogWriter()
         val second = InMemoryLogWriter()
