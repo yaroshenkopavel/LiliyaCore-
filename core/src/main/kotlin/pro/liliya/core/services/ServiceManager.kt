@@ -18,7 +18,7 @@ class ServiceManager(
     private val observability: CoreObservability? = null
 ) {
     private val lock = Any()
-    private val started = LinkedHashSet<String>()
+    private val started = LinkedHashMap<String, CoreService>()
 
     fun startAll(context: LogContext): ServiceLifecycleResult = synchronized(lock) {
         when (val resolution = resolver.resolve(registry.snapshot().values)) {
@@ -32,14 +32,14 @@ class ServiceManager(
                 context
             )
             is ServiceResolutionResult.Resolved -> {
-                val newlyStarted = mutableListOf<String>()
+                val newlyStarted = mutableListOf<CoreService>()
                 for (service in resolution.services) {
                     val id = service.descriptor.id
                     if (id in started) continue
                     try {
                         service.start(context)
-                        started += id
-                        newlyStarted += id
+                        started[id] = service
+                        newlyStarted += service
                         record(
                             severity = DiagnosticSeverity.INFO,
                             code = "SERVICE_STARTED",
@@ -60,21 +60,16 @@ class ServiceManager(
                         return@synchronized ServiceLifecycleResult.Failed(id, error)
                     }
                 }
-                ServiceLifecycleResult.Applied(newlyStarted)
+                ServiceLifecycleResult.Applied(newlyStarted.map { it.descriptor.id })
             }
         }
     }
 
     fun stopAll(context: LogContext): ServiceLifecycleResult = synchronized(lock) {
-        val resolution = resolver.resolve(registry.snapshot().values)
-        if (resolution !is ServiceResolutionResult.Resolved) {
-            return@synchronized reject("service graph is not resolvable", context)
-        }
-
         val stopped = mutableListOf<String>()
-        for (service in resolution.services.asReversed()) {
+        val owned = started.values.toList().asReversed()
+        for (service in owned) {
             val id = service.descriptor.id
-            if (id !in started) continue
             try {
                 service.stop(context)
                 started.remove(id)
@@ -103,9 +98,9 @@ class ServiceManager(
 
     fun isStarted(serviceId: String): Boolean = synchronized(lock) { serviceId in started }
 
-    private fun rollback(serviceIds: List<String>, context: LogContext) {
-        for (id in serviceIds.asReversed()) {
-            val service = registry.find(id) ?: continue
+    private fun rollback(services: List<CoreService>, context: LogContext) {
+        for (service in services.asReversed()) {
+            val id = service.descriptor.id
             try {
                 service.stop(context)
                 started.remove(id)
