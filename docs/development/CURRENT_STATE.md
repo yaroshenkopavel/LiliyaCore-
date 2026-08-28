@@ -1,14 +1,14 @@
 # CURRENT STATE
 
-Last journal update: 2026-08-28
+Last journal update: 2026-08-29
 
 ## Current verified baseline
 
-Trust / Security implementation baseline before the freeze documentation merge: `a4b90d59136790c283ca5aaa18e6610e576068df`.
+Personality implementation baseline before the freeze documentation merge: `8676e31ca42221886fbe69f9c256fbc870aeab4b`.
 
-This commit merged PR #50 `Trust v0.1: Readiness Contract Hardening` after Core CI #461 succeeded for exact head `9c48e1273152a70edcaf862b75a91d50c8b302a8` and the final test-only readiness diff audit passed.
+This commit merged PR #54 `Personality v0.1: Readiness Contract Hardening` after Core CI #482 succeeded for exact head `9e445ef6f8c726d990a0960ef65be108c8ad3798` and the final test-only readiness diff audit passed.
 
-Trust / Security Foundation v0.1 freeze record: `docs/development/TRUST_SECURITY_V0_1_FREEZE.md`.
+Personality Foundation v0.1 freeze record: `docs/development/PERSONALITY_V0_1_FREEZE.md`.
 
 Status:
 
@@ -18,63 +18,68 @@ Status:
 - Memory Foundation v0.1: FROZEN.
 - Knowledge Foundation v0.1: FROZEN.
 - Identity / Self Foundation v0.1: FROZEN.
-- Trust / Security Foundation v0.1: FROZEN by this documentation checkpoint.
-- Personality stage: NOT STARTED.
+- Trust / Security Foundation v0.1: FROZEN.
+- Personality Foundation v0.1: FROZEN by this documentation checkpoint.
 - Reflection / Learning stage: NOT STARTED.
 - Planning / Autonomy / Agents stage: NOT STARTED.
 - Android Integration stage: NOT STARTED.
 
-## Trust / Security v0.1 verified implementation
+## Personality v0.1 verified implementation
 
-### PR #48 — Explicit Trust Anchor Store Foundation
+### PR #52 — Explicit Profile Store Foundation
 
-Final exact head: `a1bbfe86e26507e10e723cb74b45bb939e072af3`.
-Core CI #452: GREEN.
-Merge commit: `02c6cb9447f557ea273328a9ffc5b0a70d8967a5`.
+Final exact head: `e56409ec82e2ce50b1e10988bf4bac53f6b12633`.
+Core CI #473: GREEN.
+Merge commit: `663099f40db6a5a7f0c35b8137ed98ee5dd9e759`.
 
-Introduced explicit structural `TrustAnchor` models, typed positive `TrustGeneration`, exact registration ownership, duplicate rejection, stale/ABA-safe removal, deterministic snapshots, concurrent same-ID one-winner behavior, caller-declared provenance, and structural Self/Declared trust subjects.
+Introduced explicit structural `PersonalityProfile` models targeted to exact Self `(SelfIdentityId, SelfGeneration)`, explicit nonblank key/value attributes, defensive-copy immutability, caller-declared provenance, caller-supplied `createdAt`, exact `PersonalityGeneration`, duplicate rejection, stale/ABA-safe removal, deterministic snapshots, and concurrent same-ID one-winner behavior.
 
-### PR #49 — Composition Ownership
+The final audited head also redacts `PersonalityProfile.toString()` so raw personality attribute values are not exposed by object rendering.
 
-Final exact head: `51e99745a69e2a716a786b122aac491eef837f80`.
-Core CI #457: GREEN.
-Merge commit: `595dd0de62dd1f61edb5816cd4f4cb31a4e1d1fe`.
+### PR #53 — Composition Ownership
 
-Introduced `TrustComposition` as the production ownership boundary. Raw mutable store/registration primitives remain internal; callers receive controlled anchor/read/inspect/snapshot/remove ownership APIs bound to exact `TrustGeneration`. Anchor/remove use fresh Foundation root contexts.
+Final exact head: `d198479532c7e03c036999b351578d97c5fbdb23`.
+Core CI #478: GREEN.
+Merge commit: `159caeedf350a1ced1c5ca39a22228675e2f26a8`.
 
-### PR #50 — Readiness Contract Hardening
+Introduced `PersonalityComposition` as the production ownership boundary. Raw mutable store/registration primitives remain internal; callers receive controlled install/read/inspect/snapshot/remove ownership APIs bound to exact `PersonalityGeneration`. Install/remove use fresh Foundation root contexts, and personality attribute values stay out of lifecycle metadata.
 
-Final exact head: `9c48e1273152a70edcaf862b75a91d50c8b302a8`.
-Core CI #461: GREEN.
-Merge commit: `a4b90d59136790c283ca5aaa18e6610e576068df`.
+### PR #54 — Readiness Contract Hardening
 
-Test-only hardening locked four final readiness boundaries:
+Final exact head: `9e445ef6f8c726d990a0960ef65be108c8ad3798`.
+Core CI #482: GREEN.
+Merge commit: `8676e31ca42221886fbe69f9c256fbc870aeab4b`.
 
-- `TrustAnchor.createdAt` is caller-supplied and preserved unchanged;
-- `TrustComposition` instances are isolated even for the same anchor ID;
-- equal numeric `TrustGeneration` values across compositions do not create shared ownership/global identity;
-- explicit anchors remain non-transitive.
+Test-only hardening locked final readiness boundaries:
 
-## Trust / Security v0.1 frozen boundaries
+- `PersonalityProfile.createdAt` is caller-supplied and preserved unchanged;
+- `PersonalityComposition` instances are isolated even for the same profile ID;
+- equal numeric `PersonalityGeneration` values across compositions do not create shared ownership/global identity;
+- exact Self targeting remains structural-only without hidden Self lookup;
+- personality attributes create no implicit behavior, prompt, trust, authority, decision, or execution effects;
+- profile string rendering remains redacted.
 
-- trust anchors are explicit structural records, not inferred trust decisions;
-- exact positive `TrustGeneration` ownership prevents stale/ABA removal within a store lifecycle;
+## Personality v0.1 frozen boundaries
+
+- personality profiles are explicit structural records for exact Self targets, not inferred behavioral truth;
+- profile attributes are explicit stored data and are not automatically applied to prompts, responses, decisions, trust, authority, or execution;
+- exact positive `PersonalityGeneration` ownership prevents stale/ABA removal within a store lifecycle;
 - generation identity is store/composition-local, not global or durable;
-- same anchor IDs in independent compositions do not share state;
-- `TrustSubject.Self(identityId, generation)` is structural only and performs no hidden Self lookup or authenticity verification;
-- `TrustSubject.Declared(subjectId)` is an explicitly named subject only;
-- `TrustProvenance` is caller-declared attribution only;
-- anchors are non-transitive and do not create inherited trust;
-- trust anchors do not create `AuthorityPrincipal`, capability, permission, authentication, verification, truth, confidence, or reputation semantics;
-- `createdAt` is caller-supplied and deterministic snapshot ordering is not trusted chronology;
-- `TrustComposition` privately owns mutable trust state and raw store/registration primitives are not production public surface;
-- Trust/Security v0.1 has no cryptography, credential validation, signature/certificate verification, trust scoring, transitive trust graph, persistence, automatic provenance-to-trust promotion, Authority/Execution coupling, Android/platform security, autonomous mutation, learning, agents, or Personality semantics.
+- same profile IDs in independent compositions do not share state;
+- `PersonalityTarget.Self(identityId, generation)` is structural only and performs no hidden Self lookup or authenticity verification;
+- `PersonalityProvenance` is caller-declared attribution only;
+- `createdAt` is caller-supplied and deterministic snapshot ordering is not trusted chronology, preference strength, truth, or priority;
+- caller-provided attribute lists are defensively copied and duplicate attribute keys are rejected;
+- lifecycle observability excludes personality attribute values;
+- `PersonalityProfile.toString()` is redacted and does not render personality attribute values;
+- `PersonalityComposition` privately owns mutable personality state and raw store/registration primitives are not production public surface;
+- Personality v0.1 has no behavior engine, prompt/style renderer, trait inference, scoring, learning/adaptation, trust/authority semantics, planning/agents, persistence, autonomous mutation, Execution coupling, or Android integration.
 
 ## Current next action
 
-Next allowed architecture stage: `Personality Foundation v0.1`.
+Next allowed architecture stage: `Reflection / Learning Foundation v0.1`.
 
-Personality must build on frozen Self/Trust boundaries without redefining identity or treating trust anchors as behavioral truth. Initial work should define explicit personality structure and ownership before reflection/learning, planning/autonomy/agents, or Android integration.
+Reflection / Learning must build on frozen Memory, Knowledge, Self, Trust, and Personality boundaries without treating stored provenance, trust anchors, or personality attributes as truth. Initial work should define explicit reflection/learning records and ownership before planning/autonomy/agents or Android integration.
 
 ## Frozen predecessor references
 
@@ -87,6 +92,7 @@ Detailed verified freeze history remains in repository docs and Git history:
 - Knowledge Foundation v0.1 — frozen.
 - Identity / Self Foundation v0.1 — `IDENTITY_SELF_V0_1_FREEZE.md`.
 - Trust / Security Foundation v0.1 — `TRUST_SECURITY_V0_1_FREEZE.md`.
+- Personality Foundation v0.1 — `PERSONALITY_V0_1_FREEZE.md`.
 
 ## Workflow notes
 
