@@ -4,9 +4,9 @@ Last journal update: 2026-08-28
 
 ## Pre-freeze main baseline
 
-`main` SHA before the Memory freeze documentation merge: `2e2805d21dfaba02ecd652747507e9accf725b19`
+`main` SHA before the Knowledge freeze documentation merge: `355f7ad1b41218ce6d6f9f0a555faf1c624c9da0`
 
-This commit merged PR #38 `Memory v0.1: Readiness Contract Hardening` after Core CI #406 succeeded for exact head `d540ceebaad282e3931e69e72596a6be5665bea3` and the final test-only diff audit passed.
+This commit merged PR #42 `Knowledge v0.1: Readiness Contract Hardening` after Core CI #424 succeeded for exact head `9e3e6cd50d05ed8c1295d31d1bd5376e5e613e4d` and the final test-only readiness diff audit passed.
 
 Status:
 
@@ -14,7 +14,7 @@ Status:
 - Capability & Authority v0.1: FROZEN.
 - Execution v0.1: FROZEN.
 - Memory Foundation v0.1: FROZEN.
-- Knowledge stage: NOT STARTED.
+- Knowledge Foundation v0.1: FROZEN.
 - Identity/Self stage: NOT STARTED.
 - Trust/Security stage: NOT STARTED.
 - Personality stage: NOT STARTED.
@@ -96,21 +96,68 @@ Test-only hardening locked duplicate registration and stale removal rejection ob
 - stale ownership cannot remove a later same-ID replacement.
 - same-ID replacement receives a distinct `MemoryGeneration`.
 - reads expose immutable records or read-only `MemoryRecordSnapshot` values.
-- deterministic snapshots order by `createdAt`, then record ID.
+- deterministic snapshots order by caller-supplied `createdAt`, then record ID.
 - concurrent same-ID registration has exactly one winner.
 - registrations, removals, duplicate rejections, and stale-removal rejections are observable through injected `CoreObservability` with lifecycle metadata.
 - `MemoryComposition` privately owns the internal store; raw mutable store/registration primitives are not production public surface.
 - Memory has no persistence/database adapter, embedding/vector index, semantic truth/confidence scoring, consolidation, learning, background worker, autonomous mutation, Execution coupling, Android/device dependency, or Knowledge-stage semantics.
 
+## Knowledge Foundation v0.1 freeze
+
+Knowledge began only after Memory Foundation v0.1 was frozen.
+
+### PR #40 — Exact Ownership Store Foundation
+
+Final exact head: `a5e59d8a784dcd71ad4ecef1623851f8a68668a4`.
+Core CI #415: GREEN.
+Merge commit: `db00c817de426d52aa8074f46739f26c3a8c952b`.
+
+Introduced immutable `KnowledgeItem`, typed positive `KnowledgeGeneration`, exact registration ownership, duplicate rejection, stale/ABA-safe removal, deterministic snapshots, concurrent same-ID one-winner semantics, and observable lifecycle/rejection paths without content leakage.
+
+`KnowledgeOrigin.Memory(recordId, generation)` binds origin structurally to one exact Memory identity/generation pair. `KnowledgeOrigin.Declared(sourceId, sourceReference)` is caller-declared attribution only.
+
+### PR #41 — Composition Ownership
+
+Final exact head: `8123a859e2ede8d5984501c25c0cfe945e2524b8`.
+Core CI #420: GREEN.
+Merge commit: `0f2415ab968e522e59b9187401f913164158f82f`.
+
+Introduced `KnowledgeComposition` as the production boundary. The internal `KnowledgeStore` remains privately owned; callers receive controlled create/read/inspect/snapshot/remove ownership APIs. Create/remove use fresh Foundation correlation contexts and exact `KnowledgeGeneration` ownership.
+
+### PR #42 — Readiness Contract Hardening
+
+Final exact head: `9e3e6cd50d05ed8c1295d31d1bd5376e5e613e4d`.
+Core CI #424: GREEN.
+Merge commit: `355f7ad1b41218ce6d6f9f0a555faf1c624c9da0`.
+
+Test-only hardening locked two readiness boundaries: Memory-origin is a structural reference and does not perform hidden Memory lookup/verification; `KnowledgeItem.createdAt` remains caller-supplied and is an ordering value rather than trusted runtime/source observation time.
+
+## Knowledge Foundation v0.1 frozen guarantees
+
+- `KnowledgeItemId`, `KnowledgeSourceId`, and optional `KnowledgeSourceReference` are explicit nonblank identities.
+- `KnowledgeItem` is immutable; content and origin are separate from lifecycle generation identity.
+- `KnowledgeGeneration` is a positive opaque in-memory lifecycle identity, not truth, confidence, timestamp, semantic revision, or durable cross-process identity.
+- duplicate Knowledge IDs are rejected without replacing current ownership.
+- successful create owns one exact generation; stale ownership cannot remove a later same-ID replacement.
+- reads expose immutable items or read-only `KnowledgeItemSnapshot` values.
+- deterministic snapshots order by caller-supplied `createdAt`, then item ID.
+- concurrent same-ID registration has exactly one winner.
+- `KnowledgeOrigin.Memory(recordId, generation)` is a structural reference only; it does not verify existence, current availability, correctness, truth, trust, or confidence of the referenced Memory record.
+- `KnowledgeOrigin.Declared` is caller-declared attribution only; it does not imply verification, authority, truth, trust, or confidence.
+- `KnowledgeItem.createdAt` is caller-supplied and is not a trusted clock or source-observation timestamp.
+- registrations, removals, duplicate rejections, and stale-removal rejections are observable through injected `CoreObservability`; knowledge content is not placed in lifecycle metadata.
+- `KnowledgeComposition` privately owns the internal store; raw mutable store/registration primitives are not production public surface.
+- Knowledge v0.1 has no persistence/database adapter, verification engine, truth/confidence scoring, ontology, fact adjudication, embeddings/vector search, semantic ranking, learning, synthesis, consolidation, background worker, autonomous mutation, Execution coupling, Android/device dependency, or Identity/Self semantics.
+
 ## Current development direction
 
-Memory Foundation v0.1 is frozen by this documentation checkpoint. Frozen Memory semantics must remain stable unless a later explicitly scoped Memory revision reopens them through the normal PR/CI/audit process.
+Knowledge Foundation v0.1 is frozen by this documentation checkpoint. Frozen Knowledge semantics must remain stable unless a later explicitly scoped Knowledge revision reopens them through the normal PR/CI/audit process.
 
 Next allowed architecture stage:
 
-`Knowledge Foundation v0.1`
+`Identity / Self Foundation v0.1`
 
-Knowledge must begin conservatively and must not retroactively turn Memory provenance into truth. Initial Knowledge work should define structural knowledge identity/ownership and the boundary between remembered records and derived/curated knowledge before persistence, embeddings, learning, or autonomous synthesis.
+Identity/Self must begin conservatively. It may reference Memory and Knowledge but must not silently convert remembered or declared origin into identity truth. Initial work should define structural self identity, ownership, lifecycle and composition boundaries before personality, trust policy, autonomous learning, planning, agents, or Android integration.
 
 ## Workflow notes
 
