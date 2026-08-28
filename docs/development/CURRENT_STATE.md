@@ -4,9 +4,9 @@ Last journal update: 2026-08-28
 
 ## Main baseline
 
-`main` SHA: `bb591d367af738107a5733b1d278603d22c96984`
+`main` SHA: `8a1bf6539cb3b53cd4742938369cbc6c15930aef`
 
-This commit merged PR #29 `Authority v0.1: Capability Authority Composition Ownership` after Core CI #355 succeeded for exact head `7b5109da1914e67d0d7be27bf5a1d1d275cc2bc8` and the final cross-layer readiness audit passed.
+This commit merged PR #31 `Execution v0.1: Capability Authority Readiness` after Core CI #367 succeeded for exact head `d89891957f92185c7575df115d6c20f1db3aa44e` and the final cross-layer Execution readiness audit passed.
 
 Status:
 
@@ -16,123 +16,91 @@ Status:
 - Authority Grant Registry v0.1: FROZEN.
 - Capability & Authority composition ownership: FROZEN.
 - Broader Capability & Authority stage: FROZEN.
-- Execution Foundation: MERGED as a dormant low-level primitive.
-- Execution composition ownership PR #23: PARKED / CLOSED WITHOUT MERGE.
-- Execution v0.1: NOT FROZEN.
+- Execution Foundation v0.1: FROZEN.
+- Execution composition/readiness v0.1: FROZEN.
 - Memory stage: NOT STARTED.
 
-## Capability Registry checkpoint
+## Capability & Authority freeze
 
-PR #24 `Capability v0.1: Observable Exact-Ownership Registry` merged after Core CI #326 succeeded for exact head `43bc28032ae104e95cba1ce34a9f58862383aaa2`.
-
-Merge commit:
-
-`a1429661e5bb827d8898d3702808b4433e656df4`
-
-Confirmed invariants:
-
-- capability identity is `CapabilityId` shared with Authority;
-- provider identity is explicit through `CapabilityProviderId`;
-- duplicate capability IDs are rejected without replacement;
-- exact registration ownership prevents stale/ABA unregister;
-- concurrent registration produces exactly one owner;
-- lifecycle transitions are observable through injected `CoreObservability`;
-- capability presence does not imply permission;
-- registry stores metadata/ownership only and has no execution authority.
-
-## Authority delegation expiry hardening
-
-PR #25 `Authority v0.1: Strict Delegation Expiry` passed Core CI #330 for exact head `1180730981a8ffb729887312847d56c835929a55`.
-
-Frozen rule:
-
-- bounded delegated grant requires `expiresAt > now`;
-- `expiresAt <= now` is denied;
-- delegated grants cannot outlive bounded direct source grants;
-- only direct grants can be delegation sources.
-
-## Authority Grant Registry checkpoint
-
-PR #28 `Authority v0.1: Exact Grant Lifecycle Registry` merged after Core CI #343 succeeded for exact head `db6011320e07e191157e2c41d1ea2abe6c84711d`.
-
-Merge commit:
+PR #28 `Authority v0.1: Exact Grant Lifecycle Registry` passed Core CI #343 for exact head `db6011320e07e191157e2c41d1ea2abe6c84711d` and merged as:
 
 `03c60fea8ea7592f52ffd0ad390867a01c22ff56`
 
-Frozen invariants:
-
-- exact ownership by `(principal, capability, scope)`;
-- duplicate active direct grants are rejected;
-- `expiresAt <= now` is rejected at registration;
-- expired grants are absent from active reads;
-- expired tuple replacement is atomic;
-- stale/ABA revoke cannot remove replacement ownership;
-- concurrent registration keeps a single current owner;
-- registry stores direct grants only;
-- registry does not authorize or execute capabilities.
-
-## Capability & Authority composition freeze
-
-PR #29 `Authority v0.1: Capability Authority Composition Ownership` passed Core CI #355 for exact head `7b5109da1914e67d0d7be27bf5a1d1d275cc2bc8` and was merged as:
+PR #29 `Authority v0.1: Capability Authority Composition Ownership` passed Core CI #355 for exact head `7b5109da1914e67d0d7be27bf5a1d1d275cc2bc8` and merged as:
 
 `bb591d367af738107a5733b1d278603d22c96984`
 
-The final cross-layer audit confirmed:
+Frozen Capability & Authority guarantees include:
 
-- frozen `FoundationComposition` internals were not modified;
-- `CapabilityRegistry`, `AuthorityGrantRegistry`, `AuthorityManager`, `AuthorityPolicy`, and delegation policy/manager are not exposed as raw mutable production internals;
-- direct grants cannot be registered for absent capabilities;
-- capability presence still does not grant Authority;
-- authorization is built from current active ownership state and remains default-deny;
-- capability unregister immediately invalidates grants belonging to that exact capability generation;
-- re-registering the same `CapabilityId` cannot resurrect grants from an older capability generation;
-- direct grant ownership has an exact source generation token;
-- revoke/re-register of an equivalent direct grant cannot resurrect an older delegated grant;
-- delegated grants are bound to both exact capability generation and exact direct-source generation;
-- direct-source revoke or expiry immediately invalidates dependent delegated authorization;
-- delegated grants cannot become delegation sources, preventing transitive redelegation;
-- exact delegated revoke is observable and stale-safe;
-- mutation and authorization snapshot creation are serialized at the composition ownership boundary to close check/mutation races;
-- authority/delegation decisions continue through observable managers with composition-created correlation contexts;
-- no Execution integration was introduced in the Capability & Authority freeze.
+- capability presence does not imply permission;
+- direct grants require registered capability ownership;
+- direct grant lifecycle is exact, expiry-aware and stale/ABA-safe;
+- capability unregister invalidates grants from that exact capability generation;
+- re-registering the same capability does not resurrect old authority;
+- delegated authority is bound to exact capability and direct-source generations;
+- direct-source revoke, expiry or replacement invalidates dependent delegation;
+- delegated grants cannot become delegation sources;
+- production callers do not receive raw mutable registries, managers or policies;
+- authorization remains default-deny and observable.
 
-## Execution status
+## Execution v0.1 freeze
 
-PR #20 `Execution v0.1: Authority-Gated Execution Foundation` is already merged as a low-level primitive.
+PR #20 introduced the low-level Authority-Gated Execution Foundation.
 
-Verified boundary:
+PR #23 later attempted composition ownership but was intentionally closed without merge because Execution had advanced before Capability & Authority was complete. It remains historical evidence only.
 
-`ExecutionRequest → trusted action/capability binding → AuthorityManager → ExecutionExecutor → ExecutionResult`
+After Capability & Authority froze, Execution composition was rebuilt from scratch in PR #31 rather than reusing PR #23 blindly.
 
-PR #23 `Execution v0.1: Composition Ownership` reached GREEN Core CI #321 but was intentionally closed without merge because the roadmap audit found that Execution had advanced before Capability & Authority was complete.
+PR #31 `Execution v0.1: Capability Authority Readiness` passed Core CI #367 for exact head:
 
-That stage-order blocker is now removed because Capability & Authority is frozen.
+`d89891957f92185c7575df115d6c20f1db3aa44e`
 
-PR #23 remains historical/parked evidence only. Do not merge the old PR blindly; re-audit/rebuild Execution composition against the newly frozen `CapabilityAuthorityComposition` boundary.
+Merge commit:
+
+`8a1bf6539cb3b53cd4742938369cbc6c15930aef`
+
+Frozen Execution guarantees:
+
+- production Execution depends on `CapabilityAuthorityComposition`, not on a raw `AuthorityPolicy`;
+- `ExecutionComposition` owns the concrete executor and action-to-capability bindings;
+- callers receive only the execution request/result surface, not executor/manager/policy internals;
+- unknown actions and action/capability mismatches fail before authority or executor invocation;
+- capability presence without authority never reaches the executor;
+- authority is re-evaluated at each execution attempt against current Capability & Authority ownership state;
+- direct grant revoke immediately blocks subsequent execution;
+- delegated execution is invalidated when its exact direct source is revoked, expires or is replaced;
+- execution preserves one `LogContext` / correlation across Authority and Execution observations;
+- executor exceptions are isolated as `ExecutionResult.Failed` and remain observable;
+- the contextual `CapabilityAuthorityComposition.authorize(request, context)` seam changes only context propagation, not authority decision semantics;
+- `ExecutionAuthorizer` and its injection constructor are internal to the module and cannot become a public production bypass;
+- no Android/device adapter, retry queue, background executor, autonomous loop or Memory coupling is part of Execution v0.1.
 
 ## Current development direction
 
-Next allowed architecture work:
+The stage-order blocker is removed. Core Foundation, Capability & Authority, and Execution v0.1 are frozen.
 
-`Execution composition ownership / Execution readiness v0.1`
+Next allowed architecture stage:
 
-Required gates:
+`Memory Foundation v0.1`
 
-1. integrate the existing dormant Execution Foundation through the frozen Capability & Authority production boundary;
-2. concrete `ExecutionExecutor` ownership must remain private to composition;
-3. callers must not receive a raw executor or raw authority bypass path;
-4. execution must require registered capability plus current authority at the point of execution;
-5. capability/grant revoke, expiry, or generation replacement must fail-close subsequent execution;
-6. preserve action-to-capability binding and observability/correlation guarantees from PR #20;
-7. run exact-head Core CI and final Execution cross-layer readiness audit;
-8. only then freeze Execution v0.1 and decide whether the roadmap advances to Memory.
+Initial Memory work must remain core-only and should begin with structural contracts before persistence or learning behavior.
 
-Do not start Memory yet.
+Required starting gates:
 
-## Workflow note
+1. define memory identity/types and ownership boundaries before storage implementation;
+2. separate memory record identity from mutable content/state;
+3. use exact ownership/version semantics so stale handles cannot overwrite or remove replacements;
+4. preserve provenance/source metadata and timestamps explicitly;
+5. make writes/removals/rejections observable through injected `CoreObservability`;
+6. no global singleton memory store;
+7. no hidden persistence, background consolidation, embedding/model dependency, self-learning or autonomous mutation in the first Memory foundation slice;
+8. do not couple Memory directly to Android/device APIs or Execution;
+9. run exact-head Core CI and architecture audit for every Memory milestone before merge.
+
+## Workflow notes
 
 During PR #25 handling, `main` was briefly moved directly to the PR head by mistake. The ref was restored and repository state reconciled to the already verified merged implementation without additional production changes.
 
-During PR #29 construction, an initial tree was based on an older checkpoint and showed unintended deletions. This was detected before merge; the branch was rebuilt from the exact current `main` tree, leaving only the intended composition and contract files.
+During PR #29 construction, an initial tree was based on an older checkpoint and showed unintended deletions. This was detected before merge; the branch was rebuilt from the exact current `main` tree before review.
 
 Durable workflow remains: feature branch → PR → GREEN CI → architecture audit → exact-head merge; no intentional direct-to-main development.
