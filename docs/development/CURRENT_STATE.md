@@ -4,11 +4,11 @@ Last journal update: 2026-08-28
 
 ## Current verified baseline
 
-Identity / Self implementation baseline before the freeze documentation merge: `4366edcc1f124e4cba715a5d0f882a2eb20f20a2`.
+Trust / Security implementation baseline before the freeze documentation merge: `a4b90d59136790c283ca5aaa18e6610e576068df`.
 
-This commit merged PR #46 `Identity v0.1: Readiness Contract Hardening` after Core CI #443 succeeded for exact head `71c89255337376e4b053443c1f5e64d2584188e8` and the final test-only readiness diff audit passed.
+This commit merged PR #50 `Trust v0.1: Readiness Contract Hardening` after Core CI #461 succeeded for exact head `9c48e1273152a70edcaf862b75a91d50c8b302a8` and the final test-only readiness diff audit passed.
 
-Identity / Self Foundation v0.1 freeze record: `docs/development/IDENTITY_SELF_V0_1_FREEZE.md`.
+Trust / Security Foundation v0.1 freeze record: `docs/development/TRUST_SECURITY_V0_1_FREEZE.md`.
 
 Status:
 
@@ -17,80 +17,76 @@ Status:
 - Execution v0.1: FROZEN.
 - Memory Foundation v0.1: FROZEN.
 - Knowledge Foundation v0.1: FROZEN.
-- Identity / Self Foundation v0.1: FROZEN by this documentation checkpoint.
-- Trust / Security stage: NOT STARTED.
+- Identity / Self Foundation v0.1: FROZEN.
+- Trust / Security Foundation v0.1: FROZEN by this documentation checkpoint.
 - Personality stage: NOT STARTED.
 - Reflection / Learning stage: NOT STARTED.
 - Planning / Autonomy / Agents stage: NOT STARTED.
 - Android Integration stage: NOT STARTED.
 
-## Identity / Self v0.1 verified implementation
+## Trust / Security v0.1 verified implementation
 
-### PR #44 — Single Current Self Store Foundation
+### PR #48 — Explicit Trust Anchor Store Foundation
 
-Final exact head: `ed4a7f9c1cba513bf9fd4b5571da5ac25b449531`.
-Core CI #434: GREEN.
-Merge commit: `47a54e285cdbad613ee99bd3f3d86597cc08b27f`.
+Final exact head: `a1bbfe86e26507e10e723cb74b45bb939e072af3`.
+Core CI #452: GREEN.
+Merge commit: `02c6cb9447f557ea273328a9ffc5b0a70d8967a5`.
 
-Introduced immutable structural Self identity models, typed positive `SelfGeneration`, exact single-slot ownership, stale/ABA-safe removal, distinct replacement generation, and concurrent one-winner registration.
+Introduced explicit structural `TrustAnchor` models, typed positive `TrustGeneration`, exact registration ownership, duplicate rejection, stale/ABA-safe removal, deterministic snapshots, concurrent same-ID one-winner behavior, caller-declared provenance, and structural Self/Declared trust subjects.
 
-`SelfOrigin.Knowledge(itemId, generation)` is an exact structural Knowledge reference. `SelfOrigin.Declared(sourceId, sourceReference)` is caller attribution only.
+### PR #49 — Composition Ownership
 
-### PR #45 — Self Composition Ownership
+Final exact head: `51e99745a69e2a716a786b122aac491eef837f80`.
+Core CI #457: GREEN.
+Merge commit: `595dd0de62dd1f61edb5816cd4f4cb31a4e1d1fe`.
 
-Final exact head: `17926fed36c0fbdc1025ced34fc9e6778eff31b2`.
-Core CI #439: GREEN.
-Merge commit: `4e7379869c8249b67c33bca8109b24ce7973b63e`.
+Introduced `TrustComposition` as the production ownership boundary. Raw mutable store/registration primitives remain internal; callers receive controlled anchor/read/inspect/snapshot/remove ownership APIs bound to exact `TrustGeneration`. Anchor/remove use fresh Foundation root contexts.
 
-Introduced `SelfComposition` as the production boundary around the internal single-slot `SelfStore`. Public behavior is limited to controlled `install/current/inspect/isInstalled/remove` semantics and exact `SelfOwnership`. Raw `SelfStore` and `SelfRegistration` are not production public surface.
+### PR #50 — Readiness Contract Hardening
 
-Install/remove use fresh Foundation root contexts. Lifecycle metadata excludes `SelfName` and does not introduce personality, trust, truth, confidence, or authority semantics.
+Final exact head: `9c48e1273152a70edcaf862b75a91d50c8b302a8`.
+Core CI #461: GREEN.
+Merge commit: `a4b90d59136790c283ca5aaa18e6610e576068df`.
 
-### PR #46 — Readiness Contract Hardening
+Test-only hardening locked four final readiness boundaries:
 
-Final exact head: `71c89255337376e4b053443c1f5e64d2584188e8`.
-Core CI #443: GREEN.
-Merge commit: `4366edcc1f124e4cba715a5d0f882a2eb20f20a2`.
+- `TrustAnchor.createdAt` is caller-supplied and preserved unchanged;
+- `TrustComposition` instances are isolated even for the same anchor ID;
+- equal numeric `TrustGeneration` values across compositions do not create shared ownership/global identity;
+- explicit anchors remain non-transitive.
 
-Test-only hardening locked two final readiness boundaries:
+## Trust / Security v0.1 frozen boundaries
 
-- `SelfOrigin.Knowledge(itemId, generation)` is structural only and performs no hidden Knowledge lookup or verification.
-- `SelfIdentity.createdAt` is caller-supplied and preserved unchanged; it is not a trusted runtime/source clock.
-
-## Identity / Self v0.1 frozen boundaries
-
-- at most one current Self exists per Self store/composition at a time, regardless of identity ID;
-- successful installation owns one exact positive in-memory `SelfGeneration`;
-- stale ownership cannot remove a later replacement;
-- replacement receives a distinct generation;
-- concurrent installation has exactly one winner;
-- `SelfOrigin.Knowledge` is a structural identity/generation link, not proof of existence, correctness, truth, trust, confidence, or current availability;
-- `SelfOrigin.Declared` is attribution only and does not imply authority, permission, verification, truth, trust, or confidence;
-- `SelfIdentity.createdAt` is caller-supplied, not trusted chronology;
-- `SelfName` is a structural designation only and does not define personality, behavior, tone, values, preferences, goals, or autonomy;
-- lifecycle observability does not include `SelfName` and does not create personality semantics;
-- `SelfComposition` privately owns mutable Self storage;
-- Identity/Self v0.1 does not automatically promote Memory or Knowledge into identity truth;
-- Identity/Self v0.1 has no trust engine, truth/confidence scoring, personality model, learning, reflection, planning, agents, persistence, autonomous mutation, Execution coupling, Android/device integration, or hidden Knowledge verification.
+- trust anchors are explicit structural records, not inferred trust decisions;
+- exact positive `TrustGeneration` ownership prevents stale/ABA removal within a store lifecycle;
+- generation identity is store/composition-local, not global or durable;
+- same anchor IDs in independent compositions do not share state;
+- `TrustSubject.Self(identityId, generation)` is structural only and performs no hidden Self lookup or authenticity verification;
+- `TrustSubject.Declared(subjectId)` is an explicitly named subject only;
+- `TrustProvenance` is caller-declared attribution only;
+- anchors are non-transitive and do not create inherited trust;
+- trust anchors do not create `AuthorityPrincipal`, capability, permission, authentication, verification, truth, confidence, or reputation semantics;
+- `createdAt` is caller-supplied and deterministic snapshot ordering is not trusted chronology;
+- `TrustComposition` privately owns mutable trust state and raw store/registration primitives are not production public surface;
+- Trust/Security v0.1 has no cryptography, credential validation, signature/certificate verification, trust scoring, transitive trust graph, persistence, automatic provenance-to-trust promotion, Authority/Execution coupling, Android/platform security, autonomous mutation, learning, agents, or Personality semantics.
 
 ## Current next action
 
-Next allowed architecture stage: `Trust / Security Foundation v0.1`.
+Next allowed architecture stage: `Personality Foundation v0.1`.
 
-Trust / Security must begin conservatively and must not be retroactively implied by existing provenance/origin fields. Initial work should define explicit trust/security primitives and boundaries before personality, reflection/learning, planning/autonomy/agents, or Android integration.
+Personality must build on frozen Self/Trust boundaries without redefining identity or treating trust anchors as behavioral truth. Initial work should define explicit personality structure and ownership before reflection/learning, planning/autonomy/agents, or Android integration.
 
 ## Frozen predecessor references
 
-Detailed verified freeze history remains in the repository journal and Git history:
+Detailed verified freeze history remains in repository docs and Git history:
 
 - Core Foundation v0.1 — frozen.
 - Capability & Authority v0.1 — frozen.
 - Execution v0.1 — frozen.
 - Memory Foundation v0.1 — frozen.
 - Knowledge Foundation v0.1 — frozen.
-- Identity / Self v0.1 freeze details — `IDENTITY_SELF_V0_1_FREEZE.md`.
-
-Knowledge's immediately preceding freeze guarantees remain unchanged: structural Memory origin only, exact Knowledge generation ownership, caller-supplied `createdAt`, composition-owned mutation, deterministic snapshots, no hidden truth/confidence/verification/learning semantics.
+- Identity / Self Foundation v0.1 — `IDENTITY_SELF_V0_1_FREEZE.md`.
+- Trust / Security Foundation v0.1 — `TRUST_SECURITY_V0_1_FREEZE.md`.
 
 ## Workflow notes
 
