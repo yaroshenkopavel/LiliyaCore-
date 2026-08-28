@@ -4,11 +4,11 @@ Last journal update: 2026-08-29
 
 ## Current verified baseline
 
-Personality implementation baseline before the freeze documentation merge: `8676e31ca42221886fbe69f9c256fbc870aeab4b`.
+Reflection implementation baseline before the freeze documentation merge: `aa4d9b232c1ceaad6885a77d798b84222c7d7d90`.
 
-This commit merged PR #54 `Personality v0.1: Readiness Contract Hardening` after Core CI #482 succeeded for exact head `9e445ef6f8c726d990a0960ef65be108c8ad3798` and the final test-only readiness diff audit passed.
+This commit merged PR #59 `Reflection v0.1: Readiness Contract Hardening` after Core CI #504 succeeded for exact head `2557d3ef85750ac12fc32d789968d49479c519f5` and the final test-only readiness/source audit passed.
 
-Personality Foundation v0.1 freeze record: `docs/development/PERSONALITY_V0_1_FREEZE.md`.
+Reflection Foundation v0.1 freeze record: `docs/development/REFLECTION_V0_1_FREEZE.md`.
 
 Status:
 
@@ -19,67 +19,73 @@ Status:
 - Knowledge Foundation v0.1: FROZEN.
 - Identity / Self Foundation v0.1: FROZEN.
 - Trust / Security Foundation v0.1: FROZEN.
-- Personality Foundation v0.1: FROZEN by this documentation checkpoint.
-- Reflection / Learning stage: NOT STARTED.
+- Personality Foundation v0.1: FROZEN.
+- Reflection Foundation v0.1: FROZEN by this documentation checkpoint.
+- Learning Foundation v0.1: NOT STARTED.
 - Planning / Autonomy / Agents stage: NOT STARTED.
 - Android Integration stage: NOT STARTED.
 
-## Personality v0.1 verified implementation
+## Reflection v0.1 verified implementation
 
-### PR #52 — Explicit Profile Store Foundation
+### PR #56 — Explicit Record Store Foundation
 
-Final exact head: `e56409ec82e2ce50b1e10988bf4bac53f6b12633`.
-Core CI #473: GREEN.
-Merge commit: `663099f40db6a5a7f0c35b8137ed98ee5dd9e759`.
+Final exact head: `e9fab5f6747fb3c0ccebd364887bcaafa3bdce21`.
+Core CI #492: GREEN.
+Merge commit: `21e3e7512e897e7f670b31564a8bac7f8f9cfb4f`.
 
-Introduced explicit structural `PersonalityProfile` models targeted to exact Self `(SelfIdentityId, SelfGeneration)`, explicit nonblank key/value attributes, defensive-copy immutability, caller-declared provenance, caller-supplied `createdAt`, exact `PersonalityGeneration`, duplicate rejection, stale/ABA-safe removal, deterministic snapshots, and concurrent same-ID one-winner behavior.
+Introduced explicit `ReflectionRecord` models with structural Memory/Knowledge/Declared origins, caller-supplied `createdAt`, exact positive `ReflectionGeneration`, duplicate rejection, exact stale/ABA-safe removal, deterministic snapshots, concurrent same-ID one-winner behavior, lifecycle observability, and redacted `ReflectionRecord.toString()`.
 
-The final audited head also redacts `PersonalityProfile.toString()` so raw personality attribute values are not exposed by object rendering.
+Reflection content is explicit caller-declared data only. It is not written into lifecycle metadata and is not automatically promoted into Memory, Knowledge, truth, confidence, trust, authority, behavior, or learning state.
 
-### PR #53 — Composition Ownership
+### PR #58 — Composition Ownership
 
-Final exact head: `d198479532c7e03c036999b351578d97c5fbdb23`.
-Core CI #478: GREEN.
-Merge commit: `159caeedf350a1ced1c5ca39a22228675e2f26a8`.
+Final exact head: `4ff27cd3f4047eb352fdc635251c43e30aa5d67e`.
+Core CI #500: GREEN.
+Merge commit: `7835b91379aa71eb31e8d333235c2394b7ac7bbe`.
 
-Introduced `PersonalityComposition` as the production ownership boundary. Raw mutable store/registration primitives remain internal; callers receive controlled install/read/inspect/snapshot/remove ownership APIs bound to exact `PersonalityGeneration`. Install/remove use fresh Foundation root contexts, and personality attribute values stay out of lifecycle metadata.
+Introduced `ReflectionComposition` as the production ownership boundary. Raw mutable store/registration primitives remain internal; callers receive controlled install/read/inspect/snapshot/remove ownership APIs bound to exact `ReflectionGeneration`. Install/remove use fresh Foundation root contexts, and reflection content stays out of lifecycle metadata.
 
-### PR #54 — Readiness Contract Hardening
+Core CI #498 initially failed only in the new test harness because Kotlin could not infer a lambda type. Production code was unchanged. The test expression was corrected, producing the final head above; Core CI #500 then passed and the PR was merged only after the new exact-head gate and audit.
 
-Final exact head: `9e445ef6f8c726d990a0960ef65be108c8ad3798`.
-Core CI #482: GREEN.
-Merge commit: `8676e31ca42221886fbe69f9c256fbc870aeab4b`.
+### PR #59 — Readiness Contract Hardening
+
+Final exact head: `2557d3ef85750ac12fc32d789968d49479c519f5`.
+Core CI #504: GREEN.
+Merge commit: `aa4d9b232c1ceaad6885a77d798b84222c7d7d90`.
 
 Test-only hardening locked final readiness boundaries:
 
-- `PersonalityProfile.createdAt` is caller-supplied and preserved unchanged;
-- `PersonalityComposition` instances are isolated even for the same profile ID;
-- equal numeric `PersonalityGeneration` values across compositions do not create shared ownership/global identity;
-- exact Self targeting remains structural-only without hidden Self lookup;
-- personality attributes create no implicit behavior, prompt, trust, authority, decision, or execution effects;
-- profile string rendering remains redacted.
+- `ReflectionRecord.createdAt` is caller-supplied and preserved unchanged;
+- `ReflectionComposition` instances are isolated even for the same reflection record ID;
+- equal numeric `ReflectionGeneration` values across compositions do not create shared ownership/global identity;
+- Memory/Knowledge origins remain structural-only without hidden lookup;
+- reflection content creates no implicit learning, trust, authority, execution, truth, confidence, or personality metadata semantics;
+- reflection string rendering remains redacted.
 
-## Personality v0.1 frozen boundaries
+## Reflection v0.1 frozen boundaries
 
-- personality profiles are explicit structural records for exact Self targets, not inferred behavioral truth;
-- profile attributes are explicit stored data and are not automatically applied to prompts, responses, decisions, trust, authority, or execution;
-- exact positive `PersonalityGeneration` ownership prevents stale/ABA removal within a store lifecycle;
+- reflection records are explicit structural records, not inferred truth, belief, confidence, or learning decisions;
+- Memory/Knowledge origins are exact structural lifecycle references only and perform no hidden source lookup or verification;
+- Declared origin is caller-declared attribution only;
+- reflection content is explicit stored data and is not automatically applied to Memory, Knowledge, Personality, Self, Trust, Authority, Execution, planning, or behavior;
+- exact positive `ReflectionGeneration` ownership prevents stale/ABA removal within a store lifecycle;
 - generation identity is store/composition-local, not global or durable;
-- same profile IDs in independent compositions do not share state;
-- `PersonalityTarget.Self(identityId, generation)` is structural only and performs no hidden Self lookup or authenticity verification;
-- `PersonalityProvenance` is caller-declared attribution only;
-- `createdAt` is caller-supplied and deterministic snapshot ordering is not trusted chronology, preference strength, truth, or priority;
-- caller-provided attribute lists are defensively copied and duplicate attribute keys are rejected;
-- lifecycle observability excludes personality attribute values;
-- `PersonalityProfile.toString()` is redacted and does not render personality attribute values;
-- `PersonalityComposition` privately owns mutable personality state and raw store/registration primitives are not production public surface;
-- Personality v0.1 has no behavior engine, prompt/style renderer, trait inference, scoring, learning/adaptation, trust/authority semantics, planning/agents, persistence, autonomous mutation, Execution coupling, or Android integration.
+- same record IDs in independent compositions do not share state;
+- `createdAt` is caller-supplied and deterministic snapshot ordering is not trusted chronology, importance, causality, truth, confidence, or learning priority;
+- lifecycle observability excludes reflection content;
+- `ReflectionRecord.toString()` is redacted and does not render reflection content;
+- `ReflectionComposition` privately owns mutable reflection state and raw store/registration primitives are not production public surface;
+- Reflection v0.1 has no learning engine, autonomous consolidation, downstream mutation, verification/truth engine, trust/authority semantics, planning/agents, persistence, background workers, Execution coupling, cognitive-cycle orchestration, or Android integration.
 
 ## Current next action
 
-Next allowed architecture stage: `Reflection / Learning Foundation v0.1`.
+Next allowed architecture stage: `Learning Foundation v0.1`.
 
-Reflection / Learning must build on frozen Memory, Knowledge, Self, Trust, and Personality boundaries without treating stored provenance, trust anchors, or personality attributes as truth. Initial work should define explicit reflection/learning records and ownership before planning/autonomy/agents or Android integration.
+Learning must build on frozen Reflection, Memory, Knowledge, Self, Trust, and Personality boundaries without treating reflection content, provenance, trust anchors, or personality attributes as truth. Initial Learning work should define explicit learning candidates/decisions and ownership before any controlled consolidation or downstream mutation is introduced.
+
+## Deferred future architecture note
+
+A separate docs-only future architecture note exists on PR #57 for later Cognitive Cycle / Cognitive Governor / Context Assembler / fast-vs-deliberative paths / Resource Governor ideas. It is non-binding and does not authorize premature orchestration, autonomous learning, or self-modifying behavior.
 
 ## Frozen predecessor references
 
@@ -93,6 +99,7 @@ Detailed verified freeze history remains in repository docs and Git history:
 - Identity / Self Foundation v0.1 — `IDENTITY_SELF_V0_1_FREEZE.md`.
 - Trust / Security Foundation v0.1 — `TRUST_SECURITY_V0_1_FREEZE.md`.
 - Personality Foundation v0.1 — `PERSONALITY_V0_1_FREEZE.md`.
+- Reflection Foundation v0.1 — `REFLECTION_V0_1_FREEZE.md`.
 
 ## Workflow notes
 
