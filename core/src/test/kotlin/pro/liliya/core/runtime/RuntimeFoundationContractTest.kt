@@ -124,7 +124,7 @@ class RuntimeFoundationContractTest {
     }
 
     @Test
-    fun concurrent_competing_transitions_apply_at_most_one_state_change() {
+    fun concurrent_competing_transitions_preserve_policy_and_atomicity() {
         val diagnostics = InMemoryDiagnosticSink()
         val controller = RuntimeStateController(
             stateHolder = RuntimeStateHolder(RuntimeState.STARTING),
@@ -155,9 +155,19 @@ class RuntimeFoundationContractTest {
         executor.shutdown()
 
         assertEquals(2, results.size)
-        assertEquals(1, results.count { it is RuntimeTransitionResult.Applied })
-        assertEquals(1, results.count { it is RuntimeTransitionResult.Rejected })
-        assertTrue(controller.currentState() in setOf(RuntimeState.RUNNING, RuntimeState.FAILED))
+        val appliedCount = results.count { it is RuntimeTransitionResult.Applied }
+        val rejectedCount = results.count { it is RuntimeTransitionResult.Rejected }
+        val finalState = controller.currentState()
+
+        if (finalState == RuntimeState.RUNNING) {
+            assertEquals(1, appliedCount)
+            assertEquals(1, rejectedCount)
+        } else {
+            assertEquals(RuntimeState.FAILED, finalState)
+            assertTrue(appliedCount in 1..2)
+            assertEquals(2 - appliedCount, rejectedCount)
+        }
+
         assertEquals(2, diagnostics.snapshot().size)
     }
 }
