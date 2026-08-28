@@ -17,6 +17,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -70,10 +71,14 @@ class MemoryStoreContractTest {
             listOf("MEMORY_REGISTERED", "MEMORY_REMOVED"),
             f.diagnostics.snapshot().map { it.code }
         )
+        assertEquals(
+            registration.generation.value.toString(),
+            f.logs.snapshot().first().metadata["memoryGeneration"]
+        )
     }
 
     @Test
-    fun duplicate_id_is_rejected_without_replacing_current_record() {
+    fun duplicate_id_is_rejected_without_replacing_current_record_and_is_observable() {
         val f = fixture()
         val first = record(content = "first")
         val second = record(content = "second")
@@ -86,10 +91,18 @@ class MemoryStoreContractTest {
         )
 
         assertEquals(first, f.store.find(first.id))
+        val rejectionLog = assertNotNull(
+            f.logs.snapshot().lastOrNull { it.marker == "MEMORY_REGISTRATION_REJECTED" }
+        )
+        assertTrue(rejectionLog.metadata["memoryGeneration"]?.isNotBlank() == true)
+        assertEquals(first.id.value, rejectionLog.metadata["memoryRecordId"])
+        assertTrue(
+            f.diagnostics.snapshot().any { it.code == "MEMORY_REGISTRATION_REJECTED" }
+        )
     }
 
     @Test
-    fun stale_registration_cannot_remove_replacement_record() {
+    fun stale_registration_cannot_remove_replacement_record_and_rejection_is_observable() {
         val f = fixture()
         val first = record(content = "first")
         val firstRegistration = assertIs<MemoryRegistrationResult.Registered>(
@@ -104,6 +117,16 @@ class MemoryStoreContractTest {
 
         assertFalse(firstRegistration.remove(context("stale-remove")))
         assertEquals(replacement, f.store.find(replacement.id))
+        val rejectionLog = assertNotNull(
+            f.logs.snapshot().lastOrNull { it.marker == "MEMORY_REMOVAL_REJECTED" }
+        )
+        assertEquals(
+            firstRegistration.generation.value.toString(),
+            rejectionLog.metadata["memoryGeneration"]
+        )
+        assertTrue(
+            f.diagnostics.snapshot().any { it.code == "MEMORY_REMOVAL_REJECTED" }
+        )
     }
 
     @Test
@@ -135,29 +158,36 @@ class MemoryStoreContractTest {
         val done = CountDownLatch(attempts)
         val winners = AtomicInteger(0)
 
-        repeat(attempts) { index ->
-            executor.submit {
-                ready.countDown()
-                start.await()
-                if (
-                    f.store.register(
-                        record(content = "candidate-$index"),
-                        context("candidate-$index")
-                    ) is MemoryRegistrationResult.Registered
-                ) {
-                    winners.incrementAndGet()
+        try {
+            repeat(attempts) { index ->
+                executor.submit {
+                    try {
+                        ready.countDown()
+                        start.await()
+                        if (
+                            f.store.register(
+                                record(content = "candidate-$index"),
+                                context("candidate-$index")
+                            ) is MemoryRegistrationResult.Registered
+                        ) {
+                            winners.incrementAndGet()
+                        }
+                    } finally {
+                        done.countDown()
+                    }
                 }
-                done.countDown()
             }
+
+            assertTrue(ready.await(5, TimeUnit.SECONDS))
+            start.countDown()
+            assertTrue(done.await(10, TimeUnit.SECONDS))
+
+            assertEquals(1, winners.get())
+            assertEquals(1, f.store.snapshot().size)
+        } finally {
+            start.countDown()
+            executor.shutdownNow()
         }
-
-        assertTrue(ready.await(5, TimeUnit.SECONDS))
-        start.countDown()
-        assertTrue(done.await(10, TimeUnit.SECONDS))
-        executor.shutdownNow()
-
-        assertEquals(1, winners.get())
-        assertEquals(1, f.store.snapshot().size)
     }
 
     private fun context(correlationId: String) = LogContextPropagation.root(
