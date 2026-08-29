@@ -34,7 +34,7 @@ class AgentCoordinationRecord(
         }
         require(purpose.isNotBlank()) { "agent coordination purpose must not be blank" }
 
-        participants = suppliedParticipants.sortedWith(
+        this.participants = suppliedParticipants.sortedWith(
             compareBy<ExactAgentReference>({ it.id.value }, { it.generation.value })
         )
     }
