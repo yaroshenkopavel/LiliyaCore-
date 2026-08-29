@@ -51,8 +51,9 @@ class ControlledAgentInitiativeReadinessContractTest {
             correlationIds = CorrelationIdGenerator { "agent-readiness-${sequence.incrementAndGet()}" }
         )
         val agents = AgentComposition(foundation)
+        val lifecycle = ControlledAgentLifecycle(foundation, agents)
         val autonomy = AutonomyComposition(foundation)
-        val bridge = ControlledAgentInitiative(foundation, agents, autonomy)
+        val bridge = ControlledAgentInitiative(foundation, agents, lifecycle, autonomy)
         val secretRole = "private-role-secret"
         val secretPurpose = "private-purpose-secret"
         val agent = assertIs<AgentInstallResult.Installed>(
@@ -66,6 +67,9 @@ class ControlledAgentInitiativeReadinessContractTest {
                 )
             )
         ).ownership
+        assertIs<AgentLifecycleActivationResult.Activated>(
+            lifecycle.activate(agent.agent.id, agent.generation)
+        )
 
         val initiative = assertIs<AgentInitiativeResult.Created>(
             bridge.create(
