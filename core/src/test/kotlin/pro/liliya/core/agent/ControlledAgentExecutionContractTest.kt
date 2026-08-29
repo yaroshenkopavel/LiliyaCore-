@@ -39,6 +39,7 @@ import pro.liliya.core.reasoning.ReasoningGeneration
 class ControlledAgentExecutionContractTest {
     private data class Fixture(
         val agents: AgentComposition,
+        val lifecycle: ControlledAgentLifecycle,
         val autonomy: AutonomyComposition,
         val initiative: ControlledAgentInitiative,
         val autonomyGate: ControlledAutonomyDeliberationGate,
@@ -49,11 +50,14 @@ class ControlledAgentExecutionContractTest {
 
     private data class Prepared(
         val agent: AgentOwnership,
+        val lifecycle: AgentLifecycleOwnership,
         val autonomy: pro.liliya.core.autonomy.AutonomyOwnership,
         val deliberation: pro.liliya.core.autonomy.AutonomyDeliberationOwnership
     )
 
-    private fun fixture(delegateResult: ControlledAutonomyExecutionResult = ControlledAutonomyExecutionResult.Succeeded): Fixture {
+    private fun fixture(
+        delegateResult: ControlledAutonomyExecutionResult = ControlledAutonomyExecutionResult.Succeeded
+    ): Fixture {
         val logs = InMemoryLogWriter()
         val sequence = AtomicInteger(0)
         val foundation = FoundationComposition(
@@ -62,13 +66,15 @@ class ControlledAgentExecutionContractTest {
             correlationIds = CorrelationIdGenerator { "agent-execution-${sequence.incrementAndGet()}" }
         )
         val agents = AgentComposition(foundation)
+        val lifecycle = ControlledAgentLifecycle(foundation, agents)
         val autonomy = AutonomyComposition(foundation)
-        val initiative = ControlledAgentInitiative(foundation, agents, autonomy)
+        val initiative = ControlledAgentInitiative(foundation, agents, lifecycle, autonomy)
         val autonomyGate = ControlledAutonomyDeliberationGate(foundation, autonomy)
         val deliberation = AutonomyDeliberationComposition(foundation)
         val delegateCalls = AtomicInteger(0)
         val guard = ControlledAgentExecution(
             agents = agents,
+            lifecycle = lifecycle,
             autonomy = autonomy,
             deliberation = deliberation,
             executor = AgentAutonomyExecutionDelegate {
@@ -76,7 +82,16 @@ class ControlledAgentExecutionContractTest {
                 delegateResult
             }
         )
-        return Fixture(agents, autonomy, initiative, autonomyGate, deliberation, delegateCalls, guard)
+        return Fixture(
+            agents,
+            lifecycle,
+            autonomy,
+            initiative,
+            autonomyGate,
+            deliberation,
+            delegateCalls,
+            guard
+        )
     }
 
     private fun prepare(f: Fixture): Prepared {
@@ -90,6 +105,9 @@ class ControlledAgentExecutionContractTest {
                     createdAt = Instant.parse("2026-08-29T18:10:00Z")
                 )
             )
+        ).ownership
+        val lifecycle = assertIs<AgentLifecycleActivationResult.Activated>(
+            f.lifecycle.activate(agent.agent.id, agent.generation)
         ).ownership
         val autonomy = assertIs<AgentInitiativeResult.Created>(
             f.initiative.create(
@@ -122,7 +140,7 @@ class ControlledAgentExecutionContractTest {
                 )
             )
         ).ownership
-        return Prepared(agent, autonomy, deliberation)
+        return Prepared(agent, lifecycle, autonomy, deliberation)
     }
 
     private fun request(p: Prepared) = ControlledAutonomyExecutionRequest(
@@ -141,12 +159,28 @@ class ControlledAgentExecutionContractTest {
     )
 
     @Test
-    fun exact_live_agent_provenance_delegates_once_to_frozen_autonomy_execution() {
+    fun exact_live_active_agent_provenance_delegates_once_to_frozen_autonomy_execution() {
         val f = fixture()
         val prepared = prepare(f)
 
         assertIs<ControlledAgentExecutionResult.Succeeded>(f.guard.execute(request(prepared)))
         assertEquals(1, f.delegateCalls.get())
+    }
+
+    @Test
+    fun cancelled_or_stopped_lifecycle_after_deliberation_creation_causes_zero_downstream_execution_calls() {
+        listOf("cancelled", "stopped").forEach { mode ->
+            val f = fixture()
+            val prepared = prepare(f)
+            if (mode == "cancelled") {
+                assertTrue(prepared.lifecycle.cancel())
+            } else {
+                assertTrue(prepared.lifecycle.stop())
+            }
+
+            assertIs<ControlledAgentExecutionResult.Rejected>(f.guard.execute(request(prepared)))
+            assertEquals(0, f.delegateCalls.get())
+        }
     }
 
     @Test
@@ -191,7 +225,7 @@ class ControlledAgentExecutionContractTest {
     }
 
     @Test
-    fun frozen_autonomy_rejection_is_propagated_without_turning_agent_into_authority() {
+    fun frozen_autonomy_rejection_is_propagated_without_turning_lifecycle_into_authority() {
         val f = fixture(ControlledAutonomyExecutionResult.Rejected("authority denied"))
         val prepared = prepare(f)
 

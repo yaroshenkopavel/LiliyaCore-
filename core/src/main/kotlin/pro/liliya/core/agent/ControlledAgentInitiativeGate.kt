@@ -22,16 +22,12 @@ sealed interface AgentInitiativeAttemptResult {
 }
 
 /**
- * Fresh Agent liveness/provenance gate immediately before the first bounded Autonomy attempt claim.
- *
- * This gate does not schedule work, create deliberation requests, authorize actions, or execute.
- * It only proves that the exact Agent generation which created the Autonomy proposal is still live,
- * that the proposal still carries the trusted Agent provenance, and then delegates one claim to the
- * already frozen bounded Autonomy deliberation gate.
+ * Fresh Agent liveness/lifecycle/provenance gate immediately before a bounded Autonomy attempt.
  */
 class ControlledAgentInitiativeGate(
     private val foundation: FoundationComposition,
     private val agents: AgentComposition,
+    private val lifecycle: ControlledAgentLifecycle,
     private val autonomy: AutonomyComposition,
     private val autonomyGate: ControlledAutonomyDeliberationGate
 ) {
@@ -56,6 +52,9 @@ class ControlledAgentInitiativeGate(
             ?: return reject("agent is not live", context)
         if (agentSnapshot.generation != agentGeneration) {
             return reject("agent generation is stale", context)
+        }
+        if (!lifecycle.isActive(agentId, agentGeneration)) {
+            return reject("agent lifecycle is not active", context)
         }
 
         val autonomySnapshot = autonomy.inspect(autonomyProposalId)

@@ -23,33 +23,30 @@ sealed interface ControlledAgentExecutionResult {
 }
 
 /**
- * Final Agent liveness/provenance guard immediately before the already frozen Controlled Autonomy
- * execution boundary.
- *
- * Agent identity is derived from the exact live Autonomy provenance referenced by the exact live
- * deliberation request. The caller cannot provide an unrelated Agent alongside another Autonomy
- * chain. This guard grants no permission; the delegated ControlledAutonomyExecution still performs
- * the complete Autonomy/cognitive/orchestration revalidation and fresh Authority/Execution checks.
+ * Final Agent liveness/lifecycle/provenance guard before frozen Controlled Autonomy execution.
  */
 class ControlledAgentExecution private constructor(
     private val agents: AgentComposition,
+    private val lifecycle: ControlledAgentLifecycle,
     private val autonomy: AutonomyComposition,
     private val deliberation: AutonomyDeliberationComposition,
     private val delegate: (ControlledAutonomyExecutionRequest) -> ControlledAutonomyExecutionResult
 ) {
     constructor(
         agents: AgentComposition,
+        lifecycle: ControlledAgentLifecycle,
         autonomy: AutonomyComposition,
         deliberation: AutonomyDeliberationComposition,
         controlledAutonomy: ControlledAutonomyExecution
-    ) : this(agents, autonomy, deliberation, controlledAutonomy::execute)
+    ) : this(agents, lifecycle, autonomy, deliberation, controlledAutonomy::execute)
 
     internal constructor(
         agents: AgentComposition,
+        lifecycle: ControlledAgentLifecycle,
         autonomy: AutonomyComposition,
         deliberation: AutonomyDeliberationComposition,
         executor: AgentAutonomyExecutionDelegate
-    ) : this(agents, autonomy, deliberation, executor::execute)
+    ) : this(agents, lifecycle, autonomy, deliberation, executor::execute)
 
     fun execute(request: ControlledAutonomyExecutionRequest): ControlledAgentExecutionResult {
         val deliberationSnapshot = deliberation.inspect(request.deliberationRequestId)
@@ -76,6 +73,9 @@ class ControlledAgentExecution private constructor(
             ?: return reject("agent is not live")
         if (agentSnapshot.generation != exactAgent.generation) {
             return reject("agent generation is stale")
+        }
+        if (!lifecycle.isActive(exactAgent.id, exactAgent.generation)) {
+            return reject("agent lifecycle is not active")
         }
 
         return when (val result = delegate(request)) {

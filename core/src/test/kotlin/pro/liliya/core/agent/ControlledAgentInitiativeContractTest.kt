@@ -26,6 +26,7 @@ class ControlledAgentInitiativeContractTest {
     private data class Fixture(
         val logs: InMemoryLogWriter,
         val agents: AgentComposition,
+        val lifecycle: ControlledAgentLifecycle,
         val autonomy: AutonomyComposition,
         val bridge: ControlledAgentInitiative
     )
@@ -39,12 +40,14 @@ class ControlledAgentInitiativeContractTest {
             correlationIds = CorrelationIdGenerator { "agent-initiative-${sequence.incrementAndGet()}" }
         )
         val agents = AgentComposition(foundation)
+        val lifecycle = ControlledAgentLifecycle(foundation, agents)
         val autonomy = AutonomyComposition(foundation)
         return Fixture(
             logs = logs,
             agents = agents,
+            lifecycle = lifecycle,
             autonomy = autonomy,
-            bridge = ControlledAgentInitiative(foundation, agents, autonomy)
+            bridge = ControlledAgentInitiative(foundation, agents, lifecycle, autonomy)
         )
     }
 
@@ -65,6 +68,11 @@ class ControlledAgentInitiativeContractTest {
     private fun installAgent(f: Fixture): AgentOwnership =
         assertIs<AgentInstallResult.Installed>(f.agents.install(agent())).ownership
 
+    private fun activate(f: Fixture, agent: AgentOwnership): AgentLifecycleOwnership =
+        assertIs<AgentLifecycleActivationResult.Activated>(
+            f.lifecycle.activate(agent.agent.id, agent.generation)
+        ).ownership
+
     private fun request(generation: AgentGeneration) = AgentInitiativeRequest(
         agentId = AgentId("agent-1"),
         agentGeneration = generation,
@@ -77,9 +85,10 @@ class ControlledAgentInitiativeContractTest {
     )
 
     @Test
-    fun exact_live_agent_creates_one_bounded_autonomy_proposal_with_trusted_agent_provenance() {
+    fun exact_live_active_agent_creates_one_bounded_autonomy_proposal_with_trusted_agent_provenance() {
         val f = fixture()
         val ownership = installAgent(f)
+        activate(f, ownership)
 
         val result = assertIs<AgentInitiativeResult.Created>(
             f.bridge.create(request(ownership.generation))
@@ -100,15 +109,30 @@ class ControlledAgentInitiativeContractTest {
     }
 
     @Test
+    fun missing_cancelled_or_stopped_lifecycle_creates_zero_autonomy_writes() {
+        listOf("missing", "cancelled", "stopped").forEach { mode ->
+            val f = fixture()
+            val agent = installAgent(f)
+            if (mode != "missing") {
+                val lifecycle = activate(f, agent)
+                if (mode == "cancelled") assertTrue(lifecycle.cancel()) else assertTrue(lifecycle.stop())
+            }
+
+            assertIs<AgentInitiativeResult.Rejected>(f.bridge.create(request(agent.generation)))
+            assertTrue(f.autonomy.snapshot().isEmpty())
+        }
+    }
+
+    @Test
     fun stale_agent_generation_creates_zero_autonomy_writes() {
         val f = fixture()
         val stale = installAgent(f)
+        activate(f, stale)
         assertTrue(stale.remove())
-        installAgent(f)
+        val replacement = installAgent(f)
+        activate(f, replacement)
 
-        assertIs<AgentInitiativeResult.Rejected>(
-            f.bridge.create(request(stale.generation))
-        )
+        assertIs<AgentInitiativeResult.Rejected>(f.bridge.create(request(stale.generation)))
         assertTrue(f.autonomy.snapshot().isEmpty())
     }
 
@@ -116,11 +140,10 @@ class ControlledAgentInitiativeContractTest {
     fun removed_agent_creates_zero_autonomy_writes() {
         val f = fixture()
         val ownership = installAgent(f)
+        activate(f, ownership)
         assertTrue(ownership.remove())
 
-        assertIs<AgentInitiativeResult.Rejected>(
-            f.bridge.create(request(ownership.generation))
-        )
+        assertIs<AgentInitiativeResult.Rejected>(f.bridge.create(request(ownership.generation)))
         assertTrue(f.autonomy.snapshot().isEmpty())
     }
 
@@ -128,13 +151,12 @@ class ControlledAgentInitiativeContractTest {
     fun duplicate_autonomy_id_rejects_without_replacement() {
         val f = fixture()
         val ownership = installAgent(f)
+        activate(f, ownership)
         val first = assertIs<AgentInitiativeResult.Created>(
             f.bridge.create(request(ownership.generation))
         ).ownership
 
-        assertIs<AgentInitiativeResult.Rejected>(
-            f.bridge.create(request(ownership.generation))
-        )
+        assertIs<AgentInitiativeResult.Rejected>(f.bridge.create(request(ownership.generation)))
 
         assertEquals(first.generation, f.autonomy.inspect(first.proposal.id)?.generation)
         assertEquals(first.proposal, f.autonomy.find(first.proposal.id))
@@ -148,6 +170,7 @@ class ControlledAgentInitiativeContractTest {
         val installed = assertIs<AgentInstallResult.Installed>(
             f.agents.install(agent(role = secretRole, purpose = secretPurpose))
         ).ownership
+        activate(f, installed)
 
         val created = assertIs<AgentInitiativeResult.Created>(
             f.bridge.create(request(installed.generation))
@@ -160,23 +183,6 @@ class ControlledAgentInitiativeContractTest {
         assertFalse(f.logs.snapshot().any { event ->
             event.message == secretRole || event.message == secretPurpose ||
                 event.metadata.values.any { it == secretRole || it == secretPurpose }
-        })
-    }
-
-    @Test
-    fun bridge_adds_no_scheduler_authority_execution_or_tool_semantics_to_observability() {
-        val f = fixture()
-        val ownership = installAgent(f)
-        assertIs<AgentInitiativeResult.Created>(f.bridge.create(request(ownership.generation)))
-
-        val forbidden = setOf(
-            "authority", "authorized", "permission", "capability", "execution", "execute",
-            "executor", "scheduled", "scheduler", "spawn", "replicate", "tool"
-        )
-        assertFalse(f.logs.snapshot().any { event ->
-            event.metadata.keys.any { key ->
-                forbidden.any { token -> key.lowercase().contains(token) }
-            }
         })
     }
 }

@@ -38,13 +38,14 @@ sealed interface AgentInitiativeResult {
 }
 
 /**
- * Controlled non-executing bridge from an exact live Agent registration into ordinary bounded
- * Autonomy data. Agent identity/role never grants permission and this bridge performs no attempt
- * claim, scheduling, deliberation, Authority or Execution.
+ * Controlled non-executing bridge from an exact live ACTIVE Agent registration into ordinary
+ * bounded Autonomy data. Agent identity/role/lifecycle never grants permission and this bridge
+ * performs no attempt claim, scheduling, deliberation, Authority or Execution.
  */
 class ControlledAgentInitiative(
     private val foundation: FoundationComposition,
     private val agents: AgentComposition,
+    private val lifecycle: ControlledAgentLifecycle,
     private val autonomy: AutonomyComposition
 ) {
     fun create(request: AgentInitiativeRequest): AgentInitiativeResult {
@@ -58,6 +59,9 @@ class ControlledAgentInitiative(
             ?: return reject("agent is not live", context)
         if (agentSnapshot.generation != request.agentGeneration) {
             return reject("agent generation is stale", context)
+        }
+        if (!lifecycle.isActive(request.agentId, request.agentGeneration)) {
+            return reject("agent lifecycle is not active", context)
         }
 
         val proposal = AutonomyProposal(
