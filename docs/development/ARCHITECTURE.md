@@ -14,51 +14,39 @@ Hard invariants:
 - important operations use Logging + Diagnostics with explicit `LogContext` correlation;
 - no hidden global logger/context acquisition.
 
-## Capability & Authority v0.1 — FROZEN
+## Capability / Authority / Execution — FROZEN
 
 `AuthorityRequest(principal, capability, scope, reason) → AuthorityPolicy → AuthorityDecision`
 
-Hard invariants: default deny; capability existence is not permission; exact principal+capability+scope matching; strict expiry; bounded non-amplifying delegation; authorization evidence is not durable permission; Authority never performs execution.
-
-## Execution v0.1 — FROZEN
-
 `ExecutionRequest → trusted action/capability resolution → fresh Authority → executor → ExecutionResult`
 
-Hard invariants: unknown/mismatched action-capability mapping rejects before executor; denied Authority means zero executor calls; executor failures are isolated and observable; device/browser/shell adapters remain behind this boundary.
+Hard invariants: default deny; capability existence is not permission; exact principal+capability+scope matching; strict expiry; bounded non-amplifying delegation; unknown/mismatched action mapping rejects before executor; denied Authority means zero executor calls; Authority never performs execution; old authorization evidence is never durable permission.
 
 ## Frozen cognitive/control foundations
 
-Memory, Knowledge, Identity/Self, Trust/Security, Personality, Reflection, Learning Candidate, Learning Decision, Learning Policy, Learning Application Intent, Controlled Learning Application, Learning Consolidation, Planning, Reasoning, Decision, Orchestration Intent, Controlled Orchestration, Autonomy, Controlled Autonomy Deliberation and Agents v0.1 are frozen.
+Memory, Knowledge, Identity/Self, Trust/Security, Personality, Reflection, Learning foundations, Planning, Reasoning, Decision, Orchestration Intent, Controlled Orchestration, Autonomy Foundation, Controlled Autonomy Deliberation, Agents Foundation and Controlled Agent Initiative v0.1 are frozen.
 
-Canonical subsystem contracts remain the detailed source for each frozen boundary.
+Canonical subsystem freeze documents remain the detailed source for each boundary.
 
 ## Cognitive/control chain
 
-`Interaction/Input → Context → Meaning → Goal → Planning → Reasoning → Decision → Orchestration Intent → exact preflight → Capability/Authority → Execution → Result → Reflection → Memory/Knowledge → Learning`
+`Interaction/Input → Context → Meaning → Goal → Planning → Reasoning → Decision → Orchestration Intent → Capability/Authority → Execution → Result → Reflection → Memory/Knowledge → Learning`
 
-Autonomy is a governed initiative layer around this chain. Agents are bounded actor identity/ownership records above Autonomy. Neither is implicit permission.
+Autonomy is a governed initiative layer around this chain. Agents are bounded actor identity/lifecycle layers above Autonomy. Neither Agent nor Autonomy propagates implicit permission.
 
-## Planning / Reasoning / Decision — FROZEN
+## Decision / Orchestration — FROZEN
 
-Planning: `PlanningOrigin + goal + ordered steps → PlanningProposal → exact PlanningGeneration`.
+Planning, Reasoning and Decision remain distinct data boundaries. Decision is recorded choice only.
 
-Reasoning: `ReasoningOrigin + premises + analysis + conclusion → ReasoningArtifact → exact ReasoningGeneration`.
-
-Decision: `exact Planning/Reasoning references + alternatives + selected option + rationale → DecisionRecord → exact DecisionGeneration`.
-
-Mandatory: `Plan != Reasoning != Decision != Authority != Execution` where each record remains data at its own boundary.
-
-## Orchestration Intent / Controlled Orchestration — FROZEN
+Controlled side-effect direction:
 
 `Decision → non-executing OrchestrationIntent → exact live preflight → trusted action policy → fresh Authority → frozen Execution → fresh Authority → executor`
 
-Mandatory invariant: `Decision != Orchestration Intent != Authorization != Execution`.
+Mandatory invariant:
 
-Stale provenance, denied Authority and mapping drift fail closed before executor. Old preflight/authorization evidence is never durable permission.
+`Decision != Orchestration Intent != Authorization != Execution`.
 
-Canonical contracts: `ORCHESTRATION_V0_1_FREEZE.md`, `ORCHESTRATION_CONTROL_V0_1_FREEZE.md`.
-
-## Autonomy Foundation / Controlled Autonomy Deliberation — FROZEN
+## Autonomy Foundation / Controlled Autonomy — FROZEN
 
 Structural Autonomy:
 
@@ -66,13 +54,13 @@ Structural Autonomy:
 
 Controlled path:
 
-`exact live AutonomyProposal → bounded attempt → AutonomyDeliberationRequest → fresh live preflight → Planning → Reasoning → Decision → OrchestrationIntent → final Autonomy execution guard → Controlled Orchestration → fresh Authority → Execution → fresh Authority → executor`
+`exact live AutonomyProposal → bounded exact attempt → Deliberation → Planning → Reasoning → Decision → OrchestrationIntent → final Autonomy guard → Controlled Orchestration → fresh Authority → Execution`
 
 Mandatory invariant:
 
 `Autonomy != Deliberation != Planning != Reasoning != Decision != Orchestration Intent != Authority != Execution`.
 
-Hard invariants include exact-generation attempt accounting/cancellation, fresh provenance validation at every cognitive bridge, final full-chain Autonomy validation before the first downstream Authority call, zero executor calls after late cancellation/stale provenance/denied Authority, exactly one executor call on success, no durable permission and no hidden scheduler/self-spawn/Agent runtime.
+Hard invariants include exact-generation attempt accounting/cancellation, fresh provenance validation at every bridge, late-cancellation rejection before downstream Authority, zero executor calls for stale/cancelled/denied paths, no durable permission and no hidden scheduler.
 
 Canonical contracts: `AUTONOMY_V0_1_FREEZE.md`, `CONTROLLED_AUTONOMY_V0_1_FREEZE.md`.
 
@@ -89,50 +77,68 @@ Mandatory invariant:
 Hard invariants:
 
 - exact Agent ID and positive generation ownership;
-- `AgentOrigin.Declared` is explicit external provenance only;
-- `AgentOrigin.Autonomy` preserves exact Autonomy proposal ID+generation as data only;
-- origin references do not imply live validity, permission or delegation;
-- role and purpose are private and redacted from rendering/lifecycle observability;
-- duplicate IDs reject without replacement;
-- stale/ABA ownership cannot remove replacement;
-- removal is one-shot;
-- concurrent same-ID registration has one winner per store;
-- `AgentComposition` keeps `AgentStore` private and exposes controlled exact ownership;
-- same-ID compositions are isolated;
-- snapshots are deterministic detached views;
-- install→remove correlation is root→child;
-- Agent data API and lifecycle metadata contain no Authority/Capability/permission/Execution/scheduler/self-spawn/tool/delegation semantics;
-- no Agent runtime loop, background runner, scheduler, self-replication, delegation engine, tool/device access, Authority call, Execution call or Memory/Knowledge mutation exists in v0.1.
+- declared origin or exact Autonomy ID+generation origin is data only;
+- role/purpose are private and redacted;
+- duplicate rejection without replacement;
+- stale/ABA-safe one-shot ownership;
+- composition isolation;
+- deterministic detached snapshots;
+- no runtime loop, scheduler, self-spawn, delegation engine, tool/device access, Authority, Execution or hidden Memory/Knowledge mutation.
 
 Canonical contract: `AGENTS_V0_1_FREEZE.md`.
 
-## Controlled Agent Initiative v0.1 — NEXT
+## Controlled Agent Initiative v0.1 — FROZEN
 
-The next layer may convert exact live Agent identity into bounded Autonomy data, but it must not turn role or identity into permission.
+Frozen direction:
+
+`exact live Agent → trusted Agent provenance → ordinary finite-budget AutonomyProposal → fresh Agent check before attempt claim → frozen Controlled Autonomy deliberation/cognitive path → fresh Agent check at final execution boundary → frozen Controlled Autonomy execution → fresh Authority → Execution`
+
+Mandatory invariant:
+
+`Agent != Autonomy != Deliberation != Decision != Authority != Execution`.
+
+Hard invariants:
+
+- Agent liveness is checked by exact ID+generation before Autonomy creation;
+- Agent provenance on generated Autonomy data is trusted bridge-created, not caller-forged;
+- private Agent role/purpose is not implicit initiative content or permission;
+- stale/removed/replaced Agent creates zero Autonomy writes;
+- fresh Agent liveness and exact trusted Autonomy provenance are checked again before the first attempt claim;
+- attempt accounting remains owned solely by frozen Autonomy budget governance;
+- Agent identity used at final execution is derived from the exact live deliberation→Autonomy provenance, not arbitrary caller side data;
+- Agent liveness is revalidated again before delegation to frozen `ControlledAutonomyExecution`;
+- late Agent removal/replacement causes zero downstream execution calls;
+- downstream Controlled Autonomy still independently performs Autonomy/cognitive/orchestration validation plus fresh Authority/Execution;
+- Agent data and initiative APIs do not expose permission/grant/scheduler/self-spawn/tool/delegation semantics;
+- no Agent scheduler, background loop, self-replication, delegation/coordination or multi-agent behavior exists in v0.1.
+
+Canonical contract: `CONTROLLED_AGENT_INITIATIVE_V0_1_FREEZE.md`.
+
+## Controlled Agent Lifecycle v0.1 — NEXT
+
+Single-Agent lifecycle governance comes before delegation or multi-agent behavior.
 
 First direction:
 
-`exact live Agent ID+generation → fresh Agent preflight → caller-declared bounded initiative data → ordinary AutonomyProposal`
+`exact Agent ID+generation → explicit lifecycle state → generation-scoped active/cancelled/stopped ownership`
 
 Required invariants:
 
-- exact Agent ID+generation is live-validated immediately before Autonomy install;
-- caller cannot forge the Autonomy origin used by the bridge;
-- trusted structural provenance encodes exact Agent identity/generation;
-- role/purpose are not copied into permissions or observability and are not automatically treated as the initiative objective;
-- caller separately declares objective, trigger, priority and finite budget;
-- stale/removed/replaced Agent provenance causes zero Autonomy writes;
-- bridge performs no attempt claim, scheduling, Planning, Reasoning, Decision, Orchestration, Authority or Execution;
-- created Autonomy data must use the already frozen Controlled Autonomy path for all downstream work;
-- no self-spawning or recursive Agent behavior.
-
-Agent lifecycle/cancellation, delegation/coordination and multi-agent behavior remain separate later stages with bounded ownership/governance contracts.
+- lifecycle state is explicit rather than inferred only from registry presence;
+- lifecycle handles bind to exact Agent generation;
+- stale handles cannot cancel/stop replacement generations;
+- cancellation/stop transitions are deterministic and fail closed;
+- cancelled/stopped Agents create zero new initiatives and zero new attempt claims;
+- final Agent execution boundary revalidates lifecycle immediately before downstream Controlled Autonomy execution;
+- lifecycle state grants no capability and performs no Authority/Execution;
+- no scheduler or recurring loop in the first lifecycle stage;
+- no delegation or multi-agent coordination until lifecycle is separately frozen.
 
 ## Update System v0.1 — ARCHITECTURE CONTRACT
 
 `Discovery → Signed Manifest → Compatibility → Authority → Download → Verify → Stage → Migrate → Activate → Health Check → Commit / Rollback`
 
-Network origin is transport, not trust. Signature validity is not activation permission. Detailed contract: `UPDATE_SYSTEM_V0_1_CONTRACT.md`.
+Network origin is transport, not trust. Signature validity is not activation permission.
 
 ## Security & Licensing v0.1 — ARCHITECTURE CONTRACT
 
@@ -140,15 +146,12 @@ Network origin is transport, not trust. Signature validity is not activation per
 
 License != Authority; device binding uses cryptographic enrollment/Keystore rather than HWID-derived trust; protected model/runtime keys and user cognitive-data keys remain separate domains.
 
-Detailed contract: `SECURITY_LICENSING_V0_1_CONTRACT.md`.
-
 ## Deferred roadmap
 
-After Controlled Agent Initiative is separately implemented and frozen:
+After Controlled Agent Lifecycle is implemented and frozen:
 
-- bounded Agent lifecycle/cancellation;
 - explicit non-amplifying Agent delegation/coordination;
-- multi-agent behavior only after single-agent governance is frozen;
+- multi-agent behavior only after single-Agent governance is frozen;
 - persistent encrypted cognitive storage and crash recovery;
 - Android Keystore/StrongBox enrollment;
 - protected model package/streaming loader;
@@ -158,4 +161,4 @@ After Controlled Agent Initiative is separately implemented and frozen:
 - Liliya Network delivery/automation;
 - security/readiness/red-team verification.
 
-All future layers must preserve exact provenance, observability, explicit ownership, fail-closed Authority, privacy, rollback/safety and composition isolation.
+All future layers must preserve exact provenance, explicit ownership, observability, fail-closed Authority, privacy, rollback/safety and composition isolation.
