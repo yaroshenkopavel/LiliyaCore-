@@ -4,11 +4,13 @@ Last journal update: 2026-08-29
 
 ## Current verified baseline
 
-Current `main`: `f594c00989cd79fd9ea8f4a4bf065a8703c8685e`.
+Current `main`: `8aaa6713a8fe0f8f1d9f1831a7c30f680c11c28f`.
 
-This commit merged PR #88 `Controlled Learning Application v0.1: Downstream Mutation Apply` from exact head `e4749a43a78350cf0c2347f2dea8be87796e3e63` after Core CI #645 completed successfully and the final authority/ownership/idempotency/privacy/partial-failure readiness audit passed.
+This merge completed PR #94 `Controlled Learning Application v0.1: Completed Outcome Boundary` from exact head `99ae4bc9002afea787659a854061ecbd68262c4e` after Core CI #675 completed successfully.
 
-Immediately before it, PR #89 `Docs: Security & Licensing v0.1 architecture contract` merged as `5968c52af438d4005008dfc72677f423d5f674f9` after Core CI #643 completed successfully.
+Controlled Learning Application v0.1 is now **FROZEN as an in-process/composition-local foundation** after its final correctness/security/privacy/readiness audit.
+
+Canonical freeze contract: `CONTROLLED_LEARNING_V0_1_FREEZE.md`.
 
 ## Frozen subsystem status
 
@@ -25,113 +27,75 @@ Immediately before it, PR #89 `Docs: Security & Licensing v0.1 architecture cont
 - Learning Decision Foundation v0.1: FROZEN.
 - Learning Policy Foundation v0.1: FROZEN.
 - Learning Application Intent Foundation v0.1: FROZEN.
+- Controlled Learning Application v0.1: FROZEN.
 
-Controlled Learning Application / Consolidation remains **IN PROGRESS**, but the first real Memory/Knowledge mutation path is now merged and verified.
+## Frozen Controlled Learning chain
 
-## Verified Controlled Learning chain
+`candidate → decision → policy boundary → application intent → prepared mutation → exact claim → fresh preflight → fresh Authority → target-checked Memory/Knowledge write → exact completion → completed structural outcome`
 
-Current merged chain:
+Key verified invariants:
 
-`candidate → decision → policy boundary → application intent → exact preflight → Authority → prepared mutation → exact claim → fresh preflight + fresh Authority → Memory/Knowledge write → exact completion/idempotency tombstone → structural result receipt`
+- prepared mutation and old authorization receipts are never durable permission;
+- fresh preflight and fresh target-specific Authority occur while the exact mutation claim is held;
+- prepared target must match the fresh Application target;
+- Authority/preflight/target rejection causes zero downstream writes;
+- one exact mutation generation has one active claim;
+- active claim blocks removal and stale claims cannot affect current ownership;
+- public claim ownership exposes release but not public completion authority;
+- success receipts expose structural downstream ID + generation, not mutable downstream ownership;
+- downstream conflict does not overwrite existing Memory/Knowledge and leaves the prepared mutation retryable;
+- post-write completion failure attempts exact compensation; uncompensated ambiguity is explicit `PartialFailure`;
+- concurrent same-mutation apply has exactly one downstream winner;
+- concurrent distinct mutations for one downstream ID cannot overwrite one another;
+- apply observability carries explicit root/child correlation through claim, Authority, Memory/Knowledge and completion;
+- Logging and Diagnostics share the same context for each significant operation;
+- payload content is not rendered in application lifecycle observability/results;
+- successful completion reserves both mutation ID and idempotency key and records an exact structural outcome;
+- a newly constructed value-equal completed plan returns `AlreadyCompleted(previousReceipt)` without a second downstream write;
+- completed mutation-ID or idempotency-key reuse by a different plan fails closed.
 
-Verified boundaries:
-
-1. **Preflight**
-   - exact Application, Decision, Candidate, and Policy generations must still be current;
-   - Decision must be `APPROVE`;
-   - readiness is not permission.
-
-2. **Authorization** — PR #78
-   - capability: `learning.application.apply`;
-   - target scopes: `learning.application.memory`, `learning.application.knowledge`;
-   - default deny through Capability/Authority;
-   - authorization receipt is evidence only, never durable future permission.
-
-3. **Prepared mutation store** — PR #81
-   - exact Application reference, principal, target, target-specific payload, idempotency key, createdAt;
-   - duplicate mutation IDs/active idempotency keys reject;
-   - exact generation ownership and stale/ABA protection;
-   - payload content is not exposed in lifecycle observability metadata.
-
-4. **Composition ownership** — PR #83, merge `0525304e367c0e691dfb172571af541c1c3bf5f2`
-   - prepared mutation store is private to `LearningApplicationMutationComposition`;
-   - public API exposes controlled ownership only.
-
-5. **Mutation-time authorization gate** — PR #84, merge `0d05ad9a342bb2683c67395a23a312bbdcd42635`
-   - exact mutation checked before and after fresh authorization;
-   - prepared target must equal the fresh Application target;
-   - stale/missing application/preflight state and Authority denial fail closed.
-
-6. **Exact mutation claim** — PR #85, merge `4ed793e76e1eadf34a8ef0c5010de508565826cc`
-   - one active claim per exact mutation generation;
-   - active claim blocks removal;
-   - release is bound to a private exact claim token.
-
-7. **Exact completion/idempotency tombstone** — PR #87, merge `d073257412f4b7e772cff3bc43e420e82864b53b`
-   - only exact current claim token can complete;
-   - successful completion removes prepared mutation;
-   - completed idempotency key remains reserved for the composition lifetime;
-   - repeated complete/release is stale and rejected;
-   - current guarantee is in-memory/composition-local, not crash-durable exactly-once.
-
-8. **Real downstream apply** — PR #88, merge `f594c00989cd79fd9ea8f4a4bf065a8703c8685e`
-   - applier first acquires exact claim;
-   - reruns fresh mutation authorization while claim is held;
-   - MEMORY uses `MemoryComposition.remember()`;
-   - KNOWLEDGE uses `KnowledgeComposition.create()`;
-   - public success receipt exposes only downstream ID + generation, not mutable ownership;
-   - Authority denial/target mismatch cause zero downstream writes;
-   - downstream ID conflict releases claim and leaves mutation retryable;
-   - successful completion prevents a second apply of the same exact mutation;
-   - unexpected post-write completion failure attempts exact compensation using the returned downstream ownership; compensation failure is surfaced explicitly as partial failure.
+The current completion/outcome guarantee is deliberately **in-memory and composition-local**. It does not claim exactly-once behavior across process death, reboot, reinstall, or multi-device/distributed execution. Persistent encrypted outcome/idempotency storage belongs to a later durable-storage layer.
 
 ## Update System architecture
 
-PR #86 merged Update System v0.1 architecture contract as `1c9c87e81ba2bd847e9c450881f51e0593576f5a`.
+Update System v0.1 architecture contract is recorded in `UPDATE_SYSTEM_V0_1_CONTRACT.md`.
 
 Required future pipeline:
 
 `Discovery → Signed Manifest → Compatibility → Authority → Download → Verify → Stage → Migrate → Activate → Health Check → Commit / Rollback`
 
-Mandatory support:
-- Android application/runtime updates;
-- explicitly supported internal Liliya packages.
-
-Network delivery is transport, not trust. Signature validity is not activation permission. Previous viable generations remain rollback points until commit/retention permits cleanup.
-
-Durable contract: `UPDATE_SYSTEM_V0_1_CONTRACT.md`.
+Both Android application/runtime updates and explicitly supported internal Liliya packages are mandatory future capabilities. Network delivery is transport, not trust.
 
 ## Security & Licensing architecture
 
-PR #89 merged Security & Licensing v0.1 architecture contract as `5968c52af438d4005008dfc72677f423d5f674f9`.
+Security & Licensing v0.1 architecture contract is recorded in `SECURITY_LICENSING_V0_1_CONTRACT.md`.
 
-Hard decisions now recorded:
+Hard future boundaries include:
+
 - License is not Authority.
-- Device binding must use cryptographic enrollment/non-exportable Android Keystore keys when Android integration arrives; do not derive master secrets from IMEI/Android ID/HWID-like identifiers.
-- Model/runtime protected-asset keys and user cognitive-data keys are separate domains.
-- Commercial license expiry/revocation must not intentionally destroy user-owned Memory/Knowledge data.
-- Protected model packages use authenticated encryption and bounded chunk/tensor decryption; normal protected loading must not materialize plaintext model files on disk.
-- Anti-debug, anti-dump, obfuscation, symbol stripping, Frida/debugger detection, and similar controls are defense-in-depth, not absolute trust roots.
-- License failure is explicit fail-closed denial/error, not deliberately corrupted AI output.
-- Offline licensing requires signed/versioned entitlement, lease/expiry policy, clock-rollback considerations, revocation and recovery/device-transfer semantics.
-- Update System, Liliya Network, licensing and Authority are separate boundaries and may not bypass one another.
+- Device cryptographic binding uses non-exportable Android Keystore/StrongBox keys where available, not HWID-derived secrets.
+- model/runtime asset keys and user cognitive-data keys are separate domains;
+- commercial license expiry must not intentionally destroy access to user-owned cognitive data;
+- protected models use authenticated encrypted packages and must not intentionally materialize plaintext model files on disk;
+- anti-debug/anti-dump/obfuscation are defense-in-depth, not trust roots;
+- protected-operation denial is explicit fail-closed behavior;
+- Update, licensing, Liliya Network and Authority remain separate boundaries.
 
-Durable contract: `SECURITY_LICENSING_V0_1_CONTRACT.md`.
+## Next development stage
 
-## Current next action
+The next allowed cognitive architecture stage is **Planning Foundation v0.1**.
 
-Before declaring Controlled Learning Application / Consolidation frozen, perform a focused readiness pass on the now-real downstream mutation path, especially:
+Planning v0.1 must be introduced as a structural/decision-support foundation, not as autonomous execution. Initial work must define explicit plan identity, goals/inputs, ordered steps/dependencies, exact ownership/generation, deterministic validation, immutable snapshots, privacy-safe observability, and the boundary between a plan and permission/execution.
 
-- operation-level observability/correlation continuity across claim → authorization → downstream write → completion;
-- outcome/receipt lifecycle and whether a dedicated application-result store is required;
-- concurrent apply behavior for the same exact mutation and for conflicting downstream IDs;
-- compensation semantics and explicit ambiguous/partial states;
-- privacy of result/rejection rendering and metadata;
-- clear statement of in-memory idempotency vs future durable/crash-recovery semantics.
+Hard rule for the next stage:
 
-Do **not** broaden into Planning / Autonomy / Agents until Controlled Learning Application is separately audited and frozen.
+`Plan != Authority != Execution`
 
-Android Integration remains deferred; when it begins it must implement, not bypass, the recorded Update System and Security & Licensing contracts.
+A plan must never itself grant capability, mutate Memory/Knowledge, execute Android/device actions, or become an autonomous agent.
+
+Autonomy and Agents remain deferred until Planning is separately implemented, audited and frozen.
+
+Persistent encrypted cognitive storage, crash-durable controlled-learning outcomes, Android Integration, Update implementation and Security/Licensing implementation remain future explicit stages and must preserve all current frozen ownership/security/privacy invariants.
 
 ## Workflow
 
