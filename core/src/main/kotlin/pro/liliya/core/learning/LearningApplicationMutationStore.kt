@@ -16,6 +16,10 @@ internal sealed interface LearningApplicationMutationRegistrationResult {
         val registration: LearningApplicationMutationRegistration
     ) : LearningApplicationMutationRegistrationResult
 
+    data class AlreadyCompleted(
+        val receipt: LearningApplicationMutationApplicationReceipt
+    ) : LearningApplicationMutationRegistrationResult
+
     data class Rejected(val reason: String) : LearningApplicationMutationRegistrationResult
 }
 
@@ -23,7 +27,10 @@ internal interface LearningApplicationMutationClaimRegistration {
     val plan: LearningApplicationMutationPlan
     val generation: LearningApplicationMutationGeneration
     fun release(context: LogContext): Boolean
-    fun complete(context: LogContext): Boolean
+    fun complete(
+        receipt: LearningApplicationMutationApplicationReceipt,
+        context: LogContext
+    ): Boolean
 }
 
 enum class LearningApplicationMutationClaimRejection {
@@ -53,11 +60,17 @@ internal class LearningApplicationMutationStore(
         var activeClaim: ClaimToken? = null
     )
 
+    private data class CompletedEntry(
+        val plan: LearningApplicationMutationPlan,
+        val receipt: LearningApplicationMutationApplicationReceipt
+    )
+
     private val lock = Any()
     private val nextGeneration = AtomicLong(0)
     private val entries = mutableMapOf<LearningApplicationMutationId, Entry>()
     private val idempotency = mutableMapOf<LearningApplicationIdempotencyKey, Entry>()
-    private val completedIdempotencyKeys = mutableSetOf<LearningApplicationIdempotencyKey>()
+    private val completedByMutationId = mutableMapOf<LearningApplicationMutationId, CompletedEntry>()
+    private val completedByIdempotencyKey = mutableMapOf<LearningApplicationIdempotencyKey, CompletedEntry>()
 
     fun register(
         plan: LearningApplicationMutationPlan,
@@ -66,8 +79,31 @@ internal class LearningApplicationMutationStore(
         if (entries.containsKey(plan.id)) {
             return@synchronized rejected(plan, null, "learning application mutation id is already registered", context)
         }
-        if (idempotency.containsKey(plan.idempotencyKey) || completedIdempotencyKeys.contains(plan.idempotencyKey)) {
-            return@synchronized rejected(plan, null, "learning application idempotency key is already reserved", context)
+        val completedById = completedByMutationId[plan.id]
+        if (completedById != null) {
+            return@synchronized completedOrRejected(
+                plan = plan,
+                completed = completedById,
+                conflictReason = "learning application mutation id is already completed",
+                context = context
+            )
+        }
+        if (idempotency.containsKey(plan.idempotencyKey)) {
+            return@synchronized rejected(
+                plan,
+                null,
+                "learning application idempotency key is already reserved",
+                context
+            )
+        }
+        val completedByKey = completedByIdempotencyKey[plan.idempotencyKey]
+        if (completedByKey != null) {
+            return@synchronized completedOrRejected(
+                plan = plan,
+                completed = completedByKey,
+                conflictReason = "learning application idempotency key is already completed",
+                context = context
+            )
         }
 
         val entry = Entry(
@@ -183,14 +219,26 @@ internal class LearningApplicationMutationStore(
                     released
                 }
 
-                override fun complete(context: LogContext): Boolean = synchronized(lock) {
+                override fun complete(
+                    receipt: LearningApplicationMutationApplicationReceipt,
+                    context: LogContext
+                ): Boolean = synchronized(lock) {
+                    val exactReference = LearningApplicationMutationReference(entry.plan.id, entry.generation)
                     val current = entries[reference.mutationId]
-                    val completed = current === entry &&
+                    val validReceipt = receipt.mutation == exactReference &&
+                        receipt.target == entry.plan.target &&
+                        downstreamMatchesTarget(receipt.downstream, entry.plan.target)
+                    val completed = validReceipt &&
+                        current === entry &&
                         entry.activeClaim === token &&
+                        !completedByMutationId.containsKey(entry.plan.id) &&
+                        !completedByIdempotencyKey.containsKey(entry.plan.idempotencyKey) &&
                         entries.remove(reference.mutationId) === entry
                     if (completed) {
                         idempotency.remove(entry.plan.idempotencyKey, entry)
-                        completedIdempotencyKeys.add(entry.plan.idempotencyKey)
+                        val completedEntry = CompletedEntry(entry.plan, receipt)
+                        completedByMutationId[entry.plan.id] = completedEntry
+                        completedByIdempotencyKey[entry.plan.idempotencyKey] = completedEntry
                         entry.activeClaim = null
                     }
                     observability.record(
@@ -203,7 +251,7 @@ internal class LearningApplicationMutationStore(
                         message = if (completed) {
                             "learning application mutation completed"
                         } else {
-                            "learning application mutation claim is no longer current"
+                            "learning application mutation completion is no longer current or receipt is invalid"
                         },
                         context = context,
                         metadata = metadata(entry.plan, entry.generation)
@@ -229,8 +277,20 @@ internal class LearningApplicationMutationStore(
     fun findByIdempotencyKey(key: LearningApplicationIdempotencyKey): LearningApplicationMutationPlan? =
         synchronized(lock) { idempotency[key]?.plan }
 
+    fun completedOutcomeByMutationId(
+        id: LearningApplicationMutationId
+    ): LearningApplicationMutationApplicationReceipt? = synchronized(lock) {
+        completedByMutationId[id]?.receipt
+    }
+
+    fun completedOutcomeByIdempotencyKey(
+        key: LearningApplicationIdempotencyKey
+    ): LearningApplicationMutationApplicationReceipt? = synchronized(lock) {
+        completedByIdempotencyKey[key]?.receipt
+    }
+
     fun isCompletedIdempotencyKey(key: LearningApplicationIdempotencyKey): Boolean =
-        synchronized(lock) { completedIdempotencyKeys.contains(key) }
+        synchronized(lock) { completedByIdempotencyKey.containsKey(key) }
 
     fun snapshot(): List<LearningApplicationMutationPlan> = snapshotEntries().map { it.plan }
 
@@ -241,6 +301,25 @@ internal class LearningApplicationMutationStore(
                 compareBy<LearningApplicationMutationSnapshot> { it.plan.createdAt }
                     .thenBy { it.plan.id.value }
             )
+    }
+
+    private fun completedOrRejected(
+        plan: LearningApplicationMutationPlan,
+        completed: CompletedEntry,
+        conflictReason: String,
+        context: LogContext
+    ): LearningApplicationMutationRegistrationResult {
+        if (completed.plan == plan) {
+            observability.record(
+                severity = DiagnosticSeverity.INFO,
+                code = "LEARNING_APPLICATION_MUTATION_ALREADY_COMPLETED",
+                message = "learning application mutation is already completed",
+                context = context,
+                metadata = metadata(plan, completed.receipt.mutation.generation)
+            )
+            return LearningApplicationMutationRegistrationResult.AlreadyCompleted(completed.receipt)
+        }
+        return rejected(plan, null, conflictReason, context)
     }
 
     private fun rejected(
@@ -276,6 +355,14 @@ internal class LearningApplicationMutationStore(
             )
         )
         return LearningApplicationMutationClaimRegistrationResult.Rejected(reason)
+    }
+
+    private fun downstreamMatchesTarget(
+        downstream: LearningApplicationDownstreamReference,
+        target: LearningApplicationTarget
+    ): Boolean = when (target) {
+        LearningApplicationTarget.MEMORY -> downstream is LearningApplicationDownstreamReference.Memory
+        LearningApplicationTarget.KNOWLEDGE -> downstream is LearningApplicationDownstreamReference.Knowledge
     }
 
     private fun metadata(
