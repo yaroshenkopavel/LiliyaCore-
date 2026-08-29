@@ -60,15 +60,15 @@ internal class LearningConsolidationStore(
         proposal: LearningConsolidationProposal,
         context: LogContext
     ): LearningConsolidationRegistrationResult = synchronized(lock) {
-        if (entries.containsKey(proposal.id)) {
-            val generation = LearningConsolidationGeneration(nextGeneration.get().coerceAtLeast(1L))
+        val existing = entries[proposal.id]
+        if (existing != null) {
             val reason = "learning consolidation ${proposal.id} is already registered"
             observability.record(
                 severity = DiagnosticSeverity.WARNING,
                 code = "LEARNING_CONSOLIDATION_REGISTRATION_REJECTED",
                 message = reason,
                 context = context,
-                metadata = metadata(proposal, generation) + ("rejectionReason" to reason)
+                metadata = metadata(proposal, existing.generation) + ("rejectionReason" to reason)
             )
             return@synchronized LearningConsolidationRegistrationResult.Rejected(reason)
         }
