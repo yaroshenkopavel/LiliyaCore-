@@ -76,6 +76,18 @@ class AgentCoordinationStoreContractTest {
     }
 
     @Test
+    fun participant_set_is_canonical_and_order_independent() {
+        val a = ExactAgentReference(AgentId("agent-a"), AgentGeneration(3))
+        val b = ExactAgentReference(AgentId("agent-b"), AgentGeneration(5))
+        val forward = record(participants = listOf(a, b))
+        val reversed = record(participants = listOf(b, a))
+
+        assertEquals(listOf(a, b), forward.participants)
+        assertEquals(forward, reversed)
+        assertEquals(forward.hashCode(), reversed.hashCode())
+    }
+
+    @Test
     fun exact_registration_read_and_remove_ownership() {
         val f = fixture()
         val value = record()
