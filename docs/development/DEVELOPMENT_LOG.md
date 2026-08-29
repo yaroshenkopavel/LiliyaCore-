@@ -12,7 +12,7 @@ Core Foundation, Capability & Authority, and Execution v0.1 are frozen.
 
 ## Frozen cognitive/control foundations
 
-Memory, Knowledge, Identity/Self, Trust/Security, Personality, Reflection, Learning foundations, Planning, Reasoning, Decision, Orchestration Intent, Controlled Orchestration, Autonomy Foundation, Controlled Autonomy Deliberation, Agents Foundation, Controlled Agent Initiative, Controlled Agent Lifecycle, Agent Delegation Foundation and Controlled Agent Delegation v0.1 are frozen.
+Memory, Knowledge, Identity/Self, Trust/Security, Personality, Reflection, Learning foundations, Planning, Reasoning, Decision, Orchestration Intent, Controlled Orchestration, Autonomy Foundation, Controlled Autonomy Deliberation, Agents Foundation, Controlled Agent Initiative, Controlled Agent Lifecycle, Agent Delegation Foundation, Controlled Agent Delegation and Agent Coordination Foundation v0.1 are frozen.
 
 ## Decision / Orchestration milestones
 
@@ -33,8 +33,6 @@ Controlled Autonomy closed a critical late-cancellation gap: cancellation after 
 
 - PR #139–#141 — structural Agent foundation, composition ownership/readiness and freeze; final journaled main `5b0cdba2c7f2fb6f62aab92fba93cad28caecebb`.
 
-Established exact Agent identity/generation ownership, explicit structural provenance, private role/purpose and no runtime/scheduler/self-spawn/Authority/Execution semantics.
-
 ### Controlled Agent Initiative v0.1
 
 - PR #142 `Agent to Autonomy Bridge` — Core CI #924 GREEN, merge `7d872b39246e72e859e43dfde75e7d316fe9d1b6`.
@@ -43,10 +41,6 @@ Established exact Agent identity/generation ownership, explicit structural prove
 - PR #145 `Readiness Contracts` — Core CI #938 GREEN, merge `00bb67b33293b7c6d7203fb2d1f22bfa1caed84e`.
 - PR #146 `Freeze and Journal Checkpoint` — Core CI #940 GREEN, merge `b5678ccffb1b12ec7273e5f3a3b1d75280013965`.
 
-Frozen direction:
-
-`exact live Agent → trusted provenance → finite-budget AutonomyProposal → fresh Agent attempt gate → frozen Autonomy chain → final fresh Agent guard → Authority → Execution`.
-
 ### Controlled Agent Lifecycle v0.1
 
 - PR #147 `Exact Lifecycle Foundation` — Core CI #945 GREEN, merge `9c0a71e079ca0da819c2ffe61ead976852b6e714`.
@@ -54,84 +48,56 @@ Frozen direction:
 - PR #149 `Readiness Contracts` — Core CI #960 GREEN, merge `8cdcc214d3e4fc60620b727f50a52a89d085e5e6`.
 - PR #150 `Freeze and Journal Checkpoint` — Core CI #962 GREEN, merge `f9b536fd6f94416ab0287e9e71fdfd41c478d9c6`.
 
-Lifecycle is explicit exact-generation `ACTIVE/CANCELLED/STOPPED` governance. Missing/CANCELLED/STOPPED state fails closed at initiative creation, attempt claim and final Agent execution guard. Lifecycle state never implies permission.
+Lifecycle is explicit exact-generation `ACTIVE/CANCELLED/STOPPED` governance and never permission.
 
 ### Agent Delegation Foundation v0.1
 
 - PR #151 `Structural Delegation Foundation` — exact head `8f65360b5a7dd07b4b742b118155b48c5653b6a3`, Core CI #968 GREEN, merge `f3e00d87d26d106e457fd6cc870afaf914d0c658`.
 - PR #152 `Composition Ownership` — exact head `e7bfb8f0481e9efb62372ce380d70989966859ca`, Core CI #973 GREEN, merge `0a68a56d8d5f0fdeddeae795f1f40432b3a247e6`.
-- PR #153 `Readiness Contracts` — initial CI #977 RED because a reflection test assumed a fixed Kotlin/JVM method shape; no production defect. Corrected exact head `68e143ff86850775a94f9512dbffca1dd8fb8ad5`, Core CI #981 GREEN, merge `1ae28519572cd3b969b729ac164af9061c98763b`.
+- PR #153 `Readiness Contracts` — initial CI #977 RED due to brittle Kotlin/JVM reflection assertion; no production defect. Corrected exact head `68e143ff86850775a94f9512dbffca1dd8fb8ad5`, Core CI #981 GREEN, merge `1ae28519572cd3b969b729ac164af9061c98763b`.
 - PR #154 `Freeze and Journal Checkpoint` — merge `d674ff5292dd092becb9d0174d88792479838209`.
-
-Established exact parent/child Agent-generation relation data, private purpose, exact ownership, composition isolation and explicit prohibition on power/scheduler/work semantics.
 
 Canonical contract: `AGENT_DELEGATION_V0_1_FREEZE.md`.
 
 ### Controlled Agent Delegation v0.1
 
-#### PR #155 — Exact Live Preflight
+- PR #155 `Exact Live Preflight` — exact head `7967f2e95a2701a44220d99078d7a34d82e19e94`, Core CI #992 GREEN, merge `6ab6f1bdd46a17af775ab0bc5513c6cc8befa915`.
+- PR #156 duplicate preflight implementation — intentionally closed unmerged after #155 superseded it.
+- PR #157 `Exact Delegated Work Binding` — Core CI #999 GREEN, merge `3bcf3f12269e6c98b9ac4a0f90dee328449b17a9`.
+- PR #158 `Delegated Work Binding Ownership` — Core CI #1004 GREEN, merge `7e0fba5e876cc0f7849e40b63a9d8d16f22f422e`.
+- PR #159 `Compensated Delegated Initiative` — hardened exact head `4cd4238ade81b0816670091d607c8052e3aca4cd`, Core CI #1013 GREEN, merge `73414c2fcf0a4e0ae1ea14dd59355cd1c9375649`.
+- PR #160 `Delegated Attempt Gate` — Core CI #1018 GREEN, merge `2853e576d14588911cb9b1d21518adfc72ba6318`.
+- PR #161 `Final Execution Guard` — Core CI #1023 GREEN, merge `52705124ddc0f3772100e525e99f51217837b4b0`.
+- PR #162 `Readiness Contracts` — Core CI #1027 GREEN, merge `cc747b83fe58da3d8abf68e05bc169d8a5d6e1d3`.
+- PR #163 `Freeze and Journal Checkpoint` — Controlled Agent Delegation frozen and Agent Coordination Foundation established as next stage.
 
-Exact head `7967f2e95a2701a44220d99078d7a34d82e19e94`; Core CI #992 GREEN; merge `6ab6f1bdd46a17af775ab0bc5513c6cc8befa915`.
+Key hardening decisions: compensated child initiative + exact binding transaction, explicit compensation failure, pre/post attempt governance, exact Autonomy derivation from live deliberation, and final delegated execution guard before the frozen Agent/Autonomy/Authority path.
 
-Established fresh exact delegation-generation, parent/child Agent-generation and parent/child ACTIVE lifecycle validation. Evidence is structural/readiness-only and performs zero downstream writes.
+Canonical contract: `CONTROLLED_AGENT_DELEGATION_V0_1_FREEZE.md`.
 
-PR #156 duplicated the preflight branch and was intentionally closed unmerged after #155 superseded it.
+### Agent Coordination Foundation v0.1
 
-#### PR #157 — Exact Delegated Work Binding
+- PR #164 `Structural Coordination Foundation` — exact head `411fc9572b18dcf7dac71fc5a17661087f1ec099`, Core CI #1035 GREEN, merge `b636216dcc87b090625db68a9249fd7c197adf96`.
+- PR #165 `Composition Ownership and Readiness` — exact head `3c400f34968e58eaef01929378ed0ef9c3ced32e`, Core CI #1037 GREEN, merge/current verified code main `78d06f0226105314a45f01833a12029fdabe8a5b`.
 
-Exact head `d691fdc98079b2a2232e7cb30d253dbad0ab268f`; Core CI #999 GREEN; merge `3bcf3f12269e6c98b9ac4a0f90dee328449b17a9`.
+Established:
 
-Added exact structural `delegation + child + Autonomy generation` binding. Exact Autonomy is the unique store key; binding grants no permission or work power.
-
-#### PR #158 — Delegated Work Binding Ownership
-
-Exact head `d9107753adbfbb28765799d96f0b059af7a43f2e`; Core CI #1004 GREEN; merge `7e0fba5e876cc0f7849e40b63a9d8d16f22f422e`.
-
-Added controlled composition ownership over the private binding store without live Agent/lifecycle lookup or work creation.
-
-#### PR #159 — Compensated Delegated Initiative
-
-Initial prepared implementation was deliberately hardened before merge. Final exact head `4cd4238ade81b0816670091d607c8052e3aca4cd`; Core CI #1013 GREEN; merge `73414c2fcf0a4e0ae1ea14dd59355cd1c9375649`.
-
-Audit/hardening closed three governance weaknesses before merge:
-
-- success no longer exposes independent mutable Autonomy and binding ownership handles; one composite ownership/structural receipt is exposed instead;
-- a second fresh delegation preflight occurs after child Autonomy creation and before binding commit, closing the parent/child/delegation TOCTOU window;
-- compensation failure is explicit `Failed` + CRITICAL observability instead of being hidden as ordinary rejection.
-
-Binding-rejection contracts were also made deterministic rather than assuming an internal Autonomy generation number.
-
-Transaction invariant: normal `Created` exists only when exact child Autonomy and exact delegation binding both exist; any post-create normal rejection first removes the exact newly-created Autonomy generation.
-
-#### PR #160 — Delegated Attempt Gate
-
-Exact head `24fac0d7b0035ca96bc2a74d15bdc520241b187f`; Core CI #1018 GREEN; merge `2853e576d14588911cb9b1d21518adfc72ba6318`.
-
-Added binding + delegation/lifecycle validation both before and after the frozen bounded attempt claim. A deterministic race contract proves that parent cancellation in the preflight→claim window can consume at most one bounded attempt, but the gate cancels exact Autonomy and never returns reusable downstream attempt evidence.
-
-#### PR #161 — Final Execution Guard
-
-Exact head `1867c9166051dd7e9de0b48628e8a63c7d95d097`; Core CI #1023 GREEN; merge `52705124ddc0f3772100e525e99f51217837b4b0`.
-
-Final delegated execution derives exact Autonomy from the live deliberation request, resolves binding from that exact reference, freshly checks delegation + parent/child ACTIVE lifecycle, re-reads the binding, and only then delegates to frozen `ControlledAgentExecution`. Invalid/stale governance causes zero downstream delegate calls.
-
-#### PR #162 — Readiness Contracts
-
-Exact head `a3c947dc661b078d9d594977ef59ef82c04c5a98`; Core CI #1027 GREEN; merge/current verified code main `cc747b83fe58da3d8abf68e05bc169d8a5d6e1d3`.
-
-Test-only readiness verifies:
-
-- no Capability/Authority/permission/scheduler/tool semantics in delegation data/results;
-- composite transaction ownership exposes no raw mutable Autonomy/binding ownership handles;
-- exact delegation/child/Autonomy generations survive as data-only provenance;
-- final guard has no grant/permission API;
-- no scheduler/self-spawn/multi-agent runtime API has appeared.
+- explicit coordination identity and exact generation ownership;
+- at least two exact participant Agent-generation references;
+- rejection of duplicate exact references and multiple generations of one Agent ID;
+- deterministic participant normalization;
+- private/redacted coordination purpose;
+- private exact-generation store with duplicate/stale/concurrency guarantees;
+- controlled composition ownership and composition isolation;
+- detached deterministic snapshots and correlation lineage;
+- no hidden Agent registry/lifecycle/delegation dependency in structural composition;
+- no scheduler, fan-out, voting/consensus, delegation creation, Autonomy, Authority or Execution semantics.
 
 Frozen invariant:
 
-`Delegation != Initiative != Attempt Evidence != Permission != Authority != Execution`.
+`Coordination != Capability != Authority != Execution`.
 
-Canonical contract: `CONTROLLED_AGENT_DELEGATION_V0_1_FREEZE.md`.
+Canonical contract: `AGENT_COORDINATION_V0_1_FREEZE.md`.
 
 ## Architecture contracts not yet runtime subsystems
 
@@ -139,10 +105,10 @@ Update System v0.1 and Security & Licensing v0.1 remain architecture contracts.
 
 ## Current continuation
 
-Next stage: **Agent Coordination Foundation v0.1**.
+Next stage: **Controlled Agent Coordination v0.1**.
 
-First direction:
+First slice is evidence-only:
 
-`explicit Coordination identity + exact participant Agent generations + private coordination purpose → structural Coordination record → exact ownership`
+`exact Coordination ID+generation → fresh coordination lookup → exact participant Agent-generation validation → exact ACTIVE lifecycle validation → structural readiness evidence`
 
-The foundation must remain data-only: no scheduler, fan-out, voting/consensus, automatic delegation, Autonomy creation, Authority or Execution. Controlled coordination and multi-agent behavior remain later stages after structural coordination is independently frozen.
+No work fan-out, delegation creation, Autonomy creation, scheduler, voting/consensus, Authority or Execution may appear in this first controlled slice. Multi-agent runtime behavior remains later and requires separate governance/freeze.

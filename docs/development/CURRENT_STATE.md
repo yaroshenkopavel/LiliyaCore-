@@ -1,21 +1,16 @@
 # CURRENT STATE
 
-Last journal update: 2026-08-29
+Last journal update: 2026-08-30
 
 ## Current verified baseline
 
-Current verified code `main`: `cc747b83fe58da3d8abf68e05bc169d8a5d6e1d3`.
+Current verified code `main`: `78d06f0226105314a45f01833a12029fdabe8a5b`.
 
-Latest verified Controlled Agent Delegation milestones:
+Latest verified milestones:
 
-- PR #155 `Exact Live Preflight` — exact head `7967f2e95a2701a44220d99078d7a34d82e19e94`, Core CI #992 GREEN, merge `6ab6f1bdd46a17af775ab0bc5513c6cc8befa915`;
-- PR #156 duplicate preflight — intentionally closed unmerged after #155 superseded it;
-- PR #157 `Exact Delegated Work Binding` — exact head `d691fdc98079b2a2232e7cb30d253dbad0ab268f`, Core CI #999 GREEN, merge `3bcf3f12269e6c98b9ac4a0f90dee328449b17a9`;
-- PR #158 `Delegated Work Binding Ownership` — exact head `d9107753adbfbb28765799d96f0b059af7a43f2e`, Core CI #1004 GREEN, merge `7e0fba5e876cc0f7849e40b63a9d8d16f22f422e`;
-- PR #159 `Compensated Delegated Initiative` — hardened exact head `4cd4238ade81b0816670091d607c8052e3aca4cd`, Core CI #1013 GREEN, merge `73414c2fcf0a4e0ae1ea14dd59355cd1c9375649`;
-- PR #160 `Delegated Attempt Gate` — exact head `24fac0d7b0035ca96bc2a74d15bdc520241b187f`, Core CI #1018 GREEN, merge `2853e576d14588911cb9b1d21518adfc72ba6318`;
-- PR #161 `Final Execution Guard` — exact head `1867c9166051dd7e9de0b48628e8a63c7d95d097`, Core CI #1023 GREEN, merge `52705124ddc0f3772100e525e99f51217837b4b0`;
-- PR #162 `Readiness Contracts` — exact head `a3c947dc661b078d9d594977ef59ef82c04c5a98`, Core CI #1027 GREEN, merge/current verified code main `cc747b83fe58da3d8abf68e05bc169d8a5d6e1d3`.
+- PR #163 `Controlled Agent Delegation v0.1: Freeze and Journal Checkpoint` — Controlled Agent Delegation fully frozen;
+- PR #164 `Agent Coordination v0.1: Structural Coordination Foundation` — exact head `411fc9572b18dcf7dac71fc5a17661087f1ec099`, Core CI #1035 GREEN;
+- PR #165 `Agent Coordination v0.1: Composition Ownership and Readiness` — exact head `3c400f34968e58eaef01929378ed0ef9c3ced32e`, Core CI #1037 GREEN, merge/current verified code main `78d06f0226105314a45f01833a12029fdabe8a5b`.
 
 ## Frozen subsystem status
 
@@ -42,7 +37,8 @@ The following v0.1 boundaries are frozen:
 - Controlled Agent Initiative;
 - Controlled Agent Lifecycle;
 - Agent Delegation Foundation;
-- Controlled Agent Delegation **pending this documentation-checkpoint merge**.
+- Controlled Agent Delegation;
+- Agent Coordination Foundation **pending this documentation-checkpoint merge**.
 
 Update System v0.1 and Security & Licensing v0.1 remain architecture contracts, not implemented runtime subsystems.
 
@@ -56,61 +52,67 @@ Delegated Agent path:
 
 `exact Delegation → fresh parent/child ACTIVE preflight → compensated child Autonomy + exact binding → delegated attempt gate → frozen Autonomy cognitive chain → final delegated execution guard → frozen Agent execution guard → fresh Authority → Execution`
 
-Arrows represent controlled provenance flow, never permission propagation.
+Coordination is currently structural-only and sits above these governed paths without creating work or permission.
 
 Mandatory invariants:
 
-`Agent Identity != Agent Lifecycle != Delegation != Autonomy != Authority != Execution`
+`Agent Identity != Agent Lifecycle != Delegation != Coordination != Autonomy != Authority != Execution`
 
 `Delegation != Initiative != Attempt Evidence != Permission != Authority != Execution`
 
+`Coordination != Capability != Authority != Execution`
+
 `Decision != Orchestration Intent != Authorization != Execution`
 
-## Controlled Agent Delegation v0.1
+## Agent Coordination Foundation v0.1
 
-Frozen direction:
+Frozen structural direction:
 
-`exact structural Delegation → exact live endpoint/lifecycle preflight → compensated child initiative + exact delegation↔Autonomy binding → pre/post governed attempt claim → deliberation/cognitive chain → final binding/delegation/lifecycle guard → frozen ControlledAgentExecution`
+`Coordination identity + exact participant Agent generations + private purpose + createdAt → AgentCoordinationRecord → exact AgentCoordinationGeneration ownership`
 
 Key guarantees:
 
-- delegation relation is structural provenance, never permission;
-- exact delegation generation and exact parent/child Agent generations are freshly validated before use;
-- both parent and child must have exact `ACTIVE` lifecycle;
-- exact delegated Autonomy is separately bound to exact delegation + child generation;
-- one exact Autonomy generation cannot be associated with multiple delegations;
-- child initiative creation is compensated if post-create delegation revalidation or binding commit fails;
-- compensation failure is explicit `Failed` and CRITICAL-observable;
-- successful transaction exposes one composite ownership/receipt, not independent mutable Autonomy and binding handles;
-- delegated attempt gate validates exact binding + delegation/lifecycle both before and after claim;
-- a governance race after claim cancels the exact Autonomy generation before returning rejection, preventing reusable downstream attempt evidence;
-- final delegated execution derives exact Autonomy from the live deliberation request rather than caller-supplied delegation side data;
-- missing/stale binding, delegation, endpoint, lifecycle or deliberation causes zero downstream ControlledAgentExecution calls;
-- downstream Authority/Execution remain entirely owned by frozen lower layers;
-- private delegation purpose remains outside readiness/attempt/execution observability;
-- no scheduler, self-spawn, recursive automatic delegation, fan-out, voting/consensus or multi-agent runtime exists.
+- exact coordination identity and positive exact generation;
+- at least two exact participant references are required;
+- each participant is exact `(AgentId, AgentGeneration)` data;
+- duplicate exact references reject;
+- multiple generations of the same Agent ID in one coordination reject;
+- participant ordering is deterministic;
+- private coordination purpose is redacted from rendering/lifecycle observability;
+- duplicate IDs reject without replacement;
+- stale/ABA ownership cannot remove replacement;
+- removal is one-shot;
+- same-ID concurrent registration has one winner per store;
+- private store remains behind `AgentCoordinationComposition`;
+- same coordination ID is isolated across compositions;
+- snapshots are deterministic detached views;
+- install→remove correlation is root→child;
+- structural composition has no Agent registry/lifecycle/delegation dependency;
+- coordination data has no Capability/Authority/permission/Execution/scheduler/fan-out/voting/consensus/delegation/Autonomy/tool semantics;
+- no live participant validation or multi-agent runtime behavior exists in the foundation.
 
-Canonical contract: `CONTROLLED_AGENT_DELEGATION_V0_1_FREEZE.md`.
+Canonical contract: `AGENT_COORDINATION_V0_1_FREEZE.md`.
 
 ## Current next action
 
-The next architecture stage is **Agent Coordination Foundation v0.1**.
+The next architecture stage is **Controlled Agent Coordination v0.1**.
 
 First direction:
 
-`explicit Coordination identity + exact participant Agent ID/generation set + private coordination purpose + createdAt → structural Coordination record → exact generation ownership`
+`exact Coordination ID+generation → fresh coordination lookup → fresh exact participant Agent-generation validation → fresh ACTIVE lifecycle validation → structural readiness evidence`
 
-The first slice must remain data-only.
+The first controlled slice must remain evidence-only.
 
 Required guarantees:
 
-- participants are exact Agent generation references, not names or mutable aliases;
-- duplicate/invalid participant structures fail closed;
-- private coordination purpose is redacted;
-- exact ownership is stale/ABA-safe and composition-isolated;
-- no scheduler, work fan-out, voting, consensus, delegation creation, Autonomy creation, Authority or Execution;
-- coordination data is not capability/permission evidence;
-- multi-agent runtime behavior remains a later controlled stage after the foundation is frozen.
+- exact coordination generation is live-validated;
+- every participant exact Agent ID+generation is live-validated;
+- every participant must have exact ACTIVE lifecycle;
+- removed/stale/replaced/CANCELLED/STOPPED participant fails closed;
+- readiness evidence is structural only and never capability/permission evidence;
+- private coordination purpose remains outside readiness evidence and observability;
+- no delegation creation, Autonomy creation, attempt claim, scheduler, fan-out, voting/consensus, Authority or Execution;
+- no multi-agent runtime until controlled coordination governance is independently implemented, audited and frozen.
 
 Persistent encrypted storage, Android integration, Update runtime and Security/Licensing runtime remain separate later stages.
 

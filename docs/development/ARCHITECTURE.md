@@ -24,7 +24,7 @@ Hard invariants: default deny; capability existence is not permission; exact pri
 
 ## Frozen cognitive/control foundations
 
-Memory, Knowledge, Identity/Self, Trust/Security, Personality, Reflection, Learning foundations, Planning, Reasoning, Decision, Orchestration Intent, Controlled Orchestration, Autonomy Foundation, Controlled Autonomy Deliberation, Agents Foundation, Controlled Agent Initiative, Controlled Agent Lifecycle, Agent Delegation Foundation and Controlled Agent Delegation v0.1 are frozen.
+Memory, Knowledge, Identity/Self, Trust/Security, Personality, Reflection, Learning foundations, Planning, Reasoning, Decision, Orchestration Intent, Controlled Orchestration, Autonomy Foundation, Controlled Autonomy Deliberation, Agents Foundation, Controlled Agent Initiative, Controlled Agent Lifecycle, Agent Delegation Foundation, Controlled Agent Delegation and Agent Coordination Foundation v0.1 are frozen.
 
 Canonical freeze documents are the detailed source for each boundary.
 
@@ -32,19 +32,15 @@ Canonical freeze documents are the detailed source for each boundary.
 
 `Interaction/Input → Context → Meaning → Goal → Planning → Reasoning → Decision → Orchestration Intent → Capability/Authority → Execution → Result → Reflection → Memory/Knowledge → Learning`
 
-Autonomy is a governed initiative layer around this chain. Agents add exact actor identity/lifecycle governance. Delegation adds exact parent/child structural provenance. None of these layers propagates implicit permission.
+Autonomy is a governed initiative layer around this chain. Agents add exact actor identity/lifecycle governance. Delegation adds exact parent/child provenance. Coordination currently adds exact participant-set provenance only. None of these layers propagates implicit permission.
 
 ## Decision / Orchestration — FROZEN
 
 `Decision → non-executing OrchestrationIntent → exact live preflight → trusted action policy → fresh Authority → frozen Execution → fresh Authority → executor`
 
-Mandatory invariant:
-
-`Decision != Orchestration Intent != Authorization != Execution`.
+Mandatory invariant: `Decision != Orchestration Intent != Authorization != Execution`.
 
 ## Autonomy — FROZEN
-
-Structural Autonomy:
 
 `explicit provenance + objective + trigger + priority + finite attempt budget → AutonomyProposal → exact AutonomyGeneration ownership`
 
@@ -52,9 +48,7 @@ Controlled path:
 
 `exact live AutonomyProposal → bounded exact attempt → Deliberation → Planning → Reasoning → Decision → OrchestrationIntent → final Autonomy guard → Controlled Orchestration → fresh Authority → Execution`
 
-Mandatory invariant:
-
-`Autonomy != Deliberation != Planning != Reasoning != Decision != Orchestration Intent != Authority != Execution`.
+Mandatory invariant: `Autonomy != Deliberation != Planning != Reasoning != Decision != Orchestration Intent != Authority != Execution`.
 
 ## Agents / Initiative / Lifecycle — FROZEN
 
@@ -70,69 +64,70 @@ Lifecycle:
 
 `exact AgentId + AgentGeneration → explicit ACTIVE / CANCELLED / STOPPED state`
 
-Mandatory invariant:
+Mandatory invariant: `Agent Identity != Agent Lifecycle != Autonomy != Authority != Execution`.
 
-`Agent Identity != Agent Lifecycle != Autonomy != Authority != Execution`.
-
-## Agent Delegation Foundation — FROZEN
+## Agent Delegation / Controlled Delegation — FROZEN
 
 Structural relation:
 
 `exact parent Agent generation + exact child Agent generation + private purpose + createdAt → AgentDelegationRecord → exact AgentDelegationGeneration ownership`
 
-Mandatory invariant:
-
-`Delegation != Capability != Authority != Execution`.
-
-Structural composition deliberately performs no Agent/lifecycle validation and creates no work.
-
-## Controlled Agent Delegation v0.1 — FROZEN
-
 Controlled delegated path:
 
-`exact Delegation → fresh exact parent/child ACTIVE preflight → compensated child Agent Autonomy + exact delegation↔Autonomy binding → delegated attempt gate → frozen Autonomy cognitive path → final delegated execution guard → frozen ControlledAgentExecution → frozen Autonomy/Orchestration → fresh Authority → Execution`
+`exact Delegation → fresh exact parent/child ACTIVE preflight → compensated child Agent Autonomy + exact delegation↔Autonomy binding → delegated attempt gate → frozen Autonomy cognitive path → final delegated execution guard → frozen ControlledAgentExecution → fresh Authority → Execution`
 
-Mandatory invariant:
+Mandatory invariants:
+
+`Delegation != Capability != Authority != Execution`
 
 `Delegation != Initiative != Attempt Evidence != Permission != Authority != Execution`.
 
-Hard invariants:
-
-- exact delegation generation is live-validated before use;
-- exact parent and child Agent generations plus ACTIVE lifecycle are freshly validated;
-- exact delegated Autonomy has a separate exact structural binding to delegation + child generation;
-- one exact Autonomy generation cannot belong to multiple delegation relations;
-- child initiative creation uses two delegation preflights around the Autonomy write to close the TOCTOU window;
-- post-create validation or binding failure compensates the exact newly-created Autonomy before normal rejection;
-- compensation failure is explicit and CRITICAL-observable;
-- successful creation exposes one composite ownership/structural receipt, not independent mutable Autonomy/binding handles;
-- delegated attempt claim validates binding + delegation/lifecycle before and after the claim;
-- a post-claim governance race cancels exact Autonomy before returning rejection, so downstream attempt validation fails closed;
-- final execution derives exact Autonomy from the live deliberation request and resolves the binding from it;
-- stale/missing deliberation, binding, delegation, parent/child generation or terminal lifecycle causes zero downstream Agent-execution calls;
-- Controlled Agent Delegation performs no Authority call and no Execution directly;
-- private delegation purpose stays outside controlled-path observability;
-- no scheduler, automatic recursive delegation, self-spawn, fan-out, consensus or multi-agent runtime exists.
+Hard guarantees include exact endpoint/lifecycle revalidation, compensated two-store creation, post-claim race cancellation, final binding/delegation/lifecycle revalidation and zero downstream execution calls on stale governance.
 
 Canonical contracts: `AGENT_DELEGATION_V0_1_FREEZE.md`, `CONTROLLED_AGENT_DELEGATION_V0_1_FREEZE.md`.
 
-## Agent Coordination Foundation v0.1 — NEXT
+## Agent Coordination Foundation v0.1 — FROZEN
 
-The next layer is structural coordination only.
+Structural relation:
+
+`Coordination identity + exact participant Agent generations + private purpose + createdAt → AgentCoordinationRecord → exact AgentCoordinationGeneration ownership`
+
+Mandatory invariant:
+
+`Coordination != Capability != Authority != Execution`.
+
+Hard invariants:
+
+- at least two exact participant Agent references are required;
+- duplicate exact references are rejected;
+- multiple generations of one Agent ID in one coordination are rejected;
+- participant order is normalized deterministically;
+- private purpose is redacted;
+- exact ownership is stale/ABA-safe and one-shot;
+- private store is composition-owned and composition-isolated;
+- snapshots are deterministic detached views;
+- structural composition has no Agent registry/lifecycle/delegation dependency;
+- coordination data exposes no scheduler, fan-out, voting, consensus, delegation, Autonomy, Authority or Execution semantics;
+- structural coordination does not prove participant liveness and creates no work.
+
+Canonical contract: `AGENT_COORDINATION_V0_1_FREEZE.md`.
+
+## Controlled Agent Coordination v0.1 — NEXT
 
 First direction:
 
-`explicit Coordination identity + exact participant Agent generations + private coordination purpose + createdAt → CoordinationRecord → exact CoordinationGeneration ownership`
+`exact Coordination ID+generation → fresh coordination lookup → exact participant Agent-generation validation → exact ACTIVE lifecycle validation → structural readiness evidence`
 
-Required invariants:
+Required first-slice invariants:
 
-- all participants use exact `(AgentId, AgentGeneration)` references;
-- invalid/duplicate participant structures fail closed;
-- coordination purpose is private/redacted;
-- exact ownership is stale/ABA-safe and composition-isolated;
-- coordination relation is data only, never capability/permission/Authority evidence;
-- no scheduler, fan-out work creation, voting, consensus, automatic delegation, Autonomy write, Authority or Execution in the foundation;
-- controlled coordination behavior is a later independent stage after structural coordination is frozen.
+- exact coordination generation must still be live;
+- every participant Agent ID+generation must still be live;
+- every participant lifecycle must be ACTIVE;
+- removed/replaced/CANCELLED/STOPPED participant fails closed;
+- readiness evidence is data only and never permission;
+- private purpose is excluded from evidence/observability;
+- no delegation creation, Autonomy creation, attempt claim, scheduler, fan-out, voting/consensus, Authority or Execution;
+- bounded work coordination, if introduced later, must be a separate independently audited layer.
 
 ## Update System v0.1 — ARCHITECTURE CONTRACT
 
@@ -148,10 +143,9 @@ License != Authority; device binding uses cryptographic enrollment/Keystore rath
 
 ## Deferred roadmap
 
-After Agent Coordination Foundation is separately implemented and frozen:
+After Controlled Agent Coordination is independently implemented and frozen:
 
-- controlled bounded Agent coordination;
-- multi-agent behavior only after coordination governance is frozen;
+- bounded multi-agent behavior only through frozen coordination governance;
 - persistent encrypted cognitive storage and crash recovery;
 - Android Keystore/StrongBox enrollment;
 - protected model package/streaming loader;
