@@ -107,3 +107,24 @@ Reason: many important rules (concurrency, stale ownership, ordering, expiry, de
 Decision: `docs/development/` records only the development, structure, decisions, and state of `Vikrot123/LiliyaCore`.
 
 Reason: mixing histories from separate repositories would make the handoff source ambiguous and could cause a future session to treat unrelated architecture as current code.
+
+## ADR-018 — Update System supports both application and internal-package evolution
+
+Decision: future Liliya update architecture must support both Android application/runtime updates and independently deployable internal Liliya packages. Both use a mandatory staged pipeline with signed manifests, compatibility checks, Authority, integrity verification, explicit migration, provisional activation, health checks, commit, and rollback.
+
+Reason: Liliya must be maintainable and extensible after deployment without turning network delivery into an unrestricted code-install path or forcing every future skill/model/configuration change into a full application rebuild.
+
+Hard consequences:
+
+- network origin is transport, not trust;
+- a valid signature is not installation permission;
+- update activation must not bypass Authority;
+- exact version/generation ownership is required for activation, replacement, and rollback;
+- previous viable generations remain rollback points until commit/retention policy permits cleanup;
+- Android application updates use supported platform installation/update mechanisms and do not intentionally bypass platform security;
+- internal packages are limited to package classes explicitly designed for dynamic deployment;
+- arbitrary downloaded executable code requires a separate code-loading/sandbox/trust design and is not implicitly allowed by the Update System;
+- prior authorization receipts are evidence, not durable future permission;
+- update lifecycle failures, migrations, health checks, commit, and rollback are observable.
+
+Detailed contract: `UPDATE_SYSTEM_V0_1_CONTRACT.md`.

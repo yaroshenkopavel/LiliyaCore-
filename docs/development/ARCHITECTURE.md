@@ -73,6 +73,32 @@ Hard rule: a denied authority decision must result in zero executor invocations.
 
 Execution must not decide authority. Real Android/device/shell adapters come later and must sit behind this boundary.
 
+## Update System direction (architecture contract, not implemented)
+
+Mandatory future boundary:
+
+`Update Discovery → Signed Manifest → Compatibility Check → Authority → Download → Integrity/Signature Verify → Stage → Migrate → Activate → Health Check → Commit / Rollback`
+
+The Update System must support both:
+
+- Android application/runtime updates; and
+- independently deployable internal Liliya packages explicitly designed for dynamic update.
+
+Hard invariants:
+
+- network origin is not trust;
+- signature validity is not installation permission;
+- staging is not activation;
+- activation is provisional until health checks pass;
+- replacement/rollback use exact version/generation ownership and stale/ABA-safe handles;
+- previous viable generations remain rollback points until commit/retention policy permits cleanup;
+- update installation/activation cannot bypass Authority or Android platform security;
+- arbitrary remote executable code is not accepted merely because it arrived through the update channel;
+- failures, migration, health checks, commit, and rollback are observable through Logging/Diagnostics;
+- prior authorization receipts are evidence, not durable future permission.
+
+Detailed durable contract: `UPDATE_SYSTEM_V0_1_CONTRACT.md`.
+
 ## Later roadmap
 
 After foundation/authority/execution readiness:
@@ -84,7 +110,8 @@ After foundation/authority/execution readiness:
 - Personality Core
 - Reflection & Learning
 - Planning/Autonomy/Agents
-- Android Integration
-- Liliya Network
+- Update System Core contracts and staging/migration/rollback foundation
+- Android Integration and application/runtime updater
+- Liliya Network update delivery/automation
 
-Memory/Knowledge and later cognitive layers must preserve provenance, observability, rollback/safety, and authority boundaries.
+Memory/Knowledge and later cognitive/update layers must preserve provenance, observability, exact ownership, rollback/safety, and authority boundaries.
