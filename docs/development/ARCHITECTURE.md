@@ -1,150 +1,183 @@
 # ARCHITECTURE BASELINE
 
-## Core Foundation v0.1
-
-Frozen chain:
+## Frozen foundation chain
 
 `Logging → Diagnostics → CoreObservability → Runtime → Lifecycle → Recovery → Events → Services → Modules → FoundationComposition`
 
-### Logging / Diagnostics / Observability
+Core Foundation v0.1 is frozen.
 
-- Logging is technical operational trace/telemetry.
-- Diagnostics records meaningful state, errors, contract violations, and health failures.
-- `CoreObservability` emits significant observations to both using the same `LogContext`.
-- Correlation continuity is a cross-layer requirement.
-- Subsystems do not silently create hidden global loggers.
+Key invariants:
 
-### Runtime / Lifecycle / Recovery
+- one runtime state authority;
+- explicit lifecycle/recovery ownership;
+- synchronous deterministic in-process events;
+- listener failures isolated and observable;
+- exact registration/ownership handles and stale/ABA-safe removal;
+- transactional module/service installation;
+- raw registries encapsulated by composition boundaries;
+- important operations observable through Logging + Diagnostics with explicit `LogContext` correlation.
 
-- Runtime state has one authority.
-- Lifecycle delegates state transitions rather than shadowing state.
-- Recovery owns active targets explicitly and rejects duplicate concurrent ownership.
-- Rejected/applied/failure states must be observable.
-
-### Events
-
-- Synchronous deterministic in-process delivery.
-- Explicit subscription ownership.
-- Listener failures isolated and observable.
-- No global event bus ownership.
-
-### Services / Modules
-
-- Registries use exact registration handles and compare/remove semantics to prevent stale-handle/ABA removal.
-- `ServiceManager` owns exact started service instances, not just IDs.
-- Registry replacement/unregister cannot cause the wrong instance to be stopped.
-- Module service install is transactional and rolls back only attempt-owned registrations.
-- Module uninstall cannot orphan started services or violate dependent-module relationships.
-- Raw registries are encapsulated by `FoundationComposition`; mutation follows observable ownership paths.
-
-## Authority v0.1
-
-Frozen boundary:
+## Capability & Authority v0.1 — FROZEN
 
 `AuthorityRequest(principal, capability, scope, reason) → AuthorityPolicy → AuthorityDecision`
 
-### Invariants
+Hard invariants:
 
-- Default deny.
-- Identity/scope/reason values must be explicit/nonblank.
-- Legacy explicit grants are GLOBAL-only.
-- Scoped grants match principal + capability + scope exactly.
-- Expiring grant is valid only while `now < expiresAt`.
-- Authority decisions are observable through Logging + Diagnostics.
+- default deny;
+- exact principal + capability + scope matching;
+- strict expiry (`now < expiresAt`);
+- bounded one-level delegation only;
+- delegation cannot amplify authority;
+- Authority decisions are observable;
+- authorization evidence is not durable future permission.
 
-### Delegation
+## Execution v0.1 — FROZEN
 
-- One level only.
-- Delegator and delegate must differ.
-- Delegation requires an exact active direct grant for the same capability and scope.
-- Child expiry cannot exceed source expiry.
-- Bounded source cannot create an unbounded child.
-- `AuthorityDelegationPolicy` source type is `DirectAuthorityGrant`.
-- `DelegatedAuthorityGrant` may convert to `ScopedAuthorityGrant` for authorization, retaining `DELEGATED` provenance.
-- Delegated authorization does not become a delegation source.
-
-## Execution direction (not frozen)
-
-Required boundary:
-
-`ExecutionRequest → AuthorityManager → Granted? → ExecutionExecutor → ExecutionResult`
-
-Hard rule: a denied authority decision must result in zero executor invocations.
-
-Execution must not decide authority. Real Android/device/shell adapters come later and must sit behind this boundary.
-
-## Update System direction (architecture contract, not implemented)
-
-Mandatory future boundary:
-
-`Update Discovery → Signed Manifest → Compatibility Check → Authority → Download → Integrity/Signature Verify → Stage → Migrate → Activate → Health Check → Commit / Rollback`
-
-The Update System must support both:
-
-- Android application/runtime updates; and
-- independently deployable internal Liliya packages explicitly designed for dynamic update.
+`ExecutionRequest → trusted action/capability resolution → fresh Authority → executor → ExecutionResult`
 
 Hard invariants:
 
-- network origin is not trust;
-- signature validity is not installation permission;
+- unknown/mismatched actions reject before executor;
+- denied Authority means zero executor calls;
+- executor failures are isolated and observable;
+- Execution never decides permission;
+- future Android/device/shell adapters must stay behind this boundary.
+
+## Frozen cognitive foundations
+
+The following v0.1 foundations are frozen:
+
+- Memory;
+- Knowledge;
+- Identity / Self;
+- Trust / Security;
+- Personality;
+- Reflection;
+- Learning Candidate;
+- Learning Decision;
+- Learning Policy;
+- Learning Application Intent;
+- Controlled Learning Application;
+- Learning Consolidation.
+
+### Controlled Learning Application
+
+Frozen chain:
+
+`Candidate → Decision → Policy → Application Intent → exact preflight → fresh Authority → prepared mutation → exact claim → Memory/Knowledge write → exact completion → completed structural outcome`
+
+Important rules:
+
+- APPROVE is not Authority and is not execution;
+- target consistency is checked again at mutation time;
+- fresh Authority is adjacent to the controlled downstream write;
+- exact claims serialize mutation ownership;
+- completed mutation ID/idempotency key remain reserved for composition lifetime;
+- exact replay returns the retained structural receipt without another downstream write;
+- compensation uses exact returned downstream ownership;
+- apply correlation survives claim → Authority → downstream → completion;
+- payload content is excluded from lifecycle metadata;
+- v0.1 is in-memory/composition-local and does not claim crash-durable exactly-once.
+
+### Learning Consolidation v0.1
+
+Frozen chain:
+
+`completed controlled outcomes → consolidation proposal → exact consolidation ownership → controlled Candidate bridge → Learning Candidate → Decision → Policy → Application → fresh Authority → controlled apply`
+
+Hard invariants:
+
+- consolidation sources must exactly match retained completed learning outcomes;
+- source lists are non-empty, unique, defensive and deterministic;
+- proposal content is caller-declared and privacy-redacted in observability;
+- exact generation ownership and stale-safe removal;
+- active conversion claim blocks source removal;
+- conversion completion/idempotency belongs to consolidation composition/store, not a bridge instance;
+- one exact consolidation can produce at most one exact Candidate reference in composition lifetime;
+- exact replay returns the same Candidate reference;
+- candidate-ID conflict remains retryable;
+- `LearningOrigin.Consolidation` is controlled typed provenance, not publicly forgeable evidence;
+- public install/transplant of consolidation-origin Candidate is fail-closed;
+- bridge creates Candidate only and cannot bypass Decision, Policy, Application, Authority or controlled apply;
+- no Planning/Autonomy/Agents/model-weight mutation exists in consolidation.
+
+Canonical freeze document: `LEARNING_CONSOLIDATION_V0_1_FREEZE.md`.
+
+## Planning Foundation v0.1 — NEXT
+
+Planning begins only after Learning Consolidation freeze.
+
+Mandatory invariant:
+
+`Plan != Decision != Authority != Execution`
+
+Planning v0.1 is a structural proposal boundary for possible future actions. It must not:
+
+- grant capability or authority;
+- execute an action;
+- mutate Memory/Knowledge merely because a plan exists;
+- approve learning;
+- become an autonomous agent/controller.
+
+Initial planning contracts must define exact plan identity/generation, goal/input provenance, ordered steps/dependencies, structural action/capability references, deterministic snapshots, stale-safe ownership, composition isolation, privacy-safe observability and explicit bridge boundaries to future decision/authority/execution layers.
+
+## Update System v0.1 — ARCHITECTURE CONTRACT
+
+Mandatory future pipeline:
+
+`Discovery → Signed Manifest → Compatibility → Authority → Download → Verify → Stage → Migrate → Activate → Health Check → Commit / Rollback`
+
+Supports both Android application/runtime updates and explicitly designed internal package updates.
+
+Hard invariants:
+
+- network origin is transport, not trust;
+- signature validity is not activation permission;
 - staging is not activation;
 - activation is provisional until health checks pass;
-- replacement/rollback use exact version/generation ownership and stale/ABA-safe handles;
-- previous viable generations remain rollback points until commit/retention policy permits cleanup;
-- update installation/activation cannot bypass Authority or Android platform security;
-- arbitrary remote executable code is not accepted merely because it arrived through the update channel;
-- failures, migration, health checks, commit, and rollback are observable through Logging/Diagnostics;
-- prior authorization receipts are evidence, not durable future permission.
+- version/generation ownership and rollback are exact/stale-safe;
+- Android platform security and Authority cannot be bypassed;
+- arbitrary remote executable code is not accepted merely because it came through the update channel;
+- prior authorization receipts are evidence only.
 
-Detailed durable contract: `UPDATE_SYSTEM_V0_1_CONTRACT.md`.
+Detailed contract: `UPDATE_SYSTEM_V0_1_CONTRACT.md`.
 
-## Security & Licensing direction (architecture contract, not implemented)
+## Security & Licensing v0.1 — ARCHITECTURE CONTRACT
 
-Mandatory long-term protected-use chain:
+Protected-use direction:
 
-`Signed Entitlement → Exact Device Enrollment → Keystore-backed Key Boundary → Fresh License Policy → Authority → Protected Asset/Store Access → Controlled Operation → Observable Result`
-
-For online-assisted integrity/licensing:
-
-`App/Device Integrity Signal → Backend Verification → Signed License/Lease → Local Verification → Authority → Protected Use`
+`Signed Entitlement → Device Enrollment → Keystore-backed Key Boundary → License Policy → Authority → Protected Asset/Store Access → Controlled Operation`
 
 Hard invariants:
 
-- Android Keystore/StrongBox non-exportable keys are the preferred device cryptographic root; raw HWID/IMEI/Android ID is not a master-key source;
-- license entitlement and Authority remain separate boundaries;
-- valid signature is evidence, not general permission;
-- protected model assets may use authenticated chunk/tensor encryption and must not intentionally create plaintext temporary model files;
-- cognitive/user data uses an independent encrypted-storage/key-recovery domain and must not become irrecoverable merely because a commercial license expires;
-- anti-debugging, anti-dump checks and obfuscation are defense-in-depth only, never cryptographic trust anchors;
-- license/security failure is explicit and fail-closed; it must not intentionally corrupt model mathematics into plausible-but-wrong output;
-- long-lived DEKs/private signing keys are never hard-coded in application/native binaries;
-- license, update and asset signing keys must support rotation/revocation;
-- protected update activation must satisfy both Update System trust and Security/Licensing policy without bypassing Authority;
-- security operations remain privacy-safe and observable.
+- license != Authority;
+- device binding uses cryptographic enrollment/non-exportable Android Keystore or StrongBox keys, not HWID-derived master secrets;
+- protected model/runtime keys and user cognitive-data keys are separate domains;
+- commercial license expiry/revocation must not intentionally destroy user Memory/Knowledge;
+- protected model assets may use authenticated chunk/tensor encryption without plaintext temporary model files;
+- anti-debug/anti-dump/obfuscation are defense-in-depth, not trust roots;
+- security/license failure is explicit fail-closed, never deliberately corrupted AI output;
+- long-lived DEKs/private signing keys are not hard-coded into binaries;
+- update/license/asset signing keys support rotation and revocation;
+- Update, Licensing, Authority and Execution remain separate mandatory boundaries.
 
-Detailed durable contract: `SECURITY_LICENSING_V0_1_CONTRACT.md`.
+Detailed contract: `SECURITY_LICENSING_V0_1_CONTRACT.md`.
 
-## Later roadmap
+## Deferred roadmap
 
-After foundation/authority/execution readiness:
+After Planning Foundation v0.1:
 
-- Memory
-- Knowledge
-- Identity/Self
-- Trust & Security hardening
-- Personality Core
-- Reflection & Learning
-- Planning/Autonomy/Agents
-- Security & Licensing Core contracts
-- Android Keystore/StrongBox device-key and enrollment boundary
-- encrypted cognitive persistence, key rotation, backup/export/recovery
-- protected model package + authenticated streaming loader
-- runtime/native hardening and optional obfuscation
-- offline licensing/lease, revocation and device-transfer infrastructure
-- Update System Core contracts and staging/migration/rollback foundation
-- Android Integration and application/runtime updater
-- Liliya Network update/license delivery and automation
-- security/readiness/red-team verification before protected distribution
+- Planning readiness/freeze;
+- later deliberation/decision orchestration boundaries;
+- Autonomy only after explicit controlled-governance design;
+- Agents only after Autonomy boundaries are frozen;
+- persistent encrypted cognitive storage and crash recovery;
+- Android Keystore/StrongBox device enrollment;
+- protected model package/streaming loader;
+- offline licensing/revocation/device transfer;
+- Update System runtime/staging/migration/rollback;
+- Android integration/updater;
+- Liliya Network delivery/automation;
+- security/readiness/red-team verification before protected distribution.
 
-Memory/Knowledge and later cognitive/update/security layers must preserve provenance, observability, exact ownership, rollback/safety, privacy, key recovery, and authority boundaries.
+All future layers must preserve provenance, observability, exact ownership, fail-closed Authority, privacy, rollback/safety, key recovery, and composition isolation.
