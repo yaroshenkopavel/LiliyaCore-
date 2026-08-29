@@ -405,10 +405,138 @@ Runtime implementation remains future work.
 
 ---
 
+# Learning Consolidation v0.1 — VERIFIED / FROZEN
+
+Learning Consolidation consumes exact retained completed controlled-learning outcomes and may bridge one exact consolidation proposal into one ordinary Learning Candidate without bypassing any later learning gate.
+
+Frozen chain:
+
+`completed controlled outcomes → consolidation proposal → exact ownership → controlled Candidate bridge → Candidate → Decision → Policy → Application → fresh Authority → controlled apply`
+
+Key guarantees include exact source verification, defensive/deterministic source lists, exact generation ownership, active conversion claims, source-removal protection, bridge-instance-independent idempotency, retryable Candidate ID conflicts, exact replay of the same Candidate reference, controlled typed consolidation provenance, fail-closed public transplant/install, privacy-safe observability and no Decision/Policy/Application/Authority bypass.
+
+Canonical contract: `LEARNING_CONSOLIDATION_V0_1_FREEZE.md`.
+
+---
+
+# Planning Foundation v0.1 — VERIFIED / FROZEN
+
+PR #103 established the structural proposal/store foundation. PR #104 added controlled composition ownership. PR #105 added readiness contracts. PR #106 froze the verified baseline.
+
+Frozen boundary:
+
+`PlanningOrigin + caller-declared goal + ordered PlanningStep list → PlanningProposal → exact PlanningGeneration ownership`
+
+Mandatory invariant:
+
+`Plan != Decision != Authority != Execution`
+
+Planning is descriptive structural data only. It has exact/stale-safe ownership, deterministic detached snapshots, composition isolation, redacted goal/step payloads, explicit install→remove correlation, one-winner same-ID concurrency, and no Authority/Execution/downstream side effects.
+
+Canonical contract: `PLANNING_V0_1_FREEZE.md`.
+
+---
+
+# Reasoning Foundation v0.1 — VERIFIED / FROZEN
+
+PR #107 established structural reasoning artifacts/store ownership. PR #108 added controlled composition ownership. PR #109 added readiness contracts. The subsequent freeze checkpoint established the durable Reasoning baseline.
+
+Frozen boundary:
+
+`ReasoningOrigin + ordered premises + caller-declared analysis + conclusion → ReasoningArtifact → exact ReasoningGeneration ownership`
+
+Mandatory invariant:
+
+`Reasoning != Decision != Authority != Execution`
+
+Reasoning conclusions remain deliberative data only and do not imply Decision, truth, confidence, trust, Authority or Execution. Exact ownership, composition isolation, deterministic detached snapshots, privacy-safe rendering/metadata and explicit correlation are frozen.
+
+Canonical contract: `REASONING_V0_1_FREEZE.md`.
+
+---
+
+# Decision Foundation v0.1 — VERIFIED / FROZEN
+
+## PR #112 — Structural Decision Record Foundation — VERIFIED
+
+Exact head: `68312f7a166e031ab6c6b84b3cc9fa767bf7a624`.
+
+Core CI #785: success.
+
+Merged baseline after PR #112: `ac2225e874339047edb1a4812b26718b9474b805`.
+
+Established general Decision records with:
+
+- explicit `DecisionId`, `DecisionOptionId`, `DecisionGeneration`;
+- exact structural Planning and Reasoning input references by ID+generation;
+- non-empty unique structural inputs;
+- non-empty unique options;
+- selected option required to exist in the option list;
+- defensive input/option copies;
+- exact generation ownership and stale-safe removal;
+- deterministic snapshots;
+- option/rationale redaction;
+- no hidden Planning/Reasoning lookup;
+- no Authority or Execution behavior.
+
+## PR #113 — Composition Ownership — VERIFIED
+
+Exact head: `da917c73768d36a5e30ce0e27fef1c6355a409f7`.
+
+Core CI #790: success.
+
+Merge/new main: `69fa6f0a35b463b279813c2711bde0ed0dd62fdc`.
+
+Added controlled `DecisionComposition`, exact public `DecisionOwnership`, composition isolation, duplicate rejection without replacement, stale-ownership safety, lifecycle privacy contracts and install→remove parent/child `LogContext` correlation.
+
+## PR #114 — Readiness Contracts — VERIFIED
+
+Exact head: `24f3cdfe9e21ee5acc5ff1c1644139fd0da96ece`.
+
+Core CI #794: success.
+
+Exact-head merge/new main: `770b4da45ad71a7bbeab47b2ddfada32d3bdc44c`.
+
+Readiness contracts proved:
+
+- ownership remove is one-shot and repeated remove fails closed;
+- the same exact Decision ID is independently owned across compositions;
+- snapshot list views remain detached from later store changes;
+- lifecycle metadata contains no Authority/Capability/permission/Execution/scheduling/truth-confidence/trust semantics;
+- option descriptions and rationale remain absent from lifecycle metadata.
+
+### Decision Foundation v0.1 — FROZEN
+
+Final boundary:
+
+`structural Planning/Reasoning references + caller-declared alternatives + selected option + rationale → DecisionRecord → exact DecisionGeneration ownership`
+
+Mandatory invariant:
+
+`Decision != Authority != Execution`
+
+A selected option is only a recorded choice/outcome. It is not permission, a capability grant, an execution request, scheduling instruction, truth/confidence claim or real-world effect.
+
+Decision v0.1 intentionally contains no downstream execution bridge. Any future bridge must be separately designed and must preserve Capability/Authority/Execution.
+
+Canonical contract: `DECISION_V0_1_FREEZE.md`.
+
+---
+
 # Current continuation
 
-With Controlled Learning Application v0.1 frozen, the next cognitive architecture stage is **Learning Consolidation v0.1**.
+The next cognitive architecture stage is the **explicit deliberation/orchestration bridge foundation**.
 
-Planning / Autonomy / Agents remains deferred until consolidation is explicitly designed, implemented, audited, and frozen.
+Required direction:
+
+`Decision → explicit orchestration intent → Capability/Authority → Execution`
+
+Mandatory invariant:
+
+`Decision != Orchestration Intent != Authority != Execution`
+
+The first orchestration slice must be structural and non-executing: exact identity/generation ownership, exact Decision provenance, deterministic detached snapshots, composition isolation, privacy-safe observability/correlation, and explicit absence of permission, Authority grants, execution requests, executor calls, scheduling or downstream mutation.
+
+Autonomy remains deferred until this orchestration boundary and controlled-governance integration are separately implemented, audited and frozen. Agents remain deferred until Autonomy boundaries are explicit and frozen.
 
 Persistent encrypted storage, Android integration, Update runtime implementation, and Security/Licensing runtime implementation remain separate future stages.

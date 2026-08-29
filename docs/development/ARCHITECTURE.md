@@ -60,7 +60,8 @@ The following v0.1 foundations are frozen:
 - Controlled Learning Application;
 - Learning Consolidation;
 - Planning;
-- Reasoning.
+- Reasoning;
+- Decision.
 
 ### Controlled Learning Application
 
@@ -161,23 +162,64 @@ Hard invariants:
 
 Canonical freeze document: `REASONING_V0_1_FREEZE.md`.
 
-## Decision Foundation v0.1 — NEXT
+### Decision Foundation v0.1 — FROZEN
 
-This future layer is the general decision boundary and is distinct from the already frozen domain-specific Learning Decision foundation.
+Frozen structural boundary:
+
+`exact structural Planning/Reasoning references + caller-declared DecisionOption list + selected option + rationale → DecisionRecord → exact DecisionGeneration ownership`
 
 Mandatory invariant:
 
 `Decision != Authority != Execution`
 
-Decision v0.1 must begin as an explicit recorded-choice/outcome boundary over structural inputs. It must not:
+Hard invariants:
 
-- treat a choice as permission;
-- call Authority implicitly or create grants;
-- emit or execute real-world actions merely because an option was selected;
-- mutate Memory/Knowledge merely because a decision exists;
-- become Autonomy or an Agent controller.
+- Decision and option IDs are explicit nonblank structural identities;
+- every Decision contains at least one unique structural input reference;
+- input references bind exact Planning/Reasoning ID+generation but do not cause hidden store lookup;
+- every Decision contains at least one option and option IDs are unique;
+- selected option ID must be present in the option list;
+- caller-provided input and option collections are defensively copied;
+- duplicate Decision IDs reject without replacement;
+- exact positive generation ownership and stale/ABA-safe removal;
+- repeated removal fails closed;
+- concurrent same-ID registration has one winner;
+- compositions are isolated and may independently own the same Decision ID;
+- snapshots are deterministic and detached read views;
+- option descriptions and rationale are redacted from object rendering and lifecycle metadata;
+- install→remove correlation is explicit parent/child `LogContext` lineage;
+- selected option is a recorded choice only and does not claim approval, permission, Authority, Capability, scheduling, truth, confidence, trust or Execution;
+- Decision performs no downstream side effect.
 
-Initial contracts must define exact decision identity/generation ownership, explicit structural Planning/Reasoning references without hidden lookup, alternatives/options and selected outcome semantics, deterministic defensive snapshots, stale-safe ownership, composition isolation, privacy-safe observability/correlation, and a downstream boundary that cannot bypass Capability/Authority/Execution.
+Canonical freeze document: `DECISION_V0_1_FREEZE.md`.
+
+## Explicit Deliberation / Orchestration Bridge — NEXT
+
+The next cognitive layer is a narrow structural bridge from an exact frozen Decision toward future controlled orchestration.
+
+Required direction:
+
+`Decision → explicit orchestration intent → Capability/Authority → Execution`
+
+Mandatory invariant:
+
+`Decision != Orchestration Intent != Authority != Execution`
+
+The first bridge foundation must remain non-executing. It must define exact identity/generation ownership and exact structural Decision provenance without granting permission or scheduling work.
+
+Initial contracts must establish:
+
+- exact orchestration-intent identity/generation ownership;
+- exact structural reference to Decision ID+generation;
+- caller-declared intended downstream action/operation description;
+- no hidden Decision lookup during model construction;
+- duplicate rejection, stale/ABA-safe removal and one-winner concurrency;
+- composition isolation and deterministic detached snapshots;
+- privacy-safe rendering/observability and explicit correlation lineage;
+- explicit absence of Authority grants, capability authorization, `ExecutionRequest`, executor calls, scheduling, Memory/Knowledge mutation and Autonomy/Agent semantics;
+- a later controlled bridge to Capability/Authority/Execution must perform fresh exact validation and cannot treat old Decision/orchestration records as durable permission.
+
+Autonomy remains deferred until this bridge and its governance boundaries are separately implemented, audited and frozen. Agents remain deferred until Autonomy boundaries are explicit and frozen.
 
 ## Update System v0.1 — ARCHITECTURE CONTRACT
 
@@ -223,10 +265,10 @@ Detailed contract: `SECURITY_LICENSING_V0_1_CONTRACT.md`.
 
 ## Deferred roadmap
 
-After Decision Foundation v0.1:
+After the explicit Decision→orchestration-intent bridge foundation:
 
-- Decision readiness/freeze;
-- explicit deliberation/orchestration bridges that preserve Authority/Execution separation;
+- orchestration readiness/freeze;
+- separately governed controlled bridge toward Capability/Authority/Execution;
 - Autonomy only after explicit controlled-governance design;
 - Agents only after Autonomy boundaries are frozen;
 - persistent encrypted cognitive storage and crash recovery;
