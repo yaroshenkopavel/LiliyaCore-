@@ -21,6 +21,13 @@ sealed interface AutonomyDeliberationAttemptResult {
     }
 }
 
+sealed interface AutonomyDeliberationAttemptValidationResult {
+    data class Valid(val evidence: AutonomyDeliberationAttemptEvidence) : AutonomyDeliberationAttemptValidationResult
+    data class Rejected(val reason: String) : AutonomyDeliberationAttemptValidationResult {
+        init { require(reason.isNotBlank()) { "autonomy attempt validation rejection reason must not be blank" } }
+    }
+}
+
 sealed interface AutonomyDeliberationCancellationResult {
     data object Cancelled : AutonomyDeliberationCancellationResult
     data class Rejected(val reason: String) : AutonomyDeliberationCancellationResult {
@@ -84,6 +91,46 @@ class ControlledAutonomyDeliberationGate(
         AutonomyDeliberationAttemptResult.Claimed(evidence)
     }
 
+    fun validateAttempt(
+        reference: AutonomyAttemptReference
+    ): AutonomyDeliberationAttemptValidationResult = synchronized(lock) {
+        val snapshot = autonomy.inspect(reference.proposalId)
+            ?: return@synchronized rejectValidation(reference, "autonomy proposal is not live")
+        if (snapshot.generation != reference.proposalGeneration) {
+            return@synchronized rejectValidation(reference, "autonomy proposal generation is stale")
+        }
+
+        val state = states[ExactProposalKey(reference.proposalId, reference.proposalGeneration)]
+            ?: return@synchronized rejectValidation(reference, "autonomy deliberation attempt was not claimed")
+        if (state.cancelled) {
+            return@synchronized rejectValidation(reference, "autonomy proposal deliberation is cancelled")
+        }
+        if (reference.attemptNumber > state.attempts) {
+            return@synchronized rejectValidation(reference, "autonomy deliberation attempt was not claimed")
+        }
+        if (reference.attemptNumber > snapshot.proposal.budget.maxAttempts) {
+            return@synchronized rejectValidation(reference, "autonomy deliberation attempt exceeds proposal budget")
+        }
+
+        val evidence = AutonomyDeliberationAttemptEvidence(
+            proposal = snapshot.proposal,
+            generation = reference.proposalGeneration,
+            attemptNumber = reference.attemptNumber
+        )
+        foundation.observability.record(
+            severity = DiagnosticSeverity.INFO,
+            code = "AUTONOMY_DELIBERATION_ATTEMPT_VALIDATED",
+            message = "autonomy deliberation attempt validated",
+            context = foundation.rootContext(
+                operation = "validateAutonomyDeliberationAttempt",
+                component = "Autonomy",
+                metadata = structuralMetadata(evidence)
+            ),
+            metadata = structuralMetadata(evidence)
+        )
+        AutonomyDeliberationAttemptValidationResult.Valid(evidence)
+    }
+
     fun cancel(
         id: AutonomyProposalId,
         generation: AutonomyGeneration
@@ -132,6 +179,27 @@ class ControlledAutonomyDeliberationGate(
             )
         )
         return AutonomyDeliberationAttemptResult.Rejected(reason)
+    }
+
+    private fun rejectValidation(
+        reference: AutonomyAttemptReference,
+        reason: String
+    ): AutonomyDeliberationAttemptValidationResult.Rejected {
+        foundation.observability.record(
+            severity = DiagnosticSeverity.WARNING,
+            code = "AUTONOMY_DELIBERATION_ATTEMPT_VALIDATION_REJECTED",
+            message = reason,
+            context = foundation.rootContext(
+                operation = "validateAutonomyDeliberationAttempt",
+                component = "Autonomy",
+                metadata = mapOf(
+                    "autonomyProposalId" to reference.proposalId.value,
+                    "autonomyGeneration" to reference.proposalGeneration.value.toString(),
+                    "autonomyAttemptNumber" to reference.attemptNumber.toString()
+                )
+            )
+        )
+        return AutonomyDeliberationAttemptValidationResult.Rejected(reason)
     }
 
     private fun rejectCancellation(
