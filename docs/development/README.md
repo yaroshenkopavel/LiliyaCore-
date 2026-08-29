@@ -11,10 +11,11 @@ Predecessor projects are intentionally outside the scope of this journal.
 3. `STRUCTURE.md` — current package/file layout, subsystem purpose, ownership, and boundaries.
 4. `ARCHITECTURE.md` — frozen architecture baseline and dependency direction.
 5. `UPDATE_SYSTEM_V0_1_CONTRACT.md` — mandatory future architecture for Android/runtime updates and independently deployable internal packages; signed manifests, Authority, staging, migration, health checks, commit, and rollback.
-6. `NUANCES.md` — non-obvious pitfalls and audit findings that are easy to break accidentally.
-7. `DEVELOPMENT_LOG.md` — detailed PR-by-PR history of this repository from its earliest verified baseline to now.
-8. `DECISIONS.md` — durable architecture decisions and rationale.
-9. `VERIFICATION_POLICY.md` — rules for when future work is promoted into permanent history.
+6. `SECURITY_LICENSING_V0_1_CONTRACT.md` — mandatory future protection/licensing architecture for device keys, signed entitlements, offline leases, protected models, encrypted cognitive storage, runtime hardening, key rotation/recovery, and Update System integration.
+7. `NUANCES.md` — non-obvious pitfalls and audit findings that are easy to break accidentally.
+8. `DEVELOPMENT_LOG.md` — detailed PR-by-PR history of this repository from its earliest verified baseline to now.
+9. `DECISIONS.md` — durable architecture decisions and rationale.
+10. `VERIFICATION_POLICY.md` — rules for when future work is promoted into permanent history.
 
 ## Journal roles
 
@@ -22,7 +23,7 @@ Predecessor projects are intentionally outside the scope of this journal.
 Live operational checkpoint. Update immediately when main SHA, PR head/state, CI result, blocker, pause/resume marker, or exact next action changes.
 
 ### Durable history/reference files
-`DEVELOPMENT_LOG.md`, `STRUCTURE.md`, `ARCHITECTURE.md`, `UPDATE_SYSTEM_V0_1_CONTRACT.md`, `NUANCES.md`, and `DECISIONS.md` should contain checked, stable facts or explicit architecture contracts rather than every intermediate experiment.
+`DEVELOPMENT_LOG.md`, `STRUCTURE.md`, `ARCHITECTURE.md`, `UPDATE_SYSTEM_V0_1_CONTRACT.md`, `SECURITY_LICENSING_V0_1_CONTRACT.md`, `NUANCES.md`, and `DECISIONS.md` should contain checked, stable facts or explicit architecture contracts rather than every intermediate experiment.
 
 Future detailed entries are promoted after Git/source/CI verification according to `VERIFICATION_POLICY.md`.
 
