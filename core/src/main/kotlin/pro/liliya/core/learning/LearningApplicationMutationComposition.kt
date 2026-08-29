@@ -12,6 +12,7 @@ interface LearningApplicationMutationClaim {
     val plan: LearningApplicationMutationPlan
     val reference: LearningApplicationMutationReference
     fun release(): Boolean
+    fun complete(): Boolean
 }
 
 sealed interface LearningApplicationMutationPrepareResult {
@@ -97,6 +98,15 @@ class LearningApplicationMutationComposition(
                                     ("learningApplicationMutationGeneration" to reference.generation.value.toString())
                             )
                         )
+
+                        override fun complete(): Boolean = registration.complete(
+                            foundation.rootContext(
+                                operation = "completeLearningApplicationMutation",
+                                component = "LearningApplicationMutation",
+                                metadata = mutationMetadata(plan) +
+                                    ("learningApplicationMutationGeneration" to reference.generation.value.toString())
+                            )
+                        )
                     }
                 )
             }
@@ -114,6 +124,9 @@ class LearningApplicationMutationComposition(
 
     fun findByIdempotencyKey(key: LearningApplicationIdempotencyKey): LearningApplicationMutationPlan? =
         store.findByIdempotencyKey(key)
+
+    fun isCompletedIdempotencyKey(key: LearningApplicationIdempotencyKey): Boolean =
+        store.isCompletedIdempotencyKey(key)
 
     fun snapshot(): List<LearningApplicationMutationPlan> = store.snapshot()
 

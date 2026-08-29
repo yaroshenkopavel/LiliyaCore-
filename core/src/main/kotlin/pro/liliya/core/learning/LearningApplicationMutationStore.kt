@@ -23,6 +23,7 @@ internal interface LearningApplicationMutationClaimRegistration {
     val plan: LearningApplicationMutationPlan
     val generation: LearningApplicationMutationGeneration
     fun release(context: LogContext): Boolean
+    fun complete(context: LogContext): Boolean
 }
 
 enum class LearningApplicationMutationClaimRejection {
@@ -56,6 +57,7 @@ internal class LearningApplicationMutationStore(
     private val nextGeneration = AtomicLong(0)
     private val entries = mutableMapOf<LearningApplicationMutationId, Entry>()
     private val idempotency = mutableMapOf<LearningApplicationIdempotencyKey, Entry>()
+    private val completedIdempotencyKeys = mutableSetOf<LearningApplicationIdempotencyKey>()
 
     fun register(
         plan: LearningApplicationMutationPlan,
@@ -64,8 +66,8 @@ internal class LearningApplicationMutationStore(
         if (entries.containsKey(plan.id)) {
             return@synchronized rejected(plan, null, "learning application mutation id is already registered", context)
         }
-        if (idempotency.containsKey(plan.idempotencyKey)) {
-            return@synchronized rejected(plan, null, "learning application idempotency key is already registered", context)
+        if (idempotency.containsKey(plan.idempotencyKey) || completedIdempotencyKeys.contains(plan.idempotencyKey)) {
+            return@synchronized rejected(plan, null, "learning application idempotency key is already reserved", context)
         }
 
         val entry = Entry(
@@ -180,6 +182,34 @@ internal class LearningApplicationMutationStore(
                     )
                     released
                 }
+
+                override fun complete(context: LogContext): Boolean = synchronized(lock) {
+                    val current = entries[reference.mutationId]
+                    val completed = current === entry &&
+                        entry.activeClaim === token &&
+                        entries.remove(reference.mutationId) === entry
+                    if (completed) {
+                        idempotency.remove(entry.plan.idempotencyKey, entry)
+                        completedIdempotencyKeys.add(entry.plan.idempotencyKey)
+                        entry.activeClaim = null
+                    }
+                    observability.record(
+                        severity = if (completed) DiagnosticSeverity.INFO else DiagnosticSeverity.WARNING,
+                        code = if (completed) {
+                            "LEARNING_APPLICATION_MUTATION_COMPLETED"
+                        } else {
+                            "LEARNING_APPLICATION_MUTATION_COMPLETION_REJECTED"
+                        },
+                        message = if (completed) {
+                            "learning application mutation completed"
+                        } else {
+                            "learning application mutation claim is no longer current"
+                        },
+                        context = context,
+                        metadata = metadata(entry.plan, entry.generation)
+                    )
+                    completed
+                }
             }
         )
     }
@@ -198,6 +228,9 @@ internal class LearningApplicationMutationStore(
 
     fun findByIdempotencyKey(key: LearningApplicationIdempotencyKey): LearningApplicationMutationPlan? =
         synchronized(lock) { idempotency[key]?.plan }
+
+    fun isCompletedIdempotencyKey(key: LearningApplicationIdempotencyKey): Boolean =
+        synchronized(lock) { completedIdempotencyKeys.contains(key) }
 
     fun snapshot(): List<LearningApplicationMutationPlan> = snapshotEntries().map { it.plan }
 
