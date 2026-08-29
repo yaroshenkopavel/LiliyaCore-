@@ -59,7 +59,8 @@ The following v0.1 foundations are frozen:
 - Learning Application Intent;
 - Controlled Learning Application;
 - Learning Consolidation;
-- Planning.
+- Planning;
+- Reasoning.
 
 ### Controlled Learning Application
 
@@ -131,24 +132,52 @@ Hard invariants:
 
 Canonical freeze document: `PLANNING_V0_1_FREEZE.md`.
 
-## Reasoning Foundation v0.1 — NEXT
+### Reasoning Foundation v0.1 — FROZEN
 
-Reasoning begins only after Planning freeze.
+Frozen structural boundary:
+
+`ReasoningOrigin + ordered ReasoningPremise list + caller-declared analysis + conclusion → ReasoningArtifact → exact ReasoningGeneration ownership`
 
 Mandatory invariant:
 
 `Reasoning != Decision != Authority != Execution`
 
-Reasoning v0.1 is an explicit deliberation/analysis boundary over caller-supplied inputs and structural context. It must not:
+Hard invariants:
 
-- turn analysis into Authority;
-- select or execute a device action merely because reasoning produced a conclusion;
-- mutate Memory/Knowledge merely because an inference exists;
-- approve learning;
-- claim truth/confidence/trust unless a later dedicated contract explicitly defines those semantics;
-- become an autonomous agent/controller.
+- artifact and premise IDs are explicit nonblank structural identities;
+- premise statements, analysis and conclusion are caller-declared deliberative data only;
+- at least one premise is required and premise IDs are unique;
+- caller-provided premise collections are defensively copied;
+- duplicate artifact IDs reject without replacement;
+- exact positive generation ownership and stale/ABA-safe removal;
+- repeated removal fails closed;
+- concurrent same-ID registration has one winner;
+- compositions are isolated and may independently own the same artifact ID;
+- snapshots are deterministic and detached read views;
+- premise/analysis/conclusion payloads are redacted from object rendering and lifecycle metadata;
+- install→remove correlation is explicit parent/child `LogContext` lineage;
+- conclusion does not claim Decision, truth, confidence, trust, Authority, Capability or Execution;
+- Reasoning has no API that grants Authority, emits `ExecutionRequest`, calls executors, mutates Memory/Knowledge, approves learning, schedules work, or creates Autonomy/Agents.
 
-Initial Reasoning contracts must define exact artifact identity/generation, explicit provenance/input references, deterministic premise/context representation, structural relation to Planning without converting plans into permission, defensive snapshots, stale-safe ownership, composition isolation, privacy-safe observability/correlation, and a future bridge to Decision/orchestration that cannot bypass Authority/Execution.
+Canonical freeze document: `REASONING_V0_1_FREEZE.md`.
+
+## Decision Foundation v0.1 — NEXT
+
+This future layer is the general decision boundary and is distinct from the already frozen domain-specific Learning Decision foundation.
+
+Mandatory invariant:
+
+`Decision != Authority != Execution`
+
+Decision v0.1 must begin as an explicit recorded-choice/outcome boundary over structural inputs. It must not:
+
+- treat a choice as permission;
+- call Authority implicitly or create grants;
+- emit or execute real-world actions merely because an option was selected;
+- mutate Memory/Knowledge merely because a decision exists;
+- become Autonomy or an Agent controller.
+
+Initial contracts must define exact decision identity/generation ownership, explicit structural Planning/Reasoning references without hidden lookup, alternatives/options and selected outcome semantics, deterministic defensive snapshots, stale-safe ownership, composition isolation, privacy-safe observability/correlation, and a downstream boundary that cannot bypass Capability/Authority/Execution.
 
 ## Update System v0.1 — ARCHITECTURE CONTRACT
 
@@ -194,10 +223,10 @@ Detailed contract: `SECURITY_LICENSING_V0_1_CONTRACT.md`.
 
 ## Deferred roadmap
 
-After Reasoning Foundation v0.1:
+After Decision Foundation v0.1:
 
-- Reasoning readiness/freeze;
-- explicit Decision/deliberation orchestration boundaries;
+- Decision readiness/freeze;
+- explicit deliberation/orchestration bridges that preserve Authority/Execution separation;
 - Autonomy only after explicit controlled-governance design;
 - Agents only after Autonomy boundaries are frozen;
 - persistent encrypted cognitive storage and crash recovery;
