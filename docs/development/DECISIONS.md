@@ -128,3 +128,24 @@ Hard consequences:
 - update lifecycle failures, migrations, health checks, commit, and rollback are observable.
 
 Detailed contract: `UPDATE_SYSTEM_V0_1_CONTRACT.md`.
+
+## ADR-019 — Security & Licensing uses cryptographic device enrollment, not HWID-derived secrets
+
+Decision: future protected deployment uses Android Keystore/StrongBox non-exportable keys as the preferred device cryptographic anchor, signed/versioned entitlements, independent DEK envelopes, fresh License Policy plus Authority, authenticated encrypted model/storage formats, and explicit recovery/rotation semantics. Raw hardware identifiers are not master-key derivation material.
+
+Reason: IMEI/Android ID/serial/HWID-style identifiers are identifiers rather than protected cryptographic secrets. Binding protected assets or user memory directly to them creates weak key material, poor rotation and dangerous recovery behavior.
+
+Hard consequences:
+
+- device binding uses cryptographic enrollment to a device-held key, not equality with a raw HWID;
+- model asset keys, cognitive-store keys and signing trust roots are separate/rotatable responsibilities;
+- commercial entitlement and Authority remain separate boundaries;
+- user cognitive data is not intentionally made irrecoverable by license expiry/replacement;
+- protected model files may use authenticated chunk/tensor encryption and are not intentionally decrypted into plaintext temporary files;
+- security/license denial is explicit and fail-closed, not hidden as intentionally corrupted AI math/output;
+- anti-debugging, anti-dump detection and native obfuscation are defense-in-depth only and are never claimed as perfect protection on a fully compromised/rooted device;
+- long-lived secret/decryption/private signing keys are never hard-coded in shipped Kotlin/native binaries;
+- license/update/signing keys and device enrollment support rotation/revocation/recovery;
+- Security & Licensing integrates with Update System without making network delivery a trust root.
+
+Detailed contract: `SECURITY_LICENSING_V0_1_CONTRACT.md`.
