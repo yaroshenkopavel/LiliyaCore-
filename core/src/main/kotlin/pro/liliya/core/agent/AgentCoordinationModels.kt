@@ -20,17 +20,23 @@ class AgentCoordinationRecord(
     val purpose: String,
     val createdAt: Instant
 ) {
-    val participants: List<ExactAgentReference> = participants.toList()
+    private val suppliedParticipants: List<ExactAgentReference> = participants.toList()
+
+    val participants: List<ExactAgentReference>
 
     init {
-        require(this.participants.size >= 2) { "agent coordination requires at least two participants" }
-        require(this.participants.distinct().size == this.participants.size) {
+        require(suppliedParticipants.size >= 2) { "agent coordination requires at least two participants" }
+        require(suppliedParticipants.distinct().size == suppliedParticipants.size) {
             "agent coordination participants must be exact-reference unique"
         }
-        require(this.participants.map { it.id }.distinct().size == this.participants.size) {
+        require(suppliedParticipants.map { it.id }.distinct().size == suppliedParticipants.size) {
             "agent coordination cannot contain multiple generations of the same agent id"
         }
         require(purpose.isNotBlank()) { "agent coordination purpose must not be blank" }
+
+        participants = suppliedParticipants.sortedWith(
+            compareBy<ExactAgentReference>({ it.id.value }, { it.generation.value })
+        )
     }
 
     override fun equals(other: Any?): Boolean =
