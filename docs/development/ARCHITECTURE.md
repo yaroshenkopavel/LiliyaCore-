@@ -24,7 +24,7 @@ Hard invariants: default deny; capability existence is not permission; exact pri
 
 ## Frozen cognitive/control foundations
 
-Memory, Knowledge, Identity/Self, Trust/Security, Personality, Reflection, Learning foundations, Planning, Reasoning, Decision, Orchestration Intent, Controlled Orchestration, Autonomy Foundation, Controlled Autonomy Deliberation, Agents Foundation and Controlled Agent Initiative v0.1 are frozen.
+Memory, Knowledge, Identity/Self, Trust/Security, Personality, Reflection, Learning foundations, Planning, Reasoning, Decision, Orchestration Intent, Controlled Orchestration, Autonomy Foundation, Controlled Autonomy Deliberation, Agents Foundation, Controlled Agent Initiative and Controlled Agent Lifecycle v0.1 are frozen.
 
 Canonical subsystem freeze documents remain the detailed source for each boundary.
 
@@ -32,7 +32,7 @@ Canonical subsystem freeze documents remain the detailed source for each boundar
 
 `Interaction/Input → Context → Meaning → Goal → Planning → Reasoning → Decision → Orchestration Intent → Capability/Authority → Execution → Result → Reflection → Memory/Knowledge → Learning`
 
-Autonomy is a governed initiative layer around this chain. Agents are bounded actor identity/lifecycle layers above Autonomy. Neither Agent nor Autonomy propagates implicit permission.
+Autonomy is a governed initiative layer around this chain. Agents add bounded actor identity and explicit lifecycle governance above Autonomy. Agent identity or lifecycle state never implies permission.
 
 ## Decision / Orchestration — FROZEN
 
@@ -74,16 +74,7 @@ Mandatory invariant:
 
 `Agent != Autonomy != Decision != Authority != Execution`.
 
-Hard invariants:
-
-- exact Agent ID and positive generation ownership;
-- declared origin or exact Autonomy ID+generation origin is data only;
-- role/purpose are private and redacted;
-- duplicate rejection without replacement;
-- stale/ABA-safe one-shot ownership;
-- composition isolation;
-- deterministic detached snapshots;
-- no runtime loop, scheduler, self-spawn, delegation engine, tool/device access, Authority, Execution or hidden Memory/Knowledge mutation.
+Agent identity is structural data only. Role/purpose are private; ownership is stale/ABA-safe; no runtime loop, scheduler, self-spawn, delegation engine, tool/device access, Authority, Execution or hidden Memory/Knowledge mutation exists in the foundation.
 
 Canonical contract: `AGENTS_V0_1_FREEZE.md`.
 
@@ -97,42 +88,60 @@ Mandatory invariant:
 
 `Agent != Autonomy != Deliberation != Decision != Authority != Execution`.
 
-Hard invariants:
-
-- Agent liveness is checked by exact ID+generation before Autonomy creation;
-- Agent provenance on generated Autonomy data is trusted bridge-created, not caller-forged;
-- private Agent role/purpose is not implicit initiative content or permission;
-- stale/removed/replaced Agent creates zero Autonomy writes;
-- fresh Agent liveness and exact trusted Autonomy provenance are checked again before the first attempt claim;
-- attempt accounting remains owned solely by frozen Autonomy budget governance;
-- Agent identity used at final execution is derived from the exact live deliberation→Autonomy provenance, not arbitrary caller side data;
-- Agent liveness is revalidated again before delegation to frozen `ControlledAutonomyExecution`;
-- late Agent removal/replacement causes zero downstream execution calls;
-- downstream Controlled Autonomy still independently performs Autonomy/cognitive/orchestration validation plus fresh Authority/Execution;
-- Agent data and initiative APIs do not expose permission/grant/scheduler/self-spawn/tool/delegation semantics;
-- no Agent scheduler, background loop, self-replication, delegation/coordination or multi-agent behavior exists in v0.1.
+Hard invariants include trusted exact Agent provenance, zero writes from stale/removed Agents, bounded attempt ownership staying in Autonomy, late Agent-removal guard before downstream execution, no Agent-as-Authority semantics and no scheduler/self-spawn/delegation runtime.
 
 Canonical contract: `CONTROLLED_AGENT_INITIATIVE_V0_1_FREEZE.md`.
 
-## Controlled Agent Lifecycle v0.1 — NEXT
+## Controlled Agent Lifecycle v0.1 — FROZEN
 
-Single-Agent lifecycle governance comes before delegation or multi-agent behavior.
+Lifecycle boundary:
+
+`exact AgentId + exact AgentGeneration → explicit ACTIVE / CANCELLED / STOPPED lifecycle state`
+
+Mandatory invariant:
+
+`Agent Identity != Agent Lifecycle != Autonomy != Authority != Execution`.
+
+Hard invariants:
+
+- lifecycle is separate from Agent registry presence;
+- exact live Agent generation is required to activate lifecycle;
+- lifecycle is absent until explicit activation;
+- lifecycle ownership binds to exact Agent generation;
+- `CANCELLED` and `STOPPED` are terminal in v0.1;
+- repeated/competing terminal transitions fail closed;
+- stale lifecycle ownership cannot affect replacement generation;
+- replacement Agent does not inherit stale lifecycle state;
+- exact ACTIVE lifecycle is mandatory at Agent initiative creation;
+- exact ACTIVE lifecycle is mandatory immediately before bounded Autonomy attempt claim;
+- exact ACTIVE lifecycle is mandatory immediately before final Agent delegation into frozen Controlled Autonomy execution;
+- missing/CANCELLED/STOPPED lifecycle means zero writes/claims/downstream execution delegate calls at those boundaries;
+- lifecycle state is governance evidence only, never capability, permission, Authority or execution right;
+- no scheduler, recurring loop, pause/resume runtime, delegation engine or multi-agent behavior exists in v0.1.
+
+Canonical contract: `AGENT_LIFECYCLE_V0_1_FREEZE.md`.
+
+## Agent Delegation Foundation v0.1 — NEXT
+
+Delegation comes only after single-Agent identity, initiative and lifecycle governance are frozen.
 
 First direction:
 
-`exact Agent ID+generation → explicit lifecycle state → generation-scoped active/cancelled/stopped ownership`
+`exact parent Agent generation + exact child Agent generation + explicit bounded relation → exact delegation generation ownership`
 
 Required invariants:
 
-- lifecycle state is explicit rather than inferred only from registry presence;
-- lifecycle handles bind to exact Agent generation;
-- stale handles cannot cancel/stop replacement generations;
-- cancellation/stop transitions are deterministic and fail closed;
-- cancelled/stopped Agents create zero new initiatives and zero new attempt claims;
-- final Agent execution boundary revalidates lifecycle immediately before downstream Controlled Autonomy execution;
-- lifecycle state grants no capability and performs no Authority/Execution;
-- no scheduler or recurring loop in the first lifecycle stage;
-- no delegation or multi-agent coordination until lifecycle is separately frozen.
+- exact parent and child IDs+generations;
+- self-delegation rejects by default;
+- relation metadata is data only, not permission/capability/Authority;
+- no capability or execution-right amplification;
+- duplicate relation identity rejects without replacement;
+- stale/ABA-safe exact ownership;
+- composition isolation and deterministic detached snapshots;
+- private role/purpose do not leak into delegation observability;
+- no scheduler, initiative creation, Authority, Execution or tool access;
+- no multi-agent runtime in the foundation;
+- any later delegation-to-work bridge must revalidate both exact Agent generations and ACTIVE lifecycle before creating downstream work.
 
 ## Update System v0.1 — ARCHITECTURE CONTRACT
 
@@ -148,10 +157,11 @@ License != Authority; device binding uses cryptographic enrollment/Keystore rath
 
 ## Deferred roadmap
 
-After Controlled Agent Lifecycle is implemented and frozen:
+After Agent Delegation Foundation is separately implemented and frozen:
 
-- explicit non-amplifying Agent delegation/coordination;
-- multi-agent behavior only after single-Agent governance is frozen;
+- controlled delegation-to-Autonomy bridge with fresh parent/child lifecycle checks;
+- bounded Agent coordination;
+- multi-agent behavior only after single-Agent and delegation governance are frozen;
 - persistent encrypted cognitive storage and crash recovery;
 - Android Keystore/StrongBox enrollment;
 - protected model package/streaming loader;
