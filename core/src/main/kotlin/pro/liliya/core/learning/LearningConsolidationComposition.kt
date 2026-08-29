@@ -1,6 +1,7 @@
 package pro.liliya.core.learning
 
 import pro.liliya.core.foundation.FoundationComposition
+import pro.liliya.core.logging.LogContext
 
 interface LearningConsolidationOwnership {
     val proposal: LearningConsolidationProposal
@@ -14,6 +15,19 @@ sealed interface LearningConsolidationInstallResult {
     ) : LearningConsolidationInstallResult
 
     data class Rejected(val reason: String) : LearningConsolidationInstallResult
+}
+
+internal class LearningConsolidationClaim(
+    val proposal: LearningConsolidationProposal,
+    val reference: LearningConsolidationReference,
+    private val releaseAction: () -> Boolean
+) {
+    fun release(): Boolean = releaseAction()
+}
+
+internal sealed interface LearningConsolidationClaimResult {
+    data class Claimed(val claim: LearningConsolidationClaim) : LearningConsolidationClaimResult
+    data class Rejected(val reason: LearningConsolidationClaimRejection) : LearningConsolidationClaimResult
 }
 
 class LearningConsolidationComposition(
@@ -71,6 +85,46 @@ class LearningConsolidationComposition(
 
             is LearningConsolidationRegistrationResult.Rejected ->
                 LearningConsolidationInstallResult.Rejected(result.reason)
+        }
+    }
+
+    internal fun claim(
+        reference: LearningConsolidationReference,
+        context: LogContext
+    ): LearningConsolidationClaimResult {
+        val claimContext = context.copy(
+            metadata = (context.metadata + mapOf(
+                "learningConsolidationId" to reference.consolidationId.value,
+                "learningConsolidationGeneration" to reference.generation.value.toString()
+            )).toMap()
+        )
+        return when (val result = store.claim(reference, claimContext)) {
+            is LearningConsolidationClaimRegistrationResult.Claimed -> {
+                val registration = result.claim
+                LearningConsolidationClaimResult.Claimed(
+                    LearningConsolidationClaim(
+                        proposal = registration.proposal,
+                        reference = LearningConsolidationReference(
+                            registration.proposal.id,
+                            registration.generation
+                        ),
+                        releaseAction = {
+                            registration.release(
+                                foundation.childContext(
+                                    parent = claimContext,
+                                    component = "LearningConsolidation",
+                                    operation = "releaseLearningConsolidationClaim",
+                                    metadata = proposalMetadata(registration.proposal) +
+                                        ("learningConsolidationGeneration" to registration.generation.value.toString())
+                                )
+                            )
+                        }
+                    )
+                )
+            }
+
+            is LearningConsolidationClaimRegistrationResult.Rejected ->
+                LearningConsolidationClaimResult.Rejected(result.reason)
         }
     }
 
