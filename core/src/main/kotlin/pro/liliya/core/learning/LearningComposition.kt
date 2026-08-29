@@ -1,5 +1,6 @@
 package pro.liliya.core.learning
 
+import pro.liliya.core.diagnostics.DiagnosticSeverity
 import pro.liliya.core.foundation.FoundationComposition
 import pro.liliya.core.logging.LogContext
 
@@ -19,16 +20,42 @@ class LearningComposition(
 ) {
     private val store = LearningCandidateStore(foundation.observability)
 
-    fun install(candidate: LearningCandidate): LearningInstallResult = install(
-        candidate,
-        foundation.rootContext(
-            operation = "installLearningCandidate",
-            component = "Learning",
-            metadata = candidateMetadata(candidate)
+    fun install(candidate: LearningCandidate): LearningInstallResult {
+        if (candidate.origin is LearningOrigin.Consolidation) {
+            val reason = "consolidation-origin candidates must be installed through the consolidation bridge"
+            foundation.observability.record(
+                severity = DiagnosticSeverity.WARNING,
+                code = "LEARNING_CANDIDATE_CONSOLIDATION_ORIGIN_REJECTED",
+                message = reason,
+                context = foundation.rootContext(
+                    operation = "installLearningCandidate",
+                    component = "Learning",
+                    metadata = candidateMetadata(candidate)
+                )
+            )
+            return LearningInstallResult.Rejected(reason)
+        }
+        return installTrusted(
+            candidate,
+            foundation.rootContext(
+                operation = "installLearningCandidate",
+                component = "Learning",
+                metadata = candidateMetadata(candidate)
+            )
         )
-    )
+    }
 
-    internal fun install(candidate: LearningCandidate, context: LogContext): LearningInstallResult {
+    internal fun installFromConsolidation(
+        candidate: LearningCandidate,
+        context: LogContext
+    ): LearningInstallResult {
+        require(candidate.origin is LearningOrigin.Consolidation) {
+            "consolidation bridge candidate must have consolidation origin"
+        }
+        return installTrusted(candidate, context)
+    }
+
+    private fun installTrusted(candidate: LearningCandidate, context: LogContext): LearningInstallResult {
         val installContext = context.copy(metadata = (context.metadata + candidateMetadata(candidate)).toMap())
         return when (val result = store.register(candidate, installContext)) {
             is LearningCandidateRegistrationResult.Registered -> {
