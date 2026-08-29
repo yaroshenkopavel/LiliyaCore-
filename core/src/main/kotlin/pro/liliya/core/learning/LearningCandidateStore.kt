@@ -106,6 +106,11 @@ internal class LearningCandidateStore(
                 put("learningSourceId", origin.sourceId.value)
                 origin.sourceReference?.let { put("learningSourceReference", it.value) }
             }
+            is LearningOrigin.Consolidation -> {
+                put("learningOriginType", "consolidation")
+                put("learningConsolidationId", origin.consolidationId.value)
+                put("learningConsolidationGeneration", origin.generation.value.toString())
+            }
         }
     }
 }
