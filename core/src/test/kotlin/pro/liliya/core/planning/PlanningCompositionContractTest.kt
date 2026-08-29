@@ -129,7 +129,9 @@ class PlanningCompositionContractTest {
         val registered = f.logs.snapshot().first { it.message == "planning proposal registered" }
         val removed = f.logs.snapshot().first { it.message == "planning proposal removed" }
 
-        assertEquals(registered.context.correlationId, removed.context.correlationId)
-        assertEquals(registered.context.operationId, removed.context.parentOperationId)
+        assertEquals("installPlanningProposal", registered.context.operation)
+        assertEquals("removePlanningProposal", removed.context.operation)
+        assertNotEquals(registered.context.correlationId, removed.context.correlationId)
+        assertEquals(registered.context.correlationId, removed.context.parentCorrelationId)
     }
 }
