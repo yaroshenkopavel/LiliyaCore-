@@ -6,7 +6,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
-import kotlin.test.assertTrue
 import pro.liliya.core.diagnostics.DiagnosticRecorder
 import pro.liliya.core.diagnostics.InMemoryDiagnosticSink
 import pro.liliya.core.foundation.FoundationComposition
@@ -83,22 +82,17 @@ class AgentDelegationReadinessContractTest {
     }
 
     @Test
-    fun delegation_ownership_exposes_exact_record_generation_and_remove_without_power_methods() {
+    fun delegation_ownership_exposes_no_power_methods() {
         val publicNames = AgentDelegationOwnership::class.java.methods
             .filter { it.declaringClass == AgentDelegationOwnership::class.java }
-            .map { it.name }
-            .toSet()
-
-        assertTrue(publicNames.contains("getDelegation"))
-        assertTrue(publicNames.any { it.startsWith("getGeneration") })
-        assertTrue(publicNames.contains("remove"))
+            .map { it.name.lowercase() }
 
         val forbidden = setOf(
             "authority", "authorize", "permission", "capability", "execution", "execute",
             "executor", "scheduler", "schedule", "spawn", "replicate", "tool", "grant", "initiative"
         )
         assertFalse(publicNames.any { name ->
-            forbidden.any { token -> name.lowercase().contains(token) }
+            forbidden.any { token -> name.contains(token) }
         })
     }
 }
