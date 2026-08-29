@@ -34,7 +34,8 @@ sealed interface LearningOrigin {
         val generation: ReflectionGeneration
     ) : LearningOrigin
 
-    data class Consolidation(
+    /** Exact consolidation provenance. Construction is controlled by the learning module. */
+    data class Consolidation internal constructor(
         val consolidationId: LearningConsolidationId,
         val generation: LearningConsolidationGeneration
     ) : LearningOrigin
