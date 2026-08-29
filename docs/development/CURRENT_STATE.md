@@ -4,15 +4,14 @@ Last journal update: 2026-08-29
 
 ## Current verified baseline
 
-Current verified code `main`: `00bb67b33293b7c6d7203fb2d1f22bfa1caed84e`.
+Current verified code `main`: `8cdcc214d3e4fc60620b727f50a52a89d085e5e6`.
 
 Latest verified milestones:
 
-- PR #141 `Agents v0.1: Freeze and Journal Checkpoint` — exact docs head `1d068220f6f6662724b60a9e2c1bba173f0bbb13`, Core CI #919 GREEN, merge/new main `5b0cdba2c7f2fb6f62aab92fba93cad28caecebb`;
-- PR #142 `Controlled Agent Initiative v0.1: Agent to Autonomy Bridge` — exact head `80da71fa3c0196aed93108ebfe5f38d9c3bd03f2`, Core CI #924 GREEN, merge/new main `7d872b39246e72e859e43dfde75e7d316fe9d1b6`;
-- PR #143 `Controlled Agent Initiative v0.1: Exact Attempt Gate` — exact head `56c3c4260df3876e5d66960d48a8bbc24567ec33`, Core CI #929 GREEN, merge/new main `4c07fcea94ad774b5cf01015bd58448d95d2794e`;
-- PR #144 `Controlled Agent Initiative v0.1: Final Execution Guard` — exact head `75048c925a328eaedd2a6d835a33812e8af17bf0`, Core CI #934 GREEN, merge/new main `7e893dd6703f673045f14e4294ede91050519b91`;
-- PR #145 `Controlled Agent Initiative v0.1: Readiness Contracts` — exact head `c134207776c9f4cd8707a2d37afc25427346165c`, Core CI #938 GREEN, merge/new main `00bb67b33293b7c6d7203fb2d1f22bfa1caed84e`.
+- PR #146 `Controlled Agent Initiative v0.1: Freeze and Journal Checkpoint` — exact docs head `3e14ee4d94ca1a45448658a3b2b331db92ddb44f`, Core CI #940 GREEN, merge/new main `b5678ccffb1b12ec7273e5f3a3b1d75280013965`;
+- PR #147 `Controlled Agent Lifecycle v0.1: Exact Lifecycle Foundation` — exact head `8da34225c3e5f1ee12a0402457a34d42713467ba`, Core CI #945 GREEN, merge/new main `9c0a71e079ca0da819c2ffe61ead976852b6e714`;
+- PR #148 `Controlled Agent Lifecycle v0.1: Integrate Lifecycle Gates` — exact head `66b68aaf5c1133c1179658d402510b6c86a9bab5`, Core CI #956 GREEN, merge/new main `8e3312b8f620a38ccf64e143dacd91f38d41de63`;
+- PR #149 `Controlled Agent Lifecycle v0.1: Readiness Contracts` — exact head `1c65e3203f6b876790f34f7fcbd659b0d4a08e9c`, Core CI #960 GREEN, merge/new main `8cdcc214d3e4fc60620b727f50a52a89d085e5e6`.
 
 ## Frozen subsystem status
 
@@ -27,7 +26,7 @@ The following v0.1 boundaries are frozen:
 - Trust / Security;
 - Personality;
 - Reflection;
-- Learning Candidate / Decision / Policy / Application Intent / Controlled Application / Consolidation;
+- Learning foundations;
 - Planning;
 - Reasoning;
 - Decision;
@@ -36,68 +35,69 @@ The following v0.1 boundaries are frozen:
 - Autonomy Foundation;
 - Controlled Autonomy Deliberation;
 - Agents Foundation;
-- Controlled Agent Initiative **pending this documentation-checkpoint merge**.
+- Controlled Agent Initiative;
+- Controlled Agent Lifecycle **pending this documentation-checkpoint merge**.
 
 Update System v0.1 and Security & Licensing v0.1 remain architecture contracts, not implemented runtime subsystems.
 
 ## Current control chain
 
-`Agent → bounded Autonomy initiative → bounded attempt → Deliberation → Planning → Reasoning → Decision → Orchestration Intent → Agent/Autonomy final guards → fresh Authority → Execution`
+`Agent identity + exact lifecycle → bounded Autonomy initiative → bounded attempt → Deliberation → Planning → Reasoning → Decision → Orchestration Intent → Agent/Autonomy final guards → fresh Authority → Execution`
 
-Important: the arrow means controlled provenance flow, not permission propagation.
+The arrows represent controlled provenance/governance flow, never permission propagation.
 
 Mandatory invariants:
 
-`Agent != Autonomy != Deliberation != Decision != Authority != Execution`
+`Agent Identity != Agent Lifecycle != Autonomy != Deliberation != Decision != Authority != Execution`
 
 `Decision != Orchestration Intent != Authorization != Execution`
 
-## Controlled Agent Initiative v0.1
+## Controlled Agent Lifecycle v0.1
 
 Frozen direction:
 
-`exact live Agent → trusted Agent provenance → finite-budget AutonomyProposal → fresh Agent check before attempt claim → frozen bounded Autonomy attempt/deliberation chain → fresh Agent check immediately before frozen Controlled Autonomy execution → fresh Authority → Execution`
+`exact Agent ID+generation → explicit ACTIVE/CANCELLED/STOPPED lifecycle → mandatory ACTIVE checks at initiative, attempt and final execution boundaries`
 
 Key guarantees:
 
-- exact Agent ID+generation is revalidated at initiative creation;
-- caller cannot forge the Agent provenance used by the bridge;
-- generated initiative is an ordinary finite-budget `AutonomyProposal`;
-- role/purpose are not implicit objective, permission or capability;
-- stale/removed/replaced Agent causes zero Autonomy writes at creation;
-- fresh Agent liveness/provenance is checked again before bounded attempt claim;
-- removed/stale Agent or mismatched Agent origin causes zero attempt claims;
-- attempt budget remains owned by frozen Autonomy governance;
-- final Agent identity is derived from live deliberation→Autonomy provenance, not separate caller data;
-- Agent liveness is checked again immediately before frozen Controlled Autonomy execution;
-- late Agent removal or replacement causes zero downstream execution calls;
-- Agent never grants Authority and never executes directly;
-- no scheduler, background Agent loop, self-spawn, delegation engine or multi-agent coordination exists in v0.1.
+- Agent registry presence does not imply ACTIVE lifecycle;
+- activation requires exact live Agent generation;
+- lifecycle ownership is exact-generation scoped;
+- `CANCELLED` and `STOPPED` are terminal in v0.1;
+- stale lifecycle ownership cannot affect replacement generation;
+- replacement does not inherit stale lifecycle state;
+- missing/CANCELLED/STOPPED lifecycle creates zero new Agent-originated Autonomy writes;
+- missing/CANCELLED/STOPPED lifecycle creates zero new Agent-originated attempt claims;
+- cancellation/stop after deliberation creation produces zero downstream execution delegate calls;
+- lifecycle remains separate from Authority/permission/Execution;
+- no scheduler, recurring Agent loop, self-spawn, delegation engine or multi-agent runtime exists.
 
-Canonical contract: `CONTROLLED_AGENT_INITIATIVE_V0_1_FREEZE.md`.
+Canonical contract: `AGENT_LIFECYCLE_V0_1_FREEZE.md`.
 
 ## Current next action
 
-The next architecture stage is **Controlled Agent Lifecycle v0.1**.
+The next architecture stage is **Agent Delegation Foundation v0.1**.
 
 First direction:
 
-`exact Agent ID+generation → explicit generation-scoped lifecycle state → controlled active/cancelled/stopped transitions`
+`exact parent Agent generation + exact child Agent generation + explicit bounded relation → exact delegation generation ownership`
 
-The first lifecycle slice must remain non-scheduling and non-executing.
+The first delegation slice must remain structural/data-only.
 
 Required guarantees:
 
-- lifecycle state is explicit and separate from registry existence;
-- lifecycle ownership is exact Agent-generation scoped;
-- stale lifecycle handles cannot affect a replacement Agent generation;
-- cancellation/stop is idempotent or explicitly fail-closed by contract;
-- cancelled/stopped Agents cannot create new initiatives or claim new attempts;
-- final Agent execution guard must reject cancelled/stopped Agent lifecycle before downstream execution;
-- no scheduler, recurring loop, delegation or multi-agent behavior yet;
-- no Authority or Execution bypass.
+- exact parent and child Agent IDs+generations;
+- no self-delegation unless explicitly justified by a later contract; default reject;
+- delegation metadata is not permission, capability or Authority;
+- no capability amplification or inherited execution rights;
+- duplicate relation identity rejects without replacement;
+- stale/ABA-safe exact ownership;
+- deterministic detached snapshots and composition isolation;
+- private role/purpose remain outside delegation observability;
+- no scheduler, initiative creation, Authority, Execution or tool access;
+- no multi-agent runtime yet.
 
-Delegation/coordination comes only after single-Agent lifecycle governance is implemented, audited and frozen.
+A later controlled delegation-to-work bridge must revalidate both exact Agent generations and ACTIVE lifecycle before any downstream initiative. Multi-agent coordination comes only after delegation itself is separately frozen.
 
 Persistent encrypted storage, Android integration, Update runtime and Security/Licensing runtime remain separate later stages.
 
