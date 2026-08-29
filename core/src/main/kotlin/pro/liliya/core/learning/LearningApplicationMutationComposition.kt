@@ -13,17 +13,22 @@ class LearningApplicationMutationClaim internal constructor(
     val plan: LearningApplicationMutationPlan,
     val reference: LearningApplicationMutationReference,
     private val releaseAction: () -> Boolean,
-    private val completeAction: () -> Boolean
+    private val completeAction: (LearningApplicationMutationApplicationReceipt) -> Boolean
 ) {
     fun release(): Boolean = releaseAction()
 
     /** Controlled completion is intentionally internal; public claim ownership is not completion authority. */
-    internal fun complete(): Boolean = completeAction()
+    internal fun complete(receipt: LearningApplicationMutationApplicationReceipt): Boolean =
+        completeAction(receipt)
 }
 
 sealed interface LearningApplicationMutationPrepareResult {
     data class Prepared(
         val ownership: LearningApplicationMutationOwnership
+    ) : LearningApplicationMutationPrepareResult
+
+    data class AlreadyCompleted(
+        val receipt: LearningApplicationMutationApplicationReceipt
     ) : LearningApplicationMutationPrepareResult
 
     data class Rejected(
@@ -73,6 +78,9 @@ class LearningApplicationMutationComposition(
                 )
             }
 
+            is LearningApplicationMutationRegistrationResult.AlreadyCompleted ->
+                LearningApplicationMutationPrepareResult.AlreadyCompleted(result.receipt)
+
             is LearningApplicationMutationRegistrationResult.Rejected ->
                 LearningApplicationMutationPrepareResult.Rejected(result.reason)
         }
@@ -116,9 +124,10 @@ class LearningApplicationMutationComposition(
                                 )
                             )
                         },
-                        completeAction = {
+                        completeAction = { receipt ->
                             registration.complete(
-                                foundation.childContext(
+                                receipt = receipt,
+                                context = foundation.childContext(
                                     parent = claimContext,
                                     component = "LearningApplicationMutation",
                                     operation = "completeLearningApplicationMutation",
@@ -144,6 +153,14 @@ class LearningApplicationMutationComposition(
 
     fun findByIdempotencyKey(key: LearningApplicationIdempotencyKey): LearningApplicationMutationPlan? =
         store.findByIdempotencyKey(key)
+
+    fun completedOutcomeByMutationId(
+        id: LearningApplicationMutationId
+    ): LearningApplicationMutationApplicationReceipt? = store.completedOutcomeByMutationId(id)
+
+    fun completedOutcomeByIdempotencyKey(
+        key: LearningApplicationIdempotencyKey
+    ): LearningApplicationMutationApplicationReceipt? = store.completedOutcomeByIdempotencyKey(key)
 
     fun isCompletedIdempotencyKey(key: LearningApplicationIdempotencyKey): Boolean =
         store.isCompletedIdempotencyKey(key)
