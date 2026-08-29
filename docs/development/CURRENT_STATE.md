@@ -4,15 +4,15 @@ Last journal update: 2026-08-29
 
 ## Current verified baseline
 
-Current `main`: `3c4f4a5164261a856ac5707b7238a3d79188c978`.
+Current `main`: `ed4ec56a3382f0f656a6e65e974270227648ceb8`.
 
-This commit merged PR #105 `Planning v0.1: Readiness Contracts` after exact-head Core CI #754 and final ownership/privacy/boundary audit.
+This commit merged PR #109 `Reasoning v0.1: Readiness Contracts` after exact-head Core CI #771 and final ownership/privacy/boundary audit.
 
-Immediately preceding Planning milestones:
+Immediately preceding Reasoning milestones:
 
-- PR #103 `Planning v0.1: Structural Proposal Store Foundation` → structural planning models, exact generations, defensive steps, stale-safe store ownership, privacy and deterministic snapshots;
-- PR #104 `Planning v0.1: Composition Ownership` → controlled public composition API, exact `PlanningOwnership`, composition isolation and install→remove correlation lineage;
-- PR #105 `Planning v0.1: Readiness Contracts` → repeated-remove fail-closed, detached snapshots, cross-composition same-ID isolation and explicit absence of Decision/Authority/Capability/Execution semantics.
+- PR #107 `Reasoning v0.1: Structural Artifact Store Foundation` → structural reasoning models, exact generations, defensive premises, stale-safe store ownership, privacy and deterministic snapshots;
+- PR #108 `Reasoning v0.1: Composition Ownership` → controlled public composition API, exact `ReasoningOwnership`, composition isolation and install→remove correlation lineage;
+- PR #109 `Reasoning v0.1: Readiness Contracts` → repeated-remove fail-closed, detached snapshots, cross-composition same-ID isolation and explicit absence of Decision/Authority/Capability/Execution/truth-confidence semantics.
 
 ## Frozen subsystem status
 
@@ -32,6 +32,7 @@ Immediately preceding Planning milestones:
 - Controlled Learning Application v0.1: **FROZEN**.
 - Learning Consolidation v0.1: **FROZEN**.
 - Planning Foundation v0.1: **FROZEN**.
+- Reasoning Foundation v0.1: **FROZEN**.
 
 Update System v0.1 and Security & Licensing v0.1 remain **architecture contracts**, not implemented runtime subsystems.
 
@@ -105,6 +106,34 @@ Key guarantees:
 
 Canonical freeze contract: `PLANNING_V0_1_FREEZE.md`.
 
+## Reasoning Foundation v0.1
+
+Frozen boundary:
+
+`caller-declared reasoning origin + ordered premises + analysis + conclusion → ReasoningArtifact → exact ReasoningGeneration ownership`
+
+Mandatory invariant:
+
+`Reasoning != Decision != Authority != Execution`
+
+Key guarantees:
+
+- artifact/premise IDs and textual fields are validated;
+- at least one premise is required and premise IDs are unique;
+- caller premise lists are defensively copied;
+- duplicate artifact IDs reject without replacement;
+- exact positive generation ownership and stale/ABA-safe removal;
+- repeated removal fails closed;
+- same-ID concurrent registration has one winner;
+- compositions are isolated and the same ID may exist independently across compositions;
+- snapshots are deterministic and detached from mutable store state;
+- premise/analysis/conclusion payload is redacted from rendering and lifecycle metadata;
+- install→remove uses explicit parent/child `LogContext` correlation;
+- conclusion does not imply Decision, truth, confidence, trust, Authority or Execution;
+- Reasoning performs no downstream side effect.
+
+Canonical freeze contract: `REASONING_V0_1_FREEZE.md`.
+
 ## Update System architecture contract
 
 Required future pipeline:
@@ -123,30 +152,27 @@ Hard rules include: license != Authority; Keystore/StrongBox device key instead 
 
 ## Current next action
 
-The next cognitive architecture stage is **Reasoning Foundation v0.1**.
+The next cognitive architecture stage is **Decision Foundation v0.1**.
 
-Reasoning must begin as an explicit deliberation/analysis boundary over caller-supplied inputs and structural context only.
+This is a future general decision layer and is distinct from the already frozen domain-specific Learning Decision foundation.
 
 Mandatory invariant:
 
-`Reasoning != Decision != Authority != Execution`
+`Decision != Authority != Execution`
 
-Reasoning v0.1 must not automatically select/approve executable actions, grant permission, call executors, mutate Memory/Knowledge, approve learning, or become Autonomy/Agents.
+Decision v0.1 must begin as a recorded choice/outcome boundary only. It must not grant permission, call executors, mutate Memory/Knowledge merely because a choice exists, approve unrelated learning, or become Autonomy/Agents.
 
 Before implementation, define:
 
-- exact reasoning artifact identity/generation ownership;
-- explicit input/provenance references;
-- deterministic caller-declared premises/context;
-- structural relation to Planning proposals without turning a Plan into permission;
-- explicit conclusion/analysis representation that is not Decision or truth;
-- immutable/defensive snapshots;
-- stale-safe replacement/removal;
-- privacy-safe observability and correlation;
-- composition isolation;
-- explicit future bridge to Decision/orchestration without Authority/Execution bypass.
+- exact general decision identity/generation ownership;
+- explicit structural references to Reasoning/Planning inputs without hidden lookup;
+- caller-declared alternatives/options and selected outcome semantics;
+- deterministic defensive snapshots;
+- stale-safe ownership and composition isolation;
+- privacy-safe observability/correlation;
+- an explicit downstream bridge that cannot bypass Capability/Authority/Execution.
 
-Autonomy / Agents remain deferred until Reasoning and later Decision/orchestration layers are separately implemented, audited and frozen.
+Autonomy / Agents remain deferred until general Decision/orchestration and controlled-governance boundaries are separately implemented, audited and frozen.
 
 Persistent encrypted storage, Android integration, Update runtime, and Security/Licensing runtime remain separate future stages.
 
