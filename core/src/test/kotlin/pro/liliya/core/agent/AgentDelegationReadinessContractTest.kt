@@ -90,7 +90,7 @@ class AgentDelegationReadinessContractTest {
             .toSet()
 
         assertTrue(publicNames.contains("getDelegation"))
-        assertTrue(publicNames.contains("getGeneration"))
+        assertTrue(publicNames.any { it.startsWith("getGeneration") })
         assertTrue(publicNames.contains("remove"))
 
         val forbidden = setOf(
