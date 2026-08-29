@@ -4,18 +4,15 @@ Last journal update: 2026-08-29
 
 ## Current verified baseline
 
-Current `main`: `d74c0a16f9f92a3f4979f23c7bd3f40482df1477`.
+Current `main`: `3c4f4a5164261a856ac5707b7238a3d79188c978`.
 
-This commit merged PR #101 `Learning Consolidation v0.1: Final Readiness Contracts` after exact-head Core CI and final ownership/provenance/pipeline-bypass audit.
+This commit merged PR #105 `Planning v0.1: Readiness Contracts` after exact-head Core CI #754 and final ownership/privacy/boundary audit.
 
-Immediately preceding Learning Consolidation milestones:
+Immediately preceding Planning milestones:
 
-- PR #96 `Proposal Foundation` → exact completed controlled-learning outcomes become validated consolidation sources;
-- PR #99 `Candidate Bridge` → exact consolidation re-enters the normal Learning Candidate pipeline;
-- PR #100 `Provenance Hardening` → consolidation-origin provenance is not publicly forgeable and public transplant is fail-closed;
-- PR #101 `Final Readiness Contracts` → cross-bridge idempotency and composition/provenance boundaries verified.
-
-PR #98 `Candidate Projection Boundary` was closed unmerged because #99–#101 superseded it with a stronger accepted design.
+- PR #103 `Planning v0.1: Structural Proposal Store Foundation` → structural planning models, exact generations, defensive steps, stale-safe store ownership, privacy and deterministic snapshots;
+- PR #104 `Planning v0.1: Composition Ownership` → controlled public composition API, exact `PlanningOwnership`, composition isolation and install→remove correlation lineage;
+- PR #105 `Planning v0.1: Readiness Contracts` → repeated-remove fail-closed, detached snapshots, cross-composition same-ID isolation and explicit absence of Decision/Authority/Capability/Execution semantics.
 
 ## Frozen subsystem status
 
@@ -34,6 +31,7 @@ PR #98 `Candidate Projection Boundary` was closed unmerged because #99–#101 su
 - Learning Application Intent Foundation v0.1: **FROZEN**.
 - Controlled Learning Application v0.1: **FROZEN**.
 - Learning Consolidation v0.1: **FROZEN**.
+- Planning Foundation v0.1: **FROZEN**.
 
 Update System v0.1 and Security & Licensing v0.1 remain **architecture contracts**, not implemented runtime subsystems.
 
@@ -75,10 +73,37 @@ Key guarantees:
 - candidate-ID conflict stays retryable;
 - `LearningOrigin.Consolidation` is controlled provenance, not public evidence;
 - public installation/transplant of consolidation-origin Candidates is fail-closed;
-- bridge creates only a normal Candidate and cannot bypass Decision, Policy, Application, Authority or controlled apply;
-- no Planning/Autonomy/Agents/model-weight modification exists in this boundary.
+- bridge creates only a normal Candidate and cannot bypass Decision, Policy, Application, Authority or controlled apply.
 
 Canonical freeze contract: `LEARNING_CONSOLIDATION_V0_1_FREEZE.md`.
+
+## Planning Foundation v0.1
+
+Frozen boundary:
+
+`caller-declared planning origin + goal + ordered descriptive steps → PlanningProposal → exact PlanningGeneration ownership`
+
+Mandatory invariant:
+
+`Plan != Decision != Authority != Execution`
+
+Key guarantees:
+
+- proposal/step IDs and textual fields are validated;
+- at least one ordered step is required;
+- step IDs are unique;
+- caller step lists are defensively copied;
+- duplicate proposal IDs reject without replacement;
+- exact positive generation ownership and stale/ABA-safe removal;
+- repeated removal fails closed;
+- same-ID concurrent registration has one winner;
+- compositions are isolated;
+- snapshots are deterministic and detached from mutable store state;
+- goal/step payload is redacted from rendering and lifecycle metadata;
+- install→remove uses explicit parent/child `LogContext` correlation;
+- Planning exposes no Decision/Authority/Capability/Execution semantics and performs no side effect.
+
+Canonical freeze contract: `PLANNING_V0_1_FREEZE.md`.
 
 ## Update System architecture contract
 
@@ -98,30 +123,30 @@ Hard rules include: license != Authority; Keystore/StrongBox device key instead 
 
 ## Current next action
 
-The next cognitive architecture stage is **Planning Foundation v0.1**.
+The next cognitive architecture stage is **Reasoning Foundation v0.1**.
 
-Planning must begin as a proposal/structure boundary only.
+Reasoning must begin as an explicit deliberation/analysis boundary over caller-supplied inputs and structural context only.
 
 Mandatory invariant:
 
-`Plan != Decision != Authority != Execution`
+`Reasoning != Decision != Authority != Execution`
 
-Planning v0.1 must not automatically execute actions, grant permissions, mutate Memory/Knowledge, approve learning, or become Autonomy/Agents.
+Reasoning v0.1 must not automatically select/approve executable actions, grant permission, call executors, mutate Memory/Knowledge, approve learning, or become Autonomy/Agents.
 
 Before implementation, define:
 
-- exact plan identity/generation ownership;
-- explicit goal/input provenance;
-- deterministic ordered steps and dependency semantics;
-- structural capability/action references without execution permission;
+- exact reasoning artifact identity/generation ownership;
+- explicit input/provenance references;
+- deterministic caller-declared premises/context;
+- structural relation to Planning proposals without turning a Plan into permission;
+- explicit conclusion/analysis representation that is not Decision or truth;
 - immutable/defensive snapshots;
 - stale-safe replacement/removal;
 - privacy-safe observability and correlation;
-- explicit status semantics that do not imply execution;
 - composition isolation;
-- clear bridge boundary to future Decision/Authority/Execution layers.
+- explicit future bridge to Decision/orchestration without Authority/Execution bypass.
 
-Autonomy / Agents remain deferred until Planning is separately implemented, audited and frozen.
+Autonomy / Agents remain deferred until Reasoning and later Decision/orchestration layers are separately implemented, audited and frozen.
 
 Persistent encrypted storage, Android integration, Update runtime, and Security/Licensing runtime remain separate future stages.
 
