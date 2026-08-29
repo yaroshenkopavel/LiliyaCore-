@@ -194,14 +194,13 @@ class LearningApplicationMutationApplier(
         downstream: LearningApplicationDownstreamReference,
         compensate: () -> Boolean
     ): LearningApplicationMutationApplicationResult {
-        if (claim.complete()) {
-            return LearningApplicationMutationApplicationResult.Applied(
-                LearningApplicationMutationApplicationReceipt(
-                    mutation = reference,
-                    target = target,
-                    downstream = downstream
-                )
-            )
+        val receipt = LearningApplicationMutationApplicationReceipt(
+            mutation = reference,
+            target = target,
+            downstream = downstream
+        )
+        if (claim.complete(receipt)) {
+            return LearningApplicationMutationApplicationResult.Applied(receipt)
         }
 
         return if (compensate()) {
