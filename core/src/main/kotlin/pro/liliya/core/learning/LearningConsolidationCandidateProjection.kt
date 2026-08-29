@@ -43,6 +43,10 @@ sealed interface LearningConsolidationCandidateProjectionResult {
     data class CandidateRejected(
         val reason: String
     ) : LearningConsolidationCandidateProjectionResult
+
+    data class PartialFailure(
+        val candidate: LearningCandidateReference
+    ) : LearningConsolidationCandidateProjectionResult
 }
 
 class LearningConsolidationCandidateProjector(
@@ -50,29 +54,13 @@ class LearningConsolidationCandidateProjector(
     private val consolidations: LearningConsolidationComposition,
     private val learning: LearningComposition
 ) {
-    private data class CompletedProjection(
-        val request: LearningConsolidationCandidateProjectionRequest,
-        val receipt: LearningConsolidationCandidateProjectionReceipt,
-        val candidateOwnership: LearningOwnership
-    )
-
+    // Serializes calls through one projector instance. Cross-projector ownership lives in the consolidation composition.
     private val lock = Any()
-    private val completed = mutableMapOf<LearningConsolidationReference, CompletedProjection>()
 
     fun project(
         request: LearningConsolidationCandidateProjectionRequest
     ): LearningConsolidationCandidateProjectionResult = synchronized(lock) {
-        completed[request.consolidation]?.let { existing ->
-            return@synchronized if (existing.request == request) {
-                observeReplay(request, existing.receipt)
-                LearningConsolidationCandidateProjectionResult.AlreadyProjected(existing.receipt)
-            } else {
-                reject(
-                    request,
-                    LearningConsolidationCandidateProjectionRejection.ALREADY_PROJECTED_DIFFERENT_REQUEST
-                )
-            }
-        }
+        completedResult(request)?.let { return@synchronized it }
 
         val root = foundation.rootContext(
             operation = "projectLearningConsolidationCandidate",
@@ -104,6 +92,9 @@ class LearningConsolidationCandidateProjector(
         }
 
         try {
+            // Another projector may have completed after the first lookup but before this exact claim was acquired.
+            completedResult(request)?.let { return@synchronized it }
+
             val candidate = LearningCandidate(
                 id = request.candidateId,
                 origin = LearningOrigin.Consolidation(
@@ -144,19 +135,29 @@ class LearningConsolidationCandidateProjector(
                             generation = result.ownership.generation
                         )
                     )
-                    completed[sourceClaim.reference] = CompletedProjection(
+                    val completion = LearningConsolidationCandidateProjectionCompletion(
                         request = request,
                         receipt = receipt,
                         candidateOwnership = result.ownership
                     )
-                    foundation.observability.record(
-                        severity = DiagnosticSeverity.INFO,
-                        code = "LEARNING_CONSOLIDATION_CANDIDATE_PROJECTED",
-                        message = "learning consolidation proposal projected into learning candidate",
-                        context = root,
-                        metadata = receiptMetadata(receipt) + ("resultType" to "projected")
-                    )
-                    LearningConsolidationCandidateProjectionResult.Projected(receipt)
+                    val existing = consolidations.recordCandidateProjection(completion)
+                    if (existing == null) {
+                        foundation.observability.record(
+                            severity = DiagnosticSeverity.INFO,
+                            code = "LEARNING_CONSOLIDATION_CANDIDATE_PROJECTED",
+                            message = "learning consolidation proposal projected into learning candidate",
+                            context = root,
+                            metadata = receiptMetadata(receipt) + ("resultType" to "projected")
+                        )
+                        LearningConsolidationCandidateProjectionResult.Projected(receipt)
+                    } else {
+                        resolveUnexpectedCompletionConflict(
+                            request = request,
+                            existing = existing,
+                            newlyCreated = result.ownership,
+                            root = root
+                        )
+                    }
                 }
             }
         } finally {
@@ -166,8 +167,58 @@ class LearningConsolidationCandidateProjector(
 
     fun completedProjection(
         reference: LearningConsolidationReference
-    ): LearningConsolidationCandidateProjectionReceipt? = synchronized(lock) {
-        completed[reference]?.receipt
+    ): LearningConsolidationCandidateProjectionReceipt? =
+        consolidations.completedCandidateProjection(reference)?.receipt
+
+    private fun completedResult(
+        request: LearningConsolidationCandidateProjectionRequest
+    ): LearningConsolidationCandidateProjectionResult? {
+        val existing = consolidations.completedCandidateProjection(request.consolidation) ?: return null
+        return if (existing.request == request) {
+            observeReplay(request, existing.receipt)
+            LearningConsolidationCandidateProjectionResult.AlreadyProjected(existing.receipt)
+        } else {
+            reject(
+                request,
+                LearningConsolidationCandidateProjectionRejection.ALREADY_PROJECTED_DIFFERENT_REQUEST
+            )
+        }
+    }
+
+    private fun resolveUnexpectedCompletionConflict(
+        request: LearningConsolidationCandidateProjectionRequest,
+        existing: LearningConsolidationCandidateProjectionCompletion,
+        newlyCreated: LearningOwnership,
+        root: pro.liliya.core.logging.LogContext
+    ): LearningConsolidationCandidateProjectionResult {
+        val newReference = LearningCandidateReference(
+            newlyCreated.candidate.id,
+            newlyCreated.generation
+        )
+        if (!newlyCreated.remove()) {
+            foundation.observability.record(
+                severity = DiagnosticSeverity.ERROR,
+                code = "LEARNING_CONSOLIDATION_CANDIDATE_PROJECTION_PARTIAL_FAILURE",
+                message = "projection completion conflicted and exact candidate compensation failed",
+                context = root,
+                metadata = mapOf(
+                    "resultType" to "partial_failure",
+                    "learningCandidateId" to newReference.candidateId.value,
+                    "learningGeneration" to newReference.generation.value.toString()
+                )
+            )
+            return LearningConsolidationCandidateProjectionResult.PartialFailure(newReference)
+        }
+
+        return if (existing.request == request) {
+            observeReplay(request, existing.receipt)
+            LearningConsolidationCandidateProjectionResult.AlreadyProjected(existing.receipt)
+        } else {
+            reject(
+                request,
+                LearningConsolidationCandidateProjectionRejection.ALREADY_PROJECTED_DIFFERENT_REQUEST
+            )
+        }
     }
 
     private fun reject(
