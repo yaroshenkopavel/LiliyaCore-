@@ -23,6 +23,7 @@ data class LearningConsolidationCandidateProjectionReceipt(
 enum class LearningConsolidationCandidateProjectionRejection {
     CONSOLIDATION_MISSING,
     CONSOLIDATION_GENERATION_MISMATCH,
+    CONSOLIDATION_ALREADY_CLAIMED,
     ALREADY_PROJECTED_DIFFERENT_REQUEST
 }
 
@@ -66,26 +67,11 @@ class LearningConsolidationCandidateProjector(
                 observeReplay(request, existing.receipt)
                 LearningConsolidationCandidateProjectionResult.AlreadyProjected(existing.receipt)
             } else {
-                observeRejected(
+                reject(
                     request,
                     LearningConsolidationCandidateProjectionRejection.ALREADY_PROJECTED_DIFFERENT_REQUEST
                 )
-                LearningConsolidationCandidateProjectionResult.Rejected(
-                    LearningConsolidationCandidateProjectionRejection.ALREADY_PROJECTED_DIFFERENT_REQUEST
-                )
             }
-        }
-
-        val snapshot = consolidations.inspect(request.consolidation.consolidationId)
-            ?: return@synchronized reject(
-                request,
-                LearningConsolidationCandidateProjectionRejection.CONSOLIDATION_MISSING
-            )
-        if (snapshot.generation != request.consolidation.generation) {
-            return@synchronized reject(
-                request,
-                LearningConsolidationCandidateProjectionRejection.CONSOLIDATION_GENERATION_MISMATCH
-            )
         }
 
         val root = foundation.rootContext(
@@ -93,60 +79,88 @@ class LearningConsolidationCandidateProjector(
             component = "LearningConsolidation",
             metadata = requestMetadata(request)
         )
-        val candidate = LearningCandidate(
-            id = request.candidateId,
-            origin = LearningOrigin.Consolidation(
-                consolidationId = request.consolidation.consolidationId,
-                generation = request.consolidation.generation
-            ),
-            proposal = snapshot.proposal.proposal,
-            createdAt = request.createdAt
-        )
-
-        when (
-            val result = learning.install(
-                candidate = candidate,
-                context = foundation.childContext(
+        val sourceClaim = when (
+            val result = consolidations.claim(
+                request.consolidation,
+                foundation.childContext(
                     parent = root,
-                    component = "Learning",
-                    operation = "installConsolidationLearningCandidate",
-                    metadata = mapOf("learningCandidateId" to request.candidateId.value)
+                    component = "LearningConsolidation",
+                    operation = "claimLearningConsolidationForCandidateProjection"
                 )
             )
         ) {
-            is LearningInstallResult.Rejected -> {
-                foundation.observability.record(
-                    severity = DiagnosticSeverity.WARNING,
-                    code = "LEARNING_CONSOLIDATION_CANDIDATE_REJECTED",
-                    message = "learning consolidation candidate projection was rejected by candidate store",
-                    context = root,
-                    metadata = mapOf("resultType" to "candidate_rejected")
-                )
-                LearningConsolidationCandidateProjectionResult.CandidateRejected(result.reason)
+            is LearningConsolidationClaimResult.Claimed -> result.claim
+            is LearningConsolidationClaimResult.Rejected -> {
+                val rejection = when (result.reason) {
+                    LearningConsolidationClaimRejection.CONSOLIDATION_MISSING ->
+                        LearningConsolidationCandidateProjectionRejection.CONSOLIDATION_MISSING
+                    LearningConsolidationClaimRejection.CONSOLIDATION_GENERATION_MISMATCH ->
+                        LearningConsolidationCandidateProjectionRejection.CONSOLIDATION_GENERATION_MISMATCH
+                    LearningConsolidationClaimRejection.ALREADY_CLAIMED ->
+                        LearningConsolidationCandidateProjectionRejection.CONSOLIDATION_ALREADY_CLAIMED
+                }
+                return@synchronized reject(request, rejection)
             }
+        }
 
-            is LearningInstallResult.Installed -> {
-                val receipt = LearningConsolidationCandidateProjectionReceipt(
-                    consolidation = request.consolidation,
-                    candidate = LearningCandidateReference(
-                        candidateId = result.ownership.candidate.id,
-                        generation = result.ownership.generation
+        try {
+            val candidate = LearningCandidate(
+                id = request.candidateId,
+                origin = LearningOrigin.Consolidation(
+                    consolidationId = sourceClaim.reference.consolidationId,
+                    generation = sourceClaim.reference.generation
+                ),
+                proposal = sourceClaim.proposal.proposal,
+                createdAt = request.createdAt
+            )
+
+            when (
+                val result = learning.install(
+                    candidate = candidate,
+                    context = foundation.childContext(
+                        parent = root,
+                        component = "Learning",
+                        operation = "installConsolidationLearningCandidate",
+                        metadata = mapOf("learningCandidateId" to request.candidateId.value)
                     )
                 )
-                completed[request.consolidation] = CompletedProjection(
-                    request = request,
-                    receipt = receipt,
-                    candidateOwnership = result.ownership
-                )
-                foundation.observability.record(
-                    severity = DiagnosticSeverity.INFO,
-                    code = "LEARNING_CONSOLIDATION_CANDIDATE_PROJECTED",
-                    message = "learning consolidation proposal projected into learning candidate",
-                    context = root,
-                    metadata = receiptMetadata(receipt) + ("resultType" to "projected")
-                )
-                LearningConsolidationCandidateProjectionResult.Projected(receipt)
+            ) {
+                is LearningInstallResult.Rejected -> {
+                    foundation.observability.record(
+                        severity = DiagnosticSeverity.WARNING,
+                        code = "LEARNING_CONSOLIDATION_CANDIDATE_REJECTED",
+                        message = "learning consolidation candidate projection was rejected by candidate store",
+                        context = root,
+                        metadata = mapOf("resultType" to "candidate_rejected")
+                    )
+                    LearningConsolidationCandidateProjectionResult.CandidateRejected(result.reason)
+                }
+
+                is LearningInstallResult.Installed -> {
+                    val receipt = LearningConsolidationCandidateProjectionReceipt(
+                        consolidation = sourceClaim.reference,
+                        candidate = LearningCandidateReference(
+                            candidateId = result.ownership.candidate.id,
+                            generation = result.ownership.generation
+                        )
+                    )
+                    completed[sourceClaim.reference] = CompletedProjection(
+                        request = request,
+                        receipt = receipt,
+                        candidateOwnership = result.ownership
+                    )
+                    foundation.observability.record(
+                        severity = DiagnosticSeverity.INFO,
+                        code = "LEARNING_CONSOLIDATION_CANDIDATE_PROJECTED",
+                        message = "learning consolidation proposal projected into learning candidate",
+                        context = root,
+                        metadata = receiptMetadata(receipt) + ("resultType" to "projected")
+                    )
+                    LearningConsolidationCandidateProjectionResult.Projected(receipt)
+                }
             }
+        } finally {
+            sourceClaim.release()
         }
     }
 
@@ -160,14 +174,6 @@ class LearningConsolidationCandidateProjector(
         request: LearningConsolidationCandidateProjectionRequest,
         reason: LearningConsolidationCandidateProjectionRejection
     ): LearningConsolidationCandidateProjectionResult.Rejected {
-        observeRejected(request, reason)
-        return LearningConsolidationCandidateProjectionResult.Rejected(reason)
-    }
-
-    private fun observeRejected(
-        request: LearningConsolidationCandidateProjectionRequest,
-        reason: LearningConsolidationCandidateProjectionRejection
-    ) {
         foundation.observability.record(
             severity = DiagnosticSeverity.WARNING,
             code = "LEARNING_CONSOLIDATION_CANDIDATE_PROJECTION_REJECTED",
@@ -179,6 +185,7 @@ class LearningConsolidationCandidateProjector(
                     ("rejectionReason" to reason.name.lowercase())
             )
         )
+        return LearningConsolidationCandidateProjectionResult.Rejected(reason)
     }
 
     private fun observeReplay(
