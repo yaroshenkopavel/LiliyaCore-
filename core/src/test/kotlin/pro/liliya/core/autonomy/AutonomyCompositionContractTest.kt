@@ -44,7 +44,7 @@ class AutonomyCompositionContractTest {
             sourceReference = AutonomySourceReference("declared-1")
         ),
         objective = objective,
-        trigger = trigger,
+        triggerDescription = trigger,
         priority = AutonomyPriority.NORMAL,
         budget = AutonomyBudget(maxAttempts = 3),
         createdAt = Instant.parse("2026-08-29T14:45:00Z")
