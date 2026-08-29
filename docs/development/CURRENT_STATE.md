@@ -4,15 +4,16 @@ Last journal update: 2026-08-29
 
 ## Current verified baseline
 
-Current `main`: `ec8037c1a918b7673d82dc9fae539fef2f9d6c96`.
+Current `main`: `1ba105b74c9fedff45fc6ab70cf5dc6a84172c71`.
 
-This commit merged PR #118 `Orchestration v0.1: Readiness Contracts` after exact-head Core CI #808 and final ownership/privacy/governance audit.
+This baseline includes the completed and readiness-verified **Controlled Orchestration v0.1** chain through PR #123.
 
-Immediately preceding Orchestration milestones:
+Recent verified milestone chain:
 
-- PR #116 `Orchestration v0.1: Structural Intent Foundation` → structural non-executing orchestration intent model, exact Decision provenance, exact-generation private store, privacy-safe observability and deterministic snapshots. Exact head `b93a78dcc5f698e5e7a017705f528c093b5966a0`; Core CI #800 GREEN; merge/new main `862e24c0378ee2780e4850685802b48c3d5c0197`.
-- PR #117 `Orchestration v0.1: Composition Ownership` → controlled `OrchestrationComposition`, exact `OrchestrationOwnership`, composition isolation and install→remove correlation lineage. Exact head `c8e5a24e10211c31e2d515496e24d612ac4a43f8`; Core CI #804 GREEN; merge/new main `f97f46a7d87faefcfcd7834723f119a885f4eca3`.
-- PR #118 `Orchestration v0.1: Readiness Contracts` → repeated-remove fail-closed, detached snapshots, same-ID composition isolation, exact Decision provenance as data-only, and explicit absence of Authority/Capability/Execution/scheduling/Autonomy/Agent/truth-confidence semantics. Exact head `6aa49bace987c502d046baf8a050424b9efadc70`; Core CI #808 GREEN; merge/new main `ec8037c1a918b7673d82dc9fae539fef2f9d6c96`.
+- PR #120 `Orchestration Control v0.1: Exact Execution Preflight` — exact head `cd2f41ea9015056a8fdb7d87e092b7371aca5a78`, Core CI #815 GREEN, merge/new main `c9025ced195e168302b798d9b80a7f94f333ed85`;
+- PR #121 `Orchestration Control v0.1: Fresh Authorization Boundary` — initial CI #820 exposed a test-only `LogEvent.code` API mistake; corrected final head `f824679309338e0d05da2be1492bef229b1750c5`, Core CI #822 GREEN, merge/new main `fdd2c953b0b742d4e7f1f3d9d85e1e5f0c65ac50`;
+- PR #122 `Orchestration Control v0.1: Controlled Execution Boundary` — exact head `716668b44c5735e75b8c153928b55b4691ebf801`, Core CI #827 GREEN, merge/new main `ff6cabe02c860ce75cefa9d328ed4c8fa9ccfb1c`;
+- PR #123 `Orchestration Control v0.1: Readiness Contracts` — exact head `e7e226d76bed3ad25c692d14d1fe6053af3c27c6`, Core CI #831 GREEN, merge/new main `1ba105b74c9fedff45fc6ab70cf5dc6a84172c71`.
 
 ## Frozen subsystem status
 
@@ -35,117 +36,76 @@ Immediately preceding Orchestration milestones:
 - Reasoning Foundation v0.1: **FROZEN**.
 - Decision Foundation v0.1: **FROZEN**.
 - Orchestration Intent Foundation v0.1: **FROZEN**.
+- Controlled Orchestration v0.1: **FROZEN pending documentation-checkpoint merge**.
 
-Update System v0.1 and Security & Licensing v0.1 remain **architecture contracts**, not implemented runtime subsystems.
+Update System v0.1 and Security & Licensing v0.1 remain architecture contracts, not implemented runtime subsystems.
 
-## Current cognitive chain
+## Current cognitive/control chain
 
-`Interaction/Input → Context → Meaning → Goal → Planning → Reasoning → Decision → Orchestration Intent → Capability/Authority → Execution → Result → Reflection → Memory/Knowledge → Learning`
+`Interaction/Input → Context → Meaning → Goal → Planning → Reasoning → Decision → Orchestration Intent → exact preflight → Capability/Authority → Execution → Result → Reflection → Memory/Knowledge → Learning`
 
-The chain is architectural sequencing, not implicit permission propagation. Every controlled boundary keeps its own ownership and validation requirements.
+This chain is sequencing, not implicit permission propagation.
 
-## Decision Foundation v0.1
+Mandatory controlled-execution invariant:
 
-Frozen boundary:
+`Decision != Orchestration Intent != Authorization != Execution`
 
-`structural Planning/Reasoning references + caller-declared alternatives + selected option + rationale → DecisionRecord → exact DecisionGeneration ownership`
+## Controlled Orchestration v0.1
 
-Mandatory invariant:
+Frozen direction:
 
-`Decision != Authority != Execution`
-
-A selected Decision option is a recorded cognitive outcome only. It is not permission, a capability grant, a scheduler instruction, truth/confidence/trust, an `ExecutionRequest`, or proof of real-world effect.
-
-Canonical contract: `DECISION_V0_1_FREEZE.md`.
-
-## Orchestration Intent Foundation v0.1
-
-Frozen boundary:
-
-`OrchestrationIntentId + exact (DecisionId, DecisionGeneration, selected DecisionOptionId) provenance + caller-declared intent description + createdAt → exact OrchestrationGeneration ownership`
-
-Mandatory invariant:
-
-`Decision != Orchestration Intent != Authority != Execution`
+`exact OrchestrationIntent → exact live provenance preflight → trusted action/capability mapping → fresh Authority → frozen Execution → executor`
 
 Key guarantees:
 
-- orchestration intent identity is explicit and nonblank;
-- exact positive generation ownership;
-- Decision provenance is structural data only and performs no hidden lookup;
-- selected Decision option provenance does not imply approval or permission;
-- duplicate intent IDs reject without replacement;
-- stale/ABA ownership cannot remove a replacement;
-- repeated remove fails closed;
-- same-ID concurrent registration has one winner;
-- independent compositions are isolated;
-- snapshots are deterministic and detached;
-- private intent description is redacted from rendering and lifecycle metadata;
-- install→remove uses explicit root/child `LogContext` correlation;
-- lifecycle metadata contains no Authority/Capability/permission/Execution/scheduler/Autonomy/Agent/truth-confidence/trust semantics;
-- no `ExecutionRequest`, executor call, scheduling, Memory/Knowledge mutation, Android/device control, Autonomy or Agent behavior exists in v0.1.
+- exact OrchestrationIntent ID+generation is live-validated on every attempt;
+- referenced Decision ID+generation+selected option are revalidated;
+- caller supplies principal+action only, not capability/scope;
+- capability/scope derive from trusted action policy;
+- orchestration policy mapping must agree with Execution action→capability mapping;
+- stale/missing/mismatched provenance fails closed;
+- unknown/mismatched mapping fails closed;
+- Authority is fresh and scope-correct;
+- frozen Execution independently repeats action/capability validation and fresh Authority before executor;
+- stale provenance, denied Authority and mapping mismatch produce zero executor calls;
+- successful controlled path reaches executor exactly once;
+- executor failures remain isolated and observable;
+- private Decision rationale/options and orchestration description remain out of Authority reason/full-path observability;
+- preflight/authorization evidence is evidence only, never durable permission;
+- prior authorization cannot be reused after grant revoke or exact Decision replacement;
+- no hidden scheduler, Autonomy or Agent behavior exists in v0.1.
 
-Canonical contract: `ORCHESTRATION_V0_1_FREEZE.md`.
-
-## Controlled Learning Application v0.1
-
-Frozen chain:
-
-`candidate → decision → policy → application intent → exact preflight → Authority → prepared mutation → exact claim → fresh preflight + fresh Authority → Memory/Knowledge write → exact completion → completed structural outcome`
-
-Important precedent for the next orchestration stage:
-
-- structural intent is not permission;
-- exact provenance is revalidated at the side-effect boundary;
-- fresh Authority must be adjacent to the controlled downstream mutation;
-- old authorization evidence never becomes durable permission;
-- denial or mismatch causes zero downstream writes.
-
-## Update System architecture contract
-
-Required future pipeline:
-
-`Discovery → Signed Manifest → Compatibility → Authority → Download → Verify → Stage → Migrate → Activate → Health Check → Commit / Rollback`
-
-Network delivery is transport, not trust. Signature validity is not activation permission.
-
-## Security & Licensing architecture contract
-
-Required protected-use direction:
-
-`Signed Entitlement → Device Enrollment → Keystore-backed Key Boundary → License Policy → Authority → Protected Asset/Store Access → Controlled Operation`
-
-License is not Authority. Device binding is cryptographic enrollment, not HWID-derived trust. Protected model/runtime keys and user cognitive-data keys remain separate domains.
+Canonical contract: `ORCHESTRATION_CONTROL_V0_1_FREEZE.md`.
 
 ## Current next action
 
-The next architecture stage is the **Controlled Orchestration Authorization / Execution Bridge foundation**.
+The next architecture stage is **Autonomy Foundation v0.1**.
 
 Required direction:
 
-`exact OrchestrationIntent → exact live provenance preflight → trusted action/capability resolution → fresh Authority → Execution`
+`Goals/Context/Reflection → explicit autonomy proposal/intent → Decision/Orchestration → fresh Capability/Authority → Execution`
 
 Mandatory invariant:
 
-`Orchestration Intent != Authorization != Execution`
+`Autonomy != Decision != Authority != Execution`.
 
-The first slice should stop before executor invocation. Before real execution integration, define and test:
+Autonomy must initially remain structural and policy-governed. It must not become an executor, durable permission source, hidden scheduler, recursive self-spawning system or Agent framework.
 
-- exact orchestration intent ID+generation preflight;
-- exact retained Decision ID+generation+selected-option consistency;
-- trusted action identifier → required capability/scope resolution;
-- explicit principal and reason provenance;
-- rejection of stale/missing/mismatched orchestration or Decision provenance;
-- rejection of unknown or mismatched action/capability mapping before Authority/Execution;
-- fresh scope-correct Authority adjacent to crossing the execution boundary;
-- zero executor calls when validation fails or Authority denies;
-- privacy-safe observability and one explicit correlation lineage;
-- no durable permission semantics from old Decision, OrchestrationIntent, validation receipts or prior Authority decisions;
-- no Autonomy or Agent behavior.
+Before implementation, define:
 
-Autonomy remains deferred until this controlled orchestration→Authority→Execution path is separately implemented, audited and frozen. Agents remain deferred until Autonomy boundaries are explicit and frozen.
+- exact autonomy intent/proposal identity and generation ownership;
+- explicit origin/provenance from Goals/Context/Reflection without hidden store lookup;
+- caller/policy-declared trigger/priority/budget semantics;
+- bounded scheduling/attempt semantics without side effects in the first slice;
+- cancellation and stale ownership rules;
+- deterministic detached snapshots and composition isolation;
+- privacy-safe observability/correlation;
+- strict prohibition on treating autonomy intent as Decision, Authority or Execution;
+- future bridge into the already frozen Decision→Orchestration→Authority→Execution path rather than bypassing it.
 
-Persistent encrypted storage, Android integration, Update runtime, and Security/Licensing runtime remain separate future stages.
+Agents remain deferred until Autonomy boundaries, lifecycle, budgets, cancellation and governance are separately implemented, audited and frozen.
+
+Persistent encrypted storage, Android integration, Update runtime and Security/Licensing runtime remain separate future stages.
 
 ## Workflow
 
