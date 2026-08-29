@@ -25,7 +25,7 @@ internal interface LearningApplicationMutationClaimRegistration {
     fun release(context: LogContext): Boolean
 }
 
-internal enum class LearningApplicationMutationClaimRejection {
+enum class LearningApplicationMutationClaimRejection {
     MUTATION_MISSING,
     MUTATION_GENERATION_MISMATCH,
     ALREADY_CLAIMED
