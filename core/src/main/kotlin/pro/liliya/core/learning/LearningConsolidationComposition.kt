@@ -16,8 +16,24 @@ sealed interface LearningConsolidationInstallResult {
     data class Rejected(val reason: String) : LearningConsolidationInstallResult
 }
 
+internal class LearningConsolidationConversionClaim(
+    val proposal: LearningConsolidationProposal,
+    val reference: LearningConsolidationReference,
+    private val releaseAction: () -> Boolean,
+    private val completeAction: (LearningCandidateReference) -> Boolean
+) {
+    fun release(): Boolean = releaseAction()
+    fun complete(candidate: LearningCandidateReference): Boolean = completeAction(candidate)
+}
+
+internal sealed interface LearningConsolidationConversionResult {
+    data class Claimed(val claim: LearningConsolidationConversionClaim) : LearningConsolidationConversionResult
+    data class AlreadyConverted(val candidate: LearningCandidateReference) : LearningConsolidationConversionResult
+    data class Rejected(val reason: LearningConsolidationConversionRejection) : LearningConsolidationConversionResult
+}
+
 class LearningConsolidationComposition(
-    private val foundation: FoundationComposition,
+    internal val foundation: FoundationComposition,
     private val completedMutations: LearningApplicationMutationComposition
 ) {
     private val store = LearningConsolidationStore(foundation.observability)
@@ -74,6 +90,56 @@ class LearningConsolidationComposition(
         }
     }
 
+    internal fun claimCandidateConversion(
+        reference: LearningConsolidationReference
+    ): LearningConsolidationConversionResult {
+        val claimContext = foundation.rootContext(
+            operation = "claimLearningConsolidationCandidateConversion",
+            component = "LearningConsolidation",
+            metadata = referenceMetadata(reference)
+        )
+        return when (val result = store.claimConversion(reference, claimContext)) {
+            is LearningConsolidationConversionClaimResult.Claimed -> {
+                val registration = result.claim
+                LearningConsolidationConversionResult.Claimed(
+                    LearningConsolidationConversionClaim(
+                        proposal = registration.proposal,
+                        reference = registration.reference,
+                        releaseAction = {
+                            registration.release(
+                                foundation.childContext(
+                                    parent = claimContext,
+                                    component = "LearningConsolidation",
+                                    operation = "releaseLearningConsolidationCandidateConversion"
+                                )
+                            )
+                        },
+                        completeAction = { candidate ->
+                            registration.complete(
+                                candidate,
+                                foundation.childContext(
+                                    parent = claimContext,
+                                    component = "LearningConsolidation",
+                                    operation = "completeLearningConsolidationCandidateConversion",
+                                    metadata = mapOf(
+                                        "learningCandidateId" to candidate.candidateId.value,
+                                        "learningGeneration" to candidate.generation.value.toString()
+                                    )
+                                )
+                            )
+                        }
+                    )
+                )
+            }
+
+            is LearningConsolidationConversionClaimResult.AlreadyConverted ->
+                LearningConsolidationConversionResult.AlreadyConverted(result.candidate)
+
+            is LearningConsolidationConversionClaimResult.Rejected ->
+                LearningConsolidationConversionResult.Rejected(result.reason)
+        }
+    }
+
     fun find(id: LearningConsolidationId): LearningConsolidationProposal? = store.find(id)
 
     fun inspect(id: LearningConsolidationId): LearningConsolidationSnapshot? = store.inspect(id)
@@ -83,6 +149,11 @@ class LearningConsolidationComposition(
     fun snapshot(): List<LearningConsolidationProposal> = store.snapshot()
 
     fun snapshotEntries(): List<LearningConsolidationSnapshot> = store.snapshotEntries()
+
+    private fun referenceMetadata(reference: LearningConsolidationReference): Map<String, String> = mapOf(
+        "learningConsolidationId" to reference.consolidationId.value,
+        "learningConsolidationGeneration" to reference.generation.value.toString()
+    )
 
     private fun proposalMetadata(proposal: LearningConsolidationProposal): Map<String, String> = mapOf(
         "learningConsolidationId" to proposal.id.value,
