@@ -58,7 +58,8 @@ The following v0.1 foundations are frozen:
 - Learning Policy;
 - Learning Application Intent;
 - Controlled Learning Application;
-- Learning Consolidation.
+- Learning Consolidation;
+- Planning.
 
 ### Controlled Learning Application
 
@@ -98,28 +99,56 @@ Hard invariants:
 - candidate-ID conflict remains retryable;
 - `LearningOrigin.Consolidation` is controlled typed provenance, not publicly forgeable evidence;
 - public install/transplant of consolidation-origin Candidate is fail-closed;
-- bridge creates Candidate only and cannot bypass Decision, Policy, Application, Authority or controlled apply;
-- no Planning/Autonomy/Agents/model-weight mutation exists in consolidation.
+- bridge creates Candidate only and cannot bypass Decision, Policy, Application, Authority or controlled apply.
 
 Canonical freeze document: `LEARNING_CONSOLIDATION_V0_1_FREEZE.md`.
 
-## Planning Foundation v0.1 — NEXT
+### Planning Foundation v0.1 — FROZEN
 
-Planning begins only after Learning Consolidation freeze.
+Frozen structural boundary:
+
+`PlanningOrigin + caller-declared goal + ordered PlanningStep list → PlanningProposal → exact PlanningGeneration ownership`
 
 Mandatory invariant:
 
 `Plan != Decision != Authority != Execution`
 
-Planning v0.1 is a structural proposal boundary for possible future actions. It must not:
+Hard invariants:
 
-- grant capability or authority;
-- execute an action;
-- mutate Memory/Knowledge merely because a plan exists;
+- proposal and step IDs are explicit, nonblank structural identities;
+- planning text is caller-declared data, not executable code or permission;
+- at least one ordered step is required and step IDs are unique;
+- caller-provided step collections are defensively copied;
+- duplicate proposal IDs reject without replacement;
+- exact positive generation ownership and stale/ABA-safe removal;
+- repeated removal fails closed;
+- concurrent same-ID registration has one winner;
+- compositions are isolated;
+- snapshots are deterministic and detached read views;
+- goal and step description payloads are redacted from object rendering and lifecycle metadata;
+- install→remove correlation is explicit parent/child `LogContext` lineage;
+- Planning has no API that grants Authority, emits `ExecutionRequest`, calls executors, mutates Memory/Knowledge, approves learning, schedules work, or creates Autonomy/Agents.
+
+Canonical freeze document: `PLANNING_V0_1_FREEZE.md`.
+
+## Reasoning Foundation v0.1 — NEXT
+
+Reasoning begins only after Planning freeze.
+
+Mandatory invariant:
+
+`Reasoning != Decision != Authority != Execution`
+
+Reasoning v0.1 is an explicit deliberation/analysis boundary over caller-supplied inputs and structural context. It must not:
+
+- turn analysis into Authority;
+- select or execute a device action merely because reasoning produced a conclusion;
+- mutate Memory/Knowledge merely because an inference exists;
 - approve learning;
+- claim truth/confidence/trust unless a later dedicated contract explicitly defines those semantics;
 - become an autonomous agent/controller.
 
-Initial planning contracts must define exact plan identity/generation, goal/input provenance, ordered steps/dependencies, structural action/capability references, deterministic snapshots, stale-safe ownership, composition isolation, privacy-safe observability and explicit bridge boundaries to future decision/authority/execution layers.
+Initial Reasoning contracts must define exact artifact identity/generation, explicit provenance/input references, deterministic premise/context representation, structural relation to Planning without converting plans into permission, defensive snapshots, stale-safe ownership, composition isolation, privacy-safe observability/correlation, and a future bridge to Decision/orchestration that cannot bypass Authority/Execution.
 
 ## Update System v0.1 — ARCHITECTURE CONTRACT
 
@@ -165,10 +194,10 @@ Detailed contract: `SECURITY_LICENSING_V0_1_CONTRACT.md`.
 
 ## Deferred roadmap
 
-After Planning Foundation v0.1:
+After Reasoning Foundation v0.1:
 
-- Planning readiness/freeze;
-- later deliberation/decision orchestration boundaries;
+- Reasoning readiness/freeze;
+- explicit Decision/deliberation orchestration boundaries;
 - Autonomy only after explicit controlled-governance design;
 - Agents only after Autonomy boundaries are frozen;
 - persistent encrypted cognitive storage and crash recovery;
