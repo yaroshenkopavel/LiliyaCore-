@@ -1,6 +1,7 @@
 package pro.liliya.core.agent
 
 import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.concurrent.thread
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -28,11 +29,13 @@ class AgentCoordinationWorkBindingContractTest {
 
     private fun fixture(): Fixture {
         val logs = InMemoryLogWriter()
-        var sequence = 0
+        val sequence = AtomicInteger(0)
         val foundation = FoundationComposition(
             diagnostics = DiagnosticRecorder(InMemoryDiagnosticSink()),
             loggerProvider = LoggerProvider { context -> StructuredLogger(context, logs) },
-            correlationIds = CorrelationIdGenerator { "coordination-binding-${++sequence}" }
+            correlationIds = CorrelationIdGenerator {
+                "coordination-binding-${sequence.incrementAndGet()}"
+            }
         )
         return Fixture(foundation, AgentCoordinationWorkBindingStore(foundation.observability))
     }
@@ -88,7 +91,10 @@ class AgentCoordinationWorkBindingContractTest {
                 listOf(
                     duplicateParticipant,
                     duplicateParticipant.copy(
-                        autonomy = ExactAutonomyReference(AutonomyProposalId("autonomy-b"), AutonomyGeneration(2))
+                        autonomy = ExactAutonomyReference(
+                            AutonomyProposalId("autonomy-b"),
+                            AutonomyGeneration(2)
+                        )
                     )
                 )
             )
@@ -104,7 +110,10 @@ class AgentCoordinationWorkBindingContractTest {
             )
         }
 
-        val sharedAutonomy = ExactAutonomyReference(AutonomyProposalId("shared"), AutonomyGeneration(9))
+        val sharedAutonomy = ExactAutonomyReference(
+            AutonomyProposalId("shared"),
+            AutonomyGeneration(9)
+        )
         assertFailsWith<IllegalArgumentException> {
             AgentCoordinationWorkBinding(
                 coordination(),
@@ -225,7 +234,10 @@ class AgentCoordinationWorkBindingContractTest {
         val detached = f.store.snapshot()
         f.store.register(latest, context(f))
 
-        assertEquals(listOf("coordination-a", "coordination-z"), detached.map { it.binding.coordination.id.value })
+        assertEquals(
+            listOf("coordination-a", "coordination-z"),
+            detached.map { it.binding.coordination.id.value }
+        )
         assertEquals(
             listOf("coordination-a", "coordination-b", "coordination-z"),
             f.store.snapshot().map { it.binding.coordination.id.value }
