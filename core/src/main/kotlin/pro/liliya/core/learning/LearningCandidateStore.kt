@@ -29,44 +29,40 @@ internal class LearningCandidateStore(
     private val candidates = ConcurrentHashMap<LearningCandidateId, Entry>()
 
     fun register(candidate: LearningCandidate, context: LogContext): LearningCandidateRegistrationResult {
-        val entry = Entry(
-            generation = LearningGeneration(nextGeneration.incrementAndGet()),
-            candidate = candidate
-        )
+        val entry = Entry(LearningGeneration(nextGeneration.incrementAndGet()), candidate)
         val previous = candidates.putIfAbsent(candidate.id, entry)
         if (previous != null) {
             val reason = "learning candidate id is already registered"
             observability.record(
-                severity = DiagnosticSeverity.WARNING,
-                code = "LEARNING_CANDIDATE_REGISTRATION_REJECTED",
-                message = reason,
-                context = context,
-                metadata = metadata(candidate, entry.generation) + ("rejectionReason" to reason)
+                DiagnosticSeverity.WARNING,
+                "LEARNING_CANDIDATE_REGISTRATION_REJECTED",
+                reason,
+                context,
+                metadata(candidate, entry.generation) + ("rejectionReason" to reason)
             )
             return LearningCandidateRegistrationResult.Rejected(reason)
         }
 
         observability.record(
-            severity = DiagnosticSeverity.INFO,
-            code = "LEARNING_CANDIDATE_REGISTERED",
-            message = "learning candidate registered",
-            context = context,
-            metadata = metadata(candidate, entry.generation)
+            DiagnosticSeverity.INFO,
+            "LEARNING_CANDIDATE_REGISTERED",
+            "learning candidate registered",
+            context,
+            metadata(candidate, entry.generation)
         )
 
         return LearningCandidateRegistrationResult.Registered(
-            registration = object : LearningCandidateRegistration {
-                override val candidate: LearningCandidate = candidate
-                override val generation: LearningGeneration = entry.generation
-
+            object : LearningCandidateRegistration {
+                override val candidate = candidate
+                override val generation = entry.generation
                 override fun remove(context: LogContext): Boolean {
                     val removed = candidates.remove(candidate.id, entry)
                     observability.record(
-                        severity = if (removed) DiagnosticSeverity.INFO else DiagnosticSeverity.WARNING,
-                        code = if (removed) "LEARNING_CANDIDATE_REMOVED" else "LEARNING_CANDIDATE_REMOVAL_REJECTED",
-                        message = if (removed) "learning candidate removed" else "learning candidate registration is no longer current",
-                        context = context,
-                        metadata = metadata(candidate, entry.generation)
+                        if (removed) DiagnosticSeverity.INFO else DiagnosticSeverity.WARNING,
+                        if (removed) "LEARNING_CANDIDATE_REMOVED" else "LEARNING_CANDIDATE_REMOVAL_REJECTED",
+                        if (removed) "learning candidate removed" else "learning candidate registration is no longer current",
+                        context,
+                        metadata(candidate, entry.generation)
                     )
                     return removed
                 }
@@ -75,23 +71,14 @@ internal class LearningCandidateStore(
     }
 
     fun find(id: LearningCandidateId): LearningCandidate? = candidates[id]?.candidate
-
-    fun inspect(id: LearningCandidateId): LearningCandidateSnapshot? = candidates[id]?.let { entry ->
-        LearningCandidateSnapshot(entry.candidate, entry.generation)
-    }
-
+    fun inspect(id: LearningCandidateId): LearningCandidateSnapshot? = candidates[id]?.let { LearningCandidateSnapshot(it.candidate, it.generation) }
     fun contains(id: LearningCandidateId): Boolean = candidates.containsKey(id)
-
     fun snapshot(): List<LearningCandidate> = snapshotEntries().map { it.candidate }
-
     fun snapshotEntries(): List<LearningCandidateSnapshot> = candidates.values
         .map { LearningCandidateSnapshot(it.candidate, it.generation) }
         .sortedWith(compareBy<LearningCandidateSnapshot> { it.candidate.createdAt }.thenBy { it.candidate.id.value })
 
-    private fun metadata(
-        candidate: LearningCandidate,
-        generation: LearningGeneration
-    ): Map<String, String> = buildMap {
+    private fun metadata(candidate: LearningCandidate, generation: LearningGeneration): Map<String, String> = buildMap {
         put("learningCandidateId", candidate.id.value)
         put("learningGeneration", generation.value.toString())
         put("createdAt", candidate.createdAt.toString())
@@ -100,6 +87,11 @@ internal class LearningCandidateStore(
                 put("learningOriginType", "reflection")
                 put("reflectionRecordId", origin.recordId.value)
                 put("reflectionGeneration", origin.generation.value.toString())
+            }
+            is LearningOrigin.Consolidation -> {
+                put("learningOriginType", "consolidation")
+                put("learningConsolidationId", origin.consolidationId.value)
+                put("learningConsolidationGeneration", origin.generation.value.toString())
             }
             is LearningOrigin.Declared -> {
                 put("learningOriginType", "declared")

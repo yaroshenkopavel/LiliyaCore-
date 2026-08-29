@@ -34,6 +34,11 @@ sealed interface LearningOrigin {
         val generation: ReflectionGeneration
     ) : LearningOrigin
 
+    data class Consolidation(
+        val consolidationId: LearningConsolidationId,
+        val generation: LearningConsolidationGeneration
+    ) : LearningOrigin
+
     data class Declared(
         val sourceId: LearningSourceId,
         val sourceReference: LearningSourceReference? = null

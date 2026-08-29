@@ -14,6 +14,11 @@ value class LearningConsolidationGeneration(val value: Long) {
     override fun toString(): String = value.toString()
 }
 
+data class LearningConsolidationReference(
+    val consolidationId: LearningConsolidationId,
+    val generation: LearningConsolidationGeneration
+)
+
 class LearningConsolidationProposal(
     val id: LearningConsolidationId,
     sources: List<LearningApplicationMutationApplicationReceipt>,
