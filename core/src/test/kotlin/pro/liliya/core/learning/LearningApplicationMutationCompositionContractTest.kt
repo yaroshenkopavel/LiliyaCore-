@@ -191,4 +191,45 @@ class LearningApplicationMutationCompositionContractTest {
 
         assertEquals(LearningApplicationMutationClaimRejection.MUTATION_GENERATION_MISMATCH, result.reason)
     }
+
+    @Test
+    fun exact_claim_completion_removes_prepared_mutation_and_marks_idempotency_completed() {
+        val composition = LearningApplicationMutationComposition(foundation("mutation-complete"))
+        val ownership = assertIs<LearningApplicationMutationPrepareResult.Prepared>(
+            composition.prepare(plan())
+        ).ownership
+        val claim = assertIs<LearningApplicationMutationClaimResult.Claimed>(
+            composition.claim(reference(ownership))
+        ).claim
+
+        assertTrue(claim.complete())
+        assertFalse(composition.contains(ownership.plan.id))
+        assertNull(composition.findByIdempotencyKey(ownership.plan.idempotencyKey))
+        assertTrue(composition.isCompletedIdempotencyKey(ownership.plan.idempotencyKey))
+        assertFalse(claim.complete())
+        assertFalse(claim.release())
+    }
+
+    @Test
+    fun completed_idempotency_key_cannot_be_prepared_again_in_same_composition() {
+        val composition = LearningApplicationMutationComposition(foundation("mutation-complete-idempotency"))
+        val first = plan(id = "mutation-a", key = "completed-key")
+        val ownership = assertIs<LearningApplicationMutationPrepareResult.Prepared>(
+            composition.prepare(first)
+        ).ownership
+        val claim = assertIs<LearningApplicationMutationClaimResult.Claimed>(
+            composition.claim(reference(ownership))
+        ).claim
+
+        assertTrue(claim.complete())
+
+        val retry = plan(
+            id = "mutation-b",
+            key = "completed-key",
+            applicationGeneration = 2L
+        )
+        assertIs<LearningApplicationMutationPrepareResult.Rejected>(composition.prepare(retry))
+        assertFalse(composition.contains(retry.id))
+        assertTrue(composition.isCompletedIdempotencyKey(retry.idempotencyKey))
+    }
 }
