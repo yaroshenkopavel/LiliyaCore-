@@ -193,29 +193,15 @@ Execution performs side effects only after authority grants.
 
 A caller must not be able to reach a real device/shell/Android executor through a public path that bypasses `AuthorityManager` or an equivalent mandatory gate.
 
-The open PR #20 is specifically trying to establish this boundary before real adapters exist.
+---
+
+## 18. Clean branches are preferred over polluted microcommit history
+
+When experimentation becomes too noisy to review safely, quarantine or reconstruct the work from a known-good baseline rather than merging confusing history.
 
 ---
 
-## 18. PR #20 is not production architecture yet
-
-Execution files exist only on `foundation/execution-v0.1`.
-
-CI #304 currently fails at test compilation due unresolved `throwable` references. This is a known checkpoint, not something to silently repair in documentation work.
-
-Until PR #20 is fixed, GREEN, audited, and merged, `execution` must be described as proposed/open work rather than frozen `main` architecture.
-
----
-
-## 19. Clean branches are preferred over polluted microcommit history
-
-The services phase demonstrated that an experimental branch can become too noisy to trust/review. The accepted solution was to quarantine it and rebuild a clean branch.
-
-When experimentation becomes messy, prefer reconstructing a coherent branch from a known baseline instead of merging historical noise.
-
----
-
-## 20. Tests are executable architecture contracts
+## 19. Tests are executable architecture contracts
 
 Contract tests encode many non-obvious decisions: concurrency, stale ownership, exact ordering, failure isolation, expiry boundaries, correlation continuity, and security restrictions.
 
@@ -223,9 +209,9 @@ Before modifying a subsystem, read its contracts and any cross-layer readiness t
 
 ---
 
-## 21. Frozen does not mean immutable forever
+## 20. Frozen does not mean immutable forever
 
-Foundation v0.1 and Authority v0.1 are frozen baselines, meaning they should not be casually redesigned while later layers are built.
+Frozen baselines should not be casually redesigned while later layers are built.
 
 A demonstrated correctness/security bug may justify a focused fix, but such a fix requires:
 - reproduction/contract;
@@ -236,8 +222,82 @@ A demonstrated correctness/security bug may justify a focused fix, but such a fi
 
 ---
 
-## 22. Current project scope is LiliyaCore only
+## 21. Current project scope is LiliyaCore only
 
 This journal intentionally does not import development history from predecessor repositories.
 
 If older code is ever examined as a donor, that is a separate comparison activity. It does not automatically become part of the current architecture or current project history.
+
+---
+
+## 22. License is not Authority
+
+A valid license or entitlement answers whether a protected product feature/model/package may be available under commercial/security policy. It does not grant permission to perform arbitrary actions.
+
+Protected operations must still pass the normal `Authority` boundary. Never make `license == valid` equivalent to `Authority == granted`.
+
+---
+
+## 23. Device binding must not be derived from public hardware identifiers
+
+IMEI, Android ID, serial-like identifiers, Build fields, or other readable device attributes are identifiers, not cryptographic secrets.
+
+Do not derive model/data master keys directly from HWID-style values. Preferred Android design is a non-exportable key generated/imported into Android Keystore, hardware-backed when available, used to wrap/unwrap independent data-encryption keys.
+
+---
+
+## 24. Model-protection keys and user-data keys are separate domains
+
+Model assets, application/runtime protected assets, user cognitive memory, backup/export archives, and update packages must not all share one master key.
+
+Compromise, revocation, rotation, or license expiry in one domain must not automatically expose or destroy another domain.
+
+In particular, commercial model entitlement must not be the sole cryptographic root for a user's Memory/Knowledge database.
+
+---
+
+## 25. License expiry must not destroy user cognitive data
+
+License expiry/revocation may deny protected inference/model use according to policy, but must not intentionally make user-owned cognitive history unrecoverable.
+
+User-data encryption requires a recovery/export/migration design independent enough to preserve ownership and portability under documented policy.
+
+---
+
+## 26. Anti-debug and obfuscation are delay layers, not trust roots
+
+`PR_SET_DUMPABLE`, debugger/Frida detection, symbol stripping, native obfuscation, string encryption, integrity checks, and similar mechanisms can raise reverse-engineering cost.
+
+They cannot guarantee that plaintext never exists while the device computes on it and must not be treated as the sole protection boundary. Rooted/compromised-device resistance is defense-in-depth, not an absolute promise.
+
+---
+
+## 27. License failure is fail-closed, not deliberately corrupted AI output
+
+Do not intentionally make Attention/MLP produce garbage, NaN, or deceptive answers when entitlement validation fails.
+
+A protected operation should stop with an explicit typed denial/error before exposing a successful inference result. Security failures must remain observable and diagnosable without leaking secret material.
+
+---
+
+## 28. Offline licensing needs explicit lease and trusted-time semantics
+
+Offline-first does not mean timeless licenses. Any expiring entitlement needs explicit policy for issued-at/not-before/expires-at, cached lease duration, clock rollback, monotonic-time evidence where available, and what happens when online revalidation is unavailable.
+
+Do not silently trust mutable wall-clock time as the only expiry authority for high-value entitlements.
+
+---
+
+## 29. Liliya Network and Update System are transports/orchestrators, not trust roots
+
+A package or license message is not trusted because it arrived through Liliya Network. Update signatures, license signatures, compatibility, local policy, Authority, anti-rollback and key state are independently validated.
+
+Network compromise must not become automatic code/model/license compromise.
+
+---
+
+## 30. Plaintext model files must not be intentionally materialized on disk
+
+Protected model packages should use authenticated encryption and bounded chunk/tensor decryption into working buffers. Do not create a convenience temporary plaintext `.gguf`/`.bin` file as part of normal protected loading.
+
+Memory plaintext exposure can only be minimized and zeroized when no longer needed; it cannot be honestly claimed to be impossible during computation.

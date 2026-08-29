@@ -99,6 +99,32 @@ Hard invariants:
 
 Detailed durable contract: `UPDATE_SYSTEM_V0_1_CONTRACT.md`.
 
+## Security & Licensing direction (architecture contract, not implemented)
+
+Mandatory long-term protected-use chain:
+
+`Signed Entitlement → Exact Device Enrollment → Keystore-backed Key Boundary → Fresh License Policy → Authority → Protected Asset/Store Access → Controlled Operation → Observable Result`
+
+For online-assisted integrity/licensing:
+
+`App/Device Integrity Signal → Backend Verification → Signed License/Lease → Local Verification → Authority → Protected Use`
+
+Hard invariants:
+
+- Android Keystore/StrongBox non-exportable keys are the preferred device cryptographic root; raw HWID/IMEI/Android ID is not a master-key source;
+- license entitlement and Authority remain separate boundaries;
+- valid signature is evidence, not general permission;
+- protected model assets may use authenticated chunk/tensor encryption and must not intentionally create plaintext temporary model files;
+- cognitive/user data uses an independent encrypted-storage/key-recovery domain and must not become irrecoverable merely because a commercial license expires;
+- anti-debugging, anti-dump checks and obfuscation are defense-in-depth only, never cryptographic trust anchors;
+- license/security failure is explicit and fail-closed; it must not intentionally corrupt model mathematics into plausible-but-wrong output;
+- long-lived DEKs/private signing keys are never hard-coded in application/native binaries;
+- license, update and asset signing keys must support rotation/revocation;
+- protected update activation must satisfy both Update System trust and Security/Licensing policy without bypassing Authority;
+- security operations remain privacy-safe and observable.
+
+Detailed durable contract: `SECURITY_LICENSING_V0_1_CONTRACT.md`.
+
 ## Later roadmap
 
 After foundation/authority/execution readiness:
@@ -110,8 +136,15 @@ After foundation/authority/execution readiness:
 - Personality Core
 - Reflection & Learning
 - Planning/Autonomy/Agents
+- Security & Licensing Core contracts
+- Android Keystore/StrongBox device-key and enrollment boundary
+- encrypted cognitive persistence, key rotation, backup/export/recovery
+- protected model package + authenticated streaming loader
+- runtime/native hardening and optional obfuscation
+- offline licensing/lease, revocation and device-transfer infrastructure
 - Update System Core contracts and staging/migration/rollback foundation
 - Android Integration and application/runtime updater
-- Liliya Network update delivery/automation
+- Liliya Network update/license delivery and automation
+- security/readiness/red-team verification before protected distribution
 
-Memory/Knowledge and later cognitive/update layers must preserve provenance, observability, exact ownership, rollback/safety, and authority boundaries.
+Memory/Knowledge and later cognitive/update/security layers must preserve provenance, observability, exact ownership, rollback/safety, privacy, key recovery, and authority boundaries.
