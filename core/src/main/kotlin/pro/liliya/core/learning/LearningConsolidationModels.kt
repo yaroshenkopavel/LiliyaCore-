@@ -20,12 +20,20 @@ class LearningConsolidationProposal(
     val proposal: String,
     val createdAt: Instant
 ) {
-    val sources: List<LearningApplicationMutationApplicationReceipt> = sources.toList()
+    private val sourceSnapshot: List<LearningApplicationMutationApplicationReceipt> = sources
+        .toList()
+        .sortedWith(
+            compareBy<LearningApplicationMutationApplicationReceipt> { it.mutation.mutationId.value }
+                .thenBy { it.mutation.generation.value }
+        )
+
+    val sources: List<LearningApplicationMutationApplicationReceipt>
+        get() = sourceSnapshot.toList()
 
     init {
-        require(this.sources.isNotEmpty()) { "learning consolidation sources must not be empty" }
+        require(sourceSnapshot.isNotEmpty()) { "learning consolidation sources must not be empty" }
         require(proposal.isNotBlank()) { "learning consolidation proposal must not be blank" }
-        require(this.sources.map { it.mutation }.distinct().size == this.sources.size) {
+        require(sourceSnapshot.map { it.mutation }.distinct().size == sourceSnapshot.size) {
             "learning consolidation sources must reference unique completed mutations"
         }
     }
@@ -33,20 +41,20 @@ class LearningConsolidationProposal(
     override fun equals(other: Any?): Boolean =
         other is LearningConsolidationProposal &&
             id == other.id &&
-            sources == other.sources &&
+            sourceSnapshot == other.sourceSnapshot &&
             proposal == other.proposal &&
             createdAt == other.createdAt
 
     override fun hashCode(): Int {
         var result = id.hashCode()
-        result = 31 * result + sources.hashCode()
+        result = 31 * result + sourceSnapshot.hashCode()
         result = 31 * result + proposal.hashCode()
         result = 31 * result + createdAt.hashCode()
         return result
     }
 
     override fun toString(): String =
-        "LearningConsolidationProposal(id=$id, sources=${sources.size}, proposal=<redacted>, createdAt=$createdAt)"
+        "LearningConsolidationProposal(id=$id, sources=${sourceSnapshot.size}, proposal=<redacted>, createdAt=$createdAt)"
 }
 
 data class LearningConsolidationSnapshot(
