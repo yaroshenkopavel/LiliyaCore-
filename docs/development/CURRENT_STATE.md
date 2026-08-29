@@ -4,27 +4,20 @@ Last journal update: 2026-08-29
 
 ## Current verified baseline
 
-Current `main`: `f0745ff5b177bbc75c402b475f092b82ad6dbd64`.
+Current `main`: `2fbbae4326b3ae45fe6094344498c6916e9bebf2`.
 
 This baseline includes:
 
 - Controlled Orchestration v0.1 fully frozen;
 - Autonomy Foundation v0.1 fully frozen;
-- Controlled Autonomy Deliberation v0.1 functionally complete and readiness-verified through PR #137.
+- Controlled Autonomy Deliberation v0.1 fully frozen through PR #138;
+- Agents Foundation v0.1 functionally complete and readiness-verified through PR #140.
 
 Recent verified milestones:
 
-- PR #127 `Autonomy v0.1: Freeze and Journal Checkpoint` — Core CI #852 GREEN, merge/new main `d864fd08030fea4cbe6d7cd661235078cf46c6e7`;
-- PR #128 `Autonomy Deliberation v0.1: Exact Attempt Gate` — exact head `3fc3c84eccc06a51fdebcd5954d6bac73d4d0ce7`, Core CI #857 GREEN, merge/new main `b01dc502886550c70fcf252de69bf22d900f0172`;
-- PR #129 `Autonomy Deliberation v0.1: Structural Request Foundation` — exact head `6b9af03cd16813941b621b2996fe3b32972d2ccd`, Core CI #863 GREEN, merge/new main `0cdcc8e8d6bc0a0489dbe4d0d1648c48d99ecf85`;
-- PR #130 `Autonomy Deliberation v0.1: Composition Ownership` — exact head `7a37cf8f4898bace7136b9b446e8d09e692e92a1`, Core CI #868 GREEN, merge/new main `be460ef75f9035471e99884688f8b7e64bfea2a1`;
-- PR #131 `Autonomy Deliberation v0.1: Exact Live Preflight` — exact head `ec26317b73c17bbfd64d5d47acfd7a484ad95533`, Core CI #874 GREEN, merge/new main `019afa977dde7ff66649da457807b15f1424ba35`;
-- PR #132 `Autonomy Deliberation v0.1: Controlled Planning Bridge` — exact head `c47c79ce08c45457fcec737c3b703767c3434409`, Core CI #879 GREEN, merge/new main `0ed368075d054d7cb138f11ec9b3186f2e1bd2f9`;
-- PR #133 `Autonomy Deliberation v0.1: Controlled Reasoning Bridge` — exact head `d069cd22aaa9c4df080ce486be3e4469c4dd3e25`, Core CI #884 GREEN, merge/new main `e3e54777b059936e27d650fbddbfe39f02d0215b`;
-- PR #134 `Autonomy Deliberation v0.1: Controlled Decision Bridge` — exact head `d9f6c4124fb0ad17b285aae4530eb3656e685aa8`, Core CI #889 GREEN, merge/new main `276e79ef75f796c443a54c6353fa86370aaf685b`;
-- PR #135 `Autonomy Deliberation v0.1: Controlled Orchestration Bridge` — exact head `abe5c3da096937ec9a5846d4be81a0107dd8fe7d`, Core CI #894 GREEN, merge/new main `e9393b05ab8c5462dda8ea7d64de945288dc8951`;
-- PR #136 `Autonomy Deliberation v0.1: Execution Guard` — exact head `eff7dfba2489bcdd28b3933554dac3f8180a0370`, Core CI #899 GREEN, merge/new main `5e04635681f59678a0d0b7fe3cea5b9ddb3f8ce8`;
-- PR #137 `Autonomy Deliberation v0.1: Readiness Contracts` — exact head `cca02dda645be384ce05f1fa5c946021eab568f9`, Core CI #903 GREEN, merge/new main `f0745ff5b177bbc75c402b475f092b82ad6dbd64`.
+- PR #138 `Controlled Autonomy v0.1: Freeze and Journal Checkpoint` — exact docs head `f589102b4063bee152e0a718eb212ddace7a1a01`, Core CI #905 GREEN, merge/new main `74da3e6db1ffbfdca88d472cc63faeb9cfac1898`;
+- PR #139 `Agents v0.1: Structural Agent Foundation` — exact head `2b1ebb7b8a569c96e319c441b717ae4b3b1e89e1`, Core CI #911 GREEN, merge/new main `ea2b964efc443ae9c9b0d678129a834eaf33ca72`;
+- PR #140 `Agents v0.1: Composition Ownership and Readiness` — exact head `a5f31ffccffafd812ade4ecfbeb1637114f0248d`, Core CI #917 GREEN, merge/new main `2fbbae4326b3ae45fe6094344498c6916e9bebf2`.
 
 ## Frozen subsystem status
 
@@ -49,7 +42,8 @@ Recent verified milestones:
 - Orchestration Intent Foundation v0.1: **FROZEN**.
 - Controlled Orchestration v0.1: **FROZEN**.
 - Autonomy Foundation v0.1: **FROZEN**.
-- Controlled Autonomy Deliberation v0.1: **FROZEN pending documentation-checkpoint merge**.
+- Controlled Autonomy Deliberation v0.1: **FROZEN**.
+- Agents Foundation v0.1: **FROZEN pending documentation-checkpoint merge**.
 
 Update System v0.1 and Security & Licensing v0.1 remain architecture contracts, not implemented runtime subsystems.
 
@@ -57,7 +51,7 @@ Update System v0.1 and Security & Licensing v0.1 remain architecture contracts, 
 
 `Interaction/Input → Context → Meaning → Goal → Planning → Reasoning → Decision → Orchestration Intent → exact preflight → Capability/Authority → Execution → Result → Reflection → Memory/Knowledge → Learning`
 
-Autonomy is a governed initiative layer around this chain; it is not implicit permission propagation.
+Autonomy is a governed initiative layer around this chain. Agents are bounded structural actors above Autonomy; neither layer propagates implicit permission.
 
 Mandatory invariants:
 
@@ -65,65 +59,58 @@ Mandatory invariants:
 
 `Autonomy != Deliberation != Planning != Reasoning != Decision != Orchestration Intent != Authority != Execution`
 
-## Controlled Autonomy Deliberation v0.1
+`Agent != Autonomy != Decision != Authority != Execution`
 
-Frozen direction:
+## Agents Foundation v0.1
 
-`exact live AutonomyProposal → bounded exact attempt → exact AutonomyDeliberationRequest → fresh live preflight → Planning → Reasoning → Decision → OrchestrationIntent → final Autonomy execution guard → frozen Controlled Orchestration → fresh Authority → frozen Execution → fresh Authority → executor`
+Frozen structural boundary:
+
+`explicit Agent identity + explicit origin + caller-declared private role/purpose + createdAt → AgentRecord → exact AgentGeneration ownership`
 
 Key guarantees:
 
-- exact Autonomy proposal generation is live-validated;
-- finite attempt budget is enforced without a scheduler;
-- cancellation is exact-generation scoped and fail-closed;
-- deliberation request has exact generation ownership and exact attempt provenance;
-- every cognitive bridge revalidates fresh deliberation state;
-- Planning/Reasoning origins are constructed by trusted bridges, not caller-forged;
-- Decision uses exact Planning/Reasoning structural references and remains recorded choice only;
-- OrchestrationIntent remains non-executing intent only;
-- final Autonomy guard revalidates the full chain before the first downstream Authority call;
-- cancellation even after OrchestrationIntent creation causes zero executor calls and zero new downstream Authority decisions;
-- stale Autonomy/Planning/Reasoning/Decision/Orchestration provenance fails closed;
-- denied Authority causes zero executor calls;
-- success reaches executor exactly once through the already frozen Controlled Orchestration path;
-- private cognitive payload remains absent from full-path observability;
-- no old evidence is durable permission;
-- no hidden scheduler, background autonomous loop or Agent exists in v0.1.
+- exact Agent ID and positive generation ownership;
+- explicit declared provenance or exact Autonomy ID+generation provenance as data only;
+- no hidden origin lookup;
+- role and purpose are private and redacted from rendering/lifecycle observability;
+- duplicate IDs reject without replacement;
+- stale/ABA ownership cannot remove a replacement;
+- repeated removal fails closed;
+- same-ID concurrent registration has one winner per store;
+- `AgentComposition` keeps the mutable store private and exposes only exact `AgentOwnership`;
+- same Agent ID is independently owned across compositions;
+- snapshots are deterministic detached views;
+- install root → remove child correlation lineage is explicit;
+- Agent data API and lifecycle metadata contain no Authority/Capability/permission/Execution/scheduler/self-spawn/tool/delegation semantics;
+- role/purpose do not grant permission;
+- exact Autonomy provenance does not imply that the proposal remains live;
+- no Agent runtime, scheduler, background loop, delegation engine, self-replication, tool/device access, Authority call, ExecutionRequest/executor or Memory/Knowledge mutation exists in v0.1.
 
-Canonical contract: `CONTROLLED_AUTONOMY_V0_1_FREEZE.md`.
+Canonical contract: `AGENTS_V0_1_FREEZE.md`.
 
 ## Current next action
 
-The next architecture stage is **Agents Foundation v0.1**.
+The next architecture stage is **Controlled Agent Initiative v0.1**.
 
-Required first direction:
+First direction:
 
-`explicit Agent identity + exact ownership + declared role/constraints + bounded structural relationship to Autonomy → data-only Agent record`
+`exact live Agent ID+generation → fresh Agent preflight → caller-declared bounded initiative data → ordinary AutonomyProposal`
 
 Mandatory invariant:
 
 `Agent != Autonomy != Decision != Authority != Execution`.
 
-The first Agents slice must remain structural and non-executing. It must not introduce:
+The first bridge slice must:
 
-- self-spawning or recursive agents;
-- a scheduler/background runner;
-- direct Authority or Execution access;
-- direct tool/device access;
-- hidden Memory/Knowledge mutation;
-- implicit permission from an Agent role;
-- bypass of the frozen Autonomy → Deliberation → Decision → Orchestration → Authority → Execution chain.
+- validate exact live Agent ID+generation immediately before Autonomy install;
+- construct trusted structural Agent provenance rather than accept caller-forged Autonomy origin;
+- create only a normal finite-budget `AutonomyProposal`;
+- keep private Agent role/purpose out of the Autonomy objective/trigger unless the caller explicitly supplies separate initiative content;
+- create zero Autonomy writes for stale/removed/replaced Agent provenance;
+- perform no attempt claim, scheduler work, Planning/Reasoning/Decision, Authority or Execution;
+- preserve the existing frozen downstream path for all actual work.
 
-Before any Agent runtime behavior, define and test:
-
-- exact Agent identity/generation ownership;
-- explicit role/purpose as caller-declared data;
-- explicit bounded relationship/delegation semantics with no capability amplification;
-- composition isolation and stale/ABA-safe ownership;
-- lifecycle/cancellation ownership;
-- deterministic detached snapshots;
-- privacy-safe observability/correlation;
-- strict prohibition on Agent-as-Authority, Agent-as-Execution or self-replication.
+Agent lifecycle/cancellation, delegation/coordination and multi-agent behavior remain separate future slices. No self-spawning or recursive agents.
 
 Persistent encrypted storage, Android integration, Update runtime and Security/Licensing runtime remain separate future stages.
 
