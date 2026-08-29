@@ -30,11 +30,20 @@ internal sealed interface LearningConsolidationClaimResult {
     data class Rejected(val reason: LearningConsolidationClaimRejection) : LearningConsolidationClaimResult
 }
 
+internal data class LearningConsolidationCandidateProjectionCompletion(
+    val request: LearningConsolidationCandidateProjectionRequest,
+    val receipt: LearningConsolidationCandidateProjectionReceipt,
+    val candidateOwnership: LearningOwnership
+)
+
 class LearningConsolidationComposition(
     private val foundation: FoundationComposition,
     private val completedMutations: LearningApplicationMutationComposition
 ) {
     private val store = LearningConsolidationStore(foundation.observability)
+    private val projectionLock = Any()
+    private val completedCandidateProjections =
+        mutableMapOf<LearningConsolidationReference, LearningConsolidationCandidateProjectionCompletion>()
 
     fun install(proposal: LearningConsolidationProposal): LearningConsolidationInstallResult {
         val invalidSource = proposal.sources.firstOrNull { source ->
@@ -126,6 +135,18 @@ class LearningConsolidationComposition(
             is LearningConsolidationClaimRegistrationResult.Rejected ->
                 LearningConsolidationClaimResult.Rejected(result.reason)
         }
+    }
+
+    internal fun completedCandidateProjection(
+        reference: LearningConsolidationReference
+    ): LearningConsolidationCandidateProjectionCompletion? = synchronized(projectionLock) {
+        completedCandidateProjections[reference]
+    }
+
+    internal fun recordCandidateProjection(
+        completion: LearningConsolidationCandidateProjectionCompletion
+    ): LearningConsolidationCandidateProjectionCompletion? = synchronized(projectionLock) {
+        completedCandidateProjections.putIfAbsent(completion.receipt.consolidation, completion)
     }
 
     fun find(id: LearningConsolidationId): LearningConsolidationProposal? = store.find(id)
