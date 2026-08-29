@@ -111,6 +111,11 @@ class ControlledAgentLifecycle(
         return AgentLifecycleSnapshot(agentId, agentGeneration, status)
     }
 
+    fun isActive(
+        agentId: AgentId,
+        agentGeneration: AgentGeneration
+    ): Boolean = inspect(agentId, agentGeneration)?.status == AgentLifecycleStatus.ACTIVE
+
     fun snapshot(): List<AgentLifecycleSnapshot> = states.entries
         .map { (key, status) -> AgentLifecycleSnapshot(key.id, key.generation, status) }
         .sortedWith(compareBy({ it.agentId.value }, { it.agentGeneration.value }))
