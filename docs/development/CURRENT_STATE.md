@@ -4,21 +4,27 @@ Last journal update: 2026-08-29
 
 ## Current verified baseline
 
-Current `main`: `eabaf41b1cd5e180998ef3f1388ab6e73bdce88b`.
+Current `main`: `f0745ff5b177bbc75c402b475f092b82ad6dbd64`.
 
 This baseline includes:
 
-- Controlled Orchestration v0.1 fully frozen through PR #124;
-- Autonomy v0.1 structural foundation through PR #125;
-- Autonomy v0.1 composition ownership/readiness through PR #126.
+- Controlled Orchestration v0.1 fully frozen;
+- Autonomy Foundation v0.1 fully frozen;
+- Controlled Autonomy Deliberation v0.1 functionally complete and readiness-verified through PR #137.
 
 Recent verified milestones:
 
-- PR #124 `Orchestration Control v0.1: Freeze and Journal Checkpoint` — exact docs head `ae3614cb024153f95c92a45a1907200c5f1885f3`, Core CI #833 GREEN, merge/new main `f347fc87a57aabcaf6dc563a9c316c64c1395944`;
-- PR #125 `Autonomy v0.1: Structural Proposal Foundation` — exact head `8590823906af86c970fd5031d9b320ba5158fdb5`, Core CI #839 GREEN, merge/new main `7c620159050f4deef13ae7a034c09b10d56df96d`;
-- PR #126 `Autonomy v0.1: Composition Ownership and Readiness` — final exact head `cfcf4cbaefa9b04e5887bcb51ce49f0aff2aeaa5`, Core CI #850 GREEN, merge/new main `eabaf41b1cd5e180998ef3f1388ab6e73bdce88b`.
-
-PR #126 had an initial RED Core CI #846 caused only by new tests using the wrong constructor parameter name (`trigger` instead of `triggerDescription`). Production Autonomy code compiled. The test fixtures were corrected; final exact-head CI #850 passed.
+- PR #127 `Autonomy v0.1: Freeze and Journal Checkpoint` — Core CI #852 GREEN, merge/new main `d864fd08030fea4cbe6d7cd661235078cf46c6e7`;
+- PR #128 `Autonomy Deliberation v0.1: Exact Attempt Gate` — exact head `3fc3c84eccc06a51fdebcd5954d6bac73d4d0ce7`, Core CI #857 GREEN, merge/new main `b01dc502886550c70fcf252de69bf22d900f0172`;
+- PR #129 `Autonomy Deliberation v0.1: Structural Request Foundation` — exact head `6b9af03cd16813941b621b2996fe3b32972d2ccd`, Core CI #863 GREEN, merge/new main `0cdcc8e8d6bc0a0489dbe4d0d1648c48d99ecf85`;
+- PR #130 `Autonomy Deliberation v0.1: Composition Ownership` — exact head `7a37cf8f4898bace7136b9b446e8d09e692e92a1`, Core CI #868 GREEN, merge/new main `be460ef75f9035471e99884688f8b7e64bfea2a1`;
+- PR #131 `Autonomy Deliberation v0.1: Exact Live Preflight` — exact head `ec26317b73c17bbfd64d5d47acfd7a484ad95533`, Core CI #874 GREEN, merge/new main `019afa977dde7ff66649da457807b15f1424ba35`;
+- PR #132 `Autonomy Deliberation v0.1: Controlled Planning Bridge` — exact head `c47c79ce08c45457fcec737c3b703767c3434409`, Core CI #879 GREEN, merge/new main `0ed368075d054d7cb138f11ec9b3186f2e1bd2f9`;
+- PR #133 `Autonomy Deliberation v0.1: Controlled Reasoning Bridge` — exact head `d069cd22aaa9c4df080ce486be3e4469c4dd3e25`, Core CI #884 GREEN, merge/new main `e3e54777b059936e27d650fbddbfe39f02d0215b`;
+- PR #134 `Autonomy Deliberation v0.1: Controlled Decision Bridge` — exact head `d9f6c4124fb0ad17b285aae4530eb3656e685aa8`, Core CI #889 GREEN, merge/new main `276e79ef75f796c443a54c6353fa86370aaf685b`;
+- PR #135 `Autonomy Deliberation v0.1: Controlled Orchestration Bridge` — exact head `abe5c3da096937ec9a5846d4be81a0107dd8fe7d`, Core CI #894 GREEN, merge/new main `e9393b05ab8c5462dda8ea7d64de945288dc8951`;
+- PR #136 `Autonomy Deliberation v0.1: Execution Guard` — exact head `eff7dfba2489bcdd28b3933554dac3f8180a0370`, Core CI #899 GREEN, merge/new main `5e04635681f59678a0d0b7fe3cea5b9ddb3f8ce8`;
+- PR #137 `Autonomy Deliberation v0.1: Readiness Contracts` — exact head `cca02dda645be384ce05f1fa5c946021eab568f9`, Core CI #903 GREEN, merge/new main `f0745ff5b177bbc75c402b475f092b82ad6dbd64`.
 
 ## Frozen subsystem status
 
@@ -42,7 +48,8 @@ PR #126 had an initial RED Core CI #846 caused only by new tests using the wrong
 - Decision Foundation v0.1: **FROZEN**.
 - Orchestration Intent Foundation v0.1: **FROZEN**.
 - Controlled Orchestration v0.1: **FROZEN**.
-- Autonomy Foundation v0.1: **FROZEN pending documentation-checkpoint merge**.
+- Autonomy Foundation v0.1: **FROZEN**.
+- Controlled Autonomy Deliberation v0.1: **FROZEN pending documentation-checkpoint merge**.
 
 Update System v0.1 and Security & Licensing v0.1 remain architecture contracts, not implemented runtime subsystems.
 
@@ -56,68 +63,67 @@ Mandatory invariants:
 
 `Decision != Orchestration Intent != Authorization != Execution`
 
-`Autonomy != Decision != Authority != Execution`
+`Autonomy != Deliberation != Planning != Reasoning != Decision != Orchestration Intent != Authority != Execution`
 
-## Controlled Orchestration v0.1
+## Controlled Autonomy Deliberation v0.1
 
-Frozen side-effect direction:
+Frozen direction:
 
-`exact OrchestrationIntent → exact live provenance preflight → trusted action/capability mapping → fresh Authority → frozen Execution → fresh Authority → executor`
-
-Key guarantees include exact provenance revalidation, trusted capability/scope mapping, two fresh Authority boundaries, zero executor calls for stale/denied/mismatch paths, exactly one executor call on success, isolated executor failure, privacy-safe structural observability and no durable permission from old evidence.
-
-Canonical contract: `ORCHESTRATION_CONTROL_V0_1_FREEZE.md`.
-
-## Autonomy Foundation v0.1
-
-Frozen structural boundary:
-
-`explicit autonomy provenance + caller-declared objective + trigger description + priority + finite attempt budget + createdAt → AutonomyProposal → exact AutonomyGeneration ownership`
+`exact live AutonomyProposal → bounded exact attempt → exact AutonomyDeliberationRequest → fresh live preflight → Planning → Reasoning → Decision → OrchestrationIntent → final Autonomy execution guard → frozen Controlled Orchestration → fresh Authority → frozen Execution → fresh Authority → executor`
 
 Key guarantees:
 
-- exact positive generation ownership;
-- exact Reflection ID+generation provenance as data only;
-- explicit declared provenance without pretending a Goal/Context store exists;
-- private objective/trigger redacted from rendering and lifecycle observability;
-- priority and budget are data only, not scheduler/permission semantics;
-- duplicate rejection without replacement;
-- stale/ABA-safe one-shot removal;
-- composition isolation;
-- deterministic detached snapshots;
-- install root → remove child correlation lineage;
-- no Decision/Orchestration call;
-- no Authority/Capability grant;
-- no ExecutionRequest/executor;
-- no Memory/Knowledge mutation;
-- no scheduler/background runner;
-- no Agents.
+- exact Autonomy proposal generation is live-validated;
+- finite attempt budget is enforced without a scheduler;
+- cancellation is exact-generation scoped and fail-closed;
+- deliberation request has exact generation ownership and exact attempt provenance;
+- every cognitive bridge revalidates fresh deliberation state;
+- Planning/Reasoning origins are constructed by trusted bridges, not caller-forged;
+- Decision uses exact Planning/Reasoning structural references and remains recorded choice only;
+- OrchestrationIntent remains non-executing intent only;
+- final Autonomy guard revalidates the full chain before the first downstream Authority call;
+- cancellation even after OrchestrationIntent creation causes zero executor calls and zero new downstream Authority decisions;
+- stale Autonomy/Planning/Reasoning/Decision/Orchestration provenance fails closed;
+- denied Authority causes zero executor calls;
+- success reaches executor exactly once through the already frozen Controlled Orchestration path;
+- private cognitive payload remains absent from full-path observability;
+- no old evidence is durable permission;
+- no hidden scheduler, background autonomous loop or Agent exists in v0.1.
 
-Canonical contract: `AUTONOMY_V0_1_FREEZE.md`.
+Canonical contract: `CONTROLLED_AUTONOMY_V0_1_FREEZE.md`.
 
 ## Current next action
 
-The next architecture stage is the **Controlled Autonomy Deliberation Bridge foundation**.
+The next architecture stage is **Agents Foundation v0.1**.
 
-Required direction:
+Required first direction:
 
-`exact live AutonomyProposal → controlled deliberation request → Planning/Reasoning/Decision → Orchestration Intent → exact preflight → fresh Authority → Execution`
+`explicit Agent identity + exact ownership + declared role/constraints + bounded structural relationship to Autonomy → data-only Agent record`
 
-The first slice must remain non-executing and must not create a hidden scheduler.
+Mandatory invariant:
 
-Before any recurring/autonomous runtime behavior, define and test:
+`Agent != Autonomy != Decision != Authority != Execution`.
 
-- exact Autonomy proposal ID+generation live validation;
-- explicit bounded attempt ownership/accounting;
-- explicit cancellation/stale ownership semantics;
-- controlled conversion from Autonomy proposal to deliberation input without forging a Decision;
-- no direct Autonomy→Authority or Autonomy→Execution path;
-- privacy-safe structural observability and correlation;
-- zero downstream work from stale/removed/cancelled autonomy provenance;
-- composition isolation;
-- no Agents.
+The first Agents slice must remain structural and non-executing. It must not introduce:
 
-Agents remain deferred until Autonomy lifecycle, bounded initiative, cancellation, deliberation bridge and governance are separately implemented, audited and frozen.
+- self-spawning or recursive agents;
+- a scheduler/background runner;
+- direct Authority or Execution access;
+- direct tool/device access;
+- hidden Memory/Knowledge mutation;
+- implicit permission from an Agent role;
+- bypass of the frozen Autonomy → Deliberation → Decision → Orchestration → Authority → Execution chain.
+
+Before any Agent runtime behavior, define and test:
+
+- exact Agent identity/generation ownership;
+- explicit role/purpose as caller-declared data;
+- explicit bounded relationship/delegation semantics with no capability amplification;
+- composition isolation and stale/ABA-safe ownership;
+- lifecycle/cancellation ownership;
+- deterministic detached snapshots;
+- privacy-safe observability/correlation;
+- strict prohibition on Agent-as-Authority, Agent-as-Execution or self-replication.
 
 Persistent encrypted storage, Android integration, Update runtime and Security/Licensing runtime remain separate future stages.
 
