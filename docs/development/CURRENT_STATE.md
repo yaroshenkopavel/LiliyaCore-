@@ -4,15 +4,15 @@ Last journal update: 2026-08-29
 
 ## Current verified baseline
 
-Current `main`: `770b4da45ad71a7bbeab47b2ddfada32d3bdc44c`.
+Current `main`: `ec8037c1a918b7673d82dc9fae539fef2f9d6c96`.
 
-This commit merged PR #114 `Decision v0.1: Readiness Contracts` after exact-head Core CI #794 and final ownership/privacy/boundary audit.
+This commit merged PR #118 `Orchestration v0.1: Readiness Contracts` after exact-head Core CI #808 and final ownership/privacy/governance audit.
 
-Decision v0.1 milestone chain:
+Immediately preceding Orchestration milestones:
 
-- PR #112 `Decision v0.1: Structural Decision Record Foundation` → general Decision models, structural Planning/Reasoning references, explicit alternatives/selected outcome, exact generation store ownership, privacy-safe rendering/observability and deterministic snapshots;
-- PR #113 `Decision v0.1: Composition Ownership` → controlled public composition API, exact `DecisionOwnership`, composition isolation and install→remove correlation lineage;
-- PR #114 `Decision v0.1: Readiness Contracts` → repeated-remove fail-closed, detached snapshots, cross-composition same-ID isolation and explicit absence of Authority/Capability/permission/Execution/truth-confidence semantics.
+- PR #116 `Orchestration v0.1: Structural Intent Foundation` → structural non-executing orchestration intent model, exact Decision provenance, exact-generation private store, privacy-safe observability and deterministic snapshots. Exact head `b93a78dcc5f698e5e7a017705f528c093b5966a0`; Core CI #800 GREEN; merge/new main `862e24c0378ee2780e4850685802b48c3d5c0197`.
+- PR #117 `Orchestration v0.1: Composition Ownership` → controlled `OrchestrationComposition`, exact `OrchestrationOwnership`, composition isolation and install→remove correlation lineage. Exact head `c8e5a24e10211c31e2d515496e24d612ac4a43f8`; Core CI #804 GREEN; merge/new main `f97f46a7d87faefcfcd7834723f119a885f4eca3`.
+- PR #118 `Orchestration v0.1: Readiness Contracts` → repeated-remove fail-closed, detached snapshots, same-ID composition isolation, exact Decision provenance as data-only, and explicit absence of Authority/Capability/Execution/scheduling/Autonomy/Agent/truth-confidence semantics. Exact head `6aa49bace987c502d046baf8a050424b9efadc70`; Core CI #808 GREEN; merge/new main `ec8037c1a918b7673d82dc9fae539fef2f9d6c96`.
 
 ## Frozen subsystem status
 
@@ -34,106 +34,15 @@ Decision v0.1 milestone chain:
 - Planning Foundation v0.1: **FROZEN**.
 - Reasoning Foundation v0.1: **FROZEN**.
 - Decision Foundation v0.1: **FROZEN**.
+- Orchestration Intent Foundation v0.1: **FROZEN**.
 
 Update System v0.1 and Security & Licensing v0.1 remain **architecture contracts**, not implemented runtime subsystems.
 
-## Controlled Learning Application v0.1
+## Current cognitive chain
 
-Frozen chain:
+`Interaction/Input → Context → Meaning → Goal → Planning → Reasoning → Decision → Orchestration Intent → Capability/Authority → Execution → Result → Reflection → Memory/Knowledge → Learning`
 
-`candidate → decision → policy → application intent → exact preflight → Authority → prepared mutation → exact claim → fresh preflight + fresh Authority → Memory/Knowledge write → exact completion → completed structural outcome`
-
-Key guarantees:
-
-- fresh Authority adjacent to downstream mutation;
-- target/preflight consistency;
-- exact claim/completion ownership;
-- single-winner concurrency;
-- exact structural completed outcome and semantic replay;
-- explicit compensation/partial failure;
-- correlation continuity across apply → claim → Authority → Memory/Knowledge → completion;
-- payload/privacy-safe observability;
-- no crash-durable exactly-once claim in v0.1.
-
-## Learning Consolidation v0.1
-
-Frozen chain:
-
-`completed controlled outcomes → consolidation proposal → exact consolidation ownership → controlled Candidate bridge → Learning Candidate → Decision → Policy → Application → fresh Authority → controlled apply`
-
-Key guarantees:
-
-- only exact retained completed outcomes are eligible consolidation sources;
-- missing/forged/changed sources reject;
-- source lists are non-empty, unique, defensive and deterministic;
-- proposal content is redacted from lifecycle observability;
-- exact generation ownership and stale-safe removal;
-- active conversion claim blocks source removal;
-- conversion completion/idempotency is source/composition-owned, not bridge-local;
-- multiple bridge instances cannot create multiple Candidates from one exact consolidation;
-- exact replay returns the same Candidate reference;
-- candidate-ID conflict stays retryable;
-- `LearningOrigin.Consolidation` is controlled provenance, not public evidence;
-- public installation/transplant of consolidation-origin Candidates is fail-closed;
-- bridge creates only a normal Candidate and cannot bypass Decision, Policy, Application, Authority or controlled apply.
-
-Canonical freeze contract: `LEARNING_CONSOLIDATION_V0_1_FREEZE.md`.
-
-## Planning Foundation v0.1
-
-Frozen boundary:
-
-`caller-declared planning origin + goal + ordered descriptive steps → PlanningProposal → exact PlanningGeneration ownership`
-
-Mandatory invariant:
-
-`Plan != Decision != Authority != Execution`
-
-Key guarantees:
-
-- proposal/step IDs and textual fields are validated;
-- at least one ordered step is required;
-- step IDs are unique;
-- caller step lists are defensively copied;
-- duplicate proposal IDs reject without replacement;
-- exact positive generation ownership and stale/ABA-safe removal;
-- repeated removal fails closed;
-- same-ID concurrent registration has one winner;
-- compositions are isolated;
-- snapshots are deterministic and detached from mutable store state;
-- goal/step payload is redacted from rendering and lifecycle metadata;
-- install→remove uses explicit parent/child `LogContext` correlation;
-- Planning exposes no Decision/Authority/Capability/Execution semantics and performs no side effect.
-
-Canonical freeze contract: `PLANNING_V0_1_FREEZE.md`.
-
-## Reasoning Foundation v0.1
-
-Frozen boundary:
-
-`caller-declared reasoning origin + ordered premises + analysis + conclusion → ReasoningArtifact → exact ReasoningGeneration ownership`
-
-Mandatory invariant:
-
-`Reasoning != Decision != Authority != Execution`
-
-Key guarantees:
-
-- artifact/premise IDs and textual fields are validated;
-- at least one premise is required and premise IDs are unique;
-- caller premise lists are defensively copied;
-- duplicate artifact IDs reject without replacement;
-- exact positive generation ownership and stale/ABA-safe removal;
-- repeated removal fails closed;
-- same-ID concurrent registration has one winner;
-- compositions are isolated and the same ID may exist independently across compositions;
-- snapshots are deterministic and detached from mutable store state;
-- premise/analysis/conclusion payload is redacted from rendering and lifecycle metadata;
-- install→remove uses explicit parent/child `LogContext` correlation;
-- conclusion does not imply Decision, truth, confidence, trust, Authority or Execution;
-- Reasoning performs no downstream side effect.
-
-Canonical freeze contract: `REASONING_V0_1_FREEZE.md`.
+The chain is architectural sequencing, not implicit permission propagation. Every controlled boundary keeps its own ownership and validation requirements.
 
 ## Decision Foundation v0.1
 
@@ -145,26 +54,52 @@ Mandatory invariant:
 
 `Decision != Authority != Execution`
 
+A selected Decision option is a recorded cognitive outcome only. It is not permission, a capability grant, a scheduler instruction, truth/confidence/trust, an `ExecutionRequest`, or proof of real-world effect.
+
+Canonical contract: `DECISION_V0_1_FREEZE.md`.
+
+## Orchestration Intent Foundation v0.1
+
+Frozen boundary:
+
+`OrchestrationIntentId + exact (DecisionId, DecisionGeneration, selected DecisionOptionId) provenance + caller-declared intent description + createdAt → exact OrchestrationGeneration ownership`
+
+Mandatory invariant:
+
+`Decision != Orchestration Intent != Authority != Execution`
+
 Key guarantees:
 
-- Decision and option IDs are explicit nonblank structural identities;
-- every Decision has at least one unique structural Planning/Reasoning input reference;
-- every Decision has at least one option and option IDs are unique;
-- selected option must exist in the Decision's option list;
-- caller input/option collections are defensively copied;
-- structural input references do not trigger hidden Planning/Reasoning lookup;
-- duplicate Decision IDs reject without replacement;
-- exact positive generation ownership and stale/ABA-safe removal;
-- repeated removal fails closed;
+- orchestration intent identity is explicit and nonblank;
+- exact positive generation ownership;
+- Decision provenance is structural data only and performs no hidden lookup;
+- selected Decision option provenance does not imply approval or permission;
+- duplicate intent IDs reject without replacement;
+- stale/ABA ownership cannot remove a replacement;
+- repeated remove fails closed;
 - same-ID concurrent registration has one winner;
-- compositions are isolated and the same Decision ID may exist independently across compositions;
-- snapshots are deterministic and detached read views;
-- option descriptions/rationale are redacted from rendering and lifecycle metadata;
-- install→remove uses explicit parent/child `LogContext` correlation;
-- selected option means recorded choice only, not approval, permission, Authority, truth/confidence/trust, scheduling or Execution;
-- Decision performs no downstream side effect.
+- independent compositions are isolated;
+- snapshots are deterministic and detached;
+- private intent description is redacted from rendering and lifecycle metadata;
+- install→remove uses explicit root/child `LogContext` correlation;
+- lifecycle metadata contains no Authority/Capability/permission/Execution/scheduler/Autonomy/Agent/truth-confidence/trust semantics;
+- no `ExecutionRequest`, executor call, scheduling, Memory/Knowledge mutation, Android/device control, Autonomy or Agent behavior exists in v0.1.
 
-Canonical freeze contract: `DECISION_V0_1_FREEZE.md`.
+Canonical contract: `ORCHESTRATION_V0_1_FREEZE.md`.
+
+## Controlled Learning Application v0.1
+
+Frozen chain:
+
+`candidate → decision → policy → application intent → exact preflight → Authority → prepared mutation → exact claim → fresh preflight + fresh Authority → Memory/Knowledge write → exact completion → completed structural outcome`
+
+Important precedent for the next orchestration stage:
+
+- structural intent is not permission;
+- exact provenance is revalidated at the side-effect boundary;
+- fresh Authority must be adjacent to the controlled downstream mutation;
+- old authorization evidence never becomes durable permission;
+- denial or mismatch causes zero downstream writes.
 
 ## Update System architecture contract
 
@@ -172,7 +107,7 @@ Required future pipeline:
 
 `Discovery → Signed Manifest → Compatibility → Authority → Download → Verify → Stage → Migrate → Activate → Health Check → Commit / Rollback`
 
-Network delivery is transport, not trust. Signature validity is not activation permission. Android application/runtime updates and explicitly supported internal packages are separate update modes behind the same trust/rollback discipline.
+Network delivery is transport, not trust. Signature validity is not activation permission.
 
 ## Security & Licensing architecture contract
 
@@ -180,34 +115,35 @@ Required protected-use direction:
 
 `Signed Entitlement → Device Enrollment → Keystore-backed Key Boundary → License Policy → Authority → Protected Asset/Store Access → Controlled Operation`
 
-Hard rules include: license != Authority; Keystore/StrongBox device key instead of HWID-derived secrets; model keys separated from user cognitive-data keys; license expiry must not intentionally destroy user Memory/Knowledge; anti-debug/obfuscation are defense-in-depth only; protected failures are explicit fail-closed.
+License is not Authority. Device binding is cryptographic enrollment, not HWID-derived trust. Protected model/runtime keys and user cognitive-data keys remain separate domains.
 
 ## Current next action
 
-The next cognitive architecture stage is the **explicit deliberation/orchestration bridge foundation**.
+The next architecture stage is the **Controlled Orchestration Authorization / Execution Bridge foundation**.
 
-Purpose:
+Required direction:
 
-`exact recorded Decision → explicit structural orchestration intent → later controlled Capability/Authority/Execution path`
+`exact OrchestrationIntent → exact live provenance preflight → trusted action/capability resolution → fresh Authority → Execution`
 
-Mandatory invariant for the next design:
+Mandatory invariant:
 
-`Decision != Orchestration Intent != Authority != Execution`
+`Orchestration Intent != Authorization != Execution`
 
-The next stage must not grant permission, call Authority implicitly, call executors, schedule work merely because a Decision exists, mutate Memory/Knowledge, or become Autonomy/Agents.
+The first slice should stop before executor invocation. Before real execution integration, define and test:
 
-Before implementation, define:
+- exact orchestration intent ID+generation preflight;
+- exact retained Decision ID+generation+selected-option consistency;
+- trusted action identifier → required capability/scope resolution;
+- explicit principal and reason provenance;
+- rejection of stale/missing/mismatched orchestration or Decision provenance;
+- rejection of unknown or mismatched action/capability mapping before Authority/Execution;
+- fresh scope-correct Authority adjacent to crossing the execution boundary;
+- zero executor calls when validation fails or Authority denies;
+- privacy-safe observability and one explicit correlation lineage;
+- no durable permission semantics from old Decision, OrchestrationIntent, validation receipts or prior Authority decisions;
+- no Autonomy or Agent behavior.
 
-- exact orchestration-intent identity/generation ownership;
-- exact structural reference to a retained Decision ID+generation;
-- explicit caller-declared downstream action/intention description without executable side effects;
-- stale-safe ownership, concurrency and composition isolation;
-- deterministic defensive snapshots;
-- privacy-safe observability and explicit correlation lineage;
-- exact validation needed before any future bridge can reach Capability/Authority/Execution;
-- a clear prohibition on treating a Decision or orchestration intent as durable permission.
-
-Autonomy remains deferred until this orchestration bridge and its controlled-governance boundaries are separately implemented, audited and frozen. Agents remain deferred until Autonomy boundaries are explicit and frozen.
+Autonomy remains deferred until this controlled orchestration→Authority→Execution path is separately implemented, audited and frozen. Agents remain deferred until Autonomy boundaries are explicit and frozen.
 
 Persistent encrypted storage, Android integration, Update runtime, and Security/Licensing runtime remain separate future stages.
 
