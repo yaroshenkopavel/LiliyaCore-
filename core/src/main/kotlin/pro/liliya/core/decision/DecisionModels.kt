@@ -63,6 +63,9 @@ class DecisionRecord(
 
     init {
         require(this.inputs.isNotEmpty()) { "decision must contain at least one structural input reference" }
+        require(this.inputs.toSet().size == this.inputs.size) {
+            "decision input references must be unique"
+        }
         require(this.options.isNotEmpty()) { "decision must contain at least one option" }
         require(this.options.map { it.id }.toSet().size == this.options.size) {
             "decision option ids must be unique"
