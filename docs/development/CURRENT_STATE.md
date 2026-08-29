@@ -4,13 +4,14 @@ Last journal update: 2026-08-29
 
 ## Current verified baseline
 
-Learning Policy implementation baseline before the freeze documentation merge: `104d604ec50a065139ad2a6f3f0508251636dbec`.
+Learning Application implementation baseline before the freeze documentation merge: `a9806df993b973308ece61971b5bcdfef4b884f9`.
 
-This commit merged PR #71 `Learning Policy v0.1: Readiness Contract Hardening` after Core CI #555 succeeded for exact head `9e0067088ff85aaf9555b088f7d01288795f047a` and the final test-only readiness/source audit passed.
+This commit merged PR #75 `Learning Application v0.1: Readiness Contract Hardening` after Core CI #572 succeeded for exact head `f2929d8a241883a4a9e7cdc62af1ca65118145fb` and the final test-only readiness/source audit passed.
 
 Learning Foundation v0.1 freeze record: `docs/development/LEARNING_V0_1_FREEZE.md`.
 Learning Decision Foundation v0.1 freeze record: `docs/development/LEARNING_DECISION_V0_1_FREEZE.md`.
 Learning Policy Foundation v0.1 freeze record: `docs/development/LEARNING_POLICY_V0_1_FREEZE.md`.
+Learning Application Foundation v0.1 freeze record: `docs/development/LEARNING_APPLICATION_V0_1_FREEZE.md`.
 
 Status:
 
@@ -25,8 +26,9 @@ Status:
 - Reflection Foundation v0.1: FROZEN.
 - Learning Foundation v0.1: FROZEN.
 - Learning Decision Foundation v0.1: FROZEN.
-- Learning Policy Foundation v0.1: FROZEN by this documentation checkpoint.
-- Learning Application / Controlled Consolidation boundary: NOT STARTED.
+- Learning Policy Foundation v0.1: FROZEN.
+- Learning Application Foundation v0.1: FROZEN by this documentation checkpoint.
+- Controlled Application / Consolidation mechanism: NOT STARTED.
 - Planning / Autonomy / Agents stage: NOT STARTED.
 - Android Integration stage: NOT STARTED.
 
@@ -106,40 +108,70 @@ Final exact head: `9e0067088ff85aaf9555b088f7d01288795f047a`.
 Core CI #555: GREEN.
 Merge commit: `104d604ec50a065139ad2a6f3f0508251636dbec`.
 
+Test-only hardening locked caller-supplied `LearningPolicy.createdAt`, independent composition isolation, composition-local `LearningPolicyGeneration`, policy presence as structural state only, generation as local lifecycle identity, and policy-rule redaction.
+
+## Learning Application v0.1 verified implementation
+
+### PR #73 — Explicit Application Intent Store
+
+Final exact head: `b7b11f326bf7068e612ec8140ab842e35f040b3d`.
+Core CI #563: GREEN.
+Merge commit: `cb8f30267be4ebe6c4cfb22329f6f2392df85734`.
+
+Introduced explicit caller-supplied `LearningApplicationIntent` records. Each intent binds an exact structural Decision reference and exact structural Policy reference to a structural `MEMORY` or `KNOWLEDGE` target. The internal store provides positive local generation identity, duplicate rejection, stale/ABA-safe exact removal, deterministic snapshots, concurrent same-ID one-winner behavior, and lifecycle observability.
+
+Application intent is structural state only. It does not perform hidden lookup, require `APPROVE`, authorize or execute anything, consolidate learning, or mutate downstream state.
+
+### PR #74 — Composition Ownership
+
+Final exact head: `535463678007690fc226e6f9f81e9e0c54c3bb26`.
+Core CI #568: GREEN.
+Merge commit: `97bb6f90c0e605642b43cfc448e2dc07a028db09`.
+
+Introduced `LearningApplicationComposition` as the production ownership boundary. Raw store/registration primitives remain internal; controlled install/read/inspect/snapshot/remove APIs use exact `LearningApplicationOwnership`, fresh Foundation contexts, and isolated composition state. Structural Decision/Policy references and target metadata do not trigger downstream access or mutation.
+
+### PR #75 — Readiness Contract Hardening
+
+Final exact head: `f2929d8a241883a4a9e7cdc62af1ca65118145fb`.
+Core CI #572: GREEN.
+Merge commit: `a9806df993b973308ece61971b5bcdfef4b884f9`.
+
 Test-only hardening locked:
 
-- caller-supplied `LearningPolicy.createdAt` preservation;
-- independent composition isolation for the same policy ID;
-- composition-local `LearningPolicyGeneration` identity even when numeric values match;
-- policy presence as structural state only, without implicit evaluation or automatic `LearningDecision` generation;
-- generation as positive local lifecycle identity rather than time/score/priority/trust/confidence;
-- policy-rule redaction from rendering and lifecycle metadata.
+- caller-supplied `LearningApplicationIntent.createdAt` preservation;
+- independent composition isolation for the same application ID;
+- composition-local `LearningApplicationGeneration` identity even when numeric values match;
+- Decision/Policy references as structural-only without hidden lookup or approval requirement;
+- `MEMORY` and `KNOWLEDGE` targets as structural-only declarations;
+- absence of implicit application, consolidation, authorization, Execution, Memory/Knowledge mutation, or learned-state creation;
+- generation as positive local lifecycle identity rather than time/score/priority/trust/confidence.
 
-## Learning Policy v0.1 frozen boundaries
+## Learning Application v0.1 frozen boundaries
 
-- policy records are caller-supplied structural policy data only;
-- policy presence does not evaluate candidates, decisions, reflection, memory, knowledge, or other state;
-- policy presence does not create, approve, reject, replace, or mutate `LearningDecision`;
-- policy presence does not authorize, apply, execute, consolidate, promote, or mutate anything downstream;
-- exact positive `LearningPolicyGeneration` protects stale/ABA ownership within a store lifecycle;
+- application intents are caller-supplied structural application declarations only;
+- Decision and Policy references are exact structural lifecycle references only and are not automatically resolved or validated;
+- application intent does not require or infer `APPROVE`;
+- `MEMORY` / `KNOWLEDGE` targets do not expose or call downstream stores;
+- intent presence does not authorize, execute, apply, consolidate, promote, or mutate anything downstream;
+- exact positive `LearningApplicationGeneration` protects stale/ABA ownership within a store lifecycle;
 - generation identity is composition-local, not global or durable;
-- same policy IDs in independent compositions do not share state;
-- `createdAt` is caller-supplied and snapshot ordering is not trusted chronology, priority, truth, utility, confidence, or execution order;
-- policy rule content remains sensitive stored data and is redacted from `toString()` and lifecycle observability metadata;
-- `LearningPolicyComposition` privately owns mutable policy state and raw store/registration primitives are not production public surface;
-- there is no policy evaluator, policy matcher, priority/conflict resolver, policy-generated decision engine, application state, consolidation engine, autonomous adaptation, downstream mutation, verification/truth engine, authority/capability grant, Execution coupling, planning/agents, persistence, cognitive-cycle orchestration, or Android integration.
+- same application IDs in independent compositions do not share state;
+- `createdAt` is caller-supplied and snapshot ordering is not trusted chronology, priority, truth, utility, confidence, authorization, or execution order;
+- lifecycle metadata records structural references/target only and does not claim application or mutation results;
+- `LearningApplicationComposition` privately owns mutable application-intent state and raw store/registration primitives are not production public surface;
+- there is no application worker, consolidation worker, downstream mutation engine, approval validator, Policy evaluator, Authority/Capability grant, Execution coupling, rollback/compensation protocol, durable application receipt, truth/confidence/trust engine, planning/agents, persistence, cognitive-cycle orchestration, or Android integration.
 
 ## Current next action
 
-Next allowed learning architecture work: separately design the `Learning Application / Controlled Consolidation` boundary.
+Next allowed learning architecture work: separately design the **Controlled Application / Consolidation mechanism**.
 
 The frozen sequence remains explicit:
 
-`candidate → decision → policy boundary → authorization/application boundary → downstream mutation`.
+`candidate → decision → policy boundary → application intent → controlled application/consolidation → downstream mutation`.
 
-A policy record or an `APPROVE` decision must never become learned state merely because it exists. Any future application/consolidation mechanism must define explicit input references, ownership, authorization boundaries, idempotency/rollback semantics, observability, privacy, and downstream mutation contracts before it may alter Memory, Knowledge, Personality, Self, Trust, Authority, or Execution-related state.
+A policy record, an `APPROVE` decision, or a `LearningApplicationIntent` must never become learned state merely because it exists. The next mechanism must explicitly define which exact references are validated, where authorization occurs, how retries/idempotency are handled, how conflicts are resolved, what atomicity/rollback or compensation guarantees exist, what application result/receipt proves, and how downstream ownership is transferred before any Memory, Knowledge, Personality, Self, Trust, Authority, Capability, Execution, or other state is changed.
 
-Planning / Autonomy / Agents remains deferred until the learning application/consolidation boundary is separately designed, reviewed, and frozen.
+Planning / Autonomy / Agents remains deferred until the controlled application/consolidation mechanism is separately designed, reviewed, and frozen.
 
 ## Deferred future architecture note
 
@@ -161,6 +193,7 @@ Detailed verified freeze history remains in repository docs and Git history:
 - Learning Foundation v0.1 — `LEARNING_V0_1_FREEZE.md`.
 - Learning Decision Foundation v0.1 — `LEARNING_DECISION_V0_1_FREEZE.md`.
 - Learning Policy Foundation v0.1 — `LEARNING_POLICY_V0_1_FREEZE.md`.
+- Learning Application Foundation v0.1 — `LEARNING_APPLICATION_V0_1_FREEZE.md`.
 
 ## Workflow notes
 
