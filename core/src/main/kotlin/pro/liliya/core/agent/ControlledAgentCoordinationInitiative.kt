@@ -8,7 +8,7 @@ import pro.liliya.core.autonomy.AutonomyProposalId
 import pro.liliya.core.diagnostics.DiagnosticSeverity
 import pro.liliya.core.foundation.FoundationComposition
 
-data class AgentCoordinationParticipantInitiativeRequest(
+class AgentCoordinationParticipantInitiativeRequest(
     val participant: ExactAgentReference,
     val autonomyProposalId: AutonomyProposalId,
     val objective: String,
@@ -21,32 +21,47 @@ data class AgentCoordinationParticipantInitiativeRequest(
         require(objective.isNotBlank()) { "coordination initiative objective must not be blank" }
         require(triggerDescription.isNotBlank()) { "coordination initiative trigger description must not be blank" }
     }
+
+    override fun toString(): String =
+        "AgentCoordinationParticipantInitiativeRequest(" +
+            "participant=$participant, autonomyProposalId=$autonomyProposalId, " +
+            "objective=<redacted>, triggerDescription=<redacted>, priority=$priority, " +
+            "budget=$budget, createdAt=$createdAt)"
 }
 
-data class AgentCoordinationInitiativeRequest(
+class AgentCoordinationInitiativeRequest(
     val coordinationId: AgentCoordinationId,
     val coordinationGeneration: AgentCoordinationGeneration,
-    val participants: List<AgentCoordinationParticipantInitiativeRequest>
+    participants: List<AgentCoordinationParticipantInitiativeRequest>
 ) {
+    val participants: List<AgentCoordinationParticipantInitiativeRequest> = participants.toList()
+
     init {
-        require(participants.size >= 2) { "coordination initiative requires at least two participants" }
-        require(participants.map { it.participant }.distinct().size == participants.size) {
+        require(this.participants.size >= 2) { "coordination initiative requires at least two participants" }
+        require(this.participants.map { it.participant }.distinct().size == this.participants.size) {
             "coordination initiative participants must be exact-reference unique"
         }
-        require(participants.map { it.participant.id }.distinct().size == participants.size) {
+        require(this.participants.map { it.participant.id }.distinct().size == this.participants.size) {
             "coordination initiative cannot contain multiple generations of the same agent id"
         }
-        require(participants.map { it.autonomyProposalId }.distinct().size == participants.size) {
+        require(this.participants.map { it.autonomyProposalId }.distinct().size == this.participants.size) {
             "coordination initiative autonomy proposal ids must be unique"
         }
     }
+
+    override fun toString(): String =
+        "AgentCoordinationInitiativeRequest(" +
+            "coordinationId=$coordinationId, coordinationGeneration=$coordinationGeneration, " +
+            "participantCount=${participants.size})"
 }
 
-data class AgentCoordinationInitiativeReceipt(
+class AgentCoordinationInitiativeReceipt(
     val coordination: ExactAgentCoordinationReference,
-    val assignments: List<AgentCoordinationWorkAssignment>,
+    assignments: List<AgentCoordinationWorkAssignment>,
     val bindingGeneration: AgentCoordinationWorkBindingGeneration
-)
+) {
+    val assignments: List<AgentCoordinationWorkAssignment> = assignments.toList()
+}
 
 interface AgentCoordinationInitiativeOwnership {
     val receipt: AgentCoordinationInitiativeReceipt
@@ -202,7 +217,7 @@ class ControlledAgentCoordinationInitiative private constructor(
             is AgentCoordinationWorkBindingInstallResult.Installed -> {
                 val receipt = AgentCoordinationInitiativeReceipt(
                     coordination = binding.coordination,
-                    assignments = binding.assignments.toList(),
+                    assignments = binding.assignments,
                     bindingGeneration = installed.ownership.generation
                 )
                 recordCreated(receipt)
