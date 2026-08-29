@@ -1,5 +1,7 @@
 package pro.liliya.core.learning
 
+import pro.liliya.core.logging.LogContext
+
 /** Exact structural reference to one prepared mutation lifecycle generation. */
 data class LearningApplicationMutationReference(
     val mutationId: LearningApplicationMutationId,
@@ -50,6 +52,16 @@ class LearningApplicationMutationAuthorizationGate(
 ) {
     fun authorize(
         reference: LearningApplicationMutationReference
+    ): LearningApplicationMutationAuthorizationResult = authorizeInternal(reference, null)
+
+    internal fun authorize(
+        reference: LearningApplicationMutationReference,
+        context: LogContext
+    ): LearningApplicationMutationAuthorizationResult = authorizeInternal(reference, context)
+
+    private fun authorizeInternal(
+        reference: LearningApplicationMutationReference,
+        context: LogContext?
     ): LearningApplicationMutationAuthorizationResult {
         val before = mutations.inspect(reference.mutationId)
             ?: return LearningApplicationMutationAuthorizationResult.MutationRejected(
@@ -62,7 +74,13 @@ class LearningApplicationMutationAuthorizationGate(
         }
 
         val plan = before.plan
-        val authorization = when (val result = authorizer.authorize(plan.application, plan.principal)) {
+        val authorization = when (
+            val result = if (context == null) {
+                authorizer.authorize(plan.application, plan.principal)
+            } else {
+                authorizer.authorize(plan.application, plan.principal, context)
+            }
+        ) {
             is LearningApplicationAuthorizationResult.Authorized -> result.receipt
             is LearningApplicationAuthorizationResult.PreflightRejected -> {
                 return LearningApplicationMutationAuthorizationResult.PreflightRejected(result.reason)

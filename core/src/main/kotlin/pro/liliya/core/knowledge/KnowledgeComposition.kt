@@ -1,6 +1,7 @@
 package pro.liliya.core.knowledge
 
 import pro.liliya.core.foundation.FoundationComposition
+import pro.liliya.core.logging.LogContext
 
 interface KnowledgeOwnership {
     val item: KnowledgeItem
@@ -18,23 +19,34 @@ class KnowledgeComposition(
 ) {
     private val store = KnowledgeStore(foundation.observability)
 
-    fun create(item: KnowledgeItem): KnowledgeCreateResult {
-        val context = foundation.rootContext(
+    fun create(item: KnowledgeItem): KnowledgeCreateResult = create(
+        item = item,
+        context = foundation.rootContext(
             operation = "createKnowledge",
             component = "Knowledge",
             metadata = originMetadata(item)
         )
-        return when (val result = store.register(item, context)) {
+    )
+
+    internal fun create(
+        item: KnowledgeItem,
+        context: LogContext
+    ): KnowledgeCreateResult {
+        val operationContext = context.copy(
+            metadata = (context.metadata + originMetadata(item)).toMap()
+        )
+        return when (val result = store.register(item, operationContext)) {
             is KnowledgeRegistrationResult.Registered -> KnowledgeCreateResult.Created(
                 ownership = object : KnowledgeOwnership {
                     override val item: KnowledgeItem = result.registration.item
                     override val generation: KnowledgeGeneration = result.registration.generation
 
                     override fun remove(): Boolean = result.registration.remove(
-                        foundation.rootContext(
-                            operation = "removeKnowledge",
+                        foundation.childContext(
+                            parent = operationContext,
                             component = "Knowledge",
-                            metadata = originMetadata(item) + mapOf(
+                            operation = "removeKnowledge",
+                            metadata = mapOf(
                                 "knowledgeGeneration" to generation.value.toString()
                             )
                         )
