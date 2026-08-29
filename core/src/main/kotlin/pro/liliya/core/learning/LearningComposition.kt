@@ -69,6 +69,12 @@ class LearningComposition(
                 put("reflectionGeneration", origin.generation.value.toString())
             }
 
+            is LearningOrigin.Consolidation -> {
+                put("learningOriginType", "consolidation")
+                put("learningConsolidationId", origin.consolidationId.value)
+                put("learningConsolidationGeneration", origin.generation.value.toString())
+            }
+
             is LearningOrigin.Declared -> {
                 put("learningOriginType", "declared")
                 put("learningSourceId", origin.sourceId.value)
