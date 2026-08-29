@@ -53,6 +53,9 @@ class LearningApplicationMutationCompositionContractTest {
         createdAt = Instant.parse("2026-08-29T09:11:00Z")
     )
 
+    private fun reference(ownership: LearningApplicationMutationOwnership) =
+        LearningApplicationMutationReference(ownership.plan.id, ownership.generation)
+
     @Test
     fun prepare_exposes_exact_controlled_ownership() {
         val composition = LearningApplicationMutationComposition(foundation("mutation-composition"))
@@ -112,5 +115,80 @@ class LearningApplicationMutationCompositionContractTest {
         assertTrue(first.contains(value.id))
         assertFalse(second.contains(value.id))
         assertTrue(second.snapshot().isEmpty())
+    }
+
+    @Test
+    fun exact_current_mutation_can_have_only_one_active_claim() {
+        val composition = LearningApplicationMutationComposition(foundation("mutation-claim-single"))
+        val ownership = assertIs<LearningApplicationMutationPrepareResult.Prepared>(
+            composition.prepare(plan())
+        ).ownership
+
+        val first = assertIs<LearningApplicationMutationClaimResult.Claimed>(
+            composition.claim(reference(ownership))
+        ).claim
+        val second = assertIs<LearningApplicationMutationClaimResult.Rejected>(
+            composition.claim(reference(ownership))
+        )
+
+        assertSame(ownership.plan, first.plan)
+        assertEquals(reference(ownership), first.reference)
+        assertEquals(LearningApplicationMutationClaimRejection.ALREADY_CLAIMED, second.reason)
+    }
+
+    @Test
+    fun active_claim_blocks_mutation_removal_until_release() {
+        val composition = LearningApplicationMutationComposition(foundation("mutation-claim-remove"))
+        val ownership = assertIs<LearningApplicationMutationPrepareResult.Prepared>(
+            composition.prepare(plan())
+        ).ownership
+        val claim = assertIs<LearningApplicationMutationClaimResult.Claimed>(
+            composition.claim(reference(ownership))
+        ).claim
+
+        assertFalse(ownership.remove())
+        assertTrue(composition.contains(ownership.plan.id))
+        assertTrue(claim.release())
+        assertTrue(ownership.remove())
+        assertFalse(composition.contains(ownership.plan.id))
+    }
+
+    @Test
+    fun released_claim_cannot_release_again_and_new_claim_can_be_acquired() {
+        val composition = LearningApplicationMutationComposition(foundation("mutation-claim-release"))
+        val ownership = assertIs<LearningApplicationMutationPrepareResult.Prepared>(
+            composition.prepare(plan())
+        ).ownership
+        val first = assertIs<LearningApplicationMutationClaimResult.Claimed>(
+            composition.claim(reference(ownership))
+        ).claim
+
+        assertTrue(first.release())
+        assertFalse(first.release())
+
+        val second = assertIs<LearningApplicationMutationClaimResult.Claimed>(
+            composition.claim(reference(ownership))
+        ).claim
+        assertEquals(reference(ownership), second.reference)
+        assertTrue(second.release())
+    }
+
+    @Test
+    fun stale_generation_cannot_claim_current_mutation() {
+        val composition = LearningApplicationMutationComposition(foundation("mutation-claim-stale"))
+        val ownership = assertIs<LearningApplicationMutationPrepareResult.Prepared>(
+            composition.prepare(plan())
+        ).ownership
+
+        val result = assertIs<LearningApplicationMutationClaimResult.Rejected>(
+            composition.claim(
+                LearningApplicationMutationReference(
+                    ownership.plan.id,
+                    LearningApplicationMutationGeneration(ownership.generation.value + 1L)
+                )
+            )
+        )
+
+        assertEquals(LearningApplicationMutationClaimRejection.MUTATION_GENERATION_MISMATCH, result.reason)
     }
 }
