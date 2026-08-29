@@ -1,7 +1,6 @@
 package pro.liliya.core.learning
 
 import pro.liliya.core.diagnostics.DiagnosticSeverity
-import pro.liliya.core.foundation.FoundationComposition
 import pro.liliya.core.knowledge.KnowledgeComposition
 import pro.liliya.core.knowledge.KnowledgeCreateResult
 import pro.liliya.core.knowledge.KnowledgeGeneration
@@ -60,12 +59,13 @@ sealed interface LearningApplicationMutationApplicationResult {
 }
 
 class LearningApplicationMutationApplier(
-    private val foundation: FoundationComposition,
     private val mutations: LearningApplicationMutationComposition,
     private val authorizationGate: LearningApplicationMutationAuthorizationGate,
     private val memory: MemoryComposition,
     private val knowledge: KnowledgeComposition
 ) {
+    private val foundation = mutations.foundation
+
     fun apply(
         reference: LearningApplicationMutationReference
     ): LearningApplicationMutationApplicationResult {

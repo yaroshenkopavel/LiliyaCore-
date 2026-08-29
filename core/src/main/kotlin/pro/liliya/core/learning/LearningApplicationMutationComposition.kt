@@ -37,7 +37,7 @@ sealed interface LearningApplicationMutationClaimResult {
 }
 
 class LearningApplicationMutationComposition(
-    private val foundation: FoundationComposition
+    internal val foundation: FoundationComposition
 ) {
     private val store = LearningApplicationMutationStore(foundation.observability)
 
