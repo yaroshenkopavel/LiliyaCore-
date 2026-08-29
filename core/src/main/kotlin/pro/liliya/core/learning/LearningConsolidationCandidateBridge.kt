@@ -81,7 +81,7 @@ class LearningConsolidationCandidateBridge(
         )
 
         val ownership = when (
-            val result = learning.install(
+            val result = learning.installFromConsolidation(
                 candidate,
                 foundation.childContext(root, "Learning", "installLearningCandidateFromConsolidation")
             )
