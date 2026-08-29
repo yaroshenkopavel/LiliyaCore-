@@ -268,4 +268,45 @@ class LearningApplicationMutationApplierContractTest {
         assertFalse(f.mutations.isCompletedIdempotencyKey(mutation.plan.idempotencyKey))
         assertIs<LearningApplicationMutationClaimResult.Claimed>(f.mutations.claim(reference(mutation)))
     }
+
+    @Test
+    fun completed_exact_mutation_cannot_apply_a_second_downstream_write() {
+        val f = fixture()
+        val application = installApplication(f, LearningApplicationTarget.MEMORY)
+        registerCapabilityAndGrant(f, LearningApplicationTarget.MEMORY)
+        val mutation = prepare(f, memoryPlan(application))
+        val ref = reference(mutation)
+
+        assertIs<LearningApplicationMutationApplicationResult.Applied>(f.applier.apply(ref))
+        assertEquals(1, f.memory.snapshotEntries().size)
+
+        val second = assertIs<LearningApplicationMutationApplicationResult.ClaimRejected>(
+            f.applier.apply(ref)
+        )
+
+        assertEquals(LearningApplicationMutationClaimRejection.MUTATION_MISSING, second.reason)
+        assertEquals(1, f.memory.snapshotEntries().size)
+        assertTrue(f.mutations.isCompletedIdempotencyKey(mutation.plan.idempotencyKey))
+    }
+
+    @Test
+    fun fresh_application_target_mismatch_is_rejected_before_downstream_write() {
+        val f = fixture()
+        val application = installApplication(f, LearningApplicationTarget.KNOWLEDGE)
+        registerCapabilityAndGrant(f, LearningApplicationTarget.KNOWLEDGE)
+        val mutation = prepare(f, memoryPlan(application))
+
+        val rejected = assertIs<LearningApplicationMutationApplicationResult.AuthorizationRejected>(
+            f.applier.apply(reference(mutation))
+        )
+        val gateResult = assertIs<LearningApplicationMutationAuthorizationResult.MutationRejected>(
+            rejected.result
+        )
+
+        assertEquals(LearningApplicationMutationAuthorizationRejection.TARGET_MISMATCH, gateResult.reason)
+        assertFalse(f.memory.contains(MemoryRecordId("memory-applied")))
+        assertTrue(f.mutations.contains(mutation.plan.id))
+        assertFalse(f.mutations.isCompletedIdempotencyKey(mutation.plan.idempotencyKey))
+        assertIs<LearningApplicationMutationClaimResult.Claimed>(f.mutations.claim(reference(mutation)))
+    }
 }
