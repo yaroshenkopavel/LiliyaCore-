@@ -301,3 +301,59 @@ Network compromise must not become automatic code/model/license compromise.
 Protected model packages should use authenticated encryption and bounded chunk/tensor decryption into working buffers. Do not create a convenience temporary plaintext `.gguf`/`.bin` file as part of normal protected loading.
 
 Memory plaintext exposure can only be minimized and zeroized when no longer needed; it cannot be honestly claimed to be impossible during computation.
+
+---
+
+## 31. A prepared mutation or authorization receipt is not permission
+
+Controlled learning intentionally separates preparation/readiness from mutation-time permission.
+
+A stored prepared mutation, preflight receipt, or earlier authorization receipt must never be treated as durable permission to write Memory or Knowledge. Fresh exact preflight and fresh target-scoped Authority are mandatory at the real side-effect boundary.
+
+This rule is particularly important when grants may expire or be revoked after preparation.
+
+---
+
+## 32. Prepared target must match the fresh application target
+
+The mutation plan target is not trusted merely because its payload type matches it.
+
+Before downstream write, the mutation-time authorization gate requires the prepared target to equal the target resolved from the current exact Application reference. This prevents a confused-deputy path such as authorizing a Knowledge scope but applying a prepared Memory payload.
+
+---
+
+## 33. Claim ownership is not completion authority
+
+An exact mutation claim is a serialization/ownership handle. Public code may release it, but must not be able to mark the mutation successfully completed without the controlled downstream write.
+
+`complete(...)` is therefore internal to the controlled learning module. Future designs should preserve this separation: owning or reserving work is not automatically authority to declare its side effect committed.
+
+---
+
+## 34. Idempotency must bind semantic identity, not just a key string
+
+A completed idempotency key cannot simply mean “return success for any future request using this string”.
+
+Controlled Learning v0.1 stores the completed plan privately and replays the previous structural receipt only when the incoming plan is value-equal to the completed plan. Reusing the completed key for another plan rejects. Reusing the completed mutation ID with another key/plan also rejects.
+
+This prevents idempotency-key aliasing and mutation-ID aliasing.
+
+---
+
+## 35. In-memory completed outcome is not crash-durable exactly-once
+
+Controlled Learning v0.1 reserves completed mutation IDs/keys and replays structural outcomes only for the lifetime of the composition/process.
+
+Do not describe this as exactly-once across application restart, process death, device reboot, restore, or migration. Those guarantees require a later persistent transaction/outcome store integrated with encrypted storage and recovery policy.
+
+When persistence is added, it must preserve the same semantic identity and fail-closed replay rules rather than treating storage durability as permission to weaken them.
+
+---
+
+## 36. Controlled learning apply has one explicit correlation lineage
+
+The real apply path is not a collection of unrelated root logs.
+
+It uses one operation root and explicit child contexts through claim, Authority, Memory/Knowledge mutation, completion/release, compensation, and final result observation. Logging and Diagnostics for the same significant operation must carry the same `LogContext`.
+
+Do not replace this with ThreadLocal/global hidden context merely for convenience.
