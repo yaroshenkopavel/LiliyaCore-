@@ -141,20 +141,20 @@ class LearningApplicationMutationCompletedOutcomeContractTest {
         val application = installApplication(f)
         grant(f)
         val secret = "completed-outcome-secret"
+        val applicationReference = LearningApplicationIntentReference(application.intent.id, application.generation)
+        val memoryRecord = MemoryRecord(
+            id = MemoryRecordId("memory-outcome"),
+            provenance = MemoryProvenance(MemorySourceId("learning-application")),
+            content = secret,
+            createdAt = Instant.parse("2026-08-29T10:54:00Z")
+        )
         val plan = LearningApplicationMutationPlan(
             id = LearningApplicationMutationId("mutation-outcome"),
-            application = LearningApplicationIntentReference(application.intent.id, application.generation),
+            application = applicationReference,
             principal = principal,
             target = LearningApplicationTarget.MEMORY,
             idempotencyKey = LearningApplicationIdempotencyKey("idem-outcome"),
-            payload = LearningApplicationMutationPayload.Memory(
-                MemoryRecord(
-                    id = MemoryRecordId("memory-outcome"),
-                    provenance = MemoryProvenance(MemorySourceId("learning-application")),
-                    content = secret,
-                    createdAt = Instant.parse("2026-08-29T10:54:00Z")
-                )
-            ),
+            payload = LearningApplicationMutationPayload.Memory(memoryRecord),
             createdAt = Instant.parse("2026-08-29T10:55:00Z")
         )
         val ownership = assertIs<LearningApplicationMutationPrepareResult.Prepared>(
@@ -171,8 +171,17 @@ class LearningApplicationMutationCompletedOutcomeContractTest {
         assertEquals(applied.receipt, f.mutations.completedOutcomeByIdempotencyKey(plan.idempotencyKey))
         assertEquals(1, f.memory.snapshotEntries().size)
 
+        val equalReplayPlan = LearningApplicationMutationPlan(
+            id = LearningApplicationMutationId("mutation-outcome"),
+            application = applicationReference,
+            principal = principal,
+            target = LearningApplicationTarget.MEMORY,
+            idempotencyKey = LearningApplicationIdempotencyKey("idem-outcome"),
+            payload = LearningApplicationMutationPayload.Memory(memoryRecord),
+            createdAt = Instant.parse("2026-08-29T10:55:00Z")
+        )
         val replay = assertIs<LearningApplicationMutationPrepareResult.AlreadyCompleted>(
-            f.mutations.prepare(plan.copy())
+            f.mutations.prepare(equalReplayPlan)
         )
         assertEquals(applied.receipt, replay.receipt)
         assertEquals(1, f.memory.snapshotEntries().size)
