@@ -8,6 +8,12 @@ interface LearningApplicationMutationOwnership {
     fun remove(): Boolean
 }
 
+interface LearningApplicationMutationClaim {
+    val plan: LearningApplicationMutationPlan
+    val reference: LearningApplicationMutationReference
+    fun release(): Boolean
+}
+
 sealed interface LearningApplicationMutationPrepareResult {
     data class Prepared(
         val ownership: LearningApplicationMutationOwnership
@@ -16,6 +22,16 @@ sealed interface LearningApplicationMutationPrepareResult {
     data class Rejected(
         val reason: String
     ) : LearningApplicationMutationPrepareResult
+}
+
+sealed interface LearningApplicationMutationClaimResult {
+    data class Claimed(
+        val claim: LearningApplicationMutationClaim
+    ) : LearningApplicationMutationClaimResult
+
+    data class Rejected(
+        val reason: LearningApplicationMutationClaimRejection
+    ) : LearningApplicationMutationClaimResult
 }
 
 class LearningApplicationMutationComposition(
@@ -52,6 +68,41 @@ class LearningApplicationMutationComposition(
 
             is LearningApplicationMutationRegistrationResult.Rejected ->
                 LearningApplicationMutationPrepareResult.Rejected(result.reason)
+        }
+    }
+
+    fun claim(reference: LearningApplicationMutationReference): LearningApplicationMutationClaimResult {
+        val context = foundation.rootContext(
+            operation = "claimLearningApplicationMutation",
+            component = "LearningApplicationMutation",
+            metadata = mapOf(
+                "learningApplicationMutationId" to reference.mutationId.value,
+                "learningApplicationMutationGeneration" to reference.generation.value.toString()
+            )
+        )
+        return when (val result = store.claim(reference, context)) {
+            is LearningApplicationMutationClaimRegistrationResult.Claimed -> {
+                val registration = result.claim
+                LearningApplicationMutationClaimResult.Claimed(
+                    claim = object : LearningApplicationMutationClaim {
+                        override val plan: LearningApplicationMutationPlan = registration.plan
+                        override val reference: LearningApplicationMutationReference =
+                            LearningApplicationMutationReference(plan.id, registration.generation)
+
+                        override fun release(): Boolean = registration.release(
+                            foundation.rootContext(
+                                operation = "releaseLearningApplicationMutationClaim",
+                                component = "LearningApplicationMutation",
+                                metadata = mutationMetadata(plan) +
+                                    ("learningApplicationMutationGeneration" to reference.generation.value.toString())
+                            )
+                        )
+                    }
+                )
+            }
+
+            is LearningApplicationMutationClaimRegistrationResult.Rejected ->
+                LearningApplicationMutationClaimResult.Rejected(result.reason)
         }
     }
 

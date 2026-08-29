@@ -19,12 +19,37 @@ internal sealed interface LearningApplicationMutationRegistrationResult {
     data class Rejected(val reason: String) : LearningApplicationMutationRegistrationResult
 }
 
+internal interface LearningApplicationMutationClaimRegistration {
+    val plan: LearningApplicationMutationPlan
+    val generation: LearningApplicationMutationGeneration
+    fun release(context: LogContext): Boolean
+}
+
+enum class LearningApplicationMutationClaimRejection {
+    MUTATION_MISSING,
+    MUTATION_GENERATION_MISMATCH,
+    ALREADY_CLAIMED
+}
+
+internal sealed interface LearningApplicationMutationClaimRegistrationResult {
+    data class Claimed(
+        val claim: LearningApplicationMutationClaimRegistration
+    ) : LearningApplicationMutationClaimRegistrationResult
+
+    data class Rejected(
+        val reason: LearningApplicationMutationClaimRejection
+    ) : LearningApplicationMutationClaimRegistrationResult
+}
+
 internal class LearningApplicationMutationStore(
     private val observability: CoreObservability
 ) {
+    private class ClaimToken
+
     private data class Entry(
         val generation: LearningApplicationMutationGeneration,
-        val plan: LearningApplicationMutationPlan
+        val plan: LearningApplicationMutationPlan,
+        var activeClaim: ClaimToken? = null
     )
 
     private val lock = Any()
@@ -65,7 +90,7 @@ internal class LearningApplicationMutationStore(
 
                 override fun remove(context: LogContext): Boolean = synchronized(lock) {
                     val current = entries[plan.id]
-                    val removed = current === entry && entries.remove(plan.id) === entry
+                    val removed = current === entry && entry.activeClaim == null && entries.remove(plan.id) === entry
                     if (removed) {
                         idempotency.remove(plan.idempotencyKey, entry)
                     }
@@ -78,6 +103,8 @@ internal class LearningApplicationMutationStore(
                         },
                         message = if (removed) {
                             "learning application mutation removed"
+                        } else if (current === entry && entry.activeClaim != null) {
+                            "learning application mutation is actively claimed"
                         } else {
                             "learning application mutation registration is no longer current"
                         },
@@ -85,6 +112,73 @@ internal class LearningApplicationMutationStore(
                         metadata = metadata(plan, entry.generation)
                     )
                     removed
+                }
+            }
+        )
+    }
+
+    fun claim(
+        reference: LearningApplicationMutationReference,
+        context: LogContext
+    ): LearningApplicationMutationClaimRegistrationResult = synchronized(lock) {
+        val entry = entries[reference.mutationId]
+            ?: return@synchronized claimRejected(
+                reference,
+                LearningApplicationMutationClaimRejection.MUTATION_MISSING,
+                context
+            )
+        if (entry.generation != reference.generation) {
+            return@synchronized claimRejected(
+                reference,
+                LearningApplicationMutationClaimRejection.MUTATION_GENERATION_MISMATCH,
+                context
+            )
+        }
+        if (entry.activeClaim != null) {
+            return@synchronized claimRejected(
+                reference,
+                LearningApplicationMutationClaimRejection.ALREADY_CLAIMED,
+                context
+            )
+        }
+
+        val token = ClaimToken()
+        entry.activeClaim = token
+        observability.record(
+            severity = DiagnosticSeverity.INFO,
+            code = "LEARNING_APPLICATION_MUTATION_CLAIMED",
+            message = "learning application mutation claimed",
+            context = context,
+            metadata = metadata(entry.plan, entry.generation)
+        )
+
+        LearningApplicationMutationClaimRegistrationResult.Claimed(
+            claim = object : LearningApplicationMutationClaimRegistration {
+                override val plan: LearningApplicationMutationPlan = entry.plan
+                override val generation: LearningApplicationMutationGeneration = entry.generation
+
+                override fun release(context: LogContext): Boolean = synchronized(lock) {
+                    val current = entries[reference.mutationId]
+                    val released = current === entry && entry.activeClaim === token
+                    if (released) {
+                        entry.activeClaim = null
+                    }
+                    observability.record(
+                        severity = if (released) DiagnosticSeverity.INFO else DiagnosticSeverity.WARNING,
+                        code = if (released) {
+                            "LEARNING_APPLICATION_MUTATION_CLAIM_RELEASED"
+                        } else {
+                            "LEARNING_APPLICATION_MUTATION_CLAIM_RELEASE_REJECTED"
+                        },
+                        message = if (released) {
+                            "learning application mutation claim released"
+                        } else {
+                            "learning application mutation claim is no longer current"
+                        },
+                        context = context,
+                        metadata = metadata(entry.plan, entry.generation)
+                    )
+                    released
                 }
             }
         )
@@ -130,6 +224,25 @@ internal class LearningApplicationMutationStore(
             metadata = metadata(plan, generation) + ("rejectionReason" to reason)
         )
         return LearningApplicationMutationRegistrationResult.Rejected(reason)
+    }
+
+    private fun claimRejected(
+        reference: LearningApplicationMutationReference,
+        reason: LearningApplicationMutationClaimRejection,
+        context: LogContext
+    ): LearningApplicationMutationClaimRegistrationResult.Rejected {
+        observability.record(
+            severity = DiagnosticSeverity.WARNING,
+            code = "LEARNING_APPLICATION_MUTATION_CLAIM_REJECTED",
+            message = "learning application mutation claim rejected",
+            context = context,
+            metadata = mapOf(
+                "learningApplicationMutationId" to reference.mutationId.value,
+                "learningApplicationMutationGeneration" to reference.generation.value.toString(),
+                "rejectionReason" to reason.name.lowercase()
+            )
+        )
+        return LearningApplicationMutationClaimRegistrationResult.Rejected(reason)
     }
 
     private fun metadata(
