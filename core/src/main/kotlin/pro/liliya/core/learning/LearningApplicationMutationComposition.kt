@@ -1,6 +1,7 @@
 package pro.liliya.core.learning
 
 import pro.liliya.core.foundation.FoundationComposition
+import pro.liliya.core.logging.LogContext
 
 interface LearningApplicationMutationOwnership {
     val plan: LearningApplicationMutationPlan
@@ -72,16 +73,23 @@ class LearningApplicationMutationComposition(
         }
     }
 
-    fun claim(reference: LearningApplicationMutationReference): LearningApplicationMutationClaimResult {
-        val context = foundation.rootContext(
+    fun claim(reference: LearningApplicationMutationReference): LearningApplicationMutationClaimResult = claim(
+        reference = reference,
+        context = foundation.rootContext(
             operation = "claimLearningApplicationMutation",
             component = "LearningApplicationMutation",
-            metadata = mapOf(
-                "learningApplicationMutationId" to reference.mutationId.value,
-                "learningApplicationMutationGeneration" to reference.generation.value.toString()
-            )
+            metadata = referenceMetadata(reference)
         )
-        return when (val result = store.claim(reference, context)) {
+    )
+
+    internal fun claim(
+        reference: LearningApplicationMutationReference,
+        context: LogContext
+    ): LearningApplicationMutationClaimResult {
+        val claimContext = context.copy(
+            metadata = (context.metadata + referenceMetadata(reference)).toMap()
+        )
+        return when (val result = store.claim(reference, claimContext)) {
             is LearningApplicationMutationClaimRegistrationResult.Claimed -> {
                 val registration = result.claim
                 LearningApplicationMutationClaimResult.Claimed(
@@ -91,18 +99,20 @@ class LearningApplicationMutationComposition(
                             LearningApplicationMutationReference(plan.id, registration.generation)
 
                         override fun release(): Boolean = registration.release(
-                            foundation.rootContext(
-                                operation = "releaseLearningApplicationMutationClaim",
+                            foundation.childContext(
+                                parent = claimContext,
                                 component = "LearningApplicationMutation",
+                                operation = "releaseLearningApplicationMutationClaim",
                                 metadata = mutationMetadata(plan) +
                                     ("learningApplicationMutationGeneration" to reference.generation.value.toString())
                             )
                         )
 
                         override fun complete(): Boolean = registration.complete(
-                            foundation.rootContext(
-                                operation = "completeLearningApplicationMutation",
+                            foundation.childContext(
+                                parent = claimContext,
                                 component = "LearningApplicationMutation",
+                                operation = "completeLearningApplicationMutation",
                                 metadata = mutationMetadata(plan) +
                                     ("learningApplicationMutationGeneration" to reference.generation.value.toString())
                             )
@@ -131,6 +141,11 @@ class LearningApplicationMutationComposition(
     fun snapshot(): List<LearningApplicationMutationPlan> = store.snapshot()
 
     fun snapshotEntries(): List<LearningApplicationMutationSnapshot> = store.snapshotEntries()
+
+    private fun referenceMetadata(reference: LearningApplicationMutationReference): Map<String, String> = mapOf(
+        "learningApplicationMutationId" to reference.mutationId.value,
+        "learningApplicationMutationGeneration" to reference.generation.value.toString()
+    )
 
     private fun mutationMetadata(plan: LearningApplicationMutationPlan): Map<String, String> = buildMap {
         put("learningApplicationMutationId", plan.id.value)

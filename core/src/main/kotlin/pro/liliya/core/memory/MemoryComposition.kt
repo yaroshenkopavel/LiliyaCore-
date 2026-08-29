@@ -1,6 +1,7 @@
 package pro.liliya.core.memory
 
 import pro.liliya.core.foundation.FoundationComposition
+import pro.liliya.core.logging.LogContext
 
 interface MemoryOwnership {
     val record: MemoryRecord
@@ -18,23 +19,34 @@ class MemoryComposition(
 ) {
     private val store = MemoryStore(foundation.observability)
 
-    fun remember(record: MemoryRecord): MemoryRememberResult {
-        val context = foundation.rootContext(
+    fun remember(record: MemoryRecord): MemoryRememberResult = remember(
+        record = record,
+        context = foundation.rootContext(
             operation = "remember",
             component = "Memory",
             metadata = provenanceMetadata(record)
         )
-        return when (val result = store.register(record, context)) {
+    )
+
+    internal fun remember(
+        record: MemoryRecord,
+        context: LogContext
+    ): MemoryRememberResult {
+        val operationContext = context.copy(
+            metadata = (context.metadata + provenanceMetadata(record)).toMap()
+        )
+        return when (val result = store.register(record, operationContext)) {
             is MemoryRegistrationResult.Registered -> MemoryRememberResult.Remembered(
                 ownership = object : MemoryOwnership {
                     override val record: MemoryRecord = result.registration.record
                     override val generation: MemoryGeneration = result.registration.generation
 
                     override fun remove(): Boolean = result.registration.remove(
-                        foundation.rootContext(
-                            operation = "removeMemory",
+                        foundation.childContext(
+                            parent = operationContext,
                             component = "Memory",
-                            metadata = provenanceMetadata(record) + mapOf(
+                            operation = "removeMemory",
+                            metadata = mapOf(
                                 "memoryGeneration" to generation.value.toString()
                             )
                         )
