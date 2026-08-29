@@ -9,11 +9,16 @@ interface LearningApplicationMutationOwnership {
     fun remove(): Boolean
 }
 
-interface LearningApplicationMutationClaim {
-    val plan: LearningApplicationMutationPlan
-    val reference: LearningApplicationMutationReference
-    fun release(): Boolean
-    fun complete(): Boolean
+class LearningApplicationMutationClaim internal constructor(
+    val plan: LearningApplicationMutationPlan,
+    val reference: LearningApplicationMutationReference,
+    private val releaseAction: () -> Boolean,
+    private val completeAction: () -> Boolean
+) {
+    fun release(): Boolean = releaseAction()
+
+    /** Controlled completion is intentionally internal; public claim ownership is not completion authority. */
+    internal fun complete(): Boolean = completeAction()
 }
 
 sealed interface LearningApplicationMutationPrepareResult {
@@ -92,32 +97,37 @@ class LearningApplicationMutationComposition(
         return when (val result = store.claim(reference, claimContext)) {
             is LearningApplicationMutationClaimRegistrationResult.Claimed -> {
                 val registration = result.claim
+                val exactReference = LearningApplicationMutationReference(
+                    registration.plan.id,
+                    registration.generation
+                )
                 LearningApplicationMutationClaimResult.Claimed(
-                    claim = object : LearningApplicationMutationClaim {
-                        override val plan: LearningApplicationMutationPlan = registration.plan
-                        override val reference: LearningApplicationMutationReference =
-                            LearningApplicationMutationReference(plan.id, registration.generation)
-
-                        override fun release(): Boolean = registration.release(
-                            foundation.childContext(
-                                parent = claimContext,
-                                component = "LearningApplicationMutation",
-                                operation = "releaseLearningApplicationMutationClaim",
-                                metadata = mutationMetadata(plan) +
-                                    ("learningApplicationMutationGeneration" to reference.generation.value.toString())
+                    claim = LearningApplicationMutationClaim(
+                        plan = registration.plan,
+                        reference = exactReference,
+                        releaseAction = {
+                            registration.release(
+                                foundation.childContext(
+                                    parent = claimContext,
+                                    component = "LearningApplicationMutation",
+                                    operation = "releaseLearningApplicationMutationClaim",
+                                    metadata = mutationMetadata(registration.plan) +
+                                        ("learningApplicationMutationGeneration" to exactReference.generation.value.toString())
+                                )
                             )
-                        )
-
-                        override fun complete(): Boolean = registration.complete(
-                            foundation.childContext(
-                                parent = claimContext,
-                                component = "LearningApplicationMutation",
-                                operation = "completeLearningApplicationMutation",
-                                metadata = mutationMetadata(plan) +
-                                    ("learningApplicationMutationGeneration" to reference.generation.value.toString())
+                        },
+                        completeAction = {
+                            registration.complete(
+                                foundation.childContext(
+                                    parent = claimContext,
+                                    component = "LearningApplicationMutation",
+                                    operation = "completeLearningApplicationMutation",
+                                    metadata = mutationMetadata(registration.plan) +
+                                        ("learningApplicationMutationGeneration" to exactReference.generation.value.toString())
+                                )
                             )
-                        )
-                    }
+                        }
+                    )
                 )
             }
 
