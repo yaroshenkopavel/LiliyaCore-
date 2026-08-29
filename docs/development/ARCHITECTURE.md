@@ -24,7 +24,7 @@ Hard invariants: default deny; capability existence is not permission; exact pri
 
 ## Frozen cognitive/control foundations
 
-Memory, Knowledge, Identity/Self, Trust/Security, Personality, Reflection, Learning foundations, Planning, Reasoning, Decision, Orchestration Intent, Controlled Orchestration, Autonomy Foundation, Controlled Autonomy Deliberation, Agents Foundation, Controlled Agent Initiative and Controlled Agent Lifecycle v0.1 are frozen.
+Memory, Knowledge, Identity/Self, Trust/Security, Personality, Reflection, Learning foundations, Planning, Reasoning, Decision, Orchestration Intent, Controlled Orchestration, Autonomy Foundation, Controlled Autonomy Deliberation, Agents Foundation, Controlled Agent Initiative, Controlled Agent Lifecycle and Agent Delegation Foundation v0.1 are frozen.
 
 Canonical subsystem freeze documents remain the detailed source for each boundary.
 
@@ -32,7 +32,7 @@ Canonical subsystem freeze documents remain the detailed source for each boundar
 
 `Interaction/Input → Context → Meaning → Goal → Planning → Reasoning → Decision → Orchestration Intent → Capability/Authority → Execution → Result → Reflection → Memory/Knowledge → Learning`
 
-Autonomy is a governed initiative layer around this chain. Agents add bounded actor identity and explicit lifecycle governance above Autonomy. Agent identity or lifecycle state never implies permission.
+Autonomy is a governed initiative layer around this chain. Agents add bounded actor identity and explicit lifecycle governance above Autonomy. Agent Delegation currently records structural parent/child relationships only. Identity, lifecycle or delegation never implies permission.
 
 ## Decision / Orchestration — FROZEN
 
@@ -60,88 +60,74 @@ Mandatory invariant:
 
 `Autonomy != Deliberation != Planning != Reasoning != Decision != Orchestration Intent != Authority != Execution`.
 
-Hard invariants include exact-generation attempt accounting/cancellation, fresh provenance validation at every bridge, late-cancellation rejection before downstream Authority, zero executor calls for stale/cancelled/denied paths, no durable permission and no hidden scheduler.
+## Agents / Controlled Initiative / Lifecycle — FROZEN
 
-Canonical contracts: `AUTONOMY_V0_1_FREEZE.md`, `CONTROLLED_AUTONOMY_V0_1_FREEZE.md`.
+Agent structural boundary:
 
-## Agents Foundation v0.1 — FROZEN
+`explicit Agent identity + origin + private role/purpose → AgentRecord → exact AgentGeneration ownership`
 
-Structural boundary:
+Controlled Agent initiative:
 
-`explicit Agent identity + explicit origin + caller-declared private role/purpose + createdAt → AgentRecord → exact AgentGeneration ownership`
-
-Mandatory invariant:
-
-`Agent != Autonomy != Decision != Authority != Execution`.
-
-Agent identity is structural data only. Role/purpose are private; ownership is stale/ABA-safe; no runtime loop, scheduler, self-spawn, delegation engine, tool/device access, Authority, Execution or hidden Memory/Knowledge mutation exists in the foundation.
-
-Canonical contract: `AGENTS_V0_1_FREEZE.md`.
-
-## Controlled Agent Initiative v0.1 — FROZEN
-
-Frozen direction:
-
-`exact live Agent → trusted Agent provenance → ordinary finite-budget AutonomyProposal → fresh Agent check before attempt claim → frozen Controlled Autonomy deliberation/cognitive path → fresh Agent check at final execution boundary → frozen Controlled Autonomy execution → fresh Authority → Execution`
-
-Mandatory invariant:
-
-`Agent != Autonomy != Deliberation != Decision != Authority != Execution`.
-
-Hard invariants include trusted exact Agent provenance, zero writes from stale/removed Agents, bounded attempt ownership staying in Autonomy, late Agent-removal guard before downstream execution, no Agent-as-Authority semantics and no scheduler/self-spawn/delegation runtime.
-
-Canonical contract: `CONTROLLED_AGENT_INITIATIVE_V0_1_FREEZE.md`.
-
-## Controlled Agent Lifecycle v0.1 — FROZEN
+`exact live ACTIVE Agent → trusted Agent provenance → finite-budget AutonomyProposal → fresh Agent/lifecycle check before attempt → frozen Autonomy chain → fresh Agent/lifecycle check before final downstream execution`
 
 Lifecycle boundary:
 
-`exact AgentId + exact AgentGeneration → explicit ACTIVE / CANCELLED / STOPPED lifecycle state`
+`exact AgentId + AgentGeneration → explicit ACTIVE / CANCELLED / STOPPED state`
 
 Mandatory invariant:
 
 `Agent Identity != Agent Lifecycle != Autonomy != Authority != Execution`.
 
+Missing/CANCELLED/STOPPED lifecycle fails closed at initiative creation, attempt claim and final Agent execution guard. Lifecycle state is governance evidence only, never permission.
+
+Canonical contracts: `AGENTS_V0_1_FREEZE.md`, `CONTROLLED_AGENT_INITIATIVE_V0_1_FREEZE.md`, `AGENT_LIFECYCLE_V0_1_FREEZE.md`.
+
+## Agent Delegation Foundation v0.1 — FROZEN
+
+Structural boundary:
+
+`exact parent AgentId+AgentGeneration + exact child AgentId+AgentGeneration + private purpose + createdAt → AgentDelegationRecord → exact AgentDelegationGeneration ownership`
+
+Mandatory invariant:
+
+`Delegation != Capability != Authority != Execution`.
+
 Hard invariants:
 
-- lifecycle is separate from Agent registry presence;
-- exact live Agent generation is required to activate lifecycle;
-- lifecycle is absent until explicit activation;
-- lifecycle ownership binds to exact Agent generation;
-- `CANCELLED` and `STOPPED` are terminal in v0.1;
-- repeated/competing terminal transitions fail closed;
-- stale lifecycle ownership cannot affect replacement generation;
-- replacement Agent does not inherit stale lifecycle state;
-- exact ACTIVE lifecycle is mandatory at Agent initiative creation;
-- exact ACTIVE lifecycle is mandatory immediately before bounded Autonomy attempt claim;
-- exact ACTIVE lifecycle is mandatory immediately before final Agent delegation into frozen Controlled Autonomy execution;
-- missing/CANCELLED/STOPPED lifecycle means zero writes/claims/downstream execution delegate calls at those boundaries;
-- lifecycle state is governance evidence only, never capability, permission, Authority or execution right;
-- no scheduler, recurring loop, pause/resume runtime, delegation engine or multi-agent behavior exists in v0.1.
+- exact parent and child generation references are structural data only;
+- self-delegation rejects by default;
+- relation purpose is private/redacted;
+- duplicate relation identity rejects without replacement;
+- exact ownership is stale/ABA-safe and one-shot;
+- composition isolation and deterministic detached snapshots are explicit;
+- raw mutable delegation store remains private;
+- structural composition intentionally has no `AgentComposition` or `ControlledAgentLifecycle` dependency;
+- data and ownership APIs expose no Capability/Authority/permission/Execution/scheduler/tool/initiative/spawn/replication semantics;
+- no Agent work is created by this foundation;
+- no scheduler, recurring loop, delegation engine, multi-agent runtime, Authority or Execution exists here.
 
-Canonical contract: `AGENT_LIFECYCLE_V0_1_FREEZE.md`.
+Canonical contract: `AGENT_DELEGATION_V0_1_FREEZE.md`.
 
-## Agent Delegation Foundation v0.1 — NEXT
+## Controlled Agent Delegation Bridge v0.1 — NEXT
 
-Delegation comes only after single-Agent identity, initiative and lifecycle governance are frozen.
+The next layer may use a structural delegation relation to create bounded downstream initiative only after fresh endpoint governance checks.
 
 First direction:
 
-`exact parent Agent generation + exact child Agent generation + explicit bounded relation → exact delegation generation ownership`
+`exact Delegation ID+generation → fresh parent Agent ID+generation + ACTIVE lifecycle → fresh child Agent ID+generation + ACTIVE lifecycle → caller-declared bounded initiative data → ordinary AutonomyProposal`
 
 Required invariants:
 
-- exact parent and child IDs+generations;
-- self-delegation rejects by default;
-- relation metadata is data only, not permission/capability/Authority;
-- no capability or execution-right amplification;
-- duplicate relation identity rejects without replacement;
-- stale/ABA-safe exact ownership;
-- composition isolation and deterministic detached snapshots;
-- private role/purpose do not leak into delegation observability;
-- no scheduler, initiative creation, Authority, Execution or tool access;
-- no multi-agent runtime in the foundation;
-- any later delegation-to-work bridge must revalidate both exact Agent generations and ACTIVE lifecycle before creating downstream work.
+- exact delegation generation is live-validated immediately before use;
+- parent and child Agent generations are both live-validated immediately before downstream work creation;
+- ACTIVE lifecycle is mandatory for both exact endpoints;
+- stale/removed/replaced/CANCELLED/STOPPED endpoint causes zero downstream writes;
+- relation itself is never capability, permission, Authority or execution evidence;
+- parent capability/permission/execution rights are not inherited or amplified by child;
+- downstream work must still enter frozen Agent Initiative / Autonomy / Authority / Execution boundaries;
+- no scheduler, recursive delegation, self-spawn or multi-agent runtime in the first controlled bridge.
+
+Multi-agent coordination remains deferred until Controlled Agent Delegation is separately frozen.
 
 ## Update System v0.1 — ARCHITECTURE CONTRACT
 
@@ -157,11 +143,10 @@ License != Authority; device binding uses cryptographic enrollment/Keystore rath
 
 ## Deferred roadmap
 
-After Agent Delegation Foundation is separately implemented and frozen:
+After Controlled Agent Delegation is separately implemented and frozen:
 
-- controlled delegation-to-Autonomy bridge with fresh parent/child lifecycle checks;
 - bounded Agent coordination;
-- multi-agent behavior only after single-Agent and delegation governance are frozen;
+- multi-agent behavior only after delegation governance is frozen;
 - persistent encrypted cognitive storage and crash recovery;
 - Android Keystore/StrongBox enrollment;
 - protected model package/streaming loader;
