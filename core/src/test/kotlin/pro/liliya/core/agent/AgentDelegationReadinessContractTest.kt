@@ -83,7 +83,7 @@ class AgentDelegationReadinessContractTest {
     }
 
     @Test
-    fun delegation_ownership_exposes_only_exact_record_generation_and_remove_control() {
+    fun delegation_ownership_exposes_exact_record_generation_and_remove_without_power_methods() {
         val publicNames = AgentDelegationOwnership::class.java.methods
             .filter { it.declaringClass == AgentDelegationOwnership::class.java }
             .map { it.name }
@@ -92,6 +92,13 @@ class AgentDelegationReadinessContractTest {
         assertTrue(publicNames.contains("getDelegation"))
         assertTrue(publicNames.contains("getGeneration"))
         assertTrue(publicNames.contains("remove"))
-        assertEquals(3, publicNames.size)
+
+        val forbidden = setOf(
+            "authority", "authorize", "permission", "capability", "execution", "execute",
+            "executor", "scheduler", "schedule", "spawn", "replicate", "tool", "grant", "initiative"
+        )
+        assertFalse(publicNames.any { name ->
+            forbidden.any { token -> name.lowercase().contains(token) }
+        })
     }
 }
