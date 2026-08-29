@@ -21,6 +21,7 @@ import pro.liliya.core.memory.MemorySourceId
 import pro.liliya.core.observability.LoggerProvider
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
@@ -39,7 +40,8 @@ class LearningApplicationMutationStoreContractTest {
         id: String = "mutation-1",
         key: String = "idem-1",
         applicationGeneration: Long = 1L,
-        content: String = "sensitive memory content"
+        content: String = "sensitive memory content",
+        createdAt: Instant = Instant.parse("2026-08-29T08:21:00Z")
     ): LearningApplicationMutationPlan = LearningApplicationMutationPlan(
         id = LearningApplicationMutationId(id),
         application = LearningApplicationIntentReference(
@@ -57,7 +59,7 @@ class LearningApplicationMutationStoreContractTest {
                 createdAt = Instant.parse("2026-08-29T08:20:00Z")
             )
         ),
-        createdAt = Instant.parse("2026-08-29T08:21:00Z")
+        createdAt = createdAt
     )
 
     private fun knowledgePlan(): LearningApplicationMutationPlan = LearningApplicationMutationPlan(
@@ -94,6 +96,23 @@ class LearningApplicationMutationStoreContractTest {
         assertSame(plan, store.find(plan.id))
         assertEquals(plan, store.findByIdempotencyKey(plan.idempotencyKey))
         assertTrue(result.registration.generation.value > 0L)
+    }
+
+    @Test
+    fun duplicate_mutation_id_is_rejected_even_with_different_idempotency_key() {
+        val foundation = foundation()
+        val store = LearningApplicationMutationStore(foundation.observability)
+        val first = memoryPlan(id = "same-mutation", key = "idem-a")
+        val second = memoryPlan(id = "same-mutation", key = "idem-b", applicationGeneration = 2L)
+
+        assertIs<LearningApplicationMutationRegistrationResult.Registered>(
+            store.register(first, foundation.rootContext("prepareLearningApplicationMutation", "LearningApplicationMutation"))
+        )
+        assertIs<LearningApplicationMutationRegistrationResult.Rejected>(
+            store.register(second, foundation.rootContext("prepareLearningApplicationMutation", "LearningApplicationMutation"))
+        )
+        assertSame(first, store.find(first.id))
+        assertNull(store.findByIdempotencyKey(second.idempotencyKey))
     }
 
     @Test
@@ -138,10 +157,86 @@ class LearningApplicationMutationStoreContractTest {
         val memory = memoryPlan(content = "secret-memory-value")
         val knowledge = knowledgePlan()
 
+        assertFailsWith<IllegalArgumentException> {
+            LearningApplicationMutationPlan(
+                id = LearningApplicationMutationId("invalid-target"),
+                application = memory.application,
+                principal = memory.principal,
+                target = LearningApplicationTarget.MEMORY,
+                idempotencyKey = LearningApplicationIdempotencyKey("invalid-target-key"),
+                payload = knowledge.payload,
+                createdAt = memory.createdAt
+            )
+        }
+
         assertFalse(memory.toString().contains("secret-memory-value"))
         assertFalse(knowledge.toString().contains("sensitive knowledge content"))
         assertTrue(memory.toString().contains("memory-1"))
         assertTrue(knowledge.toString().contains("knowledge-1"))
+    }
+
+    @Test
+    fun snapshots_are_deterministic_by_created_at_then_mutation_id() {
+        val foundation = foundation()
+        val store = LearningApplicationMutationStore(foundation.observability)
+        val later = memoryPlan(
+            id = "mutation-z",
+            key = "idem-z",
+            createdAt = Instant.parse("2026-08-29T08:23:00Z")
+        )
+        val sameTimeSecond = memoryPlan(
+            id = "mutation-b",
+            key = "idem-b",
+            createdAt = Instant.parse("2026-08-29T08:22:00Z")
+        )
+        val sameTimeFirst = memoryPlan(
+            id = "mutation-a",
+            key = "idem-a",
+            createdAt = Instant.parse("2026-08-29T08:22:00Z")
+        )
+
+        listOf(later, sameTimeSecond, sameTimeFirst).forEach { plan ->
+            assertIs<LearningApplicationMutationRegistrationResult.Registered>(
+                store.register(plan, foundation.rootContext("prepareLearningApplicationMutation", "LearningApplicationMutation"))
+            )
+        }
+
+        assertEquals(
+            listOf("mutation-a", "mutation-b", "mutation-z"),
+            store.snapshot().map { it.id.value }
+        )
+        assertEquals(
+            listOf("mutation-a", "mutation-b", "mutation-z"),
+            store.snapshotEntries().map { it.plan.id.value }
+        )
+    }
+
+    @Test
+    fun lifecycle_observability_does_not_expose_payload_content() {
+        val logs = InMemoryLogWriter()
+        val diagnosticSink = InMemoryDiagnosticSink()
+        val foundation = FoundationComposition(
+            diagnostics = DiagnosticRecorder(diagnosticSink),
+            loggerProvider = LoggerProvider { context -> StructuredLogger(context, logs) },
+            correlationIds = CorrelationIdGenerator { "mutation-store-privacy" }
+        )
+        val store = LearningApplicationMutationStore(foundation.observability)
+        val secret = "payload-secret-that-must-not-appear"
+        val plan = memoryPlan(content = secret)
+
+        val registration = assertIs<LearningApplicationMutationRegistrationResult.Registered>(
+            store.register(plan, foundation.rootContext("prepareLearningApplicationMutation", "LearningApplicationMutation"))
+        ).registration
+        assertTrue(
+            registration.remove(
+                foundation.rootContext("removeLearningApplicationMutation", "LearningApplicationMutation")
+            )
+        )
+
+        assertTrue(logs.snapshot().isNotEmpty())
+        assertTrue(diagnosticSink.snapshot().isNotEmpty())
+        assertFalse(logs.snapshot().joinToString().contains(secret))
+        assertFalse(diagnosticSink.snapshot().joinToString().contains(secret))
     }
 
     @Test
