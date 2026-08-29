@@ -1,6 +1,7 @@
 package pro.liliya.core.learning
 
 import pro.liliya.core.foundation.FoundationComposition
+import pro.liliya.core.logging.LogContext
 
 interface LearningOwnership {
     val candidate: LearningCandidate
@@ -18,13 +19,23 @@ class LearningComposition(
 ) {
     private val store = LearningCandidateStore(foundation.observability)
 
-    fun install(candidate: LearningCandidate): LearningInstallResult {
-        val context = foundation.rootContext(
+    fun install(candidate: LearningCandidate): LearningInstallResult = install(
+        candidate = candidate,
+        context = foundation.rootContext(
             operation = "installLearningCandidate",
             component = "Learning",
             metadata = candidateMetadata(candidate)
         )
-        return when (val result = store.register(candidate, context)) {
+    )
+
+    internal fun install(
+        candidate: LearningCandidate,
+        context: LogContext
+    ): LearningInstallResult {
+        val installContext = context.copy(
+            metadata = (context.metadata + candidateMetadata(candidate)).toMap()
+        )
+        return when (val result = store.register(candidate, installContext)) {
             is LearningCandidateRegistrationResult.Registered -> {
                 val registration = result.registration
                 LearningInstallResult.Installed(
@@ -33,9 +44,10 @@ class LearningComposition(
                         override val generation: LearningGeneration = registration.generation
 
                         override fun remove(): Boolean = registration.remove(
-                            foundation.rootContext(
-                                operation = "removeLearningCandidate",
+                            foundation.childContext(
+                                parent = installContext,
                                 component = "Learning",
+                                operation = "removeLearningCandidate",
                                 metadata = candidateMetadata(candidate) +
                                     ("learningGeneration" to generation.value.toString())
                             )
@@ -67,6 +79,12 @@ class LearningComposition(
                 put("learningOriginType", "reflection")
                 put("reflectionRecordId", origin.recordId.value)
                 put("reflectionGeneration", origin.generation.value.toString())
+            }
+
+            is LearningOrigin.Consolidation -> {
+                put("learningOriginType", "consolidation")
+                put("learningConsolidationId", origin.consolidationId.value)
+                put("learningConsolidationGeneration", origin.generation.value.toString())
             }
 
             is LearningOrigin.Declared -> {
