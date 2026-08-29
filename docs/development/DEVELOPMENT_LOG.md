@@ -1,478 +1,414 @@
-# LiliyaCore — Detailed Development History
+# LiliyaCore — Verified Development History
 
-Scope: this history covers only the current repository `Vikrot123/LiliyaCore`. Predecessor projects are intentionally excluded.
+Scope: this history covers only repository `Vikrot123/LiliyaCore`. Predecessor projects are intentionally excluded.
 
-Status labels:
-- **VERIFIED** — confirmed from GitHub PR/commit/CI metadata or current repository state.
-- **OPEN** — work exists but is not merged/frozen.
+Status convention:
+- **VERIFIED** — merged/current state confirmed from repository/PR/CI history.
+- **CONTRACT** — durable architecture contract exists, runtime implementation is still future work.
+- **FROZEN** — verified baseline should not be casually redesigned; correctness/security fixes still require focused contracts, CI, audit, and journal update.
 
-## Repository bootstrap — VERIFIED
-
-The earliest verified baseline referenced by the repository's PR history is main commit `73f8e9ce0bb1b4dd2391fc6024fd8fe448168f33`, the base of PR #1.
-
-From the beginning of this repository, development was deliberately foundation-first and core-only. The accepted build order became:
-
-`Logging → Diagnostics → Runtime → Lifecycle → Recovery → Events → Services → Modules → Observability → Composition/Ownership → Authority → Execution`
-
-The core engineering rules established during this phase were: explicit ownership, contracts before complexity, failures must be observable, correlation must cross subsystem boundaries, no hidden global logger ownership, feature branches instead of direct `main` modification, and CI-green merge gates.
+This file is deliberately milestone-oriented. Contract tests remain the executable source for fine-grained behavior.
 
 ---
+
+# Foundation build-out
+
+The repository was developed foundation-first rather than by immediately wiring an Android application.
+
+Core build order:
+
+`Logging → Diagnostics → Runtime → Lifecycle → Recovery → Events → Services → Modules → Foundation Composition → Capability/Authority → Execution`
+
+Durable rules established during this phase:
+
+- explicit mutable ownership;
+- exact handles/instances instead of ID-only later re-resolution;
+- Runtime is the state authority;
+- Lifecycle orchestrates Runtime rather than shadowing state;
+- failures must be observable;
+- Logging and Diagnostics are distinct but correlated;
+- no hidden global logger acquisition;
+- tests are executable architecture contracts;
+- feature branch → PR → exact-head GREEN CI → readiness audit → exact-head merge.
 
 ## PR #1 — Structured Logging Core — VERIFIED
 
-Title: `Foundation v0.1: Structured Logging Core`
+Established structured log events/contexts, correlation propagation, sequencing, bootstrap buffering/replay, filtering/composite/safe writers, failure observation, metadata snapshots, and concurrency contracts.
 
-- base: `73f8e9ce0bb1b4dd2391fc6024fd8fe448168f33`
-- head: `88e1dbda688ddad186290e463c37e43ad84f6c50`
-- PR commits: 35
-- resulting main used by PR #2: `68e46d45b22e3308ebdd023b8e49ca2d9cde2dac`
-
-Purpose: make technical behavior observable before adding runtime/lifecycle complexity.
-
-Introduced structured logging primitives and contracts: `LogEvent`, `LogContext`, levels, logger/writer abstractions, correlation propagation, global sequencing, bootstrap buffering/replay, filtering, composite writers, safe writer isolation, writer failure observation, immutable metadata snapshots, and concurrency coverage.
-
-Nuance: logging was explicitly defined as operational/technical telemetry, not semantic diagnostics. Later layers were required to preserve this distinction.
-
----
+Logging was defined as technical operational trace, not semantic system diagnostics.
 
 ## PR #2 — Diagnostics Core — VERIFIED
 
-Title: `Foundation v0.1: Diagnostics Core`
-
-- base: `68e46d45b22e3308ebdd023b8e49ca2d9cde2dac`
-- head: `6be34d04a735510c9b28030745cf36c3cd2c3c56`
-- commits: 12
-- resulting main used by PR #3: `d9e57b5788242041c10f8cdac9434e8a234fe03e`
-
-Purpose: add semantic/health observability on top of structured technical logging.
-
-Added diagnostic events, severity, global diagnostic sequencing, recorder, sink abstraction, in-memory sink, safe sink failure isolation, failure observer, metadata snapshots, correlation preservation, and concurrency contracts.
+Added diagnostic events/severity, recorder/sink model, safe sink isolation, failure observation, metadata snapshots, correlation preservation, and deterministic in-memory diagnostics.
 
 Durable distinction:
-- Logging = operational trace/telemetry.
-- Diagnostics = meaningful failure/state/contract information.
 
----
+- Logging = operational trace.
+- Diagnostics = semantic condition/failure/contract reporting.
 
 ## PR #3 — Runtime Core — VERIFIED
 
-Title: `Foundation v0.1: Runtime Core`
-
-- base: `d9e57b5788242041c10f8cdac9434e8a234fe03e`
-- head: `a12b606b0f333ddafe517b5a41f5223bd3efb66b`
-- commits: 11
-- resulting main used by PR #4: `4d09c2e5e6717e70ecd8cf53f8a4ed81fb06b128`
-
-Purpose: create the authoritative runtime state machine.
-
-Added runtime state, transition model, transition rules/policy, atomic state holder, controller, explicit `Applied`/`Rejected` results, failure transitions, diagnostic observability, nominal transition contracts, and concurrency invariants.
-
-Nuance: Runtime owns state authority. Future Lifecycle and higher layers request transitions; they do not maintain competing shadow state.
-
----
+Established authoritative runtime state, transitions, rules/policy, atomic holder/controller, explicit applied/rejected results, failure transitions, observability, and concurrency invariants.
 
 ## PR #4 — Lifecycle Core — VERIFIED
 
-Title: `Foundation v0.1: Lifecycle Core`
-
-- base: `4d09c2e5e6717e70ecd8cf53f8a4ed81fb06b128`
-- head: `7ed2969a59bd176454b995b1a51520dc8579ed7c`
-- commits: 5
-- resulting main used by PR #5: `baefaa4ff96d4feb48b1960676cd2fc2dca4cace`
-
-Purpose: introduce lifecycle commands/phases while keeping Runtime as the only state authority.
-
-Added lifecycle commands, phases, result model, controller, PREPARE → START → STOP contracts, repeated/invalid command rejection, and lifecycle/runtime diagnostic consistency.
-
-Nuance: Lifecycle maps commands onto `RuntimeStateController`; it must not become a second state machine.
-
----
+Added lifecycle commands/phases/results while retaining Runtime as the only state authority.
 
 ## PR #5 — Recovery Core — VERIFIED
 
-Title: `Foundation v0.1: Recovery Core`
+Added explicit recovery policy and active-target ownership, duplicate-attempt rejection, completion/reuse semantics, and observable decisions.
 
-- base: `baefaa4ff96d4feb48b1960676cd2fc2dca4cace`
-- head: `880dc6074547657dd119acc802c10db7a6a4d483`
-- commits: 12
-- Core CI #75: success
-- resulting main: `affeb1bd2260629e351e214bc548213e346d7c83`
-
-Purpose: define reliability recovery policy and ownership independently from semantic intelligence.
-
-Added recovery request/action/decision/policy/coordinator, explicit active-target ownership, duplicate active recovery rejection, completion handling, ignored completion observability, policy boundaries, reuse contracts, and correlation-aware diagnostics.
-
-Nuance: Recovery is reliability infrastructure only. It must not absorb planning/reasoning/semantic decision responsibilities.
-
----
+Recovery was explicitly restricted to reliability behavior, not cognition/planning.
 
 ## PR #6 — Event Core — VERIFIED
 
-Title: `Foundation v0.1: Event Core`
+Established synchronous deterministic in-process delivery, explicit subscription ownership, listener failure isolation, event sequencing/correlation, and delivery reports.
 
-- base: `affeb1bd2260629e351e214bc548213e346d7c83`
-- head: `bb9815284106687f4a47f5ccfe03a4cceb54035a`
-- commits: 8
-- Core CI #86: success
-- resulting main: `27237133683cf7184db930ec496953cc7e83b90d`
+## Services / Modules / Foundation Composition — VERIFIED / FROZEN
 
-Purpose: provide a small deterministic in-process event foundation.
+Subsequent Foundation work established:
 
-Semantics established: synchronous publication, deterministic subscription order, global event sequence, immutable envelope metadata, explicit cancellable subscription ownership, snapshot publication semantics, listener failure isolation, delivery reports, and correlation-aware diagnostics.
+- exact `ServiceRegistry` registration handles;
+- exact started `CoreService` instance ownership in `ServiceManager`;
+- deterministic dependency resolution;
+- transactional module/service installation and exact rollback;
+- structural module ownership separated from executable service lifecycle;
+- private raw registries in `FoundationComposition` to prevent unobservable production mutation paths;
+- `CoreObservability` as shared Logging + Diagnostics bridge with explicit correlation lineage.
 
-Nuances: callbacks run outside ownership lock; no persistent event store, retries, queue, asynchronous dispatcher, or global bus ownership was introduced.
-
----
-
-## PR #7 — Service Core — VERIFIED
-
-Title: `Foundation v0.1: Service Core`
-
-- base: `27237133683cf7184db930ec496953cc7e83b90d`
-- accepted branch: `foundation/services-v0.1-clean`
-- accepted head: `cf57b11edcc3b80aaf87358619aa08979955b688`
-- clean PR commits: 1
-- Core CI #217: success
-- resulting main: `2c69ddbaa697e2cea60f694c43bf14a1fc971f92`
-
-Purpose: define lifecycle-manageable infrastructure services.
-
-Added `CoreService`, `ServiceDescriptor`, thread-safe `ServiceRegistry`, deterministic dependency resolution with duplicate/missing/cycle rejection, and `ServiceManager` start/stop/rollback orchestration.
-
-Development nuance: an earlier services branch became polluted with many incremental commits and was quarantined. It was not used as the merge source. A clean branch was rebuilt and merged.
-
-Known limitation at this point: `ServiceManager` tracked started service IDs and re-resolved the registry later. Readiness audit subsequently identified that this could stop the wrong replacement instance or orphan the originally started service.
+Core Foundation v0.1 was frozen after final ownership/observability readiness audit.
 
 ---
 
-## PR #8 — Module Core — VERIFIED
+# Capability & Authority v0.1 — VERIFIED / FROZEN
 
-Title: `Foundation v0.1: Module Core`
+Authority development introduced:
 
-- base: `2c69ddbaa697e2cea60f694c43bf14a1fc971f92`
-- branch: `foundation/modules-v0.1-clean`
-- head: `b07779404004d7e880d469e0bf2c8b78ae09b9f2`
-- commits: 1
-- Core CI #231: success
-- resulting main: `38e1d9cba1aa9a1102b2cb8d929b5976c67314ed`
+`AuthorityRequest(principal, capability, scope, reason) → AuthorityPolicy → AuthorityDecision`
 
-Purpose: define structural modules without duplicating Service lifecycle ownership.
+Verified guarantees:
 
-Added `CoreModule`, `ModuleDescriptor`, thread-safe `ModuleRegistry`, deterministic dependency resolver, duplicate/missing-dependency/cycle rejection, snapshots, ordering, and concurrency contracts.
+- default deny;
+- capability existence does not imply permission;
+- exact principal/capability/scope grants;
+- strict expiry (`now < expiresAt`);
+- legacy explicit grants restricted to GLOBAL scope;
+- bounded one-level delegation;
+- delegated authority cannot amplify capability, scope, or lifetime;
+- only `DirectAuthorityGrant` may be a delegation source;
+- delegated provenance remains type-distinct;
+- authorization/delegation decisions observable;
+- Authority never executes actions.
 
-Nuance: Modules are structural composition units. Services remain the executable lifecycle units.
+Important readiness history: provenance flags alone were judged forgeable as a policy boundary, leading to the type-level `DirectAuthorityGrant` source restriction.
 
----
-
-## PR #9 — Observability Integration — VERIFIED
-
-Title: `Foundation v0.1: Observability Integration`
-
-- base: `38e1d9cba1aa9a1102b2cb8d929b5976c67314ed`
-- head: `e300440e847d66df6f2b2e1195e162ea97101314`
-- commits: 12
-- resulting main: `7a1e42b3e82de81724bd4ca90814eb1b26743b43`
-
-Purpose: integrate Logging and Diagnostics without collapsing them into one system.
-
-Introduced `CoreObservability`, which records one significant operation to both channels while preserving `LogContext`, correlation ID, metadata, and throwable information.
-
-Integrated into Runtime, Lifecycle, Recovery, Events, and Service lifecycle.
-
-Important defect discovered during this work: hidden subsystem defaults using `LoggerFactory.create(...)` could leak bootstrap/global writer state into isolated tests and obscure ownership. Accepted architecture changed to explicit observability injection from composition.
-
-Nuance: a subsystem is not considered properly integrated if its important state/ownership/failure transitions are invisible.
+Authority v0.1 final merge baseline: `638bbfdc51b9446f637a11c922a050b5289e63d7`.
 
 ---
 
-## PR #10 — Composition Root — VERIFIED
+# Execution v0.1 — VERIFIED / FROZEN
 
-Title: `Foundation v0.1: Composition Root`
+Execution was eventually completed after its early open/failed-test stage.
 
-- base: `7a1e42b3e82de81724bd4ca90814eb1b26743b43`
-- head: `221e7b09078101b1196e566d3d93c3952759b399`
-- commits: 2
-- resulting main: `9d4ac704d40a5c8dc799b71358dbd26fe06a9783`
+Frozen boundary:
 
-Purpose: make infrastructure ownership explicit.
+`ExecutionRequest → resolve trusted action capability → reject unknown/mismatch → Authority → executor → result`
 
-`FoundationComposition` became the composition root for Diagnostics, `CoreObservability`, Runtime, Lifecycle, Recovery, Events, Services, Modules, and correlation context creation.
+Guarantees:
 
-Nuance: module→service transactional composition was intentionally deferred because registries did not yet have exact ownership handles needed for safe rollback.
+- unknown/mismatched action-capability mapping rejects before Authority/executor;
+- Authority denial causes zero executor invocations;
+- executor exceptions are isolated as explicit failure results;
+- throwable metadata is normalized;
+- Execution performs side effects behind Authority but does not decide permission;
+- no Android/shell/browser implementation is implied by the foundation itself.
 
----
-
-## PR #11 — Registry Ownership — VERIFIED
-
-Title: `Foundation v0.1: Registry Ownership`
-
-- base: `9d4ac704d40a5c8dc799b71358dbd26fe06a9783`
-- head: `77e0e168a9436ef1d70a5d88bedb794d99cddfe0`
-- commits: 3
-- Core CI #262: success
-- resulting main: `e78ad2f8b7f117b03eeebc4d86164e39d85a4b78`
-
-Purpose: make registry ownership exact rather than ID-only.
-
-Added exact `ServiceRegistration`/`ModuleRegistration` handles with unique tokens, idempotent unregister, immutable snapshots, and compare/remove semantics.
-
-Nuance: this closes stale-handle / ABA removal. After an ID is unregistered and replaced, an old handle cannot remove the replacement owner.
+The historical “PR #20 OPEN / test compile failure” checkpoint is superseded by the later merged/frozen Execution baseline.
 
 ---
 
-## PR #12 — Module Service Composition — VERIFIED
+# Cognitive foundations — VERIFIED / FROZEN
 
-Title: `Foundation v0.1: Module Service Composition`
+## Memory Foundation
 
-- base: `e78ad2f8b7f117b03eeebc4d86164e39d85a4b78`
-- head: `f7c92555bfa5e409f6335d76bdd7350ac6a6b9c4`
-- commits: 2
-- Core CI #267: success
-- resulting main: `2aa86a45fb7785991aa1744b025334ca53a246ac`
+- composition-private store;
+- exact record generation ownership;
+- stale-safe exact removal;
+- deterministic snapshots;
+- provenance/reference metadata separated from content;
+- production lifecycle observability excludes Memory content.
 
-Purpose: connect module ownership to its declared services transactionally.
+## Knowledge Foundation
 
-Added `ModuleServiceInstaller`:
-- module registration first;
-- owned service registration through exact handles;
-- conflict rollback only for registrations created by the current attempt;
-- external owners preserved;
-- reverse-order service release on uninstall;
-- module released last;
-- repeated install rejected;
-- install/reject/rollback/uninstall observable.
+- exact item generation ownership;
+- stale-safe removal;
+- deterministic snapshots;
+- origins include exact Memory `(recordId,generation)` or Declared source;
+- lifecycle observability avoids Knowledge content.
 
-At this stage dependency/lifecycle hardening was still incomplete and was caught in the next readiness audit.
+## Identity / Self Foundation
 
----
+- single current Self per composition/store;
+- exact positive generation ownership;
+- stale-safe replacement/removal;
+- Knowledge origins are structural references only;
+- Self name is structural designation, not Authority/trust/credential.
 
-## PR #13 — Foundation Readiness Hardening — VERIFIED
+## Trust / Security Foundation
 
-Title: `Foundation v0.1: Readiness Hardening`
+- explicit trust anchors;
+- exact trust generations and stale-safe ownership;
+- composition isolation and deterministic snapshots;
+- trust is non-transitive;
+- trust anchor is not Authority grant/principal/auth credential/truth/confidence.
 
-- base: `2aa86a45fb7785991aa1744b025334ca53a246ac`
-- head: `6557f6cd3533e0fa97846cbf49ac44e213e2fa69`
-- commits: 4
-- Core CI #274: success
-- resulting main: `f4abe49e50783ff2a62a8dee329fa00e347cda68`
+## Personality Foundation
 
-This audit was explicitly not a feature expansion. It fixed four readiness blockers:
+- exact Self target reference;
+- explicit stored profile attributes;
+- defensive copy/redacted rendering;
+- personality storage does not automatically control behavior, prompts, Authority, or decisions.
 
-1. `ModuleServiceInstaller` existed outside `FoundationComposition` ownership.
-2. `ServiceManager` stored only service IDs, so unregister/replacement could make stop target the wrong instance.
-3. module installation did not enforce `ModuleDependencyResolver` before ownership mutation.
-4. module uninstall could remove structure while an owned service was still started or while another module depended on it.
+## Reflection Foundation
 
-Hardening results:
-- `ServiceManager` now retains exact started `CoreService` instances;
-- stop/rollback target the exact started instances rather than current registry lookup;
-- module dependency graph is validated before registration;
-- uninstall is rejected while owned service is started;
-- uninstall is rejected while another registered module depends on target;
-- installer is wired into `FoundationComposition`;
-- new rejection paths remain observable.
+- caller-declared reflection content;
+- exact generation ownership;
+- redacted content in observability/rendering;
+- origin references are structural only;
+- reflection itself does not autonomously mutate Memory/Knowledge or declare truth.
 
 ---
 
-## PR #14 — Registry Observability Encapsulation — VERIFIED
+# Learning foundations — VERIFIED / FROZEN
 
-Title: `Foundation v0.1: Registry Observability Encapsulation`
+## Learning Candidate
 
-- base: `f4abe49e50783ff2a62a8dee329fa00e347cda68`
-- head: `5ce47aa87c6b7399cf733780226e80b361c94e21`
-- commits: 2
-- Core CI #279: success
-- resulting main/foundation freeze merge: `15c0727d5a22eb731e802d3b59105bf517d24807`
+Proposal-only boundary. Candidate is not accepted/applied learned state. Reflection origin is structural only; proposal content is protected from lifecycle rendering.
 
-Final Foundation audit found that `FoundationComposition` publicly exposed raw `ServiceRegistry` and `ModuleRegistry`. That allowed ownership mutation to bypass `CoreObservability`.
+## Learning Decision
+
+Exact candidate ID+generation. APPROVE/REJECT records a decision only; APPROVE is not Authority, downstream mutation, truth, or learned state.
+
+## Learning Policy
+
+Caller-supplied structural policy data. Policy foundation is not a hidden evaluator/authorizer/executor.
+
+## Learning Application Intent — PR #75
+
+Merged as `a9806df993b973308ece61971b5bcdfef4b884f9` after exact-head GREEN CI.
+
+Application intent binds:
+
+- exact Decision reference;
+- exact Policy reference;
+- target MEMORY or KNOWLEDGE.
+
+Intent construction performs no hidden lookup and does not itself require Decision APPROVE. It is intent, not permission/execution/application.
+
+Accepted conceptual sequence:
+
+`candidate → decision → policy → application intent → controlled application`
+
+---
+
+# Controlled Learning Application v0.1
+
+This stage turned structural learning intent into the first real, Authority-gated Memory/Knowledge mutation path.
+
+## PR #78 — Authorization Boundary — VERIFIED
+
+Merge: `18c3c030c9026576dbaf930c2981ddeda73e561d`.
+
+Added exact preflight and target-scoped authorization:
+
+- exact Application/Decision/Candidate/Policy generations;
+- Decision must be APPROVE;
+- capability `learning.application.apply`;
+- scopes `learning.application.memory` / `learning.application.knowledge`;
+- authorization receipt is evidence only, not durable permission.
+
+## PR #79 / #80 — exploratory alternatives — CLOSED UNMERGED
+
+Earlier mutation-plan/idempotency designs were rejected because they risked turning a past authorization receipt into apparent durable permission.
+
+The accepted architecture requires fresh permission at the side-effect boundary.
+
+## PR #81 — Prepared Mutation Store — VERIFIED
+
+Merge: `ecd406e3365605f5a315c875b6a3afdf1b9f8256`.
+
+Prepared mutations bind exact Application reference, principal, target, target-specific payload, idempotency key, and createdAt.
+
+Guarantees:
+
+- duplicate IDs/active keys reject;
+- generation-based exact ownership;
+- same-key concurrent preparation has one winner;
+- deterministic snapshots;
+- payload content excluded from lifecycle metadata/rendering;
+- preparation performs no preflight/Authority/downstream write.
+
+## PR #83 — Mutation Composition Ownership — VERIFIED
+
+Merge: `0525304e367c0e691dfb172571af541c1c3bf5f2`.
+
+Private mutation store became composition-owned and callers received controlled ownership handles instead of raw store access.
+
+## PR #84 — Mutation Authorization Gate — VERIFIED
+
+Merge: `0d05ad9a342bb2683c67395a23a312bbdcd42635`.
+
+Key security fix: prepared target must match the target from fresh exact Application preflight. This blocks a confused-deputy path where Authority could authorize one scope while the prepared payload targeted another subsystem.
+
+The gate checks exact mutation before and after fresh authorization.
+
+## PR #85 — Exact Mutation Claim — VERIFIED
+
+Merge: `4ed793e76e1eadf34a8ef0c5010de508565826cc`.
+
+Added exact claim serialization:
+
+- one active claim per exact generation;
+- stale generation reject;
+- active claim blocks removal;
+- exact private claim token controls release/completion lifecycle.
+
+## PR #87 — Completion / Idempotency Tombstone — VERIFIED
+
+Merge: `d073257412f4b7e772cff3bc43e420e82864b53b`.
+
+Initial completion boundary reserved completed idempotency keys for composition lifetime and removed the prepared entry after exact claim completion.
+
+Later readiness audit found that boolean-only tombstones were insufficient for safe replay and did not reserve completed mutation IDs; this was superseded by PR #94.
+
+## PR #88 — Real Downstream Mutation Apply — VERIFIED
+
+Merge: `f594c00989cd79fd9ea8f4a4bf065a8703c8685e`.
+
+First real controlled write path:
+
+- exact claim acquired first;
+- fresh preflight + fresh target-specific Authority while claim held;
+- MEMORY through `MemoryComposition.remember()`;
+- KNOWLEDGE through `KnowledgeComposition.create()`;
+- public success receipt exposes only downstream ID+generation;
+- denial/mismatch causes zero writes;
+- downstream conflict releases claim and remains retryable;
+- post-write completion failure uses exact downstream ownership for compensation;
+- compensation failure surfaces explicit partial failure.
+
+Core CI #645: success on final exact head.
+
+## PR #91 — Apply Readiness Contracts — VERIFIED
+
+Merge: `c6bd1f7308d0bf2d0cd35679c23464f9ffe336c6`.
+
+Additional contracts proved:
+
+- concurrent apply of the same exact mutation has one downstream winner;
+- distinct mutations targeting the same Memory ID do not overwrite one another;
+- sensitive payload does not render in controlled apply observability/results.
+
+## PR #92 — Apply Correlation Continuity — VERIFIED
+
+Merge: `c8b45bd27f2d7f1717e587acd9350f35a7bea7d0`.
+
+Established one explicit operation lineage:
+
+`apply root → claim child → Authority child → Memory/Knowledge child → completion/release child → final apply observation`
+
+Logging and Diagnostics for a significant operation share the same `LogContext`.
+
+No ThreadLocal/global hidden context was introduced. Public Memory/Knowledge/applier APIs remained compatible; context-aware plumbing is internal.
+
+Core CI #658: success.
+
+## PR #93 — Internal Completion Authority — VERIFIED
+
+Merge: `89410f810d7c1fc636d1892d12c115c69c5380f4`.
+
+Readiness audit found that a public claim exposing `complete()` could create a false completion tombstone without a downstream write.
 
 Fix:
-- raw registries became private inside composition;
-- low-level registry classes remain structural/logging-agnostic primitives;
-- composition exposes read-only lookup (`findService`, `findModule`);
-- production ownership mutation flows through observable composition paths, especially `ModuleServiceInstaller`;
-- composition contract proves module/service ownership produces Logging + Diagnostics with correlation.
 
-After this gate, **Core Foundation v0.1 was frozen**.
+- public claim remains an ownership/serialization handle with release;
+- completion becomes internal controlled-learning capability;
+- exact private store token remains mandatory.
 
-Frozen chain:
-`Logging → Diagnostics → CoreObservability → Runtime → Lifecycle → Recovery → Events → Services → Modules → FoundationComposition`
+Core CI #662: success.
 
----
+## PR #94 — Completed Outcome Boundary — VERIFIED
 
-# Authority phase
+Exact final head: `99ae4bc9002afea787659a854061ecbd68262c4e`.
 
-## PR #15 — Explicit Capability Grants — VERIFIED
+Core CI #675: success.
 
-Title: `Authority v0.1: Explicit Capability Grants`
+Merge: `8aaa6713a8fe0f8f1d9f1831a7c30f680c11c28f`.
 
-- base: `15c0727d5a22eb731e802d3b59105bf517d24807`
-- head: `1d9db451835ea1fc60af32539748fa9db70c4896`
-- commits: 1
-- Core CI #283: success
-- resulting main: `55781d1f8dda48467dc1206e5d6c9507a33b8762`
+Replaced boolean-only completion with an atomic structural outcome:
 
-Introduced capability/authority identity and explicit authorization:
-- `CapabilityId`;
-- `AuthorityPrincipal`;
-- `AuthorityRequest` with explicit reason;
-- `AuthorityDecision`;
-- `AuthorityPolicy`;
-- default-deny `ExplicitGrantAuthorityPolicy`;
-- observable `AuthorityManager`.
+- completion validates exact mutation reference/generation;
+- completion validates target and downstream reference type;
+- completed mutation ID and idempotency key are both reserved;
+- completed outcome stores structural receipt by both indexes;
+- exact value-equal replay plan returns `AlreadyCompleted(previousReceipt)` without a second downstream write;
+- same key + different plan rejects;
+- same completed mutation ID + different key/plan rejects;
+- real applier receipt equals retained completed outcome;
+- payload is not exposed through completed receipt or lifecycle observability.
 
-Boundary: capability existence is not authority, and authority does not execute actions.
+The first CI attempt (#671) failed only because two new tests incorrectly used `.copy()` on a non-data-class plan. Tests were corrected to construct distinct value-equal plans; production semantics were unchanged. Final exact-head CI #675 passed.
 
----
+### Controlled Learning Application v0.1 — FROZEN
 
-## PR #16 — Scoped Expiring Grants — VERIFIED
+Final verified boundary:
 
-Title: `Authority v0.1: Scoped Expiring Grants`
+`candidate → decision → policy → application intent → exact preflight → Authority → prepared mutation → exact claim → fresh preflight + fresh Authority → Memory/Knowledge write → exact completion → completed structural outcome`
 
-- base: `55781d1f8dda48467dc1206e5d6c9507a33b8762`
-- head: `08b67ab280176f1c01c3424111ee430ca827e3a2`
-- commits: 1
-- Core CI #287: success
-- resulting main: `72fbb80cb5f15c41ad8bf7a57bec6ca069d790d4`
+Frozen guarantees include exact ownership, fail-closed target-scoped Authority, one-winner claim concurrency, target consistency, downstream conflict safety, exact compensation/partial failure visibility, privacy-safe observability, explicit correlation continuity, internal completion authority, semantic idempotency identity, and structural replay outcome.
 
-Added `AuthorityScope`, `ScopedAuthorityGrant`, and `ScopedGrantAuthorityPolicy`.
-
-Security semantics:
-- exact principal + capability + scope match;
-- no wildcard scopes;
-- optional expiry;
-- valid only while `now < expiresAt`;
-- at `now == expiresAt`, grant is already expired;
-- scope included in observability metadata.
+Explicit limitation: completed outcome/idempotency state is in-memory and composition-local. This foundation does not claim exactly-once across process death/restart/device reboot. Durable/encrypted persistence is a separate future architecture stage.
 
 ---
 
-## PR #17 — Bounded One-Level Delegation — VERIFIED
+# Update System v0.1 — CONTRACT
 
-Title: `Authority v0.1: Bounded One-Level Delegation`
+PR #86 merge: `1c9c87e81ba2bd847e9c450881f51e0593576f5a`.
 
-- base: `72fbb80cb5f15c41ad8bf7a57bec6ca069d790d4`
-- head: `f9bcdca894d0943ffd2d76ddef8b2988985a70f0`
-- commits: 1
-- Core CI #291: success
-- resulting main: `8bacb0bf0c8efc2add9a9031402f7b58cdf665fc`
+Durable pipeline contract:
 
-Introduced delegation request/decision/grant, policy, and observable delegation manager.
+`Discovery → Signed Manifest → Compatibility → Authority → Download → Verify → Stage → Migrate → Activate → Health Check → Commit / Rollback`
 
-Initial intended invariants:
-- delegator and delegate differ;
-- exact capability/scope source ownership;
-- source must be active;
-- bounded source cannot create unbounded child;
-- child expiry cannot exceed source expiry;
-- one-level delegation only.
+Network transport is not trust. Signature validity is not activation permission. Rollback viability is retained until commit/retention policy permits cleanup.
 
-Readiness audit then discovered that converting `DelegatedAuthorityGrant` to `ScopedAuthorityGrant` erased origin and could permit re-delegation.
+Runtime implementation remains future work.
 
 ---
 
-## PR #18 — Preserve Delegation Provenance — VERIFIED
+# Security & Licensing v0.1 — CONTRACT
 
-Title: `Authority v0.1: Preserve Delegation Provenance`
+PR #89 merge: `5968c52af438d4005008dfc72677f423d5f674f9`.
 
-- base: `8bacb0bf0c8efc2add9a9031402f7b58cdf665fc`
-- head: `8ef4c49663b1a8d408ae951f8089c8c8d71c7807`
-- commits: 1
-- Core CI #295: success
-- resulting main: `823e21e19900aa6fb381852baf0e13ae6faca37a`
+Durable decisions include:
 
-Added `AuthorityGrantOrigin` (`DIRECT`/`DELEGATED`) and preserved delegated origin when converting for authorization use. Delegation policy accepted only grants marked DIRECT.
+- License is not Authority;
+- future Android device binding uses cryptographic enrollment/non-exportable Keystore keys rather than IMEI/Android-ID/HWID-derived secrets;
+- protected model/runtime keys and user cognitive-data keys are separate domains;
+- license expiry must not intentionally destroy user Memory/Knowledge;
+- protected model packages use authenticated encryption and bounded decryption without normal plaintext temp model files;
+- anti-debug/anti-dump/obfuscation are defense-in-depth only;
+- entitlement failure is explicit fail-closed denial, not deliberately corrupted AI output;
+- offline entitlement requires signed/versioned lease, trusted-time/rollback, revocation, recovery, and transfer semantics;
+- Update System, network transport, Licensing, Authority, and Execution remain separate boundaries.
 
-A second readiness audit found two remaining weaknesses:
-1. legacy `ExplicitGrantAuthorityPolicy` ignored scope, so a legacy grant could authorize a non-global scoped request;
-2. public provenance fields could be reconstructed as `DIRECT`, so origin flags alone were not a strong enough type boundary.
-
----
-
-## PR #19 — Final Authority Readiness Hardening — VERIFIED
-
-Title: `Authority v0.1: Final Readiness Hardening`
-
-- base: `823e21e19900aa6fb381852baf0e13ae6faca37a`
-- head: `0aa61da142fecd5952f8e0ab6068f886f7fd6a01`
-- commits: 1
-- Core CI #300: success
-- resulting main: `638bbfdc51b9446f637a11c922a050b5289e63d7`
-
-Fixes:
-- legacy explicit grants restricted to `AuthorityScope.GLOBAL`;
-- new `DirectAuthorityGrant` type introduced;
-- `AuthorityDelegationPolicy` source collection changed to `DirectAuthorityGrant`;
-- scoped grants remain authorization representation/provenance, not delegation-source authority;
-- delegated grant conversion preserves `DELEGATED` origin;
-- tests updated to enforce the type-level boundary.
-
-After this audit, **Authority v0.1 was frozen**.
-
-Frozen Authority guarantees:
-- default deny;
-- explicit principal/capability/scope/reason;
-- exact scoped grants;
-- strict expiry boundary;
-- bounded one-level delegation;
-- direct-only delegation source type;
-- observable grant/deny and delegation decisions;
-- no action execution inside Authority.
+Runtime implementation remains future work.
 
 ---
 
-# Execution phase
+# Current continuation
 
-## PR #20 — Authority-Gated Execution Foundation — OPEN / NOT MERGED
+With Controlled Learning Application v0.1 frozen, the next cognitive architecture stage is **Learning Consolidation v0.1**.
 
-Title: `Execution v0.1: Authority-Gated Execution Foundation`
+Planning / Autonomy / Agents remains deferred until consolidation is explicitly designed, implemented, audited, and frozen.
 
-- base: `638bbfdc51b9446f637a11c922a050b5289e63d7`
-- branch: `foundation/execution-v0.1`
-- head: `8117df9a6476e9826674e0e2dbbdffeb279bfcb8`
-- commits: 1
-- changed files: 4
-
-Intended design:
-`ExecutionRequest → AuthorityManager → Granted? → ExecutionExecutor → ExecutionResult`
-
-Proposed types/components:
-- `ExecutionActionId`;
-- `ExecutionRequest`;
-- `ExecutionExecutor` adapter boundary;
-- `ExecutionResult.Succeeded`;
-- `ExecutionResult.Rejected`;
-- `ExecutionResult.Failed`;
-- `ExecutionManager`.
-
-Hard invariant: denied authority must result in zero executor calls.
-
-Executor exceptions are intended to be isolated as explicit failed execution results. Authority and execution observations are intended to retain one correlation chain.
-
-Deliberately excluded from this PR: Android adapters, shell, device control, retries, queues, cancellation, background scheduling.
-
-### CI #304 failure — VERIFIED
-
-Core CI run #304 (`33192528038`) failed at `:core:compileTestKotlin`.
-
-Compiler errors:
-- `ExecutionFoundationContractTest.kt:153:56` — unresolved reference `throwable`;
-- `ExecutionFoundationContractTest.kt:154:63` — unresolved reference `throwable`.
-
-This failure is still unresolved because implementation work was explicitly paused. PR #20 remains open and unmerged.
-
----
-
-# PR #21 — Durable Development Journal — OPEN DOCUMENTATION WORK
-
-Title: `Docs: Durable Development Journal`
-
-- branch: `docs/development-journal-v1`
-- initial docs commit: `256b6c0fd7e7dde90044cba449070621482af2b7`
-- base: current frozen main `638bbfdc51b9446f637a11c922a050b5289e63d7`
-
-Purpose: make Git-backed project continuity independent of chat-history retention.
-
-The journal is being expanded into a detailed technical record containing current state, history, architecture, source layout, subsystem responsibilities, known nuances, decisions, verification rules, and exact resume instructions.
-
-Execution implementation remains paused while this documentation work is performed.
+Persistent encrypted storage, Android integration, Update runtime implementation, and Security/Licensing runtime implementation remain separate future stages.
