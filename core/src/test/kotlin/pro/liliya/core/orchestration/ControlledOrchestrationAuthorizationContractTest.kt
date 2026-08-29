@@ -174,8 +174,8 @@ class ControlledOrchestrationAuthorizationContractTest {
         assertEquals(principal, result.evidence.authorityRequest.principal)
         assertEquals(action, result.evidence.preflight.request.actionId)
         assertTrue(result.evidence.authorityRequest.reason.contains("intent-1"))
-        assertTrue(f.logs.snapshot().any { it.code == "AUTHORITY_GRANTED" })
-        assertTrue(f.logs.snapshot().any { it.code == "ORCHESTRATION_AUTHORIZATION_GRANTED" })
+        assertTrue(f.logs.snapshot().any { it.marker == "AUTHORITY_GRANTED" })
+        assertTrue(f.logs.snapshot().any { it.marker == "ORCHESTRATION_AUTHORIZATION_GRANTED" })
     }
 
     @Test
@@ -193,8 +193,8 @@ class ControlledOrchestrationAuthorizationContractTest {
         val result = authorization(f).authorize(request(intentOwnership.generation))
 
         assertIs<OrchestrationAuthorizationResult.Rejected>(result)
-        assertTrue(f.logs.snapshot().any { it.code == "AUTHORITY_DENIED" })
-        assertFalse(f.logs.snapshot().any { it.code == "ORCHESTRATION_AUTHORIZATION_GRANTED" })
+        assertTrue(f.logs.snapshot().any { it.marker == "AUTHORITY_DENIED" })
+        assertFalse(f.logs.snapshot().any { it.marker == "ORCHESTRATION_AUTHORIZATION_GRANTED" })
     }
 
     @Test
@@ -210,8 +210,8 @@ class ControlledOrchestrationAuthorizationContractTest {
         ).authorize(request(intentOwnership.generation))
 
         assertIs<OrchestrationAuthorizationResult.Rejected>(result)
-        assertFalse(f.logs.snapshot().any { it.code == "AUTHORITY_GRANTED" || it.code == "AUTHORITY_DENIED" })
-        assertTrue(f.logs.snapshot().any { it.code == "ORCHESTRATION_AUTHORIZATION_REJECTED" })
+        assertFalse(f.logs.snapshot().any { it.marker == "AUTHORITY_GRANTED" || it.marker == "AUTHORITY_DENIED" })
+        assertTrue(f.logs.snapshot().any { it.marker == "ORCHESTRATION_AUTHORIZATION_REJECTED" })
     }
 
     @Test
@@ -225,7 +225,7 @@ class ControlledOrchestrationAuthorizationContractTest {
             .authorize(request(intentOwnership.generation))
 
         assertIs<OrchestrationAuthorizationResult.Rejected>(result)
-        assertFalse(f.logs.snapshot().any { it.code == "AUTHORITY_GRANTED" || it.code == "AUTHORITY_DENIED" })
+        assertFalse(f.logs.snapshot().any { it.marker == "AUTHORITY_GRANTED" || it.marker == "AUTHORITY_DENIED" })
     }
 
     @Test
@@ -240,7 +240,7 @@ class ControlledOrchestrationAuthorizationContractTest {
         val result = authorization(f).authorize(request(staleIntent.generation))
 
         assertIs<OrchestrationAuthorizationResult.Rejected>(result)
-        assertFalse(f.logs.snapshot().any { it.code == "AUTHORITY_GRANTED" || it.code == "AUTHORITY_DENIED" })
+        assertFalse(f.logs.snapshot().any { it.marker == "AUTHORITY_GRANTED" || it.marker == "AUTHORITY_DENIED" })
     }
 
     @Test
