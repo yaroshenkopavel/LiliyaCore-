@@ -57,16 +57,15 @@ class LearningApplicationMutationCompositionContractTest {
     private fun reference(ownership: LearningApplicationMutationOwnership) =
         LearningApplicationMutationReference(ownership.plan.id, ownership.generation)
 
-    private fun receipt(
-        ownership: LearningApplicationMutationOwnership
-    ): LearningApplicationMutationApplicationReceipt = LearningApplicationMutationApplicationReceipt(
-        mutation = reference(ownership),
-        target = ownership.plan.target,
-        downstream = LearningApplicationDownstreamReference.Memory(
-            recordId = MemoryRecordId("memory-applied"),
-            generation = MemoryGeneration(1L)
+    private fun receipt(ownership: LearningApplicationMutationOwnership) =
+        LearningApplicationMutationApplicationReceipt(
+            mutation = reference(ownership),
+            target = LearningApplicationTarget.MEMORY,
+            downstream = LearningApplicationDownstreamReference.Memory(
+                recordId = MemoryRecordId("memory-applied"),
+                generation = MemoryGeneration(1L)
+            )
         )
-    )
 
     @Test
     fun prepare_exposes_exact_controlled_ownership() {
@@ -238,8 +237,9 @@ class LearningApplicationMutationCompositionContractTest {
         val completedReceipt = receipt(ownership)
         assertTrue(claim.complete(completedReceipt))
 
+        val equalReplay = plan(id = "mutation-replay", key = "completed-replay-key")
         val replay = assertIs<LearningApplicationMutationPrepareResult.AlreadyCompleted>(
-            composition.prepare(value.copy())
+            composition.prepare(equalReplay)
         )
 
         assertEquals(completedReceipt, replay.receipt)
@@ -270,7 +270,7 @@ class LearningApplicationMutationCompositionContractTest {
     }
 
     @Test
-    fun completed_mutation_id_cannot_be_reused_with_a_new_idempotency_key() {
+    fun completed_mutation_id_cannot_alias_a_different_idempotency_key() {
         val composition = LearningApplicationMutationComposition(foundation("mutation-complete-id"))
         val first = plan(id = "completed-id", key = "first-key")
         val ownership = assertIs<LearningApplicationMutationPrepareResult.Prepared>(
@@ -281,13 +281,13 @@ class LearningApplicationMutationCompositionContractTest {
         ).claim
         assertTrue(claim.complete(receipt(ownership)))
 
-        val alias = plan(
+        val retry = plan(
             id = "completed-id",
             key = "different-key",
             applicationGeneration = 2L
         )
-        assertIs<LearningApplicationMutationPrepareResult.Rejected>(composition.prepare(alias))
-        assertFalse(composition.contains(alias.id))
-        assertNull(composition.findByIdempotencyKey(alias.idempotencyKey))
+        assertIs<LearningApplicationMutationPrepareResult.Rejected>(composition.prepare(retry))
+        assertFalse(composition.contains(retry.id))
+        assertEquals(receipt(ownership), composition.completedOutcomeByMutationId(retry.id))
     }
 }
