@@ -40,7 +40,7 @@ class AutonomyReadinessContractTest {
         id = AutonomyProposalId(id),
         origin = origin,
         objective = "private objective for $id",
-        trigger = "private trigger for $id",
+        triggerDescription = "private trigger for $id",
         priority = AutonomyPriority.HIGH,
         budget = AutonomyBudget(2),
         createdAt = Instant.parse(createdAt)
