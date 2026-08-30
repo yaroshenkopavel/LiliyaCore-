@@ -32,6 +32,7 @@ import pro.liliya.core.planning.PlanningStepId
 import pro.liliya.core.reasoning.ReasoningArtifact
 import pro.liliya.core.reasoning.ReasoningArtifactId
 import pro.liliya.core.reasoning.ReasoningComposition
+import pro.liliya.core.reasoning.ReasoningGeneration
 import pro.liliya.core.reasoning.ReasoningInstallResult
 import pro.liliya.core.reasoning.ReasoningOrigin
 import pro.liliya.core.reasoning.ReasoningPremise
@@ -208,7 +209,7 @@ class ControlledAgentCoordinationReasoningBridgeRaceContractTest {
         val f = fixture()
         val ready = evidence()
         val planning = installPlanning(f, ready)
-        lateinit var replacementGeneration: pro.liliya.core.reasoning.ReasoningGeneration
+        var replacementGeneration: ReasoningGeneration? = null
         val installer = AgentCoordinationReasoningInstaller { artifact ->
             val original = assertIs<ReasoningInstallResult.Installed>(f.reasoning.install(artifact)).ownership
             assertEquals(true, original.remove())
@@ -241,7 +242,7 @@ class ControlledAgentCoordinationReasoningBridgeRaceContractTest {
 
         assertIs<AgentCoordinationReasoningResult.Rejected>(bridge.install(request(planning)))
         assertEquals(
-            replacementGeneration,
+            assertNotNull(replacementGeneration),
             assertNotNull(f.reasoning.inspect(ReasoningArtifactId("reasoning-coord-race"))).generation
         )
     }
