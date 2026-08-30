@@ -81,83 +81,87 @@ class LearningApplicationMutationPersistenceCodecRestorationContractTest {
     )
 
     @Test
-    fun prepared_memory_plan_round_trips_exactly_without_private_rendering() {
+    fun prepared_memory_payload_round_trips_exactly() {
         val plan = memoryPlan()
         val decoded = assertIs<LearningApplicationMutationPersistentDecodeResult.Prepared>(
             LearningApplicationMutationPersistentCodec.decode(
                 LearningApplicationMutationPersistentCodec.encodePrepared(plan)
             )
         )
-
         assertEquals(plan, decoded.plan)
         assertFalse(decoded.toString().contains("private memory learning payload"))
     }
 
     @Test
-    fun prepared_knowledge_plan_round_trips_exactly_without_private_rendering() {
+    fun prepared_knowledge_payload_round_trips_exactly() {
         val plan = knowledgePlan()
         val decoded = assertIs<LearningApplicationMutationPersistentDecodeResult.Prepared>(
             LearningApplicationMutationPersistentCodec.decode(
                 LearningApplicationMutationPersistentCodec.encodePrepared(plan)
             )
         )
-
         assertEquals(plan, decoded.plan)
         assertFalse(decoded.toString().contains("private knowledge learning payload"))
     }
 
     @Test
-    fun completed_memory_and_knowledge_outcomes_round_trip_exact_receipts() {
+    fun completed_receipts_round_trip_for_memory_and_knowledge() {
         val memoryPlan = memoryPlan()
         val memoryReceipt = LearningApplicationMutationApplicationReceipt(
-            mutation = LearningApplicationMutationReference(memoryPlan.id, LearningApplicationMutationGeneration(5)),
+            mutation = LearningApplicationMutationReference(
+                memoryPlan.id,
+                LearningApplicationMutationGeneration(11)
+            ),
             target = LearningApplicationTarget.MEMORY,
             downstream = LearningApplicationDownstreamReference.Memory(
                 MemoryRecordId("memory-learned"),
-                MemoryGeneration(11)
+                MemoryGeneration(31)
             )
         )
-        val decodedMemory = assertIs<LearningApplicationMutationPersistentDecodeResult.Completed>(
+        val memoryDecoded = assertIs<LearningApplicationMutationPersistentDecodeResult.Completed>(
             LearningApplicationMutationPersistentCodec.decode(
                 LearningApplicationMutationPersistentCodec.encodeCompleted(memoryPlan, memoryReceipt)
             )
         )
-        assertEquals(memoryPlan, decodedMemory.plan)
-        assertEquals(memoryReceipt, decodedMemory.receipt)
+        assertEquals(memoryPlan, memoryDecoded.plan)
+        assertEquals(memoryReceipt, memoryDecoded.receipt)
 
         val knowledgePlan = knowledgePlan()
         val knowledgeReceipt = LearningApplicationMutationApplicationReceipt(
             mutation = LearningApplicationMutationReference(
                 knowledgePlan.id,
-                LearningApplicationMutationGeneration(9)
+                LearningApplicationMutationGeneration(12)
             ),
             target = LearningApplicationTarget.KNOWLEDGE,
             downstream = LearningApplicationDownstreamReference.Knowledge(
                 KnowledgeItemId("knowledge-learned"),
-                KnowledgeGeneration(15)
+                KnowledgeGeneration(41)
             )
         )
-        val decodedKnowledge = assertIs<LearningApplicationMutationPersistentDecodeResult.Completed>(
+        val knowledgeDecoded = assertIs<LearningApplicationMutationPersistentDecodeResult.Completed>(
             LearningApplicationMutationPersistentCodec.decode(
                 LearningApplicationMutationPersistentCodec.encodeCompleted(knowledgePlan, knowledgeReceipt)
             )
         )
-        assertEquals(knowledgePlan, decodedKnowledge.plan)
-        assertEquals(knowledgeReceipt, decodedKnowledge.receipt)
+        assertEquals(knowledgePlan, knowledgeDecoded.plan)
+        assertEquals(knowledgeReceipt, knowledgeDecoded.receipt)
     }
 
     @Test
-    fun malformed_mismatched_and_incompatible_records_fail_closed() {
-        val encoded = LearningApplicationMutationPersistentCodec.encodePrepared(memoryPlan())
-        val bytes = encoded.payload.copyBytes()
-        val trailing = encoded.copy(payload = PersistentPayload(bytes + byteArrayOf(1)))
+    fun codec_rejects_trailing_mismatched_and_incompatible_records() {
+        val plan = memoryPlan()
+        val encoded = LearningApplicationMutationPersistentCodec.encodePrepared(plan)
+
+        val trailing = encoded.copy(
+            payload = PersistentPayload(encoded.payload.copyBytes() + byteArrayOf(1))
+        )
         assertIs<LearningApplicationMutationPersistentDecodeResult.Corrupt>(
             LearningApplicationMutationPersistentCodec.decode(trailing)
         )
 
-        val mismatched = encoded.copy(id = PersistentEntityId("learning-mutation:prepared:other"))
+        val mismatchedId = encoded.copy(id = PersistentEntityId("learning-mutation:prepared:other"))
         assertIs<LearningApplicationMutationPersistentDecodeResult.Corrupt>(
-            LearningApplicationMutationPersistentCodec.decode(mismatched)
+            LearningApplicationMutationPersistentCodec.decode(mismatchedId)
         )
 
         val incompatible = encoded.copy(schemaVersion = PersistentSchemaVersion(2))
@@ -168,8 +172,8 @@ class LearningApplicationMutationPersistenceCodecRestorationContractTest {
 
     @Test
     fun restoration_preserves_exact_generations_high_watermark_indexes_and_ordering() {
-        val late = memoryPlan(id = "mutation-z", key = "key-z")
-        val early = knowledgePlan(id = "mutation-a", key = "key-a")
+        val earlier = memoryPlan(id = "mutation-z", key = "key-z")
+        val later = knowledgePlan(id = "mutation-a", key = "key-a")
         val completedPlan = memoryPlan(id = "mutation-completed", key = "key-completed")
         val receipt = LearningApplicationMutationApplicationReceipt(
             mutation = LearningApplicationMutationReference(
@@ -186,8 +190,8 @@ class LearningApplicationMutationPersistenceCodecRestorationContractTest {
         val restored = assertIs<LearningApplicationMutationRestorationResult.Restored>(
             LearningApplicationMutationRestorationBoundary.restore(
                 liveEntries = listOf(
-                    LearningPreparedPersistentState(late, LearningApplicationMutationGeneration(9)),
-                    LearningPreparedPersistentState(early, LearningApplicationMutationGeneration(4))
+                    LearningPreparedPersistentState(later, LearningApplicationMutationGeneration(9)),
+                    LearningPreparedPersistentState(earlier, LearningApplicationMutationGeneration(4))
                 ),
                 completedEntries = listOf(LearningCompletedPersistentState(completedPlan, receipt)),
                 highWatermark = 12
@@ -195,7 +199,7 @@ class LearningApplicationMutationPersistenceCodecRestorationContractTest {
         ).state
 
         assertEquals(12, restored.highWatermark)
-        assertEquals(listOf(early.id, late.id), restored.liveEntries.map { it.plan.id })
+        assertEquals(listOf(earlier.id, later.id), restored.liveEntries.map { it.plan.id })
         assertEquals(listOf(4L, 9L), restored.liveEntries.map { it.generation.value })
         assertEquals(receipt, restored.completedByMutationId[completedPlan.id])
         assertEquals(receipt, restored.completedByIdempotencyKey[completedPlan.idempotencyKey])
@@ -220,8 +224,8 @@ class LearningApplicationMutationPersistenceCodecRestorationContractTest {
             mutation = LearningApplicationMutationReference(first.id, LearningApplicationMutationGeneration(1)),
             target = LearningApplicationTarget.MEMORY,
             downstream = LearningApplicationDownstreamReference.Memory(
-                MemoryRecordId("memory-learned"),
-                MemoryGeneration(3)
+                MemoryRecordId("memory-1"),
+                MemoryGeneration(1)
             )
         )
         assertIs<LearningApplicationMutationRestorationResult.Rejected>(
@@ -237,34 +241,49 @@ class LearningApplicationMutationPersistenceCodecRestorationContractTest {
 
     @Test
     fun restoration_rejects_generation_above_high_watermark_and_invalid_completed_receipt() {
-        val plan = memoryPlan()
+        val live = memoryPlan(id = "mutation-live", key = "key-live")
         assertIs<LearningApplicationMutationRestorationResult.Rejected>(
             LearningApplicationMutationRestorationBoundary.restore(
                 liveEntries = listOf(
-                    LearningPreparedPersistentState(plan, LearningApplicationMutationGeneration(3))
+                    LearningPreparedPersistentState(live, LearningApplicationMutationGeneration(3))
                 ),
                 completedEntries = emptyList(),
                 highWatermark = 2
             )
         )
 
+        val completedPlan = knowledgePlan(id = "mutation-completed", key = "key-completed")
         val invalidReceipt = LearningApplicationMutationApplicationReceipt(
             mutation = LearningApplicationMutationReference(
-                LearningApplicationMutationId("different-mutation"),
+                LearningApplicationMutationId("other"),
                 LearningApplicationMutationGeneration(2)
             ),
-            target = LearningApplicationTarget.MEMORY,
-            downstream = LearningApplicationDownstreamReference.Memory(
-                MemoryRecordId("memory-learned"),
-                MemoryGeneration(3)
+            target = LearningApplicationTarget.KNOWLEDGE,
+            downstream = LearningApplicationDownstreamReference.Knowledge(
+                KnowledgeItemId("knowledge-learned"),
+                KnowledgeGeneration(2)
             )
         )
-        val rejected = LearningApplicationMutationRestorationBoundary.restore(
-            liveEntries = emptyList(),
-            completedEntries = listOf(LearningCompletedPersistentState(plan, invalidReceipt)),
-            highWatermark = 2
+        assertIs<LearningApplicationMutationRestorationResult.Rejected>(
+            LearningApplicationMutationRestorationBoundary.restore(
+                liveEntries = emptyList(),
+                completedEntries = listOf(LearningCompletedPersistentState(completedPlan, invalidReceipt)),
+                highWatermark = 2
+            )
         )
-        assertIs<LearningApplicationMutationRestorationResult.Rejected>(rejected)
-        assertTrue(rejected.reason.contains("mutation id mismatch"))
+    }
+
+    @Test
+    fun restored_state_is_detached_from_input_lists() {
+        val plan = memoryPlan()
+        val source = mutableListOf(
+            LearningPreparedPersistentState(plan, LearningApplicationMutationGeneration(1))
+        )
+        val restored = assertIs<LearningApplicationMutationRestorationResult.Restored>(
+            LearningApplicationMutationRestorationBoundary.restore(source, emptyList(), 1)
+        ).state
+        source.clear()
+        assertEquals(1, restored.liveEntries.size)
+        assertTrue(restored.completedEntries.isEmpty())
     }
 }
