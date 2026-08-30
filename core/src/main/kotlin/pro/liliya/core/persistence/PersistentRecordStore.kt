@@ -84,6 +84,9 @@ class PersistentRecordStore private constructor(
         .map { PersistentRecordSnapshot(it.record.detached(), it.generation) }
         .sortedWith(compareBy({ it.record.createdAt }, { it.record.id.value }))
 
+    @Synchronized
+    internal fun generationHighWatermark(): Long = state.highWatermark
+
     private fun ownership(
         record: PersistentRecord,
         generation: PersistentGeneration

@@ -66,17 +66,41 @@ internal class MemoryStore private constructor(
             return MemoryRegistrationResult.Rejected(reason)
         }
 
-        observability.record(
-            severity = DiagnosticSeverity.INFO,
-            code = "MEMORY_REGISTERED",
-            message = "memory record registered",
-            context = context,
-            metadata = metadata(record, entry.generation)
-        )
+        observeRegistered(record, entry.generation, context)
+        return MemoryRegistrationResult.Registered(registration(entry))
+    }
 
-        return MemoryRegistrationResult.Registered(
-            registration = registration(entry)
-        )
+    @Synchronized
+    internal fun installCommitted(
+        record: MemoryRecord,
+        generation: MemoryGeneration,
+        highWatermark: Long,
+        context: LogContext
+    ): MemoryRegistrationResult {
+        if (highWatermark < generation.value) {
+            return MemoryRegistrationResult.Rejected("committed memory generation exceeds high watermark")
+        }
+        if (generation.value != highWatermark) {
+            return MemoryRegistrationResult.Rejected("committed memory generation is not current high watermark")
+        }
+        if (highWatermark <= nextGeneration.get()) {
+            return MemoryRegistrationResult.Rejected("committed memory generation is not newer than local high watermark")
+        }
+        if (records.containsKey(record.id)) {
+            return MemoryRegistrationResult.Rejected("memory record ${record.id} is already registered")
+        }
+        if (records.values.any { it.generation == generation }) {
+            return MemoryRegistrationResult.Rejected("committed memory generation is already live")
+        }
+
+        val entry = Entry(generation = generation, record = record)
+        val existing = records.putIfAbsent(record.id, entry)
+        if (existing != null) {
+            return MemoryRegistrationResult.Rejected("memory record ${record.id} is already registered")
+        }
+        nextGeneration.set(highWatermark)
+        observeRegistered(record, generation, context)
+        return MemoryRegistrationResult.Registered(registration(entry))
     }
 
     fun find(id: MemoryRecordId): MemoryRecord? = records[id]?.record
@@ -110,21 +134,37 @@ internal class MemoryStore private constructor(
         override val record: MemoryRecord = entry.record
         override val generation: MemoryGeneration = entry.generation
 
-        override fun remove(context: LogContext): Boolean {
-            val removed = records.remove(record.id, entry)
-            observability.record(
-                severity = if (removed) DiagnosticSeverity.INFO else DiagnosticSeverity.WARNING,
-                code = if (removed) "MEMORY_REMOVED" else "MEMORY_REMOVAL_REJECTED",
-                message = if (removed) {
-                    "memory record removed"
-                } else {
-                    "memory registration is no longer current"
-                },
-                context = context,
-                metadata = metadata(record, entry.generation)
-            )
-            return removed
-        }
+        override fun remove(context: LogContext): Boolean = removeExact(entry, context)
+    }
+
+    private fun removeExact(entry: Entry, context: LogContext): Boolean {
+        val removed = records.remove(entry.record.id, entry)
+        observability.record(
+            severity = if (removed) DiagnosticSeverity.INFO else DiagnosticSeverity.WARNING,
+            code = if (removed) "MEMORY_REMOVED" else "MEMORY_REMOVAL_REJECTED",
+            message = if (removed) {
+                "memory record removed"
+            } else {
+                "memory registration is no longer current"
+            },
+            context = context,
+            metadata = metadata(entry.record, entry.generation)
+        )
+        return removed
+    }
+
+    private fun observeRegistered(
+        record: MemoryRecord,
+        generation: MemoryGeneration,
+        context: LogContext
+    ) {
+        observability.record(
+            severity = DiagnosticSeverity.INFO,
+            code = "MEMORY_REGISTERED",
+            message = "memory record registered",
+            context = context,
+            metadata = metadata(record, generation)
+        )
     }
 
     private fun metadata(
