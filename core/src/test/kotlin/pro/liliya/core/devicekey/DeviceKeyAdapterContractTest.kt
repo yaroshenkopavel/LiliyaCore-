@@ -66,12 +66,10 @@ class DeviceKeyAdapterContractTest {
 
     private fun profile(
         requestedSecurityLevel: DeviceKeySecurityLevel,
-        fallbackPolicy: DeviceKeyFallbackPolicy = DeviceKeyFallbackPolicy.FAIL_CLOSED,
         capabilities: Set<DeviceKeyCapability> = setOf(DeviceKeyCapability.SIGN_CHALLENGE)
     ) = DeviceKeyProfile(
         algorithm = algorithm,
         requestedSecurityLevel = requestedSecurityLevel,
-        fallbackPolicy = fallbackPolicy,
         capabilities = capabilities
     )
 
@@ -97,27 +95,32 @@ class DeviceKeyAdapterContractTest {
     }
 
     @Test
-    fun explicit_tee_fallback_reports_actual_tee_instead_of_requested_strongbox() {
+    fun lower_security_requires_a_new_explicit_request() {
         val adapter = FakeDeviceKeyAdapter(
             actualSecurityLevel = DeviceKeySecurityLevel.TRUSTED_ENVIRONMENT,
             actualAlgorithm = algorithm,
             actualCapabilities = setOf(DeviceKeyCapability.SIGN_CHALLENGE)
         )
-        val request = DeviceKeyCreationRequest(
-            id = DeviceKeyId("device-main"),
-            profile = profile(
-                requestedSecurityLevel = DeviceKeySecurityLevel.STRONGBOX,
-                fallbackPolicy = DeviceKeyFallbackPolicy.ALLOW_TRUSTED_ENVIRONMENT
-            )
+        val id = DeviceKeyId("device-main")
+
+        val strongboxAttempt = adapter.create(
+            DeviceKeyCreationRequest(id, profile(DeviceKeySecurityLevel.STRONGBOX)),
+            createdAt
         )
+        assertEquals(
+            DeviceKeyFailureCategory.REQUIRED_SECURITY_LEVEL_UNAVAILABLE,
+            assertIs<DeviceKeyOperationResult.Rejected>(strongboxAttempt).category
+        )
+        assertNull(adapter.rawState(id))
 
-        val state = assertIs<DeviceKeyOperationResult.Success<DeviceKeyState>>(
-            adapter.create(request, createdAt)
+        val teeAttempt = assertIs<DeviceKeyOperationResult.Success<DeviceKeyState>>(
+            adapter.create(
+                DeviceKeyCreationRequest(id, profile(DeviceKeySecurityLevel.TRUSTED_ENVIRONMENT)),
+                createdAt
+            )
         ).value
-
-        assertEquals(DeviceKeySecurityLevel.TRUSTED_ENVIRONMENT, state.securityLevel)
-        assertTrue(state.securityLevel.hardwareBacked)
-        assertEquals(createdAt, state.createdAt)
+        assertEquals(DeviceKeySecurityLevel.TRUSTED_ENVIRONMENT, teeAttempt.securityLevel)
+        assertTrue(teeAttempt.securityLevel.hardwareBacked)
     }
 
     @Test
@@ -129,10 +132,7 @@ class DeviceKeyAdapterContractTest {
         )
         val request = DeviceKeyCreationRequest(
             id = DeviceKeyId("device-main"),
-            profile = profile(
-                requestedSecurityLevel = DeviceKeySecurityLevel.SOFTWARE,
-                fallbackPolicy = DeviceKeyFallbackPolicy.ALLOW_SOFTWARE
-            )
+            profile = profile(DeviceKeySecurityLevel.SOFTWARE)
         )
 
         assertIs<DeviceKeyOperationResult.Rejected>(adapter.create(request, createdAt))
