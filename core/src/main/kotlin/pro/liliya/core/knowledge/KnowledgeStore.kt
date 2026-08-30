@@ -17,16 +17,33 @@ internal sealed interface KnowledgeRegistrationResult {
     data class Rejected(val reason: String) : KnowledgeRegistrationResult
 }
 
-internal class KnowledgeStore(
-    private val observability: CoreObservability
+internal sealed interface KnowledgeRestorationResult {
+    data class Restored(val store: KnowledgeStore) : KnowledgeRestorationResult
+    data class Rejected(val reason: String) : KnowledgeRestorationResult
+}
+
+internal class KnowledgeStore private constructor(
+    private val observability: CoreObservability,
+    initialHighWatermark: Long,
+    initialEntries: List<KnowledgeItemSnapshot>
 ) {
     private data class Entry(
         val generation: KnowledgeGeneration,
         val item: KnowledgeItem
     )
 
-    private val nextGeneration = AtomicLong(0)
-    private val items = ConcurrentHashMap<KnowledgeItemId, Entry>()
+    constructor(observability: CoreObservability) : this(
+        observability = observability,
+        initialHighWatermark = 0L,
+        initialEntries = emptyList()
+    )
+
+    private val nextGeneration = AtomicLong(initialHighWatermark)
+    private val items = ConcurrentHashMap<KnowledgeItemId, Entry>().apply {
+        initialEntries.forEach { snapshot ->
+            put(snapshot.item.id, Entry(snapshot.generation, snapshot.item))
+        }
+    }
 
     fun register(item: KnowledgeItem, context: LogContext): KnowledgeRegistrationResult {
         val entry = Entry(
@@ -55,26 +72,7 @@ internal class KnowledgeStore(
         )
 
         return KnowledgeRegistrationResult.Registered(
-            registration = object : KnowledgeRegistration {
-                override val item: KnowledgeItem = item
-                override val generation: KnowledgeGeneration = entry.generation
-
-                override fun remove(context: LogContext): Boolean {
-                    val removed = items.remove(item.id, entry)
-                    observability.record(
-                        severity = if (removed) DiagnosticSeverity.INFO else DiagnosticSeverity.WARNING,
-                        code = if (removed) "KNOWLEDGE_REMOVED" else "KNOWLEDGE_REMOVAL_REJECTED",
-                        message = if (removed) {
-                            "knowledge item removed"
-                        } else {
-                            "knowledge registration is no longer current"
-                        },
-                        context = context,
-                        metadata = metadata(item, entry.generation)
-                    )
-                    return removed
-                }
-            }
+            registration = registration(entry)
         )
     }
 
@@ -97,6 +95,27 @@ internal class KnowledgeStore(
             )
         )
 
+    private fun registration(entry: Entry): KnowledgeRegistration = object : KnowledgeRegistration {
+        override val item: KnowledgeItem = entry.item
+        override val generation: KnowledgeGeneration = entry.generation
+
+        override fun remove(context: LogContext): Boolean {
+            val removed = items.remove(item.id, entry)
+            observability.record(
+                severity = if (removed) DiagnosticSeverity.INFO else DiagnosticSeverity.WARNING,
+                code = if (removed) "KNOWLEDGE_REMOVED" else "KNOWLEDGE_REMOVAL_REJECTED",
+                message = if (removed) {
+                    "knowledge item removed"
+                } else {
+                    "knowledge registration is no longer current"
+                },
+                context = context,
+                metadata = metadata(item, entry.generation)
+            )
+            return removed
+        }
+    }
+
     private fun metadata(
         item: KnowledgeItem,
         generation: KnowledgeGeneration
@@ -118,6 +137,42 @@ internal class KnowledgeStore(
                     put("knowledgeSourceReference", reference.value)
                 }
             }
+        }
+    }
+
+    companion object {
+        fun restore(
+            observability: CoreObservability,
+            entries: List<KnowledgeItemSnapshot>,
+            highWatermark: Long
+        ): KnowledgeRestorationResult {
+            if (highWatermark < 0L) {
+                return KnowledgeRestorationResult.Rejected("knowledge generation high watermark is negative")
+            }
+            if (entries.any { it.generation.value > highWatermark }) {
+                return KnowledgeRestorationResult.Rejected(
+                    "knowledge generation exceeds restored high watermark"
+                )
+            }
+            if (entries.map { it.item.id }.toSet().size != entries.size) {
+                return KnowledgeRestorationResult.Rejected("duplicate restored knowledge item id")
+            }
+            if (entries.map { it.generation }.toSet().size != entries.size) {
+                return KnowledgeRestorationResult.Rejected("duplicate restored knowledge generation")
+            }
+
+            return KnowledgeRestorationResult.Restored(
+                KnowledgeStore(
+                    observability = observability,
+                    initialHighWatermark = highWatermark,
+                    initialEntries = entries.map { snapshot ->
+                        KnowledgeItemSnapshot(
+                            item = snapshot.item,
+                            generation = snapshot.generation
+                        )
+                    }
+                )
+            )
         }
     }
 }
