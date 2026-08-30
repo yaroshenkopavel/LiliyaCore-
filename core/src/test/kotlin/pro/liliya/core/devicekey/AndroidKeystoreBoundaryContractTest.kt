@@ -5,7 +5,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class AndroidKeystoreBoundaryContractTest {
@@ -32,7 +31,7 @@ class AndroidKeystoreBoundaryContractTest {
                 ?: AndroidKeystorePlatformResult.Rejected(DeviceKeyFailureCategory.KEY_MISSING)
 
         override fun signChallenge(
-            id: DeviceKeyId,
+            expected: AndroidKeystoreKeyDescriptor,
             challenge: DeviceKeyChallenge
         ): AndroidKeystorePlatformResult<AndroidKeystoreSignatureDescriptor> =
             AndroidKeystorePlatformResult.Rejected(DeviceKeyFailureCategory.UNSUPPORTED_PROFILE)
@@ -57,13 +56,15 @@ class AndroidKeystoreBoundaryContractTest {
         id: String = "device-main",
         level: DeviceKeySecurityLevel = DeviceKeySecurityLevel.STRONGBOX,
         algorithm: DeviceKeyAlgorithm = this.algorithm,
-        capabilities: Set<DeviceKeyCapability> = setOf(DeviceKeyCapability.SIGN_CHALLENGE)
+        capabilities: Set<DeviceKeyCapability> = setOf(DeviceKeyCapability.SIGN_CHALLENGE),
+        platformReference: DeviceKeyPlatformReference = DeviceKeyPlatformReference("platform-ref-main")
     ) = AndroidKeystoreKeyDescriptor(
         id = DeviceKeyId(id),
         algorithm = algorithm,
         securityLevel = level,
         capabilities = capabilities,
-        createdAt = createdAt
+        createdAt = createdAt,
+        platformReference = platformReference
     )
 
     @Test
@@ -81,6 +82,7 @@ class AndroidKeystoreBoundaryContractTest {
 
         assertEquals(request.id, state.id)
         assertEquals(DeviceKeySecurityLevel.STRONGBOX, state.securityLevel)
+        assertEquals(DeviceKeyPlatformReference("platform-ref-main"), state.platformReference)
         assertTrue(platform.deletedIds.isEmpty())
     }
 
@@ -98,6 +100,22 @@ class AndroidKeystoreBoundaryContractTest {
         assertEquals(
             DeviceKeyFailureCategory.REQUIRED_SECURITY_LEVEL_UNAVAILABLE,
             assertIs<DeviceKeyOperationResult.Rejected>(result).category
+        )
+        assertEquals(listOf(request.id), platform.deletedIds)
+    }
+
+    @Test
+    fun replaced_platform_instance_between_generate_and_inspect_fails_closed() {
+        val platform = FakePlatform().apply {
+            generatedDescriptor = descriptor(platformReference = DeviceKeyPlatformReference("platform-ref-old"))
+            inspectedDescriptor = descriptor(platformReference = DeviceKeyPlatformReference("platform-ref-new"))
+        }
+        val adapter = AndroidKeystoreDeviceKeyAdapter(platform)
+        val request = DeviceKeyCreationRequest(DeviceKeyId("device-main"), profile())
+
+        assertEquals(
+            DeviceKeyFailureCategory.PLATFORM_REJECTED,
+            assertIs<DeviceKeyOperationResult.Rejected>(adapter.create(request, createdAt)).category
         )
         assertEquals(listOf(request.id), platform.deletedIds)
     }
