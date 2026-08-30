@@ -181,19 +181,21 @@ internal object LearningApplicationMutationPersistentCodec {
         record: PersistentRecord,
         magic: Int,
         block: (DataInputStream, ByteArrayInputStream) -> LearningApplicationMutationPersistentDecodeResult?
-    ): LearningApplicationMutationPersistentDecodeResult = try {
-        val input = ByteArrayInputStream(record.payload.copyBytes())
-        val data = DataInputStream(input)
-        if (data.readInt() != magic) return LearningApplicationMutationPersistentDecodeResult.Corrupt
-        val decoded = block(data, input) ?: return LearningApplicationMutationPersistentDecodeResult.Corrupt
-        if (input.available() != 0) return LearningApplicationMutationPersistentDecodeResult.Corrupt
-        decoded
-    } catch (_: EOFException) {
-        LearningApplicationMutationPersistentDecodeResult.Corrupt
-    } catch (_: IllegalArgumentException) {
-        LearningApplicationMutationPersistentDecodeResult.Corrupt
-    } catch (_: RuntimeException) {
-        LearningApplicationMutationPersistentDecodeResult.Corrupt
+    ): LearningApplicationMutationPersistentDecodeResult {
+        return try {
+            val input = ByteArrayInputStream(record.payload.copyBytes())
+            val data = DataInputStream(input)
+            if (data.readInt() != magic) return LearningApplicationMutationPersistentDecodeResult.Corrupt
+            val decoded = block(data, input) ?: return LearningApplicationMutationPersistentDecodeResult.Corrupt
+            if (input.available() != 0) return LearningApplicationMutationPersistentDecodeResult.Corrupt
+            decoded
+        } catch (_: EOFException) {
+            LearningApplicationMutationPersistentDecodeResult.Corrupt
+        } catch (_: IllegalArgumentException) {
+            LearningApplicationMutationPersistentDecodeResult.Corrupt
+        } catch (_: RuntimeException) {
+            LearningApplicationMutationPersistentDecodeResult.Corrupt
+        }
     }
 
     private fun DataOutputStream.writePlan(plan: LearningApplicationMutationPlan) {
