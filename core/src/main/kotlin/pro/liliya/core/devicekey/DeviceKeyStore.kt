@@ -1,5 +1,7 @@
 package pro.liliya.core.devicekey
 
+import java.util.Collections
+import java.util.LinkedHashSet
 import java.util.concurrent.atomic.AtomicLong
 import pro.liliya.core.diagnostics.DiagnosticSeverity
 import pro.liliya.core.logging.LogContext
@@ -51,8 +53,9 @@ internal class DeviceKeyStore(
             )
         }
 
-        val entry = Entry(state, DeviceKeyGeneration(nextValue))
-        entries[state.id] = entry
+        val detachedState = state.detached()
+        val entry = Entry(detachedState, DeviceKeyGeneration(nextValue))
+        entries[detachedState.id] = entry
         observeRegistered(entry, context)
         DeviceKeyRegistrationResult.Registered(registration(entry))
     }
@@ -140,4 +143,8 @@ internal class DeviceKeyStore(
         put("deviceKeyCapabilityCount", state.capabilities.size.toString())
         put("createdAt", state.createdAt.toString())
     }
+
+    private fun DeviceKeyState.detached(): DeviceKeyState = copy(
+        capabilities = Collections.unmodifiableSet(LinkedHashSet(capabilities))
+    )
 }

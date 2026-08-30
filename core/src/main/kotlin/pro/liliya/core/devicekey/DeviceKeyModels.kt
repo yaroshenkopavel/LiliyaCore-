@@ -29,6 +29,19 @@ value class DeviceKeyAlgorithm(val value: String) {
     override fun toString(): String = value
 }
 
+/**
+ * Opaque platform key-instance evidence used to distinguish replacement under a reused alias.
+ * It is structural identity evidence, never permission or raw key material.
+ */
+@JvmInline
+value class DeviceKeyPlatformReference(val value: String) {
+    init {
+        require(value.isNotBlank()) { "device key platform reference must not be blank" }
+    }
+
+    override fun toString(): String = "DeviceKeyPlatformReference([redacted])"
+}
+
 enum class DeviceKeySecurityLevel {
     UNKNOWN,
     SOFTWARE,
@@ -74,7 +87,8 @@ data class DeviceKeyState(
     val algorithm: DeviceKeyAlgorithm,
     val securityLevel: DeviceKeySecurityLevel,
     val capabilities: Set<DeviceKeyCapability>,
-    val createdAt: Instant
+    val createdAt: Instant,
+    val platformReference: DeviceKeyPlatformReference? = null
 ) {
     init {
         require(securityLevel != DeviceKeySecurityLevel.UNKNOWN) {
@@ -85,7 +99,8 @@ data class DeviceKeyState(
 
     override fun toString(): String =
         "DeviceKeyState(id=$id, algorithm=$algorithm, securityLevel=$securityLevel, " +
-            "capabilities=${capabilities.sortedBy { it.name }}, createdAt=$createdAt)"
+            "capabilities=${capabilities.sortedBy { it.name }}, createdAt=$createdAt, " +
+            "platformReference=$platformReference)"
 }
 
 data class DeviceKeySnapshot(
