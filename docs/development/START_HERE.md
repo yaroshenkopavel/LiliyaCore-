@@ -30,6 +30,7 @@ Before changing code, read:
 - capability is not permission; Authority is separate from Execution;
 - structural provenance strings are evidence, not credentials/capabilities/Authority receipts;
 - private cognitive payloads stay out of operational observability;
+- logging and diagnostics remain Foundation infrastructure and must not be bypassed by direct console output;
 - persistence, encryption, licensing, Authority and cognitive permission remain separate;
 - frozen baselines are not casually redesigned.
 
@@ -37,15 +38,19 @@ Before changing code, read:
 
 Persistent Cognitive Storage v0.1 is fully frozen.
 
-Memory Persistence Integration v0.1 is fully frozen on checkpoint `c7a7866c199d42713c7047289db1e0f68559fcae`, exact-head CI `33317960415` GREEN, merge/main CI `33318203580` GREEN.
+Memory Persistence Integration v0.1 is fully frozen.
 
-Knowledge Persistence Integration v0.1 is fully frozen on verified `main`:
+Knowledge Persistence Integration v0.1 is fully frozen.
 
-`45e9ff178207a0249dff11c20665b5b02ff8de78`
+Learning Persistence Integration v0.1 implementation is frozen pending the documentation-checkpoint merge.
 
-Freeze checkpoint exact-head Core CI: `33320651334` GREEN.
+Current verified code baseline before the documentation checkpoint:
 
-Freeze checkpoint merge/main Core CI: `33320803828` GREEN.
+`b04bbd6020ff9c9807e7db4f378d969534cee362`
+
+Latest Learning readiness exact-head Core CI: `33323246383` GREEN.
+
+Latest Learning readiness merge/main Core CI: `33323408553` GREEN.
 
 Canonical documents:
 
@@ -55,42 +60,40 @@ Canonical documents:
 - `MEMORY_PERSISTENCE_INTEGRATION_V0_1_FREEZE.md`
 - `KNOWLEDGE_PERSISTENCE_INTEGRATION_V0_1_CONTRACT.md`
 - `KNOWLEDGE_PERSISTENCE_INTEGRATION_V0_1_FREEZE.md`
+- `LEARNING_PERSISTENCE_INTEGRATION_V0_1_CONTRACT.md`
+- `LEARNING_PERSISTENCE_INTEGRATION_V0_1_FREEZE.md`
 
-Frozen Knowledge persistence direction:
+## Learning Persistence Integration v0.1 frozen boundary
 
-`frozen Knowledge domain → canonical Knowledge codec → exact persistent record store → reviewed exact-generation hydration/restoration → frozen Knowledge semantics`
-
-The Knowledge integration preserves exact IDs/generations, persistent generation high-watermark, both origin forms, content/timestamps, deterministic snapshots, stale/ABA-safe removal, fail-closed reopen, explicit shared-backend CAS conflict behavior and privacy-safe failure rendering.
-
-`KnowledgeOrigin.Memory` remains structural provenance only. Neither Knowledge origin form grants trust, permission, capability or Authority.
-
-Mandatory separation:
-
-`Knowledge != Persistence != Encryption != License != Authority != Cognitive Permission`
-
-## Current active stage — Learning Persistence Integration v0.1
-
-Canonical architecture contract:
-
-`LEARNING_PERSISTENCE_INTEGRATION_V0_1_CONTRACT.md`
-
-The current frozen Learning application mutation domain already preserves:
-
-- exact `LearningApplicationMutationId` + positive generation ownership;
-- exact idempotency-key reservation and completed-history lookup;
-- duplicate live mutation/idempotency rejection;
-- one active claim per exact live mutation;
-- claim release distinct from completion;
-- controlled internal completion using an exact application receipt;
-- completed lookup by mutation ID and idempotency key;
-- equal completed-plan replay returning `AlreadyCompleted(receipt)`;
-- conflicting completed ID/key reuse rejection;
-- deterministic live snapshots ordered by `createdAt`, then mutation ID;
-- structural observability without private Memory/Knowledge payload content.
-
-Selected persistence direction:
+Direction:
 
 `frozen Learning mutation domain → canonical prepared/completed Learning codecs → exact persistent record store → reviewed exact-generation restoration → frozen Learning mutation/idempotency semantics`
+
+Durable prepare:
+
+`validate plan → encode prepared → durable commit → exact committed local install → Prepared`
+
+Durable removal:
+
+`validate exact unclaimed ownership → durable exact-generation remove → exact local remove → success`
+
+Durable completion:
+
+`validate exact active claim + exact receipt → one durable exact prepared→completed transition → exact local completion/index publication → success`
+
+The integration preserves exact mutation IDs/generations, persistent high-watermark, full Memory/Knowledge payload fidelity, exact idempotency/completed indexes, deterministic live ordering, stale/ABA-safe ownership, fail-closed reopen, zero claim resurrection, active-claim removal blocking, same-composition serialization and explicit shared-backend CAS conflict semantics.
+
+The generic persistence layer contains one narrow internal exact transition primitive used by Learning completion. It performs one backend CAS revision and preserves generation/high-watermark. It is not a scheduler, retry engine, distributed transaction system or Authority mechanism.
+
+## Logging and diagnostics boundary
+
+Persistence/Learning operational observability may expose approved structural fields only: IDs, generations, target, idempotency key, schema/version, timestamps and structural payload/downstream IDs.
+
+Private Memory/Knowledge content, raw persistent bytes and backend exception messages must not appear in normal logs, diagnostics, `toString` or public integration failure rendering.
+
+Logging and diagnostics stay within Foundation observability. Do not add `println`, `System.out`, direct payload dumps or alternative hidden logging paths.
+
+## Authority and claim boundary
 
 Mandatory separation:
 
@@ -98,48 +101,61 @@ Mandatory separation:
 
 `Idempotency evidence != exactly-once execution`
 
-A reopened prepared mutation is not pre-authorized. Persisted principal/application/decision/policy references remain recorded structural state; fresh controlled authorization is still required before downstream Memory/Knowledge mutation.
+A reopened prepared mutation is not pre-authorized. Persisted principal/application/decision/policy references remain structural historical state; fresh controlled authorization is required before downstream Memory/Knowledge mutation.
 
-Critical crash-window rule: the existing Learning applier performs the downstream Memory/Knowledge mutation before Learning completion is recorded. Therefore persistence of Learning completion does not create an exactly-once cross-domain transaction. v0.1 must not hide that window with implicit replay, retry, compensation or reconciliation claims.
+Claim tokens are process-local concurrency ownership only. They are never persisted or resurrected across reopen.
 
-## First implementation boundary
+A completed Learning receipt is historical evidence, not a credential, capability, permission or Authority receipt.
 
-The first production slice must be narrow:
+## Critical retained crash-window limitation
 
-`Learning prepared/completed canonical codecs + reviewed exact-generation/completed-index restoration boundary`
+Learning persistence does not create a transaction spanning Learning plus Memory/Knowledge.
 
-Do not wire durable prepare/remove/complete until codec/restoration contracts are GREEN.
+The controlled application path still performs:
 
-The codec/restoration slice must cover both Learning payload targets, both completed downstream reference types, exact generations/high-watermark, exact idempotency/completed indexes, invalid live/completed overlap rejection, privacy-safe decode failure, and the rule that active claim tokens are never restored.
+`downstream Memory/Knowledge mutation → durable Learning completion`
 
-After that, split durable integration into reviewed slices for prepare/remove/complete/reopen, then readiness hardening, then freeze checkpoint.
+A crash/failure may occur between those boundaries. Therefore this freeze does not provide exactly-once downstream mutation, automatic replay, implicit retry, compensation or reconciliation.
 
-## Explicit non-goals for v0.1
+Future cross-domain crash atomicity/exactly-once behavior requires a separate architecture contract and executable proof.
 
-Keep these outside Learning Persistence Integration v0.1:
+## Current active stage — Learning Persistence Integration v0.1 freeze checkpoint
 
-- exactly-once downstream mutation claims;
-- cross-domain transactions spanning Learning and Memory/Knowledge;
+The implementation slices are complete and GREEN. The only active work is the documentation/freeze checkpoint.
+
+Do not add more Learning Persistence v0.1 production semantics unless the checkpoint audit or CI exposes a correctness/privacy/logging-diagnostics defect.
+
+After the freeze documentation PR reaches exact-head Core CI GREEN, merge it with exact-head protection and verify merge/main Core CI. Only then mark Learning Persistence Integration v0.1 fully frozen.
+
+Do not invent the next subsystem from chat history. Select the next controlled stage from current repository architecture/roadmap after the freeze checkpoint is verified on `main`.
+
+## Explicit non-goals retained by the freeze
+
+Keep outside Learning Persistence Integration v0.1:
+
+- exactly-once downstream mutation guarantees;
+- cross-domain Learning + Memory/Knowledge transaction;
 - automatic crash replay;
-- automatic compensation/reconciliation;
+- automatic retry/refresh/reconciliation;
+- automatic downstream compensation;
 - scheduler/background workers;
 - persisted claim leases;
 - distributed locks/consensus;
 - Android/device storage;
 - SQLite/SQLCipher;
+- filesystem layout;
 - Keystore/StrongBox;
 - encryption implementation;
 - licensing behavior;
 - cloud sync;
-- multi-writer merge.
+- multi-writer merge/conflict resolution.
 
 ## Resume procedure
 
-1. verify current `main` SHA and latest merge/main CI;
-2. read `LEARNING_PERSISTENCE_INTEGRATION_V0_1_CONTRACT.md` plus frozen persistence/Memory/Knowledge contracts;
-3. inspect `LearningApplicationMutationModels`, `LearningApplicationMutationStore`, `LearningApplicationMutationComposition`, `LearningApplicationMutationApplier`, authorization boundaries, and executable Learning contracts;
-4. implement canonical prepared/completed codecs and reviewed restoration boundary first;
-5. prove exact restoration, idempotency/completed-index fidelity, no claim resurrection, malformed/privacy behavior;
-6. only after codec/restoration GREEN wire durable prepare/remove/complete and reopen semantics;
-7. preserve the downstream→Learning-completion crash-window limitation explicitly;
-8. merge each architectural slice only after exact-head Core CI GREEN and readiness audit.
+1. verify the documentation freeze PR exact head and Core CI;
+2. read `LEARNING_PERSISTENCE_INTEGRATION_V0_1_FREEZE.md` and the architecture contract;
+3. confirm the PR changes only freeze/state/handoff documentation;
+4. merge only after exact-head Core CI GREEN with expected-head protection;
+5. verify merge/main Core CI GREEN;
+6. mark Learning Persistence Integration v0.1 fully frozen in project state;
+7. audit current repository roadmap/architecture before selecting the next stage.
