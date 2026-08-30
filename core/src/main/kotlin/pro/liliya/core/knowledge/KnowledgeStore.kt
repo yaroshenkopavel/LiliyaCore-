@@ -63,17 +63,41 @@ internal class KnowledgeStore private constructor(
             return KnowledgeRegistrationResult.Rejected(reason)
         }
 
-        observability.record(
-            severity = DiagnosticSeverity.INFO,
-            code = "KNOWLEDGE_REGISTERED",
-            message = "knowledge item registered",
-            context = context,
-            metadata = metadata(item, entry.generation)
-        )
+        observeRegistered(item, entry.generation, context)
+        return KnowledgeRegistrationResult.Registered(registration(entry))
+    }
 
-        return KnowledgeRegistrationResult.Registered(
-            registration = registration(entry)
-        )
+    @Synchronized
+    internal fun installCommitted(
+        item: KnowledgeItem,
+        generation: KnowledgeGeneration,
+        highWatermark: Long,
+        context: LogContext
+    ): KnowledgeRegistrationResult {
+        if (highWatermark < generation.value) {
+            return KnowledgeRegistrationResult.Rejected("committed knowledge generation exceeds high watermark")
+        }
+        if (generation.value != highWatermark) {
+            return KnowledgeRegistrationResult.Rejected("committed knowledge generation is not current high watermark")
+        }
+        if (highWatermark <= nextGeneration.get()) {
+            return KnowledgeRegistrationResult.Rejected("committed knowledge generation is not newer than local high watermark")
+        }
+        if (items.containsKey(item.id)) {
+            return KnowledgeRegistrationResult.Rejected("knowledge item ${item.id} is already registered")
+        }
+        if (items.values.any { it.generation == generation }) {
+            return KnowledgeRegistrationResult.Rejected("committed knowledge generation is already live")
+        }
+
+        val entry = Entry(generation = generation, item = item)
+        val existing = items.putIfAbsent(item.id, entry)
+        if (existing != null) {
+            return KnowledgeRegistrationResult.Rejected("knowledge item ${item.id} is already registered")
+        }
+        nextGeneration.set(highWatermark)
+        observeRegistered(item, generation, context)
+        return KnowledgeRegistrationResult.Registered(registration(entry))
     }
 
     fun find(id: KnowledgeItemId): KnowledgeItem? = items[id]?.item
@@ -99,21 +123,37 @@ internal class KnowledgeStore private constructor(
         override val item: KnowledgeItem = entry.item
         override val generation: KnowledgeGeneration = entry.generation
 
-        override fun remove(context: LogContext): Boolean {
-            val removed = items.remove(item.id, entry)
-            observability.record(
-                severity = if (removed) DiagnosticSeverity.INFO else DiagnosticSeverity.WARNING,
-                code = if (removed) "KNOWLEDGE_REMOVED" else "KNOWLEDGE_REMOVAL_REJECTED",
-                message = if (removed) {
-                    "knowledge item removed"
-                } else {
-                    "knowledge registration is no longer current"
-                },
-                context = context,
-                metadata = metadata(item, entry.generation)
-            )
-            return removed
-        }
+        override fun remove(context: LogContext): Boolean = removeExact(entry, context)
+    }
+
+    private fun removeExact(entry: Entry, context: LogContext): Boolean {
+        val removed = items.remove(entry.item.id, entry)
+        observability.record(
+            severity = if (removed) DiagnosticSeverity.INFO else DiagnosticSeverity.WARNING,
+            code = if (removed) "KNOWLEDGE_REMOVED" else "KNOWLEDGE_REMOVAL_REJECTED",
+            message = if (removed) {
+                "knowledge item removed"
+            } else {
+                "knowledge registration is no longer current"
+            },
+            context = context,
+            metadata = metadata(entry.item, entry.generation)
+        )
+        return removed
+    }
+
+    private fun observeRegistered(
+        item: KnowledgeItem,
+        generation: KnowledgeGeneration,
+        context: LogContext
+    ) {
+        observability.record(
+            severity = DiagnosticSeverity.INFO,
+            code = "KNOWLEDGE_REGISTERED",
+            message = "knowledge item registered",
+            context = context,
+            metadata = metadata(item, generation)
+        )
     }
 
     private fun metadata(
