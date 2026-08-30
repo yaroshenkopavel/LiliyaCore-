@@ -4,7 +4,7 @@ Last journal update: 2026-08-30
 
 ## Current verified baseline
 
-Current verified code `main`: `16a15c739cc96aaddc026aba3252750650432e73`.
+Current verified code `main`: `c7a7866c199d42713c7047289db1e0f68559fcae`.
 
 Recent milestones:
 
@@ -12,13 +12,14 @@ Recent milestones:
 - PR #13 `Memory Persistence Integration v0.1: Architecture Contract` → merge `d6acaacecd8419a94530431166fe50caea42ef78`, exact-head CI `33316237238` GREEN, merge/main CI `33316354287` GREEN;
 - PR #14 `Memory Persistence Integration v0.1: Codec and Restoration Boundary` → merge `89d13fa43a0abc090075b93b7a558b48ce54859e`, exact-head CI `33316585365` GREEN, merge/main CI `33316735201` GREEN;
 - PR #15 `Memory Persistence Integration v0.1: Durable Remember and Remove` → merge `ebd6f804d6b3d389c468c277559dfa71de105adb`, exact-head CI `33317081729` GREEN, merge/main CI `33317242966` GREEN;
-- PR #16 `Memory Persistence Integration v0.1: Readiness Hardening` → merge `16a15c739cc96aaddc026aba3252750650432e73`, exact-head CI `33317555845` GREEN, merge/main CI `33317696880` GREEN.
+- PR #16 `Memory Persistence Integration v0.1: Readiness Hardening` → merge `16a15c739cc96aaddc026aba3252750650432e73`, exact-head CI `33317555845` GREEN, merge/main CI `33317696880` GREEN;
+- PR #17 `Memory Persistence Integration v0.1: Freeze Checkpoint` → merge `c7a7866c199d42713c7047289db1e0f68559fcae`, exact-head CI `33317960415` GREEN, merge/main CI `33318203580` GREEN.
 
 ## Frozen subsystem status
 
 Persistent Cognitive Storage v0.1 generic primitive is fully **FROZEN**.
 
-Memory Persistence Integration v0.1 has completed implementation and readiness hardening and is **FROZEN pending the Memory persistence freeze documentation checkpoint merge**.
+Memory Persistence Integration v0.1 is now fully **FROZEN**.
 
 Canonical documents:
 
@@ -39,7 +40,7 @@ Persisted removal ordering:
 
 `exact persisted ownership → durable exact-generation remove → exact local remove → success`
 
-Frozen guarantees include exact Memory ID/generation restoration, durable high-watermark restoration, stale/ABA-safe ownership, fail-closed atomic reopen, deterministic snapshots, same-composition mutation serialization, explicit shared-backend CAS conflict semantics, and privacy-safe failure rendering.
+Frozen guarantees include exact Memory ID/generation restoration, durable high-watermark restoration, stale/ABA-safe ownership, fail-closed atomic reopen, deterministic snapshots, same-composition mutation serialization, explicit shared-backend CAS conflict semantics and privacy-safe failure rendering.
 
 Mandatory separation remains:
 
@@ -51,17 +52,25 @@ Update System v0.1 and Security & Licensing v0.1 remain architecture contracts, 
 
 ## Current active architecture stage
 
-After the Memory persistence freeze checkpoint, the next controlled stage is **Knowledge Persistence Integration v0.1**.
+The active stage is **Knowledge Persistence Integration v0.1**.
 
-Current Knowledge remains process-local. `KnowledgeStore` uses exact-generation registration/removal, duplicate live-ID rejection, stale/ABA-safe removal and deterministic snapshots. `KnowledgeOrigin.Memory` carries exact `MemoryRecordId + MemoryGeneration`; `KnowledgeOrigin.Declared` carries declared source provenance.
+Canonical architecture contract:
 
-Selected direction for the next architecture contract:
+`KNOWLEDGE_PERSISTENCE_INTEGRATION_V0_1_CONTRACT.md`
+
+Current frozen Knowledge is process-local. `KnowledgeStore` already preserves exact-generation registration/removal, duplicate live-ID rejection, stale/ABA-safe removal and deterministic snapshots. `KnowledgeOrigin.Memory` carries exact `MemoryRecordId + MemoryGeneration`; `KnowledgeOrigin.Declared` carries declared source provenance.
+
+Selected direction:
 
 `frozen Knowledge domain → canonical Knowledge codec → exact persistent record store → reviewed exact-generation hydration/restoration → frozen Knowledge semantics`
 
-The Knowledge integration must preserve exact Knowledge IDs/generations/origin, deterministic snapshots, privacy and composition isolation. A persisted Memory origin remains provenance/consistency evidence, not permission or Authority.
+The integration must preserve exact Knowledge item IDs, generations, origins, caller-supplied timestamps, deterministic snapshots, stale/ABA-safe removal, privacy and composition/backend isolation.
 
-Do not broaden the first Knowledge slice into Learning persistence, Android, SQLite/SQLCipher, Keystore, encryption, licensing, scheduler, automatic retry or multi-writer reconciliation.
+A persisted `KnowledgeOrigin.Memory` remains structural provenance/consistency evidence only. It does not require a live Memory lookup during Knowledge create/hydration and does not grant permission, capability or Authority.
+
+First production slice must remain storage-engine-neutral and must start with canonical Knowledge codec plus a reviewed Knowledge-owned exact-generation restoration boundary before durable create/remove wiring.
+
+Do not broaden this stage into Learning persistence, Android, SQLite/SQLCipher, Keystore, encryption implementation, licensing, scheduler, automatic retry, semantic deduplication, trust/confidence scoring or multi-writer reconciliation.
 
 ## Governed control-path invariants
 
@@ -70,6 +79,8 @@ Do not broaden the first Knowledge slice into Learning persistence, Android, SQL
 `Structural provenance != credential != capability != permission != Authority`
 
 `Persistence != Encryption != License != Authority != Cognitive Permission`
+
+`Knowledge != Persistence != Encryption != License != Authority != Cognitive Permission`
 
 Persisted cognitive state remains state, not permission. Fresh Authority remains mandatory only at real side-effect boundaries.
 
