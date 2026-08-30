@@ -3,6 +3,12 @@ package pro.liliya.core.persistence
 import pro.liliya.core.diagnostics.DiagnosticSeverity
 import pro.liliya.core.foundation.FoundationComposition
 
+internal sealed interface PersistentRecordTransitionResult {
+    data class Committed(val ownership: PersistentRecordOwnership) : PersistentRecordTransitionResult
+    data class Rejected(val reason: String) : PersistentRecordTransitionResult
+    data class Failed(val reason: String, val throwable: Throwable? = null) : PersistentRecordTransitionResult
+}
+
 class PersistentRecordStore private constructor(
     private val foundation: FoundationComposition,
     val storeId: PersistentStoreId,
@@ -86,6 +92,80 @@ class PersistentRecordStore private constructor(
 
     @Synchronized
     internal fun generationHighWatermark(): Long = state.highWatermark
+
+    /**
+     * Atomically replaces one exact live record with another record in a single backend revision,
+     * preserving the source generation and store high-watermark. This is intentionally internal:
+     * callers must already own the domain transition semantics that justify the replacement.
+     */
+    @Synchronized
+    internal fun transitionExact(
+        sourceId: PersistentEntityId,
+        sourceGeneration: PersistentGeneration,
+        replacement: PersistentRecord
+    ): PersistentRecordTransitionResult {
+        val current = state.entries[sourceId]
+            ?: return PersistentRecordTransitionResult.Rejected("persistent transition source is not live")
+        if (current.generation != sourceGeneration) {
+            return PersistentRecordTransitionResult.Rejected("persistent transition source generation is stale")
+        }
+        if (replacement.id != sourceId && state.entries.containsKey(replacement.id)) {
+            return PersistentRecordTransitionResult.Rejected("persistent transition replacement entity is already live")
+        }
+
+        val replacementEntry = PersistentBackendEntry(sourceGeneration, replacement.detached())
+        val candidateEntries = state.entries.toMutableMap().apply {
+            remove(sourceId)
+            put(replacement.id, replacementEntry)
+        }.toMap()
+        val candidate = state.copy(entries = candidateEntries)
+
+        return when (val committed = backend.commit(storeId, revision, candidate.detached())) {
+            is PersistentBackendCommitResult.Committed -> {
+                if (committed.revision <= revision) {
+                    observe(
+                        DiagnosticSeverity.ERROR,
+                        "PERSISTENT_RECORD_TRANSITION_FAILED",
+                        "persistent backend returned non-monotonic commit revision",
+                        metadata(current.record, sourceGeneration) +
+                            ("persistentReplacementEntityId" to replacement.id.value) +
+                            ("failureCategory" to "backend-revision")
+                    )
+                    PersistentRecordTransitionResult.Failed(
+                        "persistent backend returned non-monotonic commit revision"
+                    )
+                } else {
+                    revision = committed.revision
+                    state = candidate.detached()
+                    observe(
+                        DiagnosticSeverity.INFO,
+                        "PERSISTENT_RECORD_TRANSITIONED",
+                        "persistent record transitioned",
+                        metadata(replacement, sourceGeneration) +
+                            ("persistentSourceEntityId" to sourceId.value)
+                    )
+                    PersistentRecordTransitionResult.Committed(
+                        ownership(replacement.detached(), sourceGeneration)
+                    )
+                }
+            }
+
+            PersistentBackendCommitResult.Conflict ->
+                PersistentRecordTransitionResult.Rejected("persistent backend revision changed")
+
+            is PersistentBackendCommitResult.Failed -> {
+                observe(
+                    DiagnosticSeverity.ERROR,
+                    "PERSISTENT_RECORD_TRANSITION_FAILED",
+                    "persistent record transition commit failed",
+                    metadata(current.record, sourceGeneration) +
+                        ("persistentReplacementEntityId" to replacement.id.value) +
+                        ("failureCategory" to "backend-commit")
+                )
+                PersistentRecordTransitionResult.Failed(committed.reason, committed.throwable)
+            }
+        }
+    }
 
     private fun ownership(
         record: PersistentRecord,

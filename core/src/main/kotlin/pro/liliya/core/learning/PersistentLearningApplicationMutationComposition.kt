@@ -1,11 +1,14 @@
 package pro.liliya.core.learning
 
 import pro.liliya.core.foundation.FoundationComposition
+import pro.liliya.core.persistence.PersistentEntityId
+import pro.liliya.core.persistence.PersistentGeneration
 import pro.liliya.core.persistence.PersistentInstallResult
 import pro.liliya.core.persistence.PersistentMutationResult
 import pro.liliya.core.persistence.PersistentRecordBackend
 import pro.liliya.core.persistence.PersistentRecordOwnership
 import pro.liliya.core.persistence.PersistentRecordStore
+import pro.liliya.core.persistence.PersistentRecordTransitionResult
 import pro.liliya.core.persistence.PersistentStoreId
 import pro.liliya.core.persistence.PersistentStoreOpenResult
 
@@ -13,6 +16,21 @@ interface PersistentLearningApplicationMutationOwnership {
     val plan: LearningApplicationMutationPlan
     val generation: LearningApplicationMutationGeneration
     fun remove(): PersistentLearningApplicationMutationResult
+}
+
+class PersistentLearningApplicationMutationClaim internal constructor(
+    val plan: LearningApplicationMutationPlan,
+    val reference: LearningApplicationMutationReference,
+    private val releaseAction: () -> Boolean,
+    private val completeAction: (LearningApplicationMutationApplicationReceipt) ->
+        PersistentLearningApplicationMutationResult
+) {
+    fun release(): Boolean = releaseAction()
+
+    /** Durable completion remains controlled/internal; a public claim is not completion authority. */
+    internal fun complete(
+        receipt: LearningApplicationMutationApplicationReceipt
+    ): PersistentLearningApplicationMutationResult = completeAction(receipt)
 }
 
 sealed interface PersistentLearningApplicationMutationPrepareResult {
@@ -31,6 +49,16 @@ sealed interface PersistentLearningApplicationMutationPrepareResult {
         override fun toString(): String =
             "Failed(reason=$reason, throwable=${throwable?.javaClass?.name ?: "null"})"
     }
+}
+
+sealed interface PersistentLearningApplicationMutationClaimResult {
+    data class Claimed(
+        val claim: PersistentLearningApplicationMutationClaim
+    ) : PersistentLearningApplicationMutationClaimResult
+
+    data class Rejected(
+        val reason: LearningApplicationMutationClaimRejection
+    ) : PersistentLearningApplicationMutationClaimResult
 }
 
 sealed interface PersistentLearningApplicationMutationResult {
@@ -62,6 +90,8 @@ class PersistentLearningApplicationMutationComposition private constructor(
     private val persistentStore: PersistentRecordStore,
     private val mutationStore: LearningApplicationMutationStore
 ) {
+    private val activeClaims = mutableSetOf<LearningApplicationMutationReference>()
+
     @Synchronized
     fun prepare(
         plan: LearningApplicationMutationPlan
@@ -84,6 +114,56 @@ class PersistentLearningApplicationMutationComposition private constructor(
                     reason = "persistent learning mutation durable prepare failed",
                     throwable = durable.throwable
                 )
+        }
+    }
+
+    @Synchronized
+    fun claim(
+        reference: LearningApplicationMutationReference
+    ): PersistentLearningApplicationMutationClaimResult {
+        val context = foundation.rootContext(
+            operation = "claimPersistedLearningApplicationMutation",
+            component = "LearningApplicationMutation",
+            metadata = referenceMetadata(reference)
+        )
+        return when (val result = mutationStore.claim(reference, context)) {
+            is LearningApplicationMutationClaimRegistrationResult.Claimed -> {
+                val registration = result.claim
+                val exactReference = LearningApplicationMutationReference(
+                    registration.plan.id,
+                    registration.generation
+                )
+                activeClaims += exactReference
+                PersistentLearningApplicationMutationClaimResult.Claimed(
+                    PersistentLearningApplicationMutationClaim(
+                        plan = registration.plan,
+                        reference = exactReference,
+                        releaseAction = {
+                            synchronized(this@PersistentLearningApplicationMutationComposition) {
+                                val released = registration.release(
+                                    foundation.rootContext(
+                                        operation = "releasePersistedLearningApplicationMutationClaim",
+                                        component = "LearningApplicationMutation",
+                                        metadata = metadata(registration.plan, registration.generation)
+                                    )
+                                )
+                                if (released) activeClaims.remove(exactReference)
+                                released
+                            }
+                        },
+                        completeAction = { receipt ->
+                            completeClaim(
+                                registration = registration,
+                                exactReference = exactReference,
+                                receipt = receipt
+                            )
+                        }
+                    )
+                )
+            }
+
+            is LearningApplicationMutationClaimRegistrationResult.Rejected ->
+                PersistentLearningApplicationMutationClaimResult.Rejected(result.reason)
         }
     }
 
@@ -110,6 +190,77 @@ class PersistentLearningApplicationMutationComposition private constructor(
     fun snapshot(): List<LearningApplicationMutationPlan> = mutationStore.snapshot()
 
     fun snapshotEntries(): List<LearningApplicationMutationSnapshot> = mutationStore.snapshotEntries()
+
+    @Synchronized
+    private fun completeClaim(
+        registration: LearningApplicationMutationClaimRegistration,
+        exactReference: LearningApplicationMutationReference,
+        receipt: LearningApplicationMutationApplicationReceipt
+    ): PersistentLearningApplicationMutationResult {
+        if (exactReference !in activeClaims) {
+            return PersistentLearningApplicationMutationResult.Rejected(
+                "persistent learning mutation claim is no longer active"
+            )
+        }
+        if (receipt.mutation != exactReference) {
+            return PersistentLearningApplicationMutationResult.Rejected(
+                "persistent learning mutation completion receipt reference mismatch"
+            )
+        }
+        if (receipt.target != registration.plan.target ||
+            !downstreamMatchesTarget(receipt.downstream, registration.plan.target)
+        ) {
+            return PersistentLearningApplicationMutationResult.Rejected(
+                "persistent learning mutation completion receipt target mismatch"
+            )
+        }
+
+        val completedRecord = try {
+            LearningApplicationMutationPersistentCodec.encodeCompleted(registration.plan, receipt)
+        } catch (_: IllegalArgumentException) {
+            return PersistentLearningApplicationMutationResult.Rejected(
+                "persistent learning mutation completion receipt is invalid"
+            )
+        }
+        val sourceId = PersistentEntityId("learning-mutation:prepared:${registration.plan.id.value}")
+        val sourceGeneration = PersistentGeneration(registration.generation.value)
+
+        return when (
+            val durable = persistentStore.transitionExact(
+                sourceId = sourceId,
+                sourceGeneration = sourceGeneration,
+                replacement = completedRecord
+            )
+        ) {
+            is PersistentRecordTransitionResult.Committed -> {
+                val completedLocally = registration.complete(
+                    receipt = receipt,
+                    context = foundation.rootContext(
+                        operation = "completePersistedLearningApplicationMutation",
+                        component = "LearningApplicationMutation",
+                        metadata = metadata(registration.plan, registration.generation)
+                    )
+                )
+                if (completedLocally) {
+                    activeClaims.remove(exactReference)
+                    PersistentLearningApplicationMutationResult.Committed
+                } else {
+                    PersistentLearningApplicationMutationResult.Failed(
+                        "durable learning mutation completion committed but local exact completion failed"
+                    )
+                }
+            }
+
+            is PersistentRecordTransitionResult.Rejected ->
+                PersistentLearningApplicationMutationResult.Rejected(durable.reason)
+
+            is PersistentRecordTransitionResult.Failed ->
+                PersistentLearningApplicationMutationResult.Failed(
+                    reason = "persistent learning mutation durable completion failed",
+                    throwable = durable.throwable
+                )
+        }
+    }
 
     private fun installCommitted(
         plan: LearningApplicationMutationPlan,
@@ -170,6 +321,12 @@ class PersistentLearningApplicationMutationComposition private constructor(
 
             override fun remove(): PersistentLearningApplicationMutationResult =
                 synchronized(this@PersistentLearningApplicationMutationComposition) {
+                    val reference = LearningApplicationMutationReference(plan.id, generation)
+                    if (reference in activeClaims) {
+                        return@synchronized PersistentLearningApplicationMutationResult.Rejected(
+                            "persistent learning mutation is actively claimed"
+                        )
+                    }
                     when (val durable = persistentOwnership.remove()) {
                         PersistentMutationResult.Committed -> {
                             val removedLocally = localRegistration.remove(
@@ -199,6 +356,21 @@ class PersistentLearningApplicationMutationComposition private constructor(
                     }
                 }
         }
+
+    private fun referenceMetadata(
+        reference: LearningApplicationMutationReference
+    ): Map<String, String> = mapOf(
+        "learningApplicationMutationId" to reference.mutationId.value,
+        "learningApplicationMutationGeneration" to reference.generation.value.toString()
+    )
+
+    private fun downstreamMatchesTarget(
+        downstream: LearningApplicationDownstreamReference,
+        target: LearningApplicationTarget
+    ): Boolean = when (target) {
+        LearningApplicationTarget.MEMORY -> downstream is LearningApplicationDownstreamReference.Memory
+        LearningApplicationTarget.KNOWLEDGE -> downstream is LearningApplicationDownstreamReference.Knowledge
+    }
 
     private fun metadata(
         plan: LearningApplicationMutationPlan,
