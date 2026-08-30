@@ -35,66 +35,72 @@ Before changing code, read:
 
 ## Frozen baselines
 
-Persistent Cognitive Storage v0.1 generic durable primitive is fully frozen on verified `main`:
+Persistent Cognitive Storage v0.1 is fully frozen.
 
-`54b2896957212ff7564b35fad7e39ccbeb3a8e92`
+Memory Persistence Integration v0.1 implementation/readiness baseline is:
 
-Merge/main Core CI: `33315974315` GREEN.
+`16a15c739cc96aaddc026aba3252750650432e73`
 
-Canonical persistence documents:
+Merge/main Core CI: `33317696880` GREEN.
+
+Memory persistence is frozen pending only its documentation-checkpoint merge.
+
+Canonical documents:
 
 - `PERSISTENT_COGNITIVE_STORAGE_V0_1_CONTRACT.md`
 - `PERSISTENT_COGNITIVE_STORAGE_V0_1_FREEZE.md`
+- `MEMORY_PERSISTENCE_INTEGRATION_V0_1_CONTRACT.md`
+- `MEMORY_PERSISTENCE_INTEGRATION_V0_1_FREEZE.md`
 
-Frozen persistence primitive direction:
+Frozen Memory persistence direction:
 
-`canonical persistent record → exact-generation ownership → backend revision CAS → durable commit acknowledgement → explicit reopen/recovery validation`
+`frozen Memory domain → canonical Memory codec → exact persistent record store → reviewed exact-generation hydration/restoration → frozen Memory semantics`
 
-Controlled Agent Coordination v0.1 and all earlier frozen Foundation/Memory/Knowledge/Planning/Reasoning/Decision/Orchestration/Autonomy/Agent boundaries remain frozen.
+Write ordering:
+
+`Memory encode → durable commit → exact committed Memory install → success`
+
+Remove ordering:
+
+`exact persisted ownership → durable exact-generation remove → exact local remove → success`
+
+The integration preserves exact Memory IDs/generations, durable generation high-watermark, provenance/content/time codec fidelity, deterministic snapshots, stale/ABA-safe removal, fail-closed reopen, explicit shared-backend CAS conflict behavior and privacy-safe failure rendering.
+
+It does not provide Android storage, SQLite/SQLCipher, Keystore, authenticated encryption, licensing, scheduler, hidden retry/refresh or multi-writer reconciliation.
 
 Mandatory separation:
 
-`Persistence != Encryption != License != Authority != Cognitive Permission`
+`Memory != Persistence != Encryption != License != Authority != Cognitive Permission`
 
-## Current active stage — Memory Persistence Integration v0.1
+## Next active stage — Knowledge Persistence Integration v0.1
 
-Canonical contract:
+After the Memory persistence freeze checkpoint is GREEN, start with a Knowledge persistence architecture contract before production changes.
 
-`MEMORY_PERSISTENCE_INTEGRATION_V0_1_CONTRACT.md`
+Current frozen Knowledge is still process-local. Preserve:
+
+- `KnowledgeItemId` exactly;
+- exact `KnowledgeGeneration` ownership and monotonic restoration;
+- duplicate live-ID rejection and stale/ABA-safe removal;
+- deterministic snapshots ordered by `createdAt`, then ID;
+- `KnowledgeOrigin.Memory(recordId, generation)` exactly;
+- `KnowledgeOrigin.Declared(sourceId, sourceReference)` exactly;
+- private Knowledge content outside operational observability;
+- composition/backend isolation.
 
 Selected direction:
 
-`frozen Memory domain → canonical Memory codec → exact persistent record store → explicit hydration/restoration → frozen Memory semantics`
+`frozen Knowledge domain → canonical Knowledge codec → exact persistent record store → reviewed exact-generation hydration/restoration → frozen Knowledge semantics`
 
-Required compatibility constraints:
+A durable `KnowledgeOrigin.Memory` is structural provenance only. It does not grant permission, Authority or execution capability and does not by itself prove that referenced Memory is currently live.
 
-- preserve `MemoryRecordId` exactly;
-- preserve exact `MemoryGeneration` ownership and store-global monotonicity across reopen;
-- preserve provenance/source reference, content and timestamp at the codec boundary;
-- preserve duplicate rejection and stale/ABA-safe removal;
-- preserve deterministic snapshots and composition/backend isolation;
-- keep private Memory content out of operational observability;
-- hydrate only through a reviewed Memory-owned restoration boundary;
-- do not redesign frozen Memory public contracts without a demonstrated correctness requirement.
-
-Write ordering for persisted Memory must be fail-closed:
-
-`validate → durable commit → exact local install → success`
-
-Remove ordering must be exact-generation and durable-first:
-
-`validate exact ownership → durable exact remove → exact local remove → success`
-
-A failed durable write must leave Memory locally absent. A failed/conflicting durable remove must keep local Memory live. Corrupt/incompatible/open failures must not publish a partially hydrated Memory composition.
-
-The first integration slice remains core-only and storage-engine-neutral. Keep Knowledge/Learning, Android, SQLite/SQLCipher, Keystore, authenticated encryption, licensing and scheduler semantics out.
+Keep Learning persistence, Android, SQLite/SQLCipher, Keystore, encryption implementation, licensing, scheduler, hidden retry and multi-writer reconciliation outside the first Knowledge slice.
 
 ## Resume procedure
 
 1. verify current `main` SHA and latest merge/main CI;
-2. read `MEMORY_PERSISTENCE_INTEGRATION_V0_1_CONTRACT.md` plus frozen Memory and persistence contracts;
-3. inspect `MemoryModels`, `MemoryStore`, `MemoryComposition` and Memory executable contracts;
-4. implement the narrowest Memory codec + reviewed restoration boundary before broad wiring;
-5. add executable compatibility/failure/privacy contracts;
-6. merge only after exact-head CI + architecture/privacy/readiness audit;
-7. keep platform storage/encryption choices out of this core integration stage.
+2. if the Memory persistence freeze checkpoint PR is open, finish that exact-head/main gate first;
+3. read `MEMORY_PERSISTENCE_INTEGRATION_V0_1_FREEZE.md` and frozen Knowledge models/store/contracts;
+4. draft `KNOWLEDGE_PERSISTENCE_INTEGRATION_V0_1_CONTRACT.md` before production changes;
+5. design the narrowest Knowledge codec + reviewed exact-generation restoration boundary;
+6. add executable compatibility/failure/privacy contracts before durable wiring;
+7. keep platform storage/encryption decisions outside the core domain integration stage.
