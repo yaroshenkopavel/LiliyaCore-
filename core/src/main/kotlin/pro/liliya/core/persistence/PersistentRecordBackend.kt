@@ -1,29 +1,37 @@
 package pro.liliya.core.persistence
 
-internal data class PersistentBackendEntry(
+data class PersistentBackendEntry(
     val generation: PersistentGeneration,
     val record: PersistentRecord
 )
 
-internal data class PersistentBackendState(
+data class PersistentBackendState(
     val storeId: PersistentStoreId,
     val highWatermark: Long,
     val entries: Map<PersistentEntityId, PersistentBackendEntry>
-)
+) {
+    init { require(highWatermark >= 0) { "persistent high watermark must not be negative" } }
+}
 
 sealed interface PersistentBackendLoadResult {
     data object Missing : PersistentBackendLoadResult
-    data class Loaded internal constructor(
-        internal val revision: Long,
-        internal val state: PersistentBackendState
-    ) : PersistentBackendLoadResult
+    data class Loaded(
+        val revision: Long,
+        val state: PersistentBackendState
+    ) : PersistentBackendLoadResult {
+        init { require(revision >= 0) { "persistent backend revision must not be negative" } }
+    }
+
     data object Corrupt : PersistentBackendLoadResult
     data class Incompatible(val reason: String) : PersistentBackendLoadResult
     data class Failed(val reason: String, val throwable: Throwable? = null) : PersistentBackendLoadResult
 }
 
 sealed interface PersistentBackendCommitResult {
-    data class Committed internal constructor(internal val revision: Long) : PersistentBackendCommitResult
+    data class Committed(val revision: Long) : PersistentBackendCommitResult {
+        init { require(revision > 0) { "committed backend revision must be positive" } }
+    }
+
     data object Conflict : PersistentBackendCommitResult
     data class Failed(val reason: String, val throwable: Throwable? = null) : PersistentBackendCommitResult
 }
@@ -31,7 +39,7 @@ sealed interface PersistentBackendCommitResult {
 interface PersistentRecordBackend {
     fun load(storeId: PersistentStoreId): PersistentBackendLoadResult
 
-    internal fun commit(
+    fun commit(
         storeId: PersistentStoreId,
         expectedRevision: Long,
         state: PersistentBackendState
