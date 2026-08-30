@@ -33,17 +33,21 @@ Before changing code, read:
 - persistence, encryption, licensing, Authority and cognitive permission remain separate;
 - frozen baselines are not casually redesigned.
 
-## Frozen baselines
+## Frozen persistence baselines
 
 Persistent Cognitive Storage v0.1 is fully frozen.
 
-Memory Persistence Integration v0.1 is fully frozen on verified `main`:
+Memory Persistence Integration v0.1 is fully frozen on verified checkpoint `c7a7866c199d42713c7047289db1e0f68559fcae` with exact-head CI `33317960415` GREEN and merge/main CI `33318203580` GREEN.
 
-`c7a7866c199d42713c7047289db1e0f68559fcae`
+Knowledge Persistence Integration v0.1 implementation/readiness is verified on code baseline:
 
-Freeze checkpoint exact-head Core CI: `33317960415` GREEN.
+`450e65b2c0d3a53a4e4389532c15653accc27a64`
 
-Freeze checkpoint merge/main Core CI: `33318203580` GREEN.
+Readiness exact-head Core CI: `33320271163` GREEN.
+
+Readiness merge/main Core CI: `33320431935` GREEN.
+
+Knowledge Persistence Integration v0.1 is **FROZEN pending documentation-checkpoint merge**.
 
 Canonical documents:
 
@@ -51,72 +55,62 @@ Canonical documents:
 - `PERSISTENT_COGNITIVE_STORAGE_V0_1_FREEZE.md`
 - `MEMORY_PERSISTENCE_INTEGRATION_V0_1_CONTRACT.md`
 - `MEMORY_PERSISTENCE_INTEGRATION_V0_1_FREEZE.md`
+- `KNOWLEDGE_PERSISTENCE_INTEGRATION_V0_1_CONTRACT.md`
+- `KNOWLEDGE_PERSISTENCE_INTEGRATION_V0_1_FREEZE.md`
 
-Frozen Memory persistence direction:
+Frozen Knowledge persistence direction:
 
-`frozen Memory domain → canonical Memory codec → exact persistent record store → reviewed exact-generation hydration/restoration → frozen Memory semantics`
+`frozen Knowledge domain → canonical Knowledge codec → exact persistent record store → reviewed exact-generation hydration/restoration → frozen Knowledge semantics`
 
-Write ordering:
+Create ordering:
 
-`Memory encode → durable commit → exact committed Memory install → success`
+`Knowledge encode → durable commit → exact committed Knowledge install → success`
 
 Remove ordering:
 
 `exact persisted ownership → durable exact-generation remove → exact local remove → success`
 
-The integration preserves exact Memory IDs/generations, durable generation high-watermark, provenance/content/time codec fidelity, deterministic snapshots, stale/ABA-safe removal, fail-closed reopen, explicit shared-backend CAS conflict behavior and privacy-safe failure rendering.
+The integration preserves exact Knowledge IDs/generations, durable generation high-watermark, both origin forms, content and caller-supplied timestamps, deterministic snapshots, stale/ABA-safe removal, fail-closed reopen, explicit shared-backend CAS conflict behavior and privacy-safe failure rendering.
+
+`KnowledgeOrigin.Memory(recordId, generation)` remains structural provenance only; hydration does not require a live Memory lookup. `KnowledgeOrigin.Declared(sourceId, sourceReference?)` remains attribution only. Neither grants trust, permission, capability or Authority.
 
 It does not provide Android storage, SQLite/SQLCipher, Keystore, authenticated encryption, licensing, scheduler, hidden retry/refresh or multi-writer reconciliation.
 
 Mandatory separation:
 
-`Memory != Persistence != Encryption != License != Authority != Cognitive Permission`
+`Knowledge != Persistence != Encryption != License != Authority != Cognitive Permission`
 
-## Current active stage — Knowledge Persistence Integration v0.1
+## Current checkpoint
 
-Canonical contract:
+The current branch/PR should be a docs-only **Knowledge Persistence Integration v0.1 Freeze Checkpoint** based on verified `main` `450e65b2c0d3a53a4e4389532c15653accc27a64`.
 
-`KNOWLEDGE_PERSISTENCE_INTEGRATION_V0_1_CONTRACT.md`
+Before declaring the subsystem fully frozen:
 
-Selected direction:
+1. verify the freeze checkpoint exact head has Core CI GREEN;
+2. verify the PR changes only the intended documentation files;
+3. merge with exact-head protection;
+4. verify merge/main Core CI GREEN;
+5. only then treat Knowledge Persistence Integration v0.1 as fully frozen.
 
-`frozen Knowledge domain → canonical Knowledge codec → exact persistent record store → reviewed exact-generation hydration/restoration → frozen Knowledge semantics`
+## Next controlled stage — Learning Persistence Integration v0.1
 
-Current frozen Knowledge is process-local. Preserve exactly:
+After the Knowledge freeze checkpoint is fully GREEN, begin **Learning Persistence Integration v0.1** with an architecture contract only.
 
-- `KnowledgeItemId`;
-- `KnowledgeGeneration` ownership and persisted high-watermark monotonicity;
-- duplicate live-ID rejection and stale/ABA-safe removal;
-- deterministic snapshots ordered by `createdAt`, then ID;
-- caller-supplied `createdAt`;
-- `KnowledgeOrigin.Memory(recordId, generation)`;
-- `KnowledgeOrigin.Declared(sourceId, sourceReference)`;
-- private Knowledge content outside operational observability;
-- composition/backend isolation.
+The first task is to inspect the already frozen Learning domain and its executable contracts, then define the durable boundary before production code changes.
 
-`KnowledgeOrigin.Memory` is structural provenance only. It does not require a live Memory lookup for Knowledge create/hydration and does not grant permission, capability or Authority.
+The Learning persistence contract must preserve existing identity/generation/provenance semantics and keep these concerns separate:
 
-Durable create ordering must be:
+`Learning != Persistence != Encryption != License != Authority != Execution`
 
-`validate Knowledge → encode → durable commit → exact committed Knowledge install → success`
+Do not infer exactly-once learning, idempotency, retry, scheduling, distributed coordination or execution permission from durable storage. Any such guarantee requires its own explicit contract and executable proof.
 
-Durable removal ordering must be:
-
-`validate exact Knowledge ownership → durable exact-generation remove → exact local remove → success`
-
-Failed durable create must keep Knowledge locally absent. Failed/conflicting durable remove must keep local Knowledge live. Corrupt/incompatible/open failures must publish no partial Knowledge composition.
-
-First implementation slice must be the narrowest codec + reviewed restoration boundary. Keep durable wiring separate until codec/restoration contracts are GREEN.
-
-Keep Learning persistence, Android, SQLite/SQLCipher, Keystore, encryption implementation, licensing, scheduler, trust/confidence scoring, semantic deduplication, hidden retry and multi-writer reconciliation outside v0.1.
+Keep Android, SQLite/SQLCipher, Keystore, encryption implementation, licensing, scheduler, cloud sync and multi-writer reconciliation outside this stage unless separately selected and reviewed.
 
 ## Resume procedure
 
 1. verify current `main` SHA and latest merge/main CI;
-2. read `KNOWLEDGE_PERSISTENCE_INTEGRATION_V0_1_CONTRACT.md` plus frozen Knowledge and persistence contracts;
-3. inspect `KnowledgeModels`, `KnowledgeStore`, `KnowledgeComposition` and executable Knowledge contracts;
-4. implement the canonical Knowledge codec and reviewed exact-generation restoration boundary first;
-5. add executable round-trip/malformed/restoration/high-watermark/privacy contracts;
-6. only after that wire durable create/remove and reopen semantics;
-7. merge each architectural slice only after exact-head Core CI GREEN and readiness audit;
-8. keep platform storage/encryption decisions outside the core domain integration stage.
+2. finish the Knowledge Persistence freeze checkpoint if it is still open;
+3. read `KNOWLEDGE_PERSISTENCE_INTEGRATION_V0_1_FREEZE.md` before touching frozen Knowledge persistence code;
+4. after full freeze, inspect Learning production models/store/composition and executable contracts;
+5. draft `LEARNING_PERSISTENCE_INTEGRATION_V0_1_CONTRACT.md` before any Learning persistence production changes;
+6. split implementation into narrow codec/restoration, durable mutation/reopen, readiness, and freeze slices only after the architecture contract is GREEN.
