@@ -97,10 +97,14 @@ fun interface LicenseSignatureVerifier {
 }
 
 sealed interface LicenseVerificationResult {
-    data class Verified(
+    class Verified internal constructor(
         val entitlement: LicenseEntitlement,
         val envelope: LicenseSignedEnvelope
-    ) : LicenseVerificationResult
+    ) : LicenseVerificationResult {
+        override fun toString(): String =
+            "LicenseVerificationResult.Verified(licenseId=${entitlement.id}, " +
+                "productId=${entitlement.productId}, signingKeyId=${envelope.signingKeyId})"
+    }
 
     data class Rejected(val reason: LicenseVerificationRejection) : LicenseVerificationResult
 }
