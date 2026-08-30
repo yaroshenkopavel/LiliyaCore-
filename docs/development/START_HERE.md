@@ -30,59 +30,64 @@ Before changing code, read:
 - failed stale removal is not automatically fatal when a newer generation is live;
 - capability is not permission; Authority is separate from Execution;
 - fresh Authority is mandatory at real side-effect boundaries;
-- Planning/Reasoning/Decision/Orchestration data never becomes permission by provenance alone;
-- Autonomy/Agent/Delegation/Coordination remain governance/provenance layers;
-- structural provenance strings are evidence, not cryptographic credentials/capabilities/Authority receipts;
+- structural provenance strings are evidence, not credentials/capabilities/Authority receipts;
 - compound writes are TOCTOU-sensitive and require post-write fresh revalidation/compensation;
 - private cognitive payloads stay out of operational observability;
+- persistence, encryption, licensing, Authority and cognitive permission remain separate;
 - frozen baselines are not casually redesigned.
 
 ## Frozen baselines
 
-Controlled Agent Coordination v0.1 is now frozen together with all earlier Agent/Autonomy/Orchestration/Decision/Reasoning/Planning and Foundation boundaries.
+Controlled Agent Coordination v0.1 and all earlier Agent/Autonomy/Orchestration/Decision/Reasoning/Planning/Foundation boundaries are frozen.
 
-Canonical coordination freeze contract:
+Persistent Cognitive Storage v0.1 generic durable primitive is **frozen pending its documentation-checkpoint merge** on verified code baseline:
 
-`CONTROLLED_AGENT_COORDINATION_V0_1_FREEZE.md`
+`a6ed4893e0e792575d4f2b6246e0a48e72f851b2`
 
-Frozen coordination execution direction:
+Canonical persistence documents:
 
-`exact live Coordination → exact participant ACTIVE governance → bounded Autonomy/attempt/deliberation → Planning → Reasoning → Decision → Orchestration Intent → final coordinated execution guard → frozen Controlled Orchestration → fresh Authority → frozen Execution`
+- `PERSISTENT_COGNITIVE_STORAGE_V0_1_CONTRACT.md`
+- `PERSISTENT_COGNITIVE_STORAGE_V0_1_FREEZE.md`
 
-No coordination-specific Authority, executor, scheduler, retry, fan-out, voting, quorum or consensus semantics may be added behind that freeze.
+Frozen persistence primitive direction:
 
-## Current active stage — Persistent Cognitive Storage v0.1
+`canonical persistent record → exact-generation ownership → backend revision CAS → durable commit acknowledgement → explicit reopen/recovery validation`
 
-The selected next architecture stage is a core-only durable persistence foundation.
+It guarantees exact stale/ABA-safe ownership, durable generation high-watermark, explicit failure/recovery outcomes, deterministic detached snapshots, privacy-safe payload handling and a public storage-engine-neutral backend SPI.
 
-Canonical contract:
-
-`PERSISTENT_COGNITIVE_STORAGE_V0_1_CONTRACT.md`
-
-Why this stage is next:
-
-- Memory and Knowledge are currently process-local in-memory stores;
-- generation ownership resets with process lifetime unless durable state exists;
-- current learning completion/idempotency is not crash-durable;
-- encrypted cognitive storage from the Security & Licensing contract needs a storage-neutral persistence boundary first;
-- Android/Keystore/storage-engine choices should remain later adapters.
-
-First implementation boundary:
-
-`generic exact-generation persistent envelope/store → atomic durable commit → explicit reopen/recovery`
-
-The first slice must not integrate Memory/Knowledge yet. It must first prove exact stale/ABA-safe ownership, monotonic generation restoration, deterministic reopen snapshots, explicit corrupt/incompatible recovery, failure atomicity, and privacy-safe rendering/observability.
+It does **not** yet persist Memory/Knowledge and does not provide Android, SQLite/SQLCipher, Keystore, authenticated encryption, licensing, scheduler or cognitive-policy semantics.
 
 Mandatory separation:
 
 `Persistence != Encryption != License != Authority != Cognitive Permission`
 
+## Current active stage — Memory Persistence Integration v0.1
+
+After the persistence freeze documentation checkpoint is GREEN, integrate the frozen Memory domain first.
+
+Selected direction:
+
+`frozen Memory domain → reviewed persistence codec/adapter → exact persistent record store → explicit hydration/restoration → frozen Memory semantics`
+
+Required compatibility constraints:
+
+- preserve current Memory IDs and exact generations;
+- preserve provenance/origin fields;
+- preserve deterministic snapshots;
+- preserve stale/ABA-safe removal;
+- preserve composition isolation;
+- keep private memory content out of operational observability;
+- do not inject arbitrary internal map entries during hydration;
+- do not redesign the frozen Memory public contract without a demonstrated correctness requirement and focused versioned contracts.
+
+The first integration slice remains core-only and storage-engine-neutral. Keep Knowledge/Learning, Android, SQLCipher/SQLite, Keystore and licensing out until Memory integration is independently GREEN and readiness-audited.
+
 ## Resume procedure
 
 1. verify current `main` SHA and merge/main CI;
-2. read `PERSISTENT_COGNITIVE_STORAGE_V0_1_CONTRACT.md`;
-3. inspect frozen Memory/Knowledge models/stores only as compatibility constraints, not redesign targets;
-4. create the smallest persistence primitive slice on a feature branch;
-5. add executable contracts before broad integration;
+2. if the persistence freeze checkpoint PR is still open, finish that exact-head/main CI gate first;
+3. read `PERSISTENT_COGNITIVE_STORAGE_V0_1_FREEZE.md` plus frozen Memory models/store/contracts;
+4. design the narrowest reviewed Memory codec/restoration boundary;
+5. add executable compatibility contracts before broad wiring;
 6. merge only after exact-head CI + architecture/privacy/readiness audit;
-7. keep Android, SQLCipher/SQLite, Keystore and licensing out of the first core persistence slice.
+7. keep platform storage/encryption decisions out of this core integration slice.
