@@ -98,6 +98,7 @@ fun interface LicenseSignatureVerifier {
 
 sealed interface LicenseVerificationResult {
     data class Verified(
+        val entitlement: LicenseEntitlement,
         val envelope: LicenseSignedEnvelope
     ) : LicenseVerificationResult
 
@@ -108,7 +109,10 @@ enum class LicenseVerificationRejection {
     UNSUPPORTED_SCHEMA_VERSION,
     UNKNOWN_KEY_ID,
     UNSUPPORTED_ALGORITHM,
-    INVALID_SIGNATURE
+    TRUSTED_KEY_MISMATCH,
+    INVALID_SIGNATURE,
+    INVALID_CANONICAL_PAYLOAD,
+    SIGNING_KEY_ID_MISMATCH
 }
 
 class LicenseVerifier(
@@ -127,37 +131,40 @@ class LicenseVerifier(
 
     fun verify(envelope: LicenseSignedEnvelope): LicenseVerificationResult {
         if (envelope.schemaVersion != supportedSchemaVersion) {
-            return LicenseVerificationResult.Rejected(
-                LicenseVerificationRejection.UNSUPPORTED_SCHEMA_VERSION
-            )
+            return rejected(LicenseVerificationRejection.UNSUPPORTED_SCHEMA_VERSION)
         }
         if (envelope.algorithm !in supportedAlgorithms) {
-            return LicenseVerificationResult.Rejected(
-                LicenseVerificationRejection.UNSUPPORTED_ALGORITHM
-            )
+            return rejected(LicenseVerificationRejection.UNSUPPORTED_ALGORITHM)
         }
         val key = trustedKeys.resolve(envelope.signingKeyId)
-            ?: return LicenseVerificationResult.Rejected(
-                LicenseVerificationRejection.UNKNOWN_KEY_ID
-            )
+            ?: return rejected(LicenseVerificationRejection.UNKNOWN_KEY_ID)
         if (key.keyId != envelope.signingKeyId || key.algorithm != envelope.algorithm) {
-            return LicenseVerificationResult.Rejected(
-                LicenseVerificationRejection.UNSUPPORTED_ALGORITHM
-            )
+            return rejected(LicenseVerificationRejection.TRUSTED_KEY_MISMATCH)
         }
-        return if (
-            signatureVerifier.verify(
+        if (
+            !signatureVerifier.verify(
                 algorithm = envelope.algorithm,
                 key = key,
                 payload = envelope.payload,
                 signature = envelope.signature
             )
         ) {
-            LicenseVerificationResult.Verified(envelope)
-        } else {
-            LicenseVerificationResult.Rejected(LicenseVerificationRejection.INVALID_SIGNATURE)
+            return rejected(LicenseVerificationRejection.INVALID_SIGNATURE)
         }
+
+        val entitlement = when (val decoded = LicenseEntitlementCanonicalCodec.decode(envelope.payload)) {
+            is LicenseEntitlementDecodeResult.Decoded -> decoded.entitlement
+            LicenseEntitlementDecodeResult.Corrupt ->
+                return rejected(LicenseVerificationRejection.INVALID_CANONICAL_PAYLOAD)
+        }
+        if (entitlement.signingKeyId != envelope.signingKeyId) {
+            return rejected(LicenseVerificationRejection.SIGNING_KEY_ID_MISMATCH)
+        }
+        return LicenseVerificationResult.Verified(entitlement, envelope)
     }
+
+    private fun rejected(reason: LicenseVerificationRejection) =
+        LicenseVerificationResult.Rejected(reason)
 }
 
 /** Deterministic test/dev verifier only; not a production cryptographic primitive. */
