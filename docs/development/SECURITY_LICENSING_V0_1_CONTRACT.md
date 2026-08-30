@@ -1,6 +1,6 @@
 # LiliyaCore — Security & Licensing v0.1 Architecture Contract
 
-Status: **ACTIVE ROADMAP — PHASE A LICENSE CORE IMPLEMENTED / FREEZE CHECKPOINT IN PROGRESS**
+Status: **ACTIVE ROADMAP — PHASE A LICENSE CORE FROZEN / PHASE B DEVICE-KEY CONTRACT ACTIVE**
 
 ## Objective
 
@@ -33,12 +33,14 @@ Hard invariants:
 
 ## Phase A — License Core v0.1
 
-Status: **IMPLEMENTED; canonical freeze checkpoint pending final exact-head + merge/main CI gate**.
+Status: **FROZEN**.
 
 Canonical documents:
 
 - `LICENSE_CORE_V0_1_CONTRACT.md`
 - `LICENSE_CORE_V0_1_FREEZE.md`
+
+Verified freeze baseline: `255b711a2577cae9358d19f22728ef0ea1ba2ebb`, with PR #35 exact-head Core CI `33328382254` GREEN and merge/main Core CI `33328556949` GREEN.
 
 Phase A provides:
 
@@ -68,7 +70,11 @@ Local wall clock alone is not a strong rollback detector.
 
 ## Phase B — Android device-key boundary
 
-Next phase, not implemented yet.
+Status: **ACTIVE ARCHITECTURE CONTRACT — IMPLEMENTATION NOT YET FROZEN**.
+
+Canonical focused contract:
+
+- `ANDROID_DEVICE_KEY_V0_1_CONTRACT.md`
 
 Preferred device root is a non-exportable Android Keystore key, using StrongBox when available/appropriate and a documented fallback policy otherwise.
 
@@ -80,7 +86,19 @@ Forbidden as primary cryptographic device roots:
 - advertising ID;
 - hashes/concatenations of ordinary device properties treated as secret HWID keys.
 
-Phase B must define key generation/use, security-level evidence, invalidation/recovery and enrollment/binding semantics before cognitive/model encryption depends on it.
+Phase B defines key generation/use, actual security-level evidence, exact ownership where Core state exists, invalidation/recovery, proof-of-possession and structural enrollment/binding semantics before cognitive/model encryption depends on it.
+
+Mandatory separation:
+
+`Device Key != Device Identity != Enrollment != License != DEK != Capability != Authority != Execution`
+
+`Keystore presence != hardware-backed proof`
+
+`Hardware-backed proof != enrollment`
+
+`Enrollment evidence != License entitlement`
+
+Phase B must not expose raw private key material through Core APIs and must not silently downgrade a requested mandatory security property.
 
 ## Key hierarchy direction
 
@@ -153,9 +171,11 @@ Frozen Phase A path where both are required:
 
 License denial means zero Authority calls. Authority remains the permission boundary before real side effects.
 
+Device-key possession/evidence does not replace this boundary and does not itself grant Authority.
+
 ## Failure semantics
 
-Security failures are typed/explicit and fail closed: signature invalid, License expired/not-yet-valid/offline-lease expired, feature mismatch, stale replay/revocation, suspicious time, device enrollment/binding failure, key unavailable, package/store authentication failure, integrity rejection, Authority denial or recovery/re-enrollment requirement.
+Security failures are typed/explicit and fail closed: signature invalid, License expired/not-yet-valid/offline-lease expired, feature mismatch, stale replay/revocation, suspicious time, device enrollment/binding failure, key missing/invalidated/unavailable, requested security level unavailable, key operation rejected, package/store authentication failure, integrity rejection, Authority denial or recovery/re-enrollment requirement.
 
 Protected operation performs zero side effects when authorization fails before the side-effect boundary.
 
@@ -163,9 +183,9 @@ Protected operation performs zero side effects when authorization fails before t
 
 Security transitions use Foundation Logging/Diagnostics/CoreObservability.
 
-Safe metadata is structural: License/asset/package IDs, versions/generations, key IDs/epochs and typed decision/rejection categories.
+Safe metadata is structural: License/asset/package/device-key IDs, versions/generations, key/security-level IDs/epochs and typed decision/rejection categories.
 
-Never log private keys, DEKs, unwrapped storage/model keys, raw bearer evidence, model/cognitive plaintext or full attestation tokens by default.
+Never log private keys, DEKs, unwrapped storage/model keys, raw bearer evidence, raw attestation tokens, model/cognitive plaintext or secret-bearing exception messages by default.
 
 ## Explicitly rejected primary architectures
 
@@ -181,4 +201,6 @@ Never log private keys, DEKs, unwrapped storage/model keys, raw bearer evidence,
 
 ## Current transition
 
-Once `LICENSE_CORE_V0_1_FREEZE.md` is merged and the resulting merge/main Core CI is GREEN, Phase A is fully **FROZEN** and work moves to a separately reviewed Android device-key architecture contract.
+Phase A License Core v0.1 is fully **FROZEN** after PR #35 exact-head and merge/main Core CI GREEN.
+
+Current work is Phase B: separately reviewed `ANDROID_DEVICE_KEY_V0_1_CONTRACT.md` followed by narrow implementation slices. Cognitive-storage encryption and protected-model key handling must not start before the device-key boundary is reviewed and frozen, except through a separately approved dependency contract that preserves the phase separation.
