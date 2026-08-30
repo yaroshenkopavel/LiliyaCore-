@@ -4,41 +4,26 @@ import java.time.Instant
 
 @JvmInline
 value class DeviceKeyId(val value: String) {
-    init {
-        require(value.isNotBlank()) { "device key id must not be blank" }
-    }
-
+    init { require(value.isNotBlank()) { "device key id must not be blank" } }
     override fun toString(): String = value
 }
 
 @JvmInline
 value class DeviceKeyGeneration(val value: Long) {
-    init {
-        require(value > 0L) { "device key generation must be positive" }
-    }
-
+    init { require(value > 0L) { "device key generation must be positive" } }
     override fun toString(): String = value.toString()
 }
 
 @JvmInline
 value class DeviceKeyAlgorithm(val value: String) {
-    init {
-        require(value.isNotBlank()) { "device key algorithm must not be blank" }
-    }
-
+    init { require(value.isNotBlank()) { "device key algorithm must not be blank" } }
     override fun toString(): String = value
 }
 
-/**
- * Opaque platform key-instance evidence used to distinguish replacement under a reused alias.
- * It is structural identity evidence, never permission or raw key material.
- */
+/** Opaque platform key-instance evidence. It is structural identity evidence, never permission. */
 @JvmInline
 value class DeviceKeyPlatformReference(val value: String) {
-    init {
-        require(value.isNotBlank()) { "device key platform reference must not be blank" }
-    }
-
+    init { require(value.isNotBlank()) { "device key platform reference must not be blank" } }
     override fun toString(): String = "DeviceKeyPlatformReference([redacted])"
 }
 
@@ -57,16 +42,14 @@ enum class DeviceKeyCapability {
     UNWRAP_WRAPPED_KEY
 }
 
-enum class DeviceKeyFallbackPolicy {
-    FAIL_CLOSED,
-    ALLOW_TRUSTED_ENVIRONMENT,
-    ALLOW_SOFTWARE
-}
-
+/**
+ * Requested security level is a minimum accepted level for this exact operation.
+ * A lower level is never selected by a fallback flag. If a stronger request is unavailable,
+ * the caller must issue a new explicit request for the lower level.
+ */
 data class DeviceKeyProfile(
     val algorithm: DeviceKeyAlgorithm,
     val requestedSecurityLevel: DeviceKeySecurityLevel,
-    val fallbackPolicy: DeviceKeyFallbackPolicy = DeviceKeyFallbackPolicy.FAIL_CLOSED,
     val capabilities: Set<DeviceKeyCapability>
 ) {
     init {
@@ -115,6 +98,7 @@ enum class DeviceKeyFailureCategory {
     KEY_MISSING,
     KEY_INVALIDATED,
     KEY_TEMPORARILY_UNAVAILABLE,
+    MALFORMED_METADATA,
     PLATFORM_REJECTED,
     AUTHENTICATION_REQUIRED,
     STALE_OWNERSHIP,
