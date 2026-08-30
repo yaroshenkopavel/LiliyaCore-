@@ -40,7 +40,9 @@ Autonomy is a governed initiative layer around this chain. Agents add exact acto
 
 `Decision → non-executing OrchestrationIntent → exact live preflight → trusted action policy → fresh Authority → frozen Execution → fresh Authority → executor`
 
-Mandatory invariant: `Decision != Orchestration Intent != Authorization != Execution`.
+Mandatory invariant:
+
+`Decision != Orchestration Intent != Authorization != Execution`.
 
 ## Autonomy — FROZEN
 
@@ -50,7 +52,9 @@ Controlled path:
 
 `exact live AutonomyProposal → bounded exact attempt → Deliberation → Planning → Reasoning → Decision → OrchestrationIntent → final Autonomy guard → Controlled Orchestration → fresh Authority → Execution`
 
-Mandatory invariant: `Autonomy != Deliberation != Planning != Reasoning != Decision != Orchestration Intent != Authority != Execution`.
+Mandatory invariant:
+
+`Autonomy != Deliberation != Planning != Reasoning != Decision != Orchestration Intent != Authority != Execution`.
 
 ## Agents / Initiative / Lifecycle — FROZEN
 
@@ -66,7 +70,9 @@ Lifecycle:
 
 `exact AgentId + AgentGeneration → explicit ACTIVE / CANCELLED / STOPPED state`
 
-Mandatory invariant: `Agent Identity != Agent Lifecycle != Autonomy != Authority != Execution`.
+Mandatory invariant:
+
+`Agent Identity != Agent Lifecycle != Autonomy != Authority != Execution`.
 
 ## Agent Delegation / Controlled Delegation — FROZEN
 
@@ -116,9 +122,9 @@ Canonical contract: `AGENT_COORDINATION_V0_1_FREEZE.md`.
 
 ## Controlled Agent Coordination v0.1 — IN PROGRESS
 
-Implemented governed path through Planning:
+Implemented governed path through Reasoning:
 
-`exact Coordination ID+generation → fresh exact participant ACTIVE preflight → exact coordination↔Autonomy work binding → compensated participant initiatives → transactional bounded attempt claims → exact coordination↔attempt binding → compensated deliberation transaction → exact live deliberation preflight → ordinary frozen Planning install → post-write governance revalidation → exact compensation on stale governance`
+`exact Coordination ID+generation → fresh exact participant ACTIVE preflight → exact coordination↔Autonomy work binding → compensated multi-participant initiative → transactional bounded attempt claims → exact coordination↔attempt binding → compensated exact deliberation requests → exact live deliberation preflight → ordinary frozen Planning install → exact Planning provenance/generation validation → ordinary frozen Reasoning install → post-write governance/Planning revalidation → exact Reasoning compensation on stale governance`
 
 Current mandatory invariants:
 
@@ -130,12 +136,14 @@ Current mandatory invariants:
 
 `Coordinated Deliberation != Planning != Reasoning != Decision != Permission != Authority != Execution`
 
-`Coordinated Planning != Reasoning != Decision != Permission != Authority != Execution`.
+`Coordinated Planning != Reasoning != Decision != Permission != Authority != Execution`
 
-Hard guarantees implemented through PR #177:
+`Coordinated Reasoning != Decision != Permission != Authority != Execution`.
 
-- exact coordination generation and every exact participant Agent generation are freshly live-validated;
-- every participant lifecycle must be exact ACTIVE at controlled preflight boundaries;
+Hard guarantees implemented through the coordinated Reasoning bridge:
+
+- exact coordination generation and every exact participant Agent generation are freshly live-validated at controlled preflight boundaries;
+- every participant lifecycle must be exact ACTIVE where required by coordinated readiness;
 - coordination work is bound to a complete deterministic participant→Autonomy set;
 - one exact Autonomy generation cannot be reused across coordination work sets;
 - multi-participant initiative creation is compensated if a later participant or post-write governance check fails;
@@ -144,34 +152,48 @@ Hard guarantees implemented through PR #177:
 - exact deliberation requests are created from committed attempt provenance and compensated as one transaction;
 - live deliberation preflight re-derives the exact Autonomy attempt and rechecks the exact coordination-attempt binding;
 - coordinated Planning writes only ordinary frozen Planning data;
-- coordinated Planning performs a fresh preflight before the write and a fresh preflight after the write;
-- if governance changes after Planning install, the exact newly-created Planning generation is removed;
-- if exact compensation cannot restore the invariant, the bridge returns explicit failure and emits CRITICAL observability;
-- private coordination purpose, deliberation objective, Planning goal and Planning steps are not bridge-observable content;
+- coordinated Planning performs fresh preflight before and after the write and compensates its exact newly-created generation on stale governance;
+- coordinated Reasoning writes only ordinary frozen Reasoning data;
+- Reasoning requires the exact live Planning generation named by the request;
+- Planning provenance must match the exact coordinated deliberation readiness before Reasoning is installed;
+- coordinated readiness is freshly checked again after the Reasoning write;
+- the same exact Planning generation/provenance is revalidated after the Reasoning write;
+- post-write Planning removal/replacement, readiness change or provenance change compensates the exact newly-created Reasoning generation;
+- stale Reasoning ownership cannot remove a newer replacement generation;
+- if exact compensation cannot remove the same still-live generation, the bridge returns explicit `Failed` and emits CRITICAL observability;
+- private coordination purpose, deliberation objective, Planning goal/steps and Reasoning premise/analysis/conclusion content are not coordination-bridge observable content;
 - no scheduler, voting/consensus, implicit permission, Authority or Execution is introduced by any implemented coordination slice.
 
 ### Next controlled cognitive slice
 
 Preferred next stage:
 
-`exact live coordinated deliberation + exact live coordinated Planning generation → ordinary frozen Reasoning data`
+`exact live coordinated Reasoning generation → ordinary frozen Decision data`
 
 Required design constraints:
 
-- use fresh coordinated deliberation preflight immediately before Reasoning installation;
-- require exact live Planning generation that belongs to the same structural coordination/deliberation provenance;
-- install through ordinary frozen Reasoning composition rather than creating a coordination-specific reasoning authority;
-- revalidate coordination/deliberation/Planning provenance immediately after the write;
-- compensate the exact newly-created Reasoning generation on a post-write governance race;
+- use fresh coordinated governance/deliberation preflight immediately before Decision installation;
+- require an exact live Reasoning generation that belongs to the same structural coordinated Planning/deliberation provenance;
+- install through ordinary frozen Decision composition rather than creating a coordination-specific decision authority;
+- revalidate coordination/deliberation/Reasoning provenance immediately after the write;
+- compensate the exact newly-created Decision generation on a post-write governance race;
 - treat compensation failure as explicit failure, never successful rejection;
 - keep private cognitive text outside bridge observability;
-- expose no Decision, Orchestration, permission, Authority, scheduler or Execution semantics.
+- expose no Orchestration, permission, Authority, scheduler or Execution semantics.
 
 ### Known cross-cutting debt, not a bridge-local blocker
 
 Structural provenance strings/source references are evidence and consistency markers, not cryptographic or capability-authenticity tokens. A caller being able to construct the same string is not equivalent to gaining Authority or Execution; downstream trusted layers must continue to combine provenance with fresh exact live evidence.
 
 Correlation is also fragmented across some compound cognitive operations because frozen subsystem compositions may create their own operation roots. This is architectural debt to address deliberately later; do not silently introduce unrelated hidden context or widen one cognitive bridge PR into a cross-cutting correlation redesign.
+
+## Repository continuity
+
+Active repository: `yaroshenkopavel/LiliyaCore-`.
+
+The prior `Vikrot123/LiliyaCore` repository is migration history/backup only. GitHub service metadata identities such as old PR numbers are historical references and do not become equivalent new-repository PR identities after Git migration.
+
+Active source of truth is current `main`, its executable contracts and current CI evidence.
 
 ## Update System v0.1 — ARCHITECTURE CONTRACT
 
