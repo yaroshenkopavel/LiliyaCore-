@@ -35,17 +35,20 @@ class DeviceKeyProofContractTest {
 
     private fun state(
         id: String = "device-main",
-        capabilities: Set<DeviceKeyCapability> = setOf(DeviceKeyCapability.SIGN_CHALLENGE)
+        capabilities: Set<DeviceKeyCapability> = setOf(DeviceKeyCapability.SIGN_CHALLENGE),
+        platformReference: String = "platform-ref-main"
     ) = DeviceKeyState(
         id = DeviceKeyId(id),
         algorithm = algorithm,
         securityLevel = DeviceKeySecurityLevel.STRONGBOX,
         capabilities = capabilities,
-        createdAt = createdAt
+        createdAt = createdAt,
+        platformReference = DeviceKeyPlatformReference(platformReference)
     )
 
     private class RecordingSigner(
-        private val result: DeviceKeyOperationResult<DeviceKeyProofSignature>
+        private val result: DeviceKeyOperationResult<DeviceKeyProofSignature>,
+        private val beforeReturn: (() -> Unit)? = null
     ) : DeviceKeyProofSigner {
         var calls = 0
         var lastState: DeviceKeyState? = null
@@ -56,6 +59,7 @@ class DeviceKeyProofContractTest {
         ): DeviceKeyOperationResult<DeviceKeyProofSignature> {
             calls += 1
             lastState = expectedState
+            beforeReturn?.invoke()
             return result
         }
     }
@@ -68,7 +72,7 @@ class DeviceKeyProofContractTest {
         ).ownership
         assertTrue(first.remove())
         val replacement = assertIs<DeviceKeyRegisterResult.Registered>(
-            composition.register(state())
+            composition.register(state(platformReference = "platform-ref-replacement"))
         ).ownership
         val signer = RecordingSigner(
             DeviceKeyOperationResult.Success(DeviceKeyProofSignature(byteArrayOf(1, 2, 3)))
@@ -88,6 +92,37 @@ class DeviceKeyProofContractTest {
         )
         assertEquals(0, signer.calls)
         assertEquals(replacement.generation, composition.inspect(replacement.state.id)?.generation)
+    }
+
+    @Test
+    fun proof_rechecks_exact_local_generation_after_signing_before_publication() {
+        val composition = DeviceKeyComposition(foundation())
+        val ownership = assertIs<DeviceKeyRegisterResult.Registered>(
+            composition.register(state())
+        ).ownership
+        val signer = RecordingSigner(
+            result = DeviceKeyOperationResult.Success(DeviceKeyProofSignature(byteArrayOf(4, 4))),
+            beforeReturn = {
+                assertTrue(ownership.remove())
+                assertIs<DeviceKeyRegisterResult.Registered>(
+                    composition.register(state(platformReference = "platform-ref-new"))
+                )
+            }
+        )
+        val service = DeviceKeyProofService(composition, signer)
+
+        val result = service.provePossession(
+            DeviceKeyProofRequest(
+                key = DeviceKeyReference(ownership.state.id, ownership.generation),
+                challenge = DeviceKeyChallenge(byteArrayOf(3))
+            )
+        )
+
+        assertEquals(
+            DeviceKeyFailureCategory.STALE_OWNERSHIP,
+            assertIs<DeviceKeyOperationResult.Rejected>(result).category
+        )
+        assertEquals(1, signer.calls)
     }
 
     @Test
@@ -120,6 +155,37 @@ class DeviceKeyProofContractTest {
     }
 
     @Test
+    fun proof_rejects_state_without_exact_platform_instance_reference() {
+        val composition = DeviceKeyComposition(foundation())
+        val withoutPlatformReference = DeviceKeyState(
+            id = DeviceKeyId("legacy-key"),
+            algorithm = algorithm,
+            securityLevel = DeviceKeySecurityLevel.STRONGBOX,
+            capabilities = setOf(DeviceKeyCapability.SIGN_CHALLENGE),
+            createdAt = createdAt
+        )
+        val ownership = assertIs<DeviceKeyRegisterResult.Registered>(
+            composition.register(withoutPlatformReference)
+        ).ownership
+        val signer = RecordingSigner(
+            DeviceKeyOperationResult.Success(DeviceKeyProofSignature(byteArrayOf(1)))
+        )
+
+        val result = DeviceKeyProofService(composition, signer).provePossession(
+            DeviceKeyProofRequest(
+                DeviceKeyReference(ownership.state.id, ownership.generation),
+                DeviceKeyChallenge(byteArrayOf(2))
+            )
+        )
+
+        assertEquals(
+            DeviceKeyFailureCategory.STALE_OWNERSHIP,
+            assertIs<DeviceKeyOperationResult.Rejected>(result).category
+        )
+        assertEquals(0, signer.calls)
+    }
+
+    @Test
     fun missing_sign_capability_fails_before_signing() {
         val composition = DeviceKeyComposition(foundation())
         val ownership = assertIs<DeviceKeyRegisterResult.Registered>(
@@ -145,16 +211,19 @@ class DeviceKeyProofContractTest {
     }
 
     @Test
-    fun challenge_signature_and_enrollment_rendering_do_not_expose_raw_material() {
+    fun challenge_signature_platform_reference_and_enrollment_rendering_do_not_expose_raw_material() {
         val challengeSecret = "CHALLENGE-PRIVATE"
         val signatureSecret = "SIGNATURE-PRIVATE"
+        val platformSecret = "PLATFORM-INSTANCE-PRIVATE"
         val enrollmentSecret = "ENROLLMENT-OPAQUE-PRIVATE"
         val challenge = DeviceKeyChallenge(challengeSecret.encodeToByteArray())
         val signature = DeviceKeyProofSignature(signatureSecret.encodeToByteArray())
+        val platformReference = DeviceKeyPlatformReference(platformSecret)
         val enrollment = DeviceEnrollmentReference(enrollmentSecret)
 
         assertFalse(challengeSecret in challenge.toString())
         assertFalse(signatureSecret in signature.toString())
+        assertFalse(platformSecret in platformReference.toString())
         assertFalse(enrollmentSecret in enrollment.toString())
         assertTrue("bytes=" in challenge.toString())
         assertTrue("bytes=" in signature.toString())
