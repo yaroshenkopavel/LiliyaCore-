@@ -1,11 +1,13 @@
 package pro.liliya.core.devicekey
 
 import java.time.Instant
+import java.util.Collections
+import java.util.LinkedHashSet
 
 @JvmInline
 value class DeviceKeyId(val value: String) {
     init { require(value.isNotBlank()) { "device key id must not be blank" } }
-    override fun toString(): String = value
+    override fun toString(): String = "DeviceKeyId([redacted])"
 }
 
 @JvmInline
@@ -46,18 +48,39 @@ enum class DeviceKeyCapability {
  * Requested security level is a minimum accepted level for this exact operation.
  * A lower level is never selected by a fallback flag. If a stronger request is unavailable,
  * the caller must issue a new explicit request for the lower level.
+ * Capability input is detached on construction so caller mutation cannot change policy later.
  */
-data class DeviceKeyProfile(
+class DeviceKeyProfile(
     val algorithm: DeviceKeyAlgorithm,
     val requestedSecurityLevel: DeviceKeySecurityLevel,
-    val capabilities: Set<DeviceKeyCapability>
+    capabilities: Set<DeviceKeyCapability>
 ) {
+    val capabilities: Set<DeviceKeyCapability> =
+        Collections.unmodifiableSet(LinkedHashSet(capabilities))
+
     init {
         require(requestedSecurityLevel != DeviceKeySecurityLevel.UNKNOWN) {
             "requested device key security level must be explicit"
         }
-        require(capabilities.isNotEmpty()) { "device key capabilities must not be empty" }
+        require(this.capabilities.isNotEmpty()) { "device key capabilities must not be empty" }
     }
+
+    override fun equals(other: Any?): Boolean =
+        other is DeviceKeyProfile &&
+            algorithm == other.algorithm &&
+            requestedSecurityLevel == other.requestedSecurityLevel &&
+            capabilities == other.capabilities
+
+    override fun hashCode(): Int {
+        var result = algorithm.hashCode()
+        result = 31 * result + requestedSecurityLevel.hashCode()
+        result = 31 * result + capabilities.hashCode()
+        return result
+    }
+
+    override fun toString(): String =
+        "DeviceKeyProfile(algorithm=$algorithm, requestedSecurityLevel=$requestedSecurityLevel, " +
+            "capabilities=${capabilities.sortedBy { it.name }})"
 }
 
 data class DeviceKeyCreationRequest(
