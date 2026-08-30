@@ -45,9 +45,11 @@ class PersistentRecordStoreReadinessContractTest {
         assertTrue(Modifier.isPublic(PersistentBackendLoadResult::class.java.modifiers))
         assertTrue(Modifier.isPublic(PersistentBackendCommitResult::class.java.modifiers))
 
+        // PersistentStoreId is a Kotlin value class, so JVM method names may be
+        // mangled while the source-level SPI remains public and implementable.
         val methods = PersistentRecordBackend::class.java.methods.map { it.name }.toSet()
-        assertTrue("load" in methods)
-        assertTrue("commit" in methods)
+        assertTrue(methods.any { it == "load" || it.startsWith("load-") })
+        assertTrue(methods.any { it == "commit" || it.startsWith("commit-") })
     }
 
     @Test
