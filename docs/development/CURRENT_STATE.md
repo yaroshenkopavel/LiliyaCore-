@@ -4,13 +4,17 @@ Last journal update: 2026-08-30
 
 ## Current verified baseline
 
-Current verified code `main`: `78d06f0226105314a45f01833a12029fdabe8a5b`.
+Current verified code `main`: `824306e18990c0cd37fcc95d1c69a1bbeb99f914`.
 
-Latest verified milestones:
+Verification:
 
-- PR #163 `Controlled Agent Delegation v0.1: Freeze and Journal Checkpoint` — Controlled Agent Delegation fully frozen;
-- PR #164 `Agent Coordination v0.1: Structural Coordination Foundation` — exact head `411fc9572b18dcf7dac71fc5a17661087f1ec099`, Core CI #1035 GREEN;
-- PR #165 `Agent Coordination v0.1: Composition Ownership and Readiness` — exact head `3c400f34968e58eaef01929378ed0ef9c3ced32e`, Core CI #1037 GREEN, merge/current verified code main `78d06f0226105314a45f01833a12029fdabe8a5b`.
+- PR #177 `Controlled Agent Coordination v0.1: Planning Bridge` merged from exact head `6d2e707f280a8704e96c2d25698b64edc75e12a8`;
+- exact-head PR Core CI run #1116 GREEN after GitHub billing/spending-limit gating was corrected;
+- merge/main Core CI run #1117 GREEN on `824306e18990c0cd37fcc95d1c69a1bbeb99f914`;
+- local Termux targeted `ControlledAgentCoordinationPlanningBridgeContractTest` GREEN on the exact PR head;
+- local Termux full `gradle :core:test --console=plain` GREEN on the exact PR head.
+
+The earlier Actions failures for run #1116 were infrastructure/billing-gated before runner assignment, not code/test failures. GitHub check-run annotation stated that the job was not started because recent account payments had failed or the spending limit needed to be increased. After a payment method and a $1 Actions budget were configured, the same exact-head run received a runner and passed.
 
 ## Frozen subsystem status
 
@@ -38,7 +42,9 @@ The following v0.1 boundaries are frozen:
 - Controlled Agent Lifecycle;
 - Agent Delegation Foundation;
 - Controlled Agent Delegation;
-- Agent Coordination Foundation **pending this documentation-checkpoint merge**.
+- Agent Coordination Foundation.
+
+Controlled Agent Coordination v0.1 is **in progress** and is not yet frozen.
 
 Update System v0.1 and Security & Licensing v0.1 remain architecture contracts, not implemented runtime subsystems.
 
@@ -52,72 +58,82 @@ Delegated Agent path:
 
 `exact Delegation → fresh parent/child ACTIVE preflight → compensated child Autonomy + exact binding → delegated attempt gate → frozen Autonomy cognitive chain → final delegated execution guard → frozen Agent execution guard → fresh Authority → Execution`
 
-Coordination is currently structural-only and sits above these governed paths without creating work or permission.
+Controlled Coordination path implemented so far:
+
+`exact live Coordination → exact participant ACTIVE preflight → exact coordination↔Autonomy work binding → compensated multi-participant initiative → transactional bounded attempts → exact coordination↔attempt binding → compensated exact deliberation requests → exact live deliberation preflight → ordinary frozen Planning install with post-write revalidation/compensation`
 
 Mandatory invariants:
 
 `Agent Identity != Agent Lifecycle != Delegation != Coordination != Autonomy != Authority != Execution`
 
-`Delegation != Initiative != Attempt Evidence != Permission != Authority != Execution`
+`Coordination Readiness != Work != Permission != Authority != Execution`
 
-`Coordination != Capability != Authority != Execution`
+`Coordination Attempt Transaction != Attempt Binding != Permission != Authority != Execution`
 
-`Decision != Orchestration Intent != Authorization != Execution`
+`Coordinated Deliberation != Planning != Reasoning != Decision != Permission != Authority != Execution`
 
-## Agent Coordination Foundation v0.1
+`Coordinated Planning != Reasoning != Decision != Permission != Authority != Execution`
 
-Frozen structural direction:
+## Controlled Agent Coordination v0.1 progress
 
-`Coordination identity + exact participant Agent generations + private purpose + createdAt → AgentCoordinationRecord → exact AgentCoordinationGeneration ownership`
+Verified merged slices:
 
-Key guarantees:
+- PR #167 — Exact Live Preflight;
+- PR #168 — Exact Coordination Work Binding;
+- PR #169 — Work Binding Ownership;
+- PR #170 — Compensated Coordination Initiative;
+- PR #171 — Transactional Attempt Gate;
+- PR #172 — Exact Attempt Binding Foundation;
+- PR #173 — Attempt Binding Ownership;
+- PR #174 — Commit Attempt Transaction Binding;
+- PR #175 — Compensated Deliberation Transaction;
+- PR #176 — Deliberation Live Preflight;
+- PR #177 — Planning Bridge.
 
-- exact coordination identity and positive exact generation;
-- at least two exact participant references are required;
-- each participant is exact `(AgentId, AgentGeneration)` data;
-- duplicate exact references reject;
-- multiple generations of the same Agent ID in one coordination reject;
-- participant ordering is deterministic;
-- private coordination purpose is redacted from rendering/lifecycle observability;
-- duplicate IDs reject without replacement;
-- stale/ABA ownership cannot remove replacement;
-- removal is one-shot;
-- same-ID concurrent registration has one winner per store;
-- private store remains behind `AgentCoordinationComposition`;
-- same coordination ID is isolated across compositions;
-- snapshots are deterministic detached views;
-- install→remove correlation is root→child;
-- structural composition has no Agent registry/lifecycle/delegation dependency;
-- coordination data has no Capability/Authority/permission/Execution/scheduler/fan-out/voting/consensus/delegation/Autonomy/tool semantics;
-- no live participant validation or multi-agent runtime behavior exists in the foundation.
+Current hard guarantees include:
 
-Canonical contract: `AGENT_COORDINATION_V0_1_FREEZE.md`.
+- exact coordination and participant-generation provenance;
+- fresh exact participant/lifecycle validation at controlled boundaries;
+- atomic exact work and attempt bindings with stale/ABA-safe ownership;
+- compensated multi-store creation when governance changes after writes;
+- explicit `Failed` plus CRITICAL observability when compensation cannot restore the invariant;
+- bounded attempts remain owned by frozen Agent/Autonomy gates;
+- exact deliberation is derived from committed coordination-attempt provenance;
+- coordinated Planning installs only ordinary frozen Planning data;
+- Planning is revalidated after its write and the exact created generation is compensated if governance changes;
+- private coordination purpose, deliberation objective, planning goal and planning steps remain outside coordination bridge observability;
+- no scheduler, voting/consensus, implicit permission, Authority or Execution has been introduced by these slices.
 
 ## Current next action
 
-The next architecture stage is **Controlled Agent Coordination v0.1**.
+Continue Controlled Agent Coordination v0.1 with the next cognitive bridge after Planning.
 
-First direction:
+Preferred next slice:
 
-`exact Coordination ID+generation → fresh coordination lookup → fresh exact participant Agent-generation validation → fresh ACTIVE lifecycle validation → structural readiness evidence`
+`exact live coordinated deliberation + exact live coordinated Planning generation → ordinary frozen Reasoning data`
 
-The first controlled slice must remain evidence-only.
+It must preserve the same fail-closed pattern:
 
-Required guarantees:
+- fresh coordinated deliberation preflight immediately before the Reasoning write;
+- exact Planning generation/provenance validation;
+- ordinary frozen Reasoning install only;
+- fresh coordinated/governance validation after the write;
+- exact compensation of the newly-created Reasoning generation if the post-write guard fails;
+- explicit failure if compensation cannot restore the invariant;
+- structural provenance only, with private cognitive content redacted from bridge observability;
+- no Decision, Orchestration, permission, Authority, scheduler or Execution semantics.
 
-- exact coordination generation is live-validated;
-- every participant exact Agent ID+generation is live-validated;
-- every participant must have exact ACTIVE lifecycle;
-- removed/stale/replaced/CANCELLED/STOPPED participant fails closed;
-- readiness evidence is structural only and never capability/permission evidence;
-- private coordination purpose remains outside readiness evidence and observability;
-- no delegation creation, Autonomy creation, attempt claim, scheduler, fan-out, voting/consensus, Authority or Execution;
-- no multi-agent runtime until controlled coordination governance is independently implemented, audited and frozen.
+Two known cross-cutting nuances remain backlog rather than blockers for this slice:
+
+1. structural provenance strings are consistency/evidence markers, not cryptographic capability tokens;
+2. compound controlled-cognition operations do not yet share one correlation root across every frozen subsystem boundary.
+
+Do not redesign those cross-cutting concerns inside one bridge PR unless a concrete correctness/security defect requires it.
 
 Persistent encrypted storage, Android integration, Update runtime and Security/Licensing runtime remain separate later stages.
 
 ## Workflow
 
-`feature branch → minimal coherent commits → PR → exact-head Core CI GREEN → architecture/security/privacy/readiness audit → exact-head merge with expected head SHA → journal checkpoint`
+`feature branch → minimal coherent commits → PR → exact-head Core CI GREEN → architecture/security/privacy/readiness audit → exact-head merge with expected head SHA → merge/main Core CI GREEN → journal checkpoint`
 
-Risky boundaries use smaller slices and deeper audits; lightweight documentation/structural repetition may proceed faster without bypassing CI or exact-head merge gates.
+Risky boundaries use smaller slices and deeper audits; documentation must be updated from GitHub/source truth rather than chat history.
