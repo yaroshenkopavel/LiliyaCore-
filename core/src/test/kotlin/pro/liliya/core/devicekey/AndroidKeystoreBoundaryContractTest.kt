@@ -31,6 +31,12 @@ class AndroidKeystoreBoundaryContractTest {
             inspectResult ?: inspectedDescriptor?.let { AndroidKeystorePlatformResult.Success(it) }
                 ?: AndroidKeystorePlatformResult.Rejected(DeviceKeyFailureCategory.KEY_MISSING)
 
+        override fun signChallenge(
+            id: DeviceKeyId,
+            challenge: DeviceKeyChallenge
+        ): AndroidKeystorePlatformResult<AndroidKeystoreSignatureDescriptor> =
+            AndroidKeystorePlatformResult.Rejected(DeviceKeyFailureCategory.UNSUPPORTED_PROFILE)
+
         override fun delete(id: DeviceKeyId): AndroidKeystorePlatformResult<Unit> {
             deletedIds += id
             return deleteResult
