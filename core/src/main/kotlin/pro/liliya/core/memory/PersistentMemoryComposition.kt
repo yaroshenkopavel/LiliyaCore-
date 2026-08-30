@@ -18,20 +18,29 @@ interface PersistentMemoryOwnership {
 sealed interface PersistentMemoryRememberResult {
     data class Remembered(val ownership: PersistentMemoryOwnership) : PersistentMemoryRememberResult
     data class Rejected(val reason: String) : PersistentMemoryRememberResult
-    data class Failed(val reason: String, val throwable: Throwable? = null) : PersistentMemoryRememberResult
+    data class Failed(val reason: String, val throwable: Throwable? = null) : PersistentMemoryRememberResult {
+        override fun toString(): String =
+            "Failed(reason=$reason, throwable=${throwable?.javaClass?.name ?: "null"})"
+    }
 }
 
 sealed interface PersistentMemoryMutationResult {
     data object Committed : PersistentMemoryMutationResult
     data class Rejected(val reason: String) : PersistentMemoryMutationResult
-    data class Failed(val reason: String, val throwable: Throwable? = null) : PersistentMemoryMutationResult
+    data class Failed(val reason: String, val throwable: Throwable? = null) : PersistentMemoryMutationResult {
+        override fun toString(): String =
+            "Failed(reason=$reason, throwable=${throwable?.javaClass?.name ?: "null"})"
+    }
 }
 
 sealed interface PersistentMemoryOpenResult {
     data class Opened(val composition: PersistentMemoryComposition) : PersistentMemoryOpenResult
     data object Corrupt : PersistentMemoryOpenResult
     data class Incompatible(val reason: String) : PersistentMemoryOpenResult
-    data class Failed(val reason: String, val throwable: Throwable? = null) : PersistentMemoryOpenResult
+    data class Failed(val reason: String, val throwable: Throwable? = null) : PersistentMemoryOpenResult {
+        override fun toString(): String =
+            "Failed(reason=$reason, throwable=${throwable?.javaClass?.name ?: "null"})"
+    }
     data class RestorationFailed(val reason: String) : PersistentMemoryOpenResult
 }
 
@@ -40,13 +49,16 @@ class PersistentMemoryComposition private constructor(
     private val persistentStore: PersistentRecordStore,
     private val memoryStore: MemoryStore
 ) {
+    @Synchronized
     fun remember(record: MemoryRecord): PersistentMemoryRememberResult {
         val persistentRecord = MemoryPersistentRecordCodec.encode(record)
         return when (val installed = persistentStore.install(persistentRecord)) {
             is PersistentInstallResult.Installed -> installCommittedMemory(record, installed.ownership)
             is PersistentInstallResult.Rejected -> PersistentMemoryRememberResult.Rejected(installed.reason)
-            is PersistentInstallResult.Failed ->
-                PersistentMemoryRememberResult.Failed(installed.reason, installed.throwable)
+            is PersistentInstallResult.Failed -> PersistentMemoryRememberResult.Failed(
+                reason = "persistent memory durable install failed",
+                throwable = installed.throwable
+            )
         }
     }
 
@@ -107,8 +119,8 @@ class PersistentMemoryComposition private constructor(
         override val record: MemoryRecord = localRegistration.record
         override val generation: MemoryGeneration = localRegistration.generation
 
-        override fun remove(): PersistentMemoryMutationResult {
-            return when (val durable = persistentOwnership.remove()) {
+        override fun remove(): PersistentMemoryMutationResult = synchronized(this@PersistentMemoryComposition) {
+            when (val durable = persistentOwnership.remove()) {
                 PersistentMutationResult.Committed -> {
                     val removedLocally = localRegistration.remove(
                         foundation.childContext(
@@ -133,7 +145,10 @@ class PersistentMemoryComposition private constructor(
                     PersistentMemoryMutationResult.Rejected(durable.reason)
 
                 is PersistentMutationResult.Failed ->
-                    PersistentMemoryMutationResult.Failed(durable.reason, durable.throwable)
+                    PersistentMemoryMutationResult.Failed(
+                        reason = "persistent memory durable removal failed",
+                        throwable = durable.throwable
+                    )
             }
         }
     }
@@ -162,7 +177,10 @@ class PersistentMemoryComposition private constructor(
             is PersistentStoreOpenResult.Incompatible ->
                 PersistentMemoryOpenResult.Incompatible(opened.reason)
             is PersistentStoreOpenResult.Failed ->
-                PersistentMemoryOpenResult.Failed(opened.reason, opened.throwable)
+                PersistentMemoryOpenResult.Failed(
+                    reason = "persistent memory backend open failed",
+                    throwable = opened.throwable
+                )
         }
 
         private fun restoreOpened(

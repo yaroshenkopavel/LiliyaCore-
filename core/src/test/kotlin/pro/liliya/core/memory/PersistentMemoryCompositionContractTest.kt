@@ -1,6 +1,9 @@
 package pro.liliya.core.memory
 
 import java.time.Instant
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -16,7 +19,15 @@ import pro.liliya.core.logging.InMemoryLogWriter
 import pro.liliya.core.logging.StructuredLogger
 import pro.liliya.core.observability.LoggerProvider
 import pro.liliya.core.persistence.InMemoryPersistentRecordBackend
+import pro.liliya.core.persistence.PersistentEntityId
+import pro.liliya.core.persistence.PersistentInstallResult
+import pro.liliya.core.persistence.PersistentPayload
+import pro.liliya.core.persistence.PersistentRecord
+import pro.liliya.core.persistence.PersistentRecordStore
+import pro.liliya.core.persistence.PersistentSchemaId
+import pro.liliya.core.persistence.PersistentSchemaVersion
 import pro.liliya.core.persistence.PersistentStoreId
+import pro.liliya.core.persistence.PersistentStoreOpenResult
 
 class PersistentMemoryCompositionContractTest {
     private fun foundation(): FoundationComposition {
@@ -150,5 +161,131 @@ class PersistentMemoryCompositionContractTest {
         val reopened = open(backend)
         assertEquals(replacementRecord, reopened.find(replacementRecord.id))
         assertEquals(replacement.generation, reopened.inspect(replacementRecord.id)?.generation)
+    }
+
+    @Test
+    fun concurrent_distinct_remembers_on_one_composition_commit_without_local_generation_races() {
+        val backend = InMemoryPersistentRecordBackend()
+        val composition = open(backend)
+        val attempts = 16
+        val executor = Executors.newFixedThreadPool(attempts)
+        val ready = CountDownLatch(attempts)
+        val start = CountDownLatch(1)
+        val done = CountDownLatch(attempts)
+        val remembered = AtomicInteger(0)
+
+        try {
+            repeat(attempts) { index ->
+                executor.submit {
+                    try {
+                        ready.countDown()
+                        start.await()
+                        if (
+                            composition.remember(
+                                record(
+                                    id = "memory-$index",
+                                    content = "private-$index",
+                                    createdAt = Instant.parse("2026-08-30T14:25:00Z").plusSeconds(index.toLong())
+                                )
+                            ) is PersistentMemoryRememberResult.Remembered
+                        ) {
+                            remembered.incrementAndGet()
+                        }
+                    } finally {
+                        done.countDown()
+                    }
+                }
+            }
+
+            assertTrue(ready.await(5, TimeUnit.SECONDS))
+            start.countDown()
+            assertTrue(done.await(10, TimeUnit.SECONDS))
+            assertEquals(attempts, remembered.get())
+            assertEquals(attempts, composition.snapshotEntries().size)
+            assertEquals(
+                (1L..attempts.toLong()).toSet(),
+                composition.snapshotEntries().map { it.generation.value }.toSet()
+            )
+
+            val reopened = open(backend)
+            assertEquals(attempts, reopened.snapshotEntries().size)
+            assertEquals(
+                composition.snapshotEntries(),
+                reopened.snapshotEntries()
+            )
+        } finally {
+            start.countDown()
+            executor.shutdownNow()
+        }
+    }
+
+    @Test
+    fun shared_backend_stale_composition_conflict_does_not_publish_memory_locally() {
+        val backend = InMemoryPersistentRecordBackend()
+        val first = open(backend)
+        val stale = open(backend)
+        val committed = record(id = "committed")
+        val rejected = record(id = "rejected")
+
+        assertIs<PersistentMemoryRememberResult.Remembered>(first.remember(committed))
+        assertIs<PersistentMemoryRememberResult.Rejected>(stale.remember(rejected))
+        assertFalse(stale.contains(rejected.id))
+
+        val reopened = open(backend)
+        assertEquals(committed, reopened.find(committed.id))
+        assertFalse(reopened.contains(rejected.id))
+    }
+
+    @Test
+    fun corrupt_payload_after_valid_record_fails_reopen_without_partial_composition() {
+        val backend = InMemoryPersistentRecordBackend()
+        val valid = open(backend)
+        val validRecord = record(id = "valid")
+        assertIs<PersistentMemoryRememberResult.Remembered>(valid.remember(validRecord))
+
+        val rawStore = assertIs<PersistentStoreOpenResult.Opened>(
+            PersistentRecordStore.open(
+                foundation = foundation(),
+                storeId = PersistentStoreId("memory-store"),
+                backend = backend
+            )
+        ).store
+        assertIs<PersistentInstallResult.Installed>(
+            rawStore.install(
+                PersistentRecord(
+                    id = PersistentEntityId("corrupt"),
+                    schemaId = PersistentSchemaId("memory-record"),
+                    schemaVersion = PersistentSchemaVersion(1),
+                    payload = PersistentPayload(byteArrayOf(1, 2, 3)),
+                    createdAt = Instant.parse("2026-08-30T14:26:00Z")
+                )
+            )
+        )
+
+        assertIs<PersistentMemoryOpenResult.Corrupt>(
+            PersistentMemoryComposition.open(
+                foundation = foundation(),
+                storeId = PersistentStoreId("memory-store"),
+                backend = backend
+            )
+        )
+    }
+
+    @Test
+    fun failure_rendering_redacts_backend_throwable_message_and_memory_content() {
+        val backend = InMemoryPersistentRecordBackend()
+        val composition = open(backend)
+        val privateContent = "ultra-private-memory-content"
+        backend.failNextCommit(IllegalStateException("backend leaked $privateContent"))
+
+        val failed = assertIs<PersistentMemoryRememberResult.Failed>(
+            composition.remember(record(content = privateContent))
+        )
+        val rendered = failed.toString()
+
+        assertFalse(rendered.contains(privateContent))
+        assertFalse(rendered.contains("backend leaked"))
+        assertTrue(rendered.contains("java.lang.IllegalStateException"))
+        assertEquals("persistent memory durable install failed", failed.reason)
     }
 }
