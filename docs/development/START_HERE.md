@@ -29,10 +29,20 @@ Before changing code, read:
 - stale/ABA ownership must never delete a replacement generation;
 - capability is not permission; Authority is separate from Execution;
 - structural provenance strings are evidence, not credentials/capabilities/Authority receipts;
-- private cognitive payloads stay out of operational observability;
+- private cognitive payloads and cryptographic/license secrets stay out of operational observability;
 - logging and diagnostics remain Foundation infrastructure and must not be bypassed by direct console output;
-- persistence, encryption, licensing, Authority and cognitive permission remain separate;
+- persistence, encryption, licensing, device enrollment, Authority and cognitive permission remain separate;
 - frozen baselines are not casually redesigned.
+
+## Current verified baseline
+
+Verified `main`:
+
+`e5b3113d9342056e3167f9337ca87860fed85171`
+
+Latest Learning Persistence freeze exact-head Core CI: `33323689991` GREEN.
+
+Latest Learning Persistence freeze merge/main Core CI: `33323803034` GREEN.
 
 ## Frozen persistence baselines
 
@@ -42,15 +52,7 @@ Memory Persistence Integration v0.1 is fully frozen.
 
 Knowledge Persistence Integration v0.1 is fully frozen.
 
-Learning Persistence Integration v0.1 implementation is frozen pending the documentation-checkpoint merge.
-
-Current verified code baseline before the documentation checkpoint:
-
-`b04bbd6020ff9c9807e7db4f378d969534cee362`
-
-Latest Learning readiness exact-head Core CI: `33323246383` GREEN.
-
-Latest Learning readiness merge/main Core CI: `33323408553` GREEN.
+Learning Persistence Integration v0.1 is fully frozen.
 
 Canonical documents:
 
@@ -63,7 +65,7 @@ Canonical documents:
 - `LEARNING_PERSISTENCE_INTEGRATION_V0_1_CONTRACT.md`
 - `LEARNING_PERSISTENCE_INTEGRATION_V0_1_FREEZE.md`
 
-## Learning Persistence Integration v0.1 frozen boundary
+## Frozen Learning persistence boundary
 
 Direction:
 
@@ -83,31 +85,9 @@ Durable completion:
 
 The integration preserves exact mutation IDs/generations, persistent high-watermark, full Memory/Knowledge payload fidelity, exact idempotency/completed indexes, deterministic live ordering, stale/ABA-safe ownership, fail-closed reopen, zero claim resurrection, active-claim removal blocking, same-composition serialization and explicit shared-backend CAS conflict semantics.
 
-The generic persistence layer contains one narrow internal exact transition primitive used by Learning completion. It performs one backend CAS revision and preserves generation/high-watermark. It is not a scheduler, retry engine, distributed transaction system or Authority mechanism.
+The generic persistence layer contains one narrow internal exact transition primitive used by Learning completion. It is not a scheduler, retry engine, distributed transaction system or Authority mechanism.
 
-## Logging and diagnostics boundary
-
-Persistence/Learning operational observability may expose approved structural fields only: IDs, generations, target, idempotency key, schema/version, timestamps and structural payload/downstream IDs.
-
-Private Memory/Knowledge content, raw persistent bytes and backend exception messages must not appear in normal logs, diagnostics, `toString` or public integration failure rendering.
-
-Logging and diagnostics stay within Foundation observability. Do not add `println`, `System.out`, direct payload dumps or alternative hidden logging paths.
-
-## Authority and claim boundary
-
-Mandatory separation:
-
-`Learning != Persistence != Encryption != License != Authority != Execution`
-
-`Idempotency evidence != exactly-once execution`
-
-A reopened prepared mutation is not pre-authorized. Persisted principal/application/decision/policy references remain structural historical state; fresh controlled authorization is required before downstream Memory/Knowledge mutation.
-
-Claim tokens are process-local concurrency ownership only. They are never persisted or resurrected across reopen.
-
-A completed Learning receipt is historical evidence, not a credential, capability, permission or Authority receipt.
-
-## Critical retained crash-window limitation
+## Critical retained Learning limitation
 
 Learning persistence does not create a transaction spanning Learning plus Memory/Knowledge.
 
@@ -115,47 +95,100 @@ The controlled application path still performs:
 
 `downstream Memory/Knowledge mutation → durable Learning completion`
 
-A crash/failure may occur between those boundaries. Therefore this freeze does not provide exactly-once downstream mutation, automatic replay, implicit retry, compensation or reconciliation.
+A crash/failure may occur between those boundaries. There is no exactly-once downstream mutation guarantee, automatic replay, implicit retry, compensation or reconciliation.
 
-Future cross-domain crash atomicity/exactly-once behavior requires a separate architecture contract and executable proof.
+## Logging and diagnostics boundary
 
-## Current active stage — Learning Persistence Integration v0.1 freeze checkpoint
+All new production paths remain inside Foundation Logging/Diagnostics/CoreObservability.
 
-The implementation slices are complete and GREEN. The only active work is the documentation/freeze checkpoint.
+Safe operational metadata is structural only: IDs, generations, schema/version, key/epoch identifiers, decision/rejection categories, timestamps and approved target references.
 
-Do not add more Learning Persistence v0.1 production semantics unless the checkpoint audit or CI exposes a correctness/privacy/logging-diagnostics defect.
+Do not log raw bearer license tokens, signed-envelope bytes, private/signing keys, DEKs/wrapping keys, Memory/Knowledge plaintext, model plaintext, full attestation tokens or secret-bearing exception messages.
 
-After the freeze documentation PR reaches exact-head Core CI GREEN, merge it with exact-head protection and verify merge/main Core CI. Only then mark Learning Persistence Integration v0.1 fully frozen.
+Do not add `println`, `System.out`, direct payload dumps or alternative hidden logging paths.
 
-Do not invent the next subsystem from chat history. Select the next controlled stage from current repository architecture/roadmap after the freeze checkpoint is verified on `main`.
+## Current active stage — License Core v0.1
 
-## Explicit non-goals retained by the freeze
+This is Phase A of `SECURITY_LICENSING_V0_1_CONTRACT.md` and remains core-only.
 
-Keep outside Learning Persistence Integration v0.1:
+Canonical focused contract:
 
-- exactly-once downstream mutation guarantees;
-- cross-domain Learning + Memory/Knowledge transaction;
-- automatic crash replay;
-- automatic retry/refresh/reconciliation;
-- automatic downstream compensation;
-- scheduler/background workers;
-- persisted claim leases;
-- distributed locks/consensus;
-- Android/device storage;
+`LICENSE_CORE_V0_1_CONTRACT.md`
+
+Selected direction:
+
+`signed/canonical entitlement evidence → trusted verification boundary → exact license state ownership → explicit policy decision → optional scoped Authority request → controlled protected use`
+
+Mandatory separation:
+
+`License != Signature != Device Enrollment != Key Access != Capability != Authority != Execution`
+
+`Valid signature != entitlement decision != Authority grant`
+
+`License evidence != durable permission`
+
+`License expiry != cognitive-data destruction`
+
+## First License Core implementation boundary
+
+Proceed through narrow reviewed slices:
+
+1. immutable license models and exact-generation ownership/store contracts;
+2. canonical entitlement/envelope representation plus trusted verification abstraction;
+3. explicit LicensePolicy/LicenseDecision with time, product/feature, replay and revocation semantics;
+4. controlled License→Authority composition boundary where useful;
+5. readiness hardening for privacy, deterministic time, stale ownership, isolation/concurrency and observability;
+6. freeze checkpoint.
+
+Do not jump directly to Android or encrypted storage before the Core semantics are executable and frozen.
+
+## License Core hard rules
+
+- default deny;
+- explicit time input, no hidden system-clock dependency in core contracts;
+- strict not-before/expiry semantics;
+- unknown key/version/algorithm fails closed;
+- the envelope cannot select its own trust root;
+- no `alg=none`/algorithm confusion/fallback trust;
+- exact License ID/generation ownership is stale/ABA-safe;
+- old License decisions/receipts are historical evidence only;
+- a positive License decision is not an Authority grant;
+- denied licensing means zero protected-boundary calls where a gate is introduced;
+- raw HWID/IMEI/Android ID/serial hashes are not cryptographic device binding;
+- license expiry/denial must not intentionally destroy or make legitimate cognitive data irrecoverable;
+- security transitions are observable structurally without exposing secrets.
+
+## Explicit non-goals for License Core v0.1
+
+Keep outside this stage:
+
+- Android Keystore/StrongBox;
+- hardware-backed device binding;
+- attestation/Play Integrity;
 - SQLite/SQLCipher;
-- filesystem layout;
-- Keystore/StrongBox;
-- encryption implementation;
-- licensing behavior;
-- cloud sync;
-- multi-writer merge/conflict resolution.
+- cognitive-store encryption;
+- protected model package/decryption/streaming loader;
+- online enrollment/billing service;
+- background license refresh;
+- scheduler/retry/reconciliation;
+- Update System activation;
+- universal anti-tamper/anti-dump claims.
+
+## Accepted later security roadmap
+
+After License Core v0.1 freezes:
+
+`Android device-key boundary → cognitive storage encryption → protected model package/loader → runtime hardening → licensing service/offline leases → Update System integration → red-team/readiness`
+
+Each later phase requires a separate reviewed contract and executable proof.
 
 ## Resume procedure
 
-1. verify the documentation freeze PR exact head and Core CI;
-2. read `LEARNING_PERSISTENCE_INTEGRATION_V0_1_FREEZE.md` and the architecture contract;
-3. confirm the PR changes only freeze/state/handoff documentation;
-4. merge only after exact-head Core CI GREEN with expected-head protection;
-5. verify merge/main Core CI GREEN;
-6. mark Learning Persistence Integration v0.1 fully frozen in project state;
-7. audit current repository roadmap/architecture before selecting the next stage.
+1. verify current `main` SHA and latest merge/main Core CI;
+2. read `SECURITY_LICENSING_V0_1_CONTRACT.md` and `LICENSE_CORE_V0_1_CONTRACT.md`;
+3. inspect frozen Authority/Trust/Security/Foundation observability patterns before adding License production code;
+4. implement immutable License models plus exact-generation composition-owned store first;
+5. prove stale/ABA ownership, duplicate behavior, deterministic detached snapshots, composition isolation and privacy-safe observability;
+6. only then add canonical verification and policy slices;
+7. merge each slice only after exact-head Core CI GREEN plus architecture/security/privacy/logging-diagnostics audit;
+8. never infer Android hardware security or protected-store encryption from core-only License models.
