@@ -15,11 +15,18 @@ class AgentCoordinationParticipantAttempt(
     init {
         require(attemptNumber > 0) { "coordination participant attempt number must be positive" }
     }
+
+    fun exactAttempt(): AutonomyAttemptReference = AutonomyAttemptReference(
+        proposalId = autonomy.proposalId,
+        proposalGeneration = autonomy.generation,
+        attemptNumber = attemptNumber
+    )
 }
 
 class AgentCoordinationAttemptReceipt(
     val coordination: ExactAgentCoordinationReference,
-    attempts: List<AgentCoordinationParticipantAttempt>
+    attempts: List<AgentCoordinationParticipantAttempt>,
+    val attemptBindingGeneration: AgentCoordinationAttemptBindingGeneration
 ) {
     val attempts: List<AgentCoordinationParticipantAttempt> = attempts.toList()
 
@@ -47,32 +54,42 @@ internal fun interface AgentCoordinationParticipantAttemptClaimer {
     ): AgentInitiativeAttemptResult
 }
 
+internal fun interface AgentCoordinationAttemptBindingInstaller {
+    fun install(binding: AgentCoordinationAttemptBinding): AgentCoordinationAttemptBindingInstallResult
+}
+
 /**
  * Transactional bounded-attempt gate for one exact coordination work-set.
  *
  * The exact coordination, participant ACTIVE lifecycle and exact coordination-work binding are
  * freshly checked before the transaction, before each participant claim, after each participant
- * claim and once more before returning evidence. If governance changes after one or more claims,
- * every exact claimed Autonomy generation is invalidated before returning rejection. A claim is
- * never returned unless the whole exact participant set remains governed by the same live
- * coordination generation and binding for the complete transaction.
+ * claim and once more before commit. A successful result is returned only after the complete exact
+ * participant attempt-set has been committed into the trusted coordination-attempt binding store.
  *
- * This gate creates no deliberation request, schedules nothing and grants no permission, Authority
- * or Execution right.
+ * If governance changes, a participant rejects, or the attempt-binding commit rejects after one or
+ * more claims, every exact claimed Autonomy generation is invalidated before a normal rejection can
+ * be returned. If an exact claimed attempt remains valid after compensation, failure is explicit and
+ * CRITICAL-observable.
+ *
+ * The committed binding records provenance only. It is not permission and does not replace fresh
+ * live validation at a future execution boundary. This gate creates no deliberation request,
+ * schedules nothing and grants no Authority or Execution right.
  */
 class ControlledAgentCoordinationInitiativeGate private constructor(
     private val foundation: FoundationComposition,
     private val bindings: AgentCoordinationWorkBindingComposition,
     private val preflight: AgentCoordinationPreflightChecker,
     private val claimer: AgentCoordinationParticipantAttemptClaimer,
-    private val autonomyGate: ControlledAutonomyDeliberationGate
+    private val autonomyGate: ControlledAutonomyDeliberationGate,
+    private val attemptBindings: AgentCoordinationAttemptBindingInstaller
 ) {
     constructor(
         foundation: FoundationComposition,
         bindings: AgentCoordinationWorkBindingComposition,
         preflight: ControlledAgentCoordinationPreflight,
         agentGate: ControlledAgentInitiativeGate,
-        autonomyGate: ControlledAutonomyDeliberationGate
+        autonomyGate: ControlledAutonomyDeliberationGate,
+        attemptBindings: AgentCoordinationAttemptBindingComposition
     ) : this(
         foundation = foundation,
         bindings = bindings,
@@ -85,7 +102,8 @@ class ControlledAgentCoordinationInitiativeGate private constructor(
                 autonomyGeneration = autonomy.generation
             )
         },
-        autonomyGate = autonomyGate
+        autonomyGate = autonomyGate,
+        attemptBindings = AgentCoordinationAttemptBindingInstaller(attemptBindings::install)
     )
 
     internal constructor(
@@ -94,8 +112,9 @@ class ControlledAgentCoordinationInitiativeGate private constructor(
         preflight: AgentCoordinationPreflightChecker,
         claimer: AgentCoordinationParticipantAttemptClaimer,
         autonomyGate: ControlledAutonomyDeliberationGate,
+        attemptBindings: AgentCoordinationAttemptBindingInstaller,
         @Suppress("UNUSED_PARAMETER") testOnly: Unit = Unit
-    ) : this(foundation, bindings, preflight, claimer, autonomyGate)
+    ) : this(foundation, bindings, preflight, claimer, autonomyGate, attemptBindings)
 
     fun claimAttempts(
         coordinationId: AgentCoordinationId,
@@ -196,16 +215,40 @@ class ControlledAgentCoordinationInitiativeGate private constructor(
             return invalidateAfterClaim(
                 exactCoordination,
                 claimed,
-                "coordination governance changed before attempt evidence commit",
+                "coordination governance changed before attempt binding commit",
                 context
             )
         }
 
-        val receipt = AgentCoordinationAttemptReceipt(exactCoordination, claimed)
+        val attemptBinding = AgentCoordinationAttemptBinding(
+            coordination = exactCoordination,
+            assignments = claimed.map { attempt ->
+                AgentCoordinationAttemptAssignment(
+                    participant = attempt.participant,
+                    attempt = attempt.exactAttempt()
+                )
+            }
+        )
+
+        val bindingOwnership = when (val installed = attemptBindings.install(attemptBinding)) {
+            is AgentCoordinationAttemptBindingInstallResult.Installed -> installed.ownership
+            is AgentCoordinationAttemptBindingInstallResult.Rejected -> return invalidateAfterClaim(
+                exactCoordination,
+                claimed,
+                "coordination attempt binding rejected: ${installed.reason}",
+                context
+            )
+        }
+
+        val receipt = AgentCoordinationAttemptReceipt(
+            coordination = exactCoordination,
+            attempts = claimed,
+            attemptBindingGeneration = bindingOwnership.generation
+        )
         foundation.observability.record(
             severity = DiagnosticSeverity.INFO,
             code = "AGENT_COORDINATION_ATTEMPTS_CLAIMED",
-            message = "coordination participant attempts claimed",
+            message = "coordination participant attempts claimed and structurally bound",
             context = context,
             metadata = receiptMetadata(receipt)
         )
@@ -240,13 +283,7 @@ class ControlledAgentCoordinationInitiativeGate private constructor(
             when (autonomyGate.cancel(attempt.autonomy.proposalId, attempt.autonomy.generation)) {
                 AutonomyDeliberationCancellationResult.Cancelled -> Unit
                 is AutonomyDeliberationCancellationResult.Rejected -> {
-                    val validation = autonomyGate.validateAttempt(
-                        AutonomyAttemptReference(
-                            proposalId = attempt.autonomy.proposalId,
-                            proposalGeneration = attempt.autonomy.generation,
-                            attemptNumber = attempt.attemptNumber
-                        )
-                    )
+                    val validation = autonomyGate.validateAttempt(attempt.exactAttempt())
                     if (validation is AutonomyDeliberationAttemptValidationResult.Valid) {
                         compensationFailed = true
                     }
@@ -306,6 +343,7 @@ class ControlledAgentCoordinationInitiativeGate private constructor(
 
     private fun receiptMetadata(receipt: AgentCoordinationAttemptReceipt): Map<String, String> = buildMap {
         putAll(coordinationMetadata(receipt.coordination))
+        put("attemptBindingGeneration", receipt.attemptBindingGeneration.value.toString())
         put("attemptCount", receipt.attempts.size.toString())
         receipt.attempts.forEachIndexed { index, attempt ->
             put("attempt${index}AgentId", attempt.participant.id.value)

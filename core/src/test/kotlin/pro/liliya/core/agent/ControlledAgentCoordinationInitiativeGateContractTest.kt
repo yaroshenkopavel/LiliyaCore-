@@ -5,6 +5,8 @@ import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNull
+import pro.liliya.core.autonomy.AutonomyAttemptReference
 import pro.liliya.core.autonomy.AutonomyBudget
 import pro.liliya.core.autonomy.AutonomyComposition
 import pro.liliya.core.autonomy.AutonomyDeliberationAttemptResult
@@ -17,7 +19,6 @@ import pro.liliya.core.autonomy.AutonomyProposal
 import pro.liliya.core.autonomy.AutonomyProposalId
 import pro.liliya.core.autonomy.AutonomySourceId
 import pro.liliya.core.autonomy.ControlledAutonomyDeliberationGate
-import pro.liliya.core.autonomy.AutonomyAttemptReference
 import pro.liliya.core.diagnostics.DiagnosticRecorder
 import pro.liliya.core.diagnostics.InMemoryDiagnosticSink
 import pro.liliya.core.foundation.FoundationComposition
@@ -30,6 +31,7 @@ class ControlledAgentCoordinationInitiativeGateContractTest {
     private data class Fixture(
         val foundation: FoundationComposition,
         val bindings: AgentCoordinationWorkBindingComposition,
+        val attemptBindings: AgentCoordinationAttemptBindingComposition,
         val autonomy: AutonomyComposition,
         val autonomyGate: ControlledAutonomyDeliberationGate
     )
@@ -46,6 +48,7 @@ class ControlledAgentCoordinationInitiativeGateContractTest {
         return Fixture(
             foundation = foundation,
             bindings = AgentCoordinationWorkBindingComposition(foundation),
+            attemptBindings = AgentCoordinationAttemptBindingComposition(foundation),
             autonomy = autonomy,
             autonomyGate = ControlledAutonomyDeliberationGate(foundation, autonomy)
         )
@@ -124,6 +127,8 @@ class ControlledAgentCoordinationInitiativeGateContractTest {
         }
     }
 
+    private fun installer(f: Fixture) = AgentCoordinationAttemptBindingInstaller(f.attemptBindings::install)
+
     private fun validate(
         f: Fixture,
         autonomy: ExactAutonomyReference,
@@ -137,7 +142,7 @@ class ControlledAgentCoordinationInitiativeGateContractTest {
     )
 
     @Test
-    fun exact_stable_coordination_claims_one_attempt_for_every_bound_participant() {
+    fun exact_stable_coordination_claims_and_commits_one_exact_attempt_binding() {
         val f = fixture()
         val coordination = ExactAgentCoordinationReference(
             AgentCoordinationId("coord-1"), AgentCoordinationGeneration(1)
@@ -156,6 +161,7 @@ class ControlledAgentCoordinationInitiativeGateContractTest {
             preflight = readyChecker(coordination, listOf(a, b)),
             claimer = directClaimer(f.autonomyGate),
             autonomyGate = f.autonomyGate,
+            attemptBindings = installer(f),
             testOnly = Unit
         )
 
@@ -164,6 +170,12 @@ class ControlledAgentCoordinationInitiativeGateContractTest {
         )
 
         assertEquals(2, claimed.receipt.attempts.size)
+        val committed = f.attemptBindings.inspect(coordination)
+        assertEquals(claimed.receipt.attemptBindingGeneration, committed?.generation)
+        assertEquals(
+            claimed.receipt.attempts.map { it.exactAttempt() },
+            committed?.binding?.assignments?.map { it.attempt }
+        )
         claimed.receipt.attempts.forEach { attempt ->
             assertIs<AutonomyDeliberationAttemptValidationResult.Valid>(
                 validate(f, attempt.autonomy, attempt.attemptNumber)
@@ -172,7 +184,7 @@ class ControlledAgentCoordinationInitiativeGateContractTest {
     }
 
     @Test
-    fun governance_change_after_first_claim_invalidates_claim_before_any_receipt_returns() {
+    fun governance_change_after_first_claim_invalidates_claim_and_commits_no_attempt_binding() {
         val f = fixture()
         val coordination = ExactAgentCoordinationReference(
             AgentCoordinationId("coord-race"), AgentCoordinationGeneration(1)
@@ -191,19 +203,19 @@ class ControlledAgentCoordinationInitiativeGateContractTest {
             preflight = readyChecker(coordination, listOf(a, b), rejectOnCall = 3),
             claimer = directClaimer(f.autonomyGate),
             autonomyGate = f.autonomyGate,
+            attemptBindings = installer(f),
             testOnly = Unit
         )
 
         assertIs<AgentCoordinationAttemptResult.Rejected>(
             gate.claimAttempts(coordination.id, coordination.generation)
         )
-        assertIs<AutonomyDeliberationAttemptValidationResult.Rejected>(
-            validate(f, autonomyA, 1)
-        )
+        assertIs<AutonomyDeliberationAttemptValidationResult.Rejected>(validate(f, autonomyA, 1))
+        assertNull(f.attemptBindings.find(coordination))
     }
 
     @Test
-    fun later_participant_claim_rejection_invalidates_already_claimed_participants() {
+    fun later_participant_claim_rejection_invalidates_earlier_claim_and_commits_no_binding() {
         val f = fixture()
         val coordination = ExactAgentCoordinationReference(
             AgentCoordinationId("coord-partial"), AgentCoordinationGeneration(1)
@@ -223,19 +235,19 @@ class ControlledAgentCoordinationInitiativeGateContractTest {
             preflight = readyChecker(coordination, listOf(a, b)),
             claimer = directClaimer(f.autonomyGate),
             autonomyGate = f.autonomyGate,
+            attemptBindings = installer(f),
             testOnly = Unit
         )
 
         assertIs<AgentCoordinationAttemptResult.Rejected>(
             gate.claimAttempts(coordination.id, coordination.generation)
         )
-        assertIs<AutonomyDeliberationAttemptValidationResult.Rejected>(
-            validate(f, autonomyA, 1)
-        )
+        assertIs<AutonomyDeliberationAttemptValidationResult.Rejected>(validate(f, autonomyA, 1))
+        assertNull(f.attemptBindings.find(coordination))
     }
 
     @Test
-    fun binding_removed_during_first_claim_invalidates_that_claim_and_stops_transaction() {
+    fun work_binding_removed_during_first_claim_invalidates_claim_and_commits_no_attempt_binding() {
         val f = fixture()
         val coordination = ExactAgentCoordinationReference(
             AgentCoordinationId("coord-binding-race"), AgentCoordinationGeneration(1)
@@ -257,6 +269,7 @@ class ControlledAgentCoordinationInitiativeGateContractTest {
                 if (claimCount.incrementAndGet() == 1) bindingOwnership.remove()
             },
             autonomyGate = f.autonomyGate,
+            attemptBindings = installer(f),
             testOnly = Unit
         )
 
@@ -264,8 +277,56 @@ class ControlledAgentCoordinationInitiativeGateContractTest {
             gate.claimAttempts(coordination.id, coordination.generation)
         )
         assertEquals(1, claimCount.get())
-        assertIs<AutonomyDeliberationAttemptValidationResult.Rejected>(
-            validate(f, autonomyA, 1)
+        assertIs<AutonomyDeliberationAttemptValidationResult.Rejected>(validate(f, autonomyA, 1))
+        assertNull(f.attemptBindings.find(coordination))
+    }
+
+    @Test
+    fun attempt_binding_rejection_after_all_claims_invalidates_every_claimed_attempt() {
+        val f = fixture()
+        val coordination = ExactAgentCoordinationReference(
+            AgentCoordinationId("coord-commit-reject"), AgentCoordinationGeneration(1)
         )
+        val a = participant("agent-a", 1)
+        val b = participant("agent-b", 1)
+        val autonomyA = installAutonomy(f, a, "commit-a")
+        val autonomyB = installAutonomy(f, b, "commit-b")
+        assertIs<AgentCoordinationWorkBindingInstallResult.Installed>(
+            f.bindings.install(binding(coordination, listOf(a to autonomyA, b to autonomyB)))
+        )
+
+        assertIs<AgentCoordinationAttemptBindingInstallResult.Installed>(
+            f.attemptBindings.install(
+                AgentCoordinationAttemptBinding(
+                    coordination = coordination,
+                    assignments = listOf(
+                        AgentCoordinationAttemptAssignment(
+                            a,
+                            AutonomyAttemptReference(AutonomyProposalId("existing-a"), AutonomyGeneration(99), 1)
+                        ),
+                        AgentCoordinationAttemptAssignment(
+                            b,
+                            AutonomyAttemptReference(AutonomyProposalId("existing-b"), AutonomyGeneration(99), 1)
+                        )
+                    )
+                )
+            )
+        )
+
+        val gate = ControlledAgentCoordinationInitiativeGate(
+            foundation = f.foundation,
+            bindings = f.bindings,
+            preflight = readyChecker(coordination, listOf(a, b)),
+            claimer = directClaimer(f.autonomyGate),
+            autonomyGate = f.autonomyGate,
+            attemptBindings = installer(f),
+            testOnly = Unit
+        )
+
+        assertIs<AgentCoordinationAttemptResult.Rejected>(
+            gate.claimAttempts(coordination.id, coordination.generation)
+        )
+        assertIs<AutonomyDeliberationAttemptValidationResult.Rejected>(validate(f, autonomyA, 1))
+        assertIs<AutonomyDeliberationAttemptValidationResult.Rejected>(validate(f, autonomyB, 1))
     }
 }
