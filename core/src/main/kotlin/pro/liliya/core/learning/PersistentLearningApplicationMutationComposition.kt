@@ -426,8 +426,19 @@ class PersistentLearningApplicationMutationComposition private constructor(
                         liveEntries += LearningPreparedPersistentState(decoded.plan, generation)
                     }
 
-                    is LearningApplicationMutationPersistentDecodeResult.Completed ->
+                    is LearningApplicationMutationPersistentDecodeResult.Completed -> {
+                        val generation = try {
+                            LearningApplicationMutationGeneration(snapshot.generation.value)
+                        } catch (_: IllegalArgumentException) {
+                            return PersistentLearningApplicationMutationOpenResult.Corrupt
+                        }
+                        if (decoded.receipt.mutation.generation != generation) {
+                            return PersistentLearningApplicationMutationOpenResult.RestorationFailed(
+                                "completed learning receipt generation does not match persistent generation"
+                            )
+                        }
                         completedEntries += LearningCompletedPersistentState(decoded.plan, decoded.receipt)
+                    }
 
                     LearningApplicationMutationPersistentDecodeResult.Corrupt ->
                         return PersistentLearningApplicationMutationOpenResult.Corrupt
