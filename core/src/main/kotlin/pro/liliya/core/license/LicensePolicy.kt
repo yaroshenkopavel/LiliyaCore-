@@ -34,7 +34,12 @@ class LicenseDecisionReceipt internal constructor(
 }
 
 sealed interface LicenseDecision {
-    data class Entitled(val receipt: LicenseDecisionReceipt) : LicenseDecision
+    class Entitled internal constructor(
+        val receipt: LicenseDecisionReceipt
+    ) : LicenseDecision {
+        override fun toString(): String = "LicenseDecision.Entitled(receipt=$receipt)"
+    }
+
     data class Denied(val reason: LicenseDenialReason) : LicenseDecision
 }
 
