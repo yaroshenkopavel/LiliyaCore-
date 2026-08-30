@@ -107,6 +107,33 @@ class DeviceKeyCompositionContractTest {
     }
 
     @Test
+    fun registered_state_detaches_mutable_capability_input() {
+        val composition = DeviceKeyComposition(foundation())
+        val capabilities = mutableSetOf(DeviceKeyCapability.SIGN_CHALLENGE)
+        val input = DeviceKeyState(
+            id = DeviceKeyId("mutable-input"),
+            algorithm = DeviceKeyAlgorithm("EC-P256-SHA256"),
+            securityLevel = DeviceKeySecurityLevel.TRUSTED_ENVIRONMENT,
+            capabilities = capabilities,
+            createdAt = createdAt
+        )
+
+        val ownership = assertIs<DeviceKeyRegisterResult.Registered>(
+            composition.register(input)
+        ).ownership
+        capabilities.clear()
+        capabilities += DeviceKeyCapability.UNWRAP_WRAPPED_KEY
+
+        val stored = composition.inspect(input.id)!!.state
+        assertEquals(setOf(DeviceKeyCapability.SIGN_CHALLENGE), stored.capabilities)
+        assertEquals(setOf(DeviceKeyCapability.SIGN_CHALLENGE), ownership.state.capabilities)
+        assertFailsWith<UnsupportedOperationException> {
+            @Suppress("UNCHECKED_CAST")
+            (stored.capabilities as MutableSet<DeviceKeyCapability>).clear()
+        }
+    }
+
+    @Test
     fun unknown_security_level_never_reports_hardware_backed() {
         assertFalse(DeviceKeySecurityLevel.UNKNOWN.hardwareBacked)
         assertFalse(DeviceKeySecurityLevel.SOFTWARE.hardwareBacked)
