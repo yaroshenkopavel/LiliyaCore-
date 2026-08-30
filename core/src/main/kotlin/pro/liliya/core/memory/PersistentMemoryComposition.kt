@@ -2,7 +2,6 @@ package pro.liliya.core.memory
 
 import pro.liliya.core.foundation.FoundationComposition
 import pro.liliya.core.persistence.PersistentInstallResult
-import pro.liliya.core.persistence.PersistentMemoryPlaceholder
 import pro.liliya.core.persistence.PersistentMutationResult
 import pro.liliya.core.persistence.PersistentRecordBackend
 import pro.liliya.core.persistence.PersistentRecordOwnership
