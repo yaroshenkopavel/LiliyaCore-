@@ -1,6 +1,6 @@
 # LiliyaCore — Verified Development History
 
-Scope: repository `Vikrot123/LiliyaCore` only.
+Scope: active repository `yaroshenkopavel/LiliyaCore-`, with pre-migration history originating from `Vikrot123/LiliyaCore`.
 
 This log is milestone-oriented. Fine-grained behavior is defined by contract tests and canonical freeze documents.
 
@@ -13,6 +13,8 @@ Core Foundation, Capability & Authority, and Execution v0.1 are frozen.
 ## Frozen cognitive/control foundations
 
 Memory, Knowledge, Identity/Self, Trust/Security, Personality, Reflection, Learning foundations, Planning, Reasoning, Decision, Orchestration Intent, Controlled Orchestration, Autonomy Foundation, Controlled Autonomy Deliberation, Agents Foundation, Controlled Agent Initiative, Controlled Agent Lifecycle, Agent Delegation Foundation, Controlled Agent Delegation and Agent Coordination Foundation v0.1 are frozen.
+
+Controlled Agent Coordination v0.1 remains in progress.
 
 ## Decision / Orchestration milestones
 
@@ -78,7 +80,8 @@ Canonical contract: `CONTROLLED_AGENT_DELEGATION_V0_1_FREEZE.md`.
 ### Agent Coordination Foundation v0.1
 
 - PR #164 `Structural Coordination Foundation` — exact head `411fc9572b18dcf7dac71fc5a17661087f1ec099`, Core CI #1035 GREEN, merge `b636216dcc87b090625db68a9249fd7c197adf96`.
-- PR #165 `Composition Ownership and Readiness` — exact head `3c400f34968e58eaef01929378ed0ef9c3ced32e`, Core CI #1037 GREEN, merge/current verified code main `78d06f0226105314a45f01833a12029fdabe8a5b`.
+- PR #165 `Composition Ownership and Readiness` — exact head `3c400f34968e58eaef01929378ed0ef9c3ced32e`, Core CI #1037 GREEN, merge `78d06f0226105314a45f01833a12029fdabe8a5b`.
+- PR #166 `Freeze and Journal Checkpoint` — Agent Coordination Foundation frozen; controlled coordination established as the next stage, merge `84889cc9...`.
 
 Established:
 
@@ -99,16 +102,98 @@ Frozen invariant:
 
 Canonical contract: `AGENT_COORDINATION_V0_1_FREEZE.md`.
 
+### Controlled Agent Coordination v0.1
+
+Verified merged slices in the original repository:
+
+- PR #167 `Exact Live Preflight` — merge `7eed4b60...`;
+- PR #168 `Exact Coordination Work Binding` — merge `297d2fc5...`;
+- PR #169 `Work Binding Ownership` — merge `d5f3465e...`;
+- PR #170 `Compensated Coordination Initiative` — merge `6400ceb1...`;
+- PR #171 `Transactional Attempt Gate` — merge `11a3431f...`;
+- PR #172 `Exact Attempt Binding Foundation` — merge `c212182a...`;
+- PR #173 `Attempt Binding Ownership` — merge `84ae647b...`;
+- PR #174 `Commit Attempt Transaction Binding` — merge `cf9a54a8...`;
+- PR #175 `Compensated Deliberation Transaction` — merge `15b7df7f...`;
+- PR #176 `Deliberation Live Preflight` — merge `0cd50a87e1e048a284f73f795a4fae4df2c60e65`;
+- PR #177 `Planning Bridge` — exact head `6d2e707f280a8704e96c2d25698b64edc75e12a8`, exact-head Core CI #1116 GREEN, merge/main Core CI #1117 GREEN, merge `824306e18990c0cd37fcc95d1c69a1bbeb99f914`;
+- PR #178 `Planning Progress Journal` — merge `7e7eef1c457c37f33cf16b435237033caa2a31a6`.
+
+Planning bridge hardening established:
+
+- fresh coordinated deliberation preflight before write;
+- exact coordinated provenance in ordinary frozen Planning;
+- post-write readiness validation;
+- exact-generation compensation when governance changes;
+- explicit `Failed` + CRITICAL observability when compensation cannot restore the same live generation;
+- private planning goal/steps outside bridge observability;
+- no Reasoning/Decision/Authority/Execution semantics.
+
+### Repository migration checkpoint
+
+On 2026-08-30 active development moved from `Vikrot123/LiliyaCore` to private repository `yaroshenkopavel/LiliyaCore-`.
+
+Migration verification established:
+
+- all ordinary remote branches matched exactly between old and new repositories: 181 / 181;
+- tags matched exactly: 0 / 0;
+- `main` matched at `7e7eef1c457c37f33cf16b435237033caa2a31a6` before new development continued;
+- active Reasoning branch matched at `6f0124c5502954fca3e73fdd76f7868d7c7672aa` before further hardening;
+- local disaster-recovery bundle and GitHub metadata exports were created separately;
+- legacy repository remains a backup/migration reference, not an active parallel development target.
+
+GitHub service metadata identities such as historical PR numbers/runs were not Git-mirrored into the new repository. Historical numbers above therefore refer to the original repository unless explicitly marked as migrated-repository PRs.
+
+### Coordinated Reasoning Bridge — migrated repository PR #1
+
+- initial production bridge commit `3122d8ea91515c06a46e57657d3f89bf86a2104c`;
+- contract commit `6f0124c5502954fca3e73fdd76f7868d7c7672aa`;
+- audit added dedicated TOCTOU/race contracts at `ed234bc9571084dc4046c02d29eaab0e4043aae2`;
+- a Kotlin test-only value-class `lateinit` compile error was corrected at exact head `8fcd00e325d27f4612a4280845838d0812cdf256`; production logic was unchanged by that correction;
+- local targeted `*ControlledAgentCoordinationReasoningBridge*` tests GREEN on exact head `8fcd00e...`;
+- local full `gradle :core:test --console=plain` GREEN on exact head `8fcd00e...`;
+- exact-head GitHub Core CI run `33309793507` GREEN;
+- final provenance/TOCTOU/rollback/privacy/non-amplification audit found no production blocker;
+- migrated-repository PR #1 merged with expected-head protection as `249ae23947c3a707d6d03dfb31503d1d858cd873`;
+- merge/main GitHub Core CI run `33310005179` GREEN on the merge commit.
+
+Reasoning bridge hard guarantees:
+
+- fresh coordinated deliberation preflight before Reasoning write;
+- exact live Planning generation required;
+- Planning must carry exact structural coordinated-deliberation provenance;
+- only ordinary frozen Reasoning data is installed;
+- coordinated readiness is revalidated after the Reasoning write;
+- exact Planning generation/provenance is revalidated after the write;
+- Planning removal/replacement or governance changes trigger exact compensation of the newly-created Reasoning generation;
+- stale compensation ownership does not remove a newer Reasoning replacement generation;
+- same-generation compensation failure returns explicit `Failed` and emits CRITICAL observability;
+- private premise/analysis/conclusion content stays outside coordination bridge observability;
+- no Decision, Orchestration, permission, Authority, scheduler or Execution semantics are introduced.
+
+Structural `sourceId/sourceReference` provenance remains evidence/consistency metadata, not a cryptographic capability token and not permission.
+
 ## Architecture contracts not yet runtime subsystems
 
 Update System v0.1 and Security & Licensing v0.1 remain architecture contracts.
 
+Persistent encrypted cognitive storage, Android integration, Liliya Network runtime, real Update runtime and real Security/Licensing runtime remain later stages.
+
 ## Current continuation
 
-Next stage: **Controlled Agent Coordination v0.1**.
+Controlled Agent Coordination v0.1 is still **in progress**.
 
-First slice is evidence-only:
+The preferred next slice is:
 
-`exact Coordination ID+generation → fresh coordination lookup → exact participant Agent-generation validation → exact ACTIVE lifecycle validation → structural readiness evidence`
+`exact live coordinated Reasoning generation → ordinary frozen Decision data`
 
-No work fan-out, delegation creation, Autonomy creation, scheduler, voting/consensus, Authority or Execution may appear in this first controlled slice. Multi-agent runtime behavior remains later and requires separate governance/freeze.
+Required pattern:
+
+- fresh exact coordinated governance preflight;
+- exact Reasoning generation/provenance validation;
+- ordinary frozen Decision install only;
+- post-write governance/Reasoning revalidation;
+- exact Decision-generation compensation on stale governance;
+- explicit failure if exact compensation cannot restore the invariant;
+- private cognitive content redacted from bridge observability;
+- no Orchestration, permission, Authority, scheduler or Execution semantics.
