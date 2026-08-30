@@ -17,6 +17,11 @@ internal interface AndroidKeystorePlatform {
 
     fun inspect(id: DeviceKeyId): AndroidKeystorePlatformResult<AndroidKeystoreKeyDescriptor>
 
+    fun signChallenge(
+        id: DeviceKeyId,
+        challenge: DeviceKeyChallenge
+    ): AndroidKeystorePlatformResult<AndroidKeystoreSignatureDescriptor>
+
     fun delete(id: DeviceKeyId): AndroidKeystorePlatformResult<Unit>
 }
 
@@ -31,6 +36,11 @@ internal data class AndroidKeystoreKeyDescriptor(
         require(capabilities.isNotEmpty()) { "android keystore key capabilities must not be empty" }
     }
 }
+
+internal data class AndroidKeystoreSignatureDescriptor(
+    val id: DeviceKeyId,
+    val signature: DeviceKeyProofSignature
+)
 
 internal sealed interface AndroidKeystorePlatformResult<out T> {
     data class Success<T>(val value: T) : AndroidKeystorePlatformResult<T>
@@ -54,7 +64,7 @@ internal sealed interface AndroidKeystorePlatformResult<out T> {
  */
 internal class AndroidKeystoreDeviceKeyAdapter(
     private val platform: AndroidKeystorePlatform
-) : DeviceKeyAdapter {
+) : DeviceKeyAdapter, DeviceKeyProofSigner {
     override fun create(
         request: DeviceKeyCreationRequest,
         createdAt: Instant
@@ -122,6 +132,43 @@ internal class AndroidKeystoreDeviceKeyAdapter(
             is AndroidKeystorePlatformResult.Failed ->
                 DeviceKeyOperationResult.Failed(result.category, result.throwable)
         }
+
+    override fun signChallenge(
+        expectedState: DeviceKeyState,
+        challenge: DeviceKeyChallenge
+    ): DeviceKeyOperationResult<DeviceKeyProofSignature> {
+        if (DeviceKeyCapability.SIGN_CHALLENGE !in expectedState.capabilities) {
+            return DeviceKeyOperationResult.Rejected(DeviceKeyFailureCategory.UNSUPPORTED_PROFILE)
+        }
+
+        val inspected = when (val result = platform.inspect(expectedState.id)) {
+            is AndroidKeystorePlatformResult.Success -> result.value
+            is AndroidKeystorePlatformResult.Rejected ->
+                return DeviceKeyOperationResult.Rejected(result.category)
+            is AndroidKeystorePlatformResult.Failed ->
+                return DeviceKeyOperationResult.Failed(result.category, result.throwable)
+        }
+
+        if (inspected.id != expectedState.id || inspected.toState() != expectedState) {
+            return DeviceKeyOperationResult.Rejected(DeviceKeyFailureCategory.STALE_OWNERSHIP)
+        }
+
+        return when (val result = platform.signChallenge(expectedState.id, challenge)) {
+            is AndroidKeystorePlatformResult.Success -> {
+                if (result.value.id != expectedState.id) {
+                    DeviceKeyOperationResult.Rejected(DeviceKeyFailureCategory.PLATFORM_REJECTED)
+                } else {
+                    DeviceKeyOperationResult.Success(result.value.signature)
+                }
+            }
+
+            is AndroidKeystorePlatformResult.Rejected ->
+                DeviceKeyOperationResult.Rejected(result.category)
+
+            is AndroidKeystorePlatformResult.Failed ->
+                DeviceKeyOperationResult.Failed(result.category, result.throwable)
+        }
+    }
 
     override fun retire(id: DeviceKeyId): DeviceKeyOperationResult<Unit> =
         when (val result = platform.delete(id)) {
