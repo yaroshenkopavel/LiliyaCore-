@@ -274,7 +274,7 @@ class LicenseCoreReadinessContractTest {
                 first.snapshotEntries().map { it.generation.value }.toSet()
             )
             assertEquals(
-                (1..attempts).map { "license-$it" },
+                (1..attempts).map { "license-$it" }.sorted(),
                 first.snapshot().map { it.id.value }
             )
             assertTrue(second.snapshot().isEmpty())
