@@ -79,6 +79,7 @@ class ControlledAgentCoordinationPlanningBridgeContractTest {
 
     private fun checker(vararg results: AgentCoordinationDeliberationPreflightResult):
         AgentCoordinationDeliberationPreflightChecker {
+        require(results.isNotEmpty()) { "checker requires at least one preflight result" }
         val index = AtomicInteger(0)
         return AgentCoordinationDeliberationPreflightChecker { _, _ ->
             val position = index.getAndIncrement().coerceAtMost(results.lastIndex)
