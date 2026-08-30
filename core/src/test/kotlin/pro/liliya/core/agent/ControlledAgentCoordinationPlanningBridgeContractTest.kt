@@ -80,7 +80,7 @@ class ControlledAgentCoordinationPlanningBridgeContractTest {
     private fun checker(vararg results: AgentCoordinationDeliberationPreflightResult):
         AgentCoordinationDeliberationPreflightChecker {
         val index = AtomicInteger(0)
-        return AgentCoordinationDeliberationPreflightChecker {
+        return AgentCoordinationDeliberationPreflightChecker { _, _ ->
             val position = index.getAndIncrement().coerceAtMost(results.lastIndex)
             results[position]
         }
