@@ -1,6 +1,10 @@
 package pro.liliya.core.devicekey
 
 import java.time.Instant
+import java.util.Collections
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -19,18 +23,29 @@ import pro.liliya.core.observability.LoggerProvider
 class DeviceKeyCompositionContractTest {
     private val createdAt = Instant.parse("2026-08-30T19:20:00Z")
 
-    private fun foundation(): FoundationComposition {
+    private data class TestFoundation(
+        val composition: FoundationComposition,
+        val diagnostics: InMemoryDiagnosticSink
+    )
+
+    private fun testFoundation(): TestFoundation {
         val sequence = AtomicInteger(0)
-        return FoundationComposition(
-            diagnostics = DiagnosticRecorder(InMemoryDiagnosticSink()),
-            loggerProvider = LoggerProvider { context ->
-                StructuredLogger(context, InMemoryLogWriter())
-            },
-            correlationIds = CorrelationIdGenerator {
-                "device-key-${sequence.incrementAndGet()}"
-            }
+        val diagnostics = InMemoryDiagnosticSink()
+        return TestFoundation(
+            composition = FoundationComposition(
+                diagnostics = DiagnosticRecorder(diagnostics),
+                loggerProvider = LoggerProvider { context ->
+                    StructuredLogger(context, InMemoryLogWriter())
+                },
+                correlationIds = CorrelationIdGenerator {
+                    "device-key-${sequence.incrementAndGet()}"
+                }
+            ),
+            diagnostics = diagnostics
         )
     }
+
+    private fun foundation(): FoundationComposition = testFoundation().composition
 
     private fun state(
         id: String,
@@ -131,6 +146,72 @@ class DeviceKeyCompositionContractTest {
             @Suppress("UNCHECKED_CAST")
             (stored.capabilities as MutableSet<DeviceKeyCapability>).clear()
         }
+    }
+
+    @Test
+    fun profile_detaches_mutable_capability_input() {
+        val capabilities = mutableSetOf(DeviceKeyCapability.SIGN_CHALLENGE)
+        val profile = DeviceKeyProfile(
+            algorithm = DeviceKeyAlgorithm("EC-P256-SHA256"),
+            requestedSecurityLevel = DeviceKeySecurityLevel.TRUSTED_ENVIRONMENT,
+            capabilities = capabilities
+        )
+
+        capabilities.clear()
+        capabilities += DeviceKeyCapability.UNWRAP_WRAPPED_KEY
+
+        assertEquals(setOf(DeviceKeyCapability.SIGN_CHALLENGE), profile.capabilities)
+        assertFailsWith<UnsupportedOperationException> {
+            @Suppress("UNCHECKED_CAST")
+            (profile.capabilities as MutableSet<DeviceKeyCapability>).clear()
+        }
+    }
+
+    @Test
+    fun concurrent_duplicate_registration_publishes_exactly_one_live_owner() {
+        val composition = DeviceKeyComposition(foundation())
+        val threads = 8
+        val ready = CountDownLatch(threads)
+        val start = CountDownLatch(1)
+        val results = Collections.synchronizedList(mutableListOf<DeviceKeyRegisterResult>())
+        val executor = Executors.newFixedThreadPool(threads)
+
+        repeat(threads) {
+            executor.submit {
+                ready.countDown()
+                start.await()
+                results += composition.register(state("concurrent-main"))
+            }
+        }
+
+        assertTrue(ready.await(5, TimeUnit.SECONDS))
+        start.countDown()
+        executor.shutdown()
+        assertTrue(executor.awaitTermination(10, TimeUnit.SECONDS))
+
+        assertEquals(1, results.count { it is DeviceKeyRegisterResult.Registered })
+        assertEquals(threads - 1, results.count { it is DeviceKeyRegisterResult.Rejected })
+        assertEquals(1, composition.snapshotEntries().size)
+        assertEquals(1L, composition.snapshotEntries().single().generation.value)
+    }
+
+    @Test
+    fun observability_and_rendering_redact_raw_device_key_id() {
+        val fixture = testFoundation()
+        val composition = DeviceKeyComposition(fixture.composition)
+        val secretId = "RAW-DEVICE-KEY-ID-PRIVATE"
+
+        assertIs<DeviceKeyRegisterResult.Registered>(composition.register(state(secretId)))
+
+        val rendered = composition.inspect(DeviceKeyId(secretId))!!.state.toString()
+        assertFalse(secretId in rendered)
+        assertTrue("[redacted]" in rendered)
+
+        val diagnosticText = fixture.diagnostics.snapshot().joinToString("\n") { event ->
+            event.toString() + event.metadata.toString()
+        }
+        assertFalse(secretId in diagnosticText)
+        assertTrue("[redacted]" in diagnosticText)
     }
 
     @Test
