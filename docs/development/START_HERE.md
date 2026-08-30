@@ -26,31 +26,30 @@ Autonomy, Agent, Delegation and Coordination layers add governance/provenance ar
 2. `ARCHITECTURE.md` — frozen boundaries and current controlled path.
 3. `STRUCTURE.md` — package/file ownership map.
 4. `NUANCES.md` — known traps/readiness findings.
-5. relevant section of `DEVELOPMENT_LOG.md` and `DECISIONS.md`.
-6. relevant production files and executable contract tests.
-7. verify current GitHub PR/CI state in `yaroshenkopavel/LiliyaCore-`.
+5. canonical freeze contract for the subsystem being touched.
+6. relevant production source and executable contract tests.
+7. current GitHub PR/CI state in `yaroshenkopavel/LiliyaCore-`.
 
 ## Hard engineering rules
 
 - Work on feature branches; do not modify `main` directly.
 - Merge only after the relevant exact-head Core CI gate is GREEN.
 - Verify merge/main CI after risky or architectural slices.
-- Prefer coherent PRs and clean history; rebuild a polluted branch rather than merge noise.
+- Prefer coherent PRs and clean history; rebuild polluted work rather than merge noise.
 - Contracts before complexity.
 - Explicit ownership for mutable state/resources.
 - Prefer exact `(ID, generation)` ownership handles/instances over ID-only re-resolution.
 - Stale/ABA ownership must not remove a replacement generation.
-- Failures must not be silently swallowed.
+- A failed stale-owner removal is not automatically fatal when a newer replacement generation is live; exact compensation owns only the generation created by the current operation.
 - Significant subsystem actions must be observable through Logging/Diagnostics where semantically meaningful.
 - Correlation context must be explicit; do not introduce hidden ThreadLocal/global acquisition as a shortcut.
-- No hidden logger/global infrastructure acquisition inside subsystems.
 - Runtime is the state authority; Lifecycle orchestrates it.
-- Modules do not replace service lifecycle ownership.
 - Capability is not permission; Authority is separate from Execution.
 - Authority is fail-closed/default-deny and must be fresh at real side-effect boundaries.
-- Future Android/device/shell execution must not bypass Authority.
 - Planning is descriptive data; Reasoning is descriptive data; Decision is a recorded choice; Orchestration Intent is non-executing intent.
 - Autonomy/Agents/Delegation/Coordination are governance/provenance layers and never implicit permission.
+- Structural provenance strings/source references are evidence/consistency markers, not cryptographic credentials, capability tokens, permission receipts or Authority grants.
+- Compound controlled cognition is TOCTOU-sensitive: a successful initial preflight is insufficient; write-capable bridges revalidate after the write and compensate their exact generation when governance/provenance changes.
 - Private cognitive content must stay out of operational bridge observability unless a dedicated privacy-reviewed contract explicitly says otherwise.
 - Do not casually redesign frozen baselines; fix demonstrated correctness/security defects with focused contracts, CI and journal updates.
 
@@ -80,32 +79,29 @@ Frozen v0.1 boundaries currently include:
 - Controlled Agent Lifecycle;
 - Agent Delegation Foundation;
 - Controlled Agent Delegation;
-- Agent Coordination Foundation.
+- Agent Coordination Foundation;
+- **Controlled Agent Coordination v0.1**.
 
-Controlled Agent Coordination v0.1 is still **in progress**.
+Canonical controlled-coordination freeze contract: `CONTROLLED_AGENT_COORDINATION_V0_1_FREEZE.md`.
+
+## Frozen Controlled Agent Coordination path
+
+`exact live Coordination → exact participant ACTIVE preflight → exact coordination↔Autonomy work binding → compensated multi-participant initiative → transactional bounded attempts → exact coordination↔attempt binding → compensated exact deliberation → exact live deliberation preflight → ordinary Planning → ordinary Reasoning → ordinary Decision → ordinary Orchestration Intent → final coordinated execution guard → frozen Controlled Orchestration → fresh Authority → frozen Execution`
+
+The final coordination guard performs no Authority or Execution itself. It revalidates fresh coordinated readiness and the complete exact cognitive/orchestration chain, then delegates only to the existing frozen `ControlledOrchestrationExecution` path. Stale coordination/governance means zero downstream Authority/executor calls.
 
 ## Current active stage
 
-The verified controlled coordination path now reaches ordinary frozen Reasoning:
+Controlled Agent Coordination v0.1 is complete/frozen once its documentation checkpoint merge/main CI is GREEN.
 
-`exact live Coordination → participant ACTIVE preflight → coordination↔Autonomy work binding → compensated participant initiatives → transactional attempts → exact attempt binding → compensated deliberation → live deliberation preflight → ordinary Planning → ordinary Reasoning → post-write revalidation/compensation`
+Do not extend coordination with ad-hoc scheduler, voting, consensus, fan-out, retry or permission semantics. Select the next architecture stage from the deferred roadmap using current source truth and a fresh architecture audit.
 
-Current verified `main` checkpoint and exact CI evidence are recorded in `CURRENT_STATE.md`.
+Current candidates include:
 
-The next preferred architectural slice is:
-
-`exact live coordinated Reasoning generation → ordinary frozen Decision data`
-
-This next bridge must preserve:
-
-- fresh governance preflight;
-- exact Reasoning generation/provenance;
-- ordinary frozen Decision installation only;
-- post-write revalidation;
-- exact compensation on stale governance;
-- explicit failure if compensation cannot restore the invariant;
-- private cognitive-content redaction;
-- no Orchestration, Authority, scheduler or Execution semantics.
+- persistent encrypted cognitive storage and crash recovery;
+- Security & Licensing runtime foundations;
+- Update System runtime foundations;
+- later Android/device integration behind frozen Authority/Execution.
 
 ## New-session resume procedure
 
@@ -113,15 +109,14 @@ Before making any code change:
 
 1. read `CURRENT_STATE.md`;
 2. fetch current `main` SHA and compare it with the journal;
-3. fetch the active PR, if any, and confirm its head SHA/state;
+3. fetch the active PR, if any, and confirm head SHA/state;
 4. fetch the relevant CI result;
 5. if CI failed, read the failed job/logs before editing;
-6. inspect relevant production source and contract tests;
-7. make the smallest correct change on the active feature branch;
-8. update `CURRENT_STATE.md` when the verified checkpoint changes;
-9. update `DEVELOPMENT_LOG.md`/`ARCHITECTURE.md`/`STRUCTURE.md` when durable project truth changes;
-10. merge only with the expected exact head after gates are GREEN.
+6. inspect production source, executable contracts and canonical freeze docs for affected boundaries;
+7. make the smallest correct change on a feature branch;
+8. update durable documentation when verified project truth changes;
+9. merge only with the expected exact head after gates are GREEN.
 
 Source-of-truth order:
 
-`current GitHub/main + CI → production source + executable contracts → CURRENT_STATE.md → DEVELOPMENT_LOG.md → chat history`.
+`current GitHub/main + CI → production source + executable contracts → canonical freeze docs/CURRENT_STATE.md → DEVELOPMENT_LOG.md → chat history`.
