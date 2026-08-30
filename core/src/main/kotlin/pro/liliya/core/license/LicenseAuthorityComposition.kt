@@ -17,7 +17,7 @@ class LicenseAuthorityRequest(
 
 sealed interface LicenseAuthorityDecision {
     data class LicenseDenied(val reason: LicenseDenialReason) : LicenseAuthorityDecision
-    data class AuthorityDenied(val reason: String) : LicenseAuthorityDecision
+    data object AuthorityDenied : LicenseAuthorityDecision
     data class Authorized(val licenseReceipt: LicenseDecisionReceipt) : LicenseAuthorityDecision
 }
 
@@ -96,7 +96,7 @@ class LicenseAuthorityComposition(
                                 "authorityScope" to authorityRequest.scope.value
                             )
                         )
-                        LicenseAuthorityDecision.AuthorityDenied(decision.reason)
+                        LicenseAuthorityDecision.AuthorityDenied
                     }
                 }
             }
