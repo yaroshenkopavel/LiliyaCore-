@@ -1,12 +1,10 @@
 package pro.liliya.core.knowledge
 
 import java.time.Instant
-import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
-import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import pro.liliya.core.diagnostics.DiagnosticRecorder
 import pro.liliya.core.diagnostics.InMemoryDiagnosticSink
@@ -20,7 +18,6 @@ import pro.liliya.core.observability.CoreObservability
 import pro.liliya.core.observability.LoggerProvider
 import pro.liliya.core.persistence.PersistentEntityId
 import pro.liliya.core.persistence.PersistentPayload
-import pro.liliya.core.persistence.PersistentRecord
 import pro.liliya.core.persistence.PersistentSchemaId
 import pro.liliya.core.persistence.PersistentSchemaVersion
 
@@ -95,12 +92,19 @@ class KnowledgePersistenceCodecRestorationContractTest {
     }
 
     @Test
-    fun malformed_mismatched_and_incompatible_records_fail_closed() {
+    fun malformed_mismatched_trailing_and_incompatible_records_fail_closed() {
         val encoded = KnowledgePersistentRecordCodec.encode(memoryItem())
 
         assertIs<KnowledgePersistentDecodeResult.Corrupt>(
             KnowledgePersistentRecordCodec.decode(
                 encoded.copy(payload = PersistentPayload(byteArrayOf(1, 2, 3)))
+            )
+        )
+        assertIs<KnowledgePersistentDecodeResult.Corrupt>(
+            KnowledgePersistentRecordCodec.decode(
+                encoded.copy(
+                    payload = PersistentPayload(encoded.payload.copyBytes() + byteArrayOf(0))
+                )
             )
         )
         assertIs<KnowledgePersistentDecodeResult.Corrupt>(
