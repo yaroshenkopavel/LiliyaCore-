@@ -37,13 +37,13 @@ Before changing code, read:
 
 Persistent Cognitive Storage v0.1 is fully frozen.
 
-Memory Persistence Integration v0.1 implementation/readiness baseline is:
+Memory Persistence Integration v0.1 is fully frozen on verified `main`:
 
-`16a15c739cc96aaddc026aba3252750650432e73`
+`c7a7866c199d42713c7047289db1e0f68559fcae`
 
-Merge/main Core CI: `33317696880` GREEN.
+Freeze checkpoint exact-head Core CI: `33317960415` GREEN.
 
-Memory persistence is frozen pending only its documentation-checkpoint merge.
+Freeze checkpoint merge/main Core CI: `33318203580` GREEN.
 
 Canonical documents:
 
@@ -72,35 +72,51 @@ Mandatory separation:
 
 `Memory != Persistence != Encryption != License != Authority != Cognitive Permission`
 
-## Next active stage — Knowledge Persistence Integration v0.1
+## Current active stage — Knowledge Persistence Integration v0.1
 
-After the Memory persistence freeze checkpoint is GREEN, start with a Knowledge persistence architecture contract before production changes.
+Canonical contract:
 
-Current frozen Knowledge is still process-local. Preserve:
-
-- `KnowledgeItemId` exactly;
-- exact `KnowledgeGeneration` ownership and monotonic restoration;
-- duplicate live-ID rejection and stale/ABA-safe removal;
-- deterministic snapshots ordered by `createdAt`, then ID;
-- `KnowledgeOrigin.Memory(recordId, generation)` exactly;
-- `KnowledgeOrigin.Declared(sourceId, sourceReference)` exactly;
-- private Knowledge content outside operational observability;
-- composition/backend isolation.
+`KNOWLEDGE_PERSISTENCE_INTEGRATION_V0_1_CONTRACT.md`
 
 Selected direction:
 
 `frozen Knowledge domain → canonical Knowledge codec → exact persistent record store → reviewed exact-generation hydration/restoration → frozen Knowledge semantics`
 
-A durable `KnowledgeOrigin.Memory` is structural provenance only. It does not grant permission, Authority or execution capability and does not by itself prove that referenced Memory is currently live.
+Current frozen Knowledge is process-local. Preserve exactly:
 
-Keep Learning persistence, Android, SQLite/SQLCipher, Keystore, encryption implementation, licensing, scheduler, hidden retry and multi-writer reconciliation outside the first Knowledge slice.
+- `KnowledgeItemId`;
+- `KnowledgeGeneration` ownership and persisted high-watermark monotonicity;
+- duplicate live-ID rejection and stale/ABA-safe removal;
+- deterministic snapshots ordered by `createdAt`, then ID;
+- caller-supplied `createdAt`;
+- `KnowledgeOrigin.Memory(recordId, generation)`;
+- `KnowledgeOrigin.Declared(sourceId, sourceReference)`;
+- private Knowledge content outside operational observability;
+- composition/backend isolation.
+
+`KnowledgeOrigin.Memory` is structural provenance only. It does not require a live Memory lookup for Knowledge create/hydration and does not grant permission, capability or Authority.
+
+Durable create ordering must be:
+
+`validate Knowledge → encode → durable commit → exact committed Knowledge install → success`
+
+Durable removal ordering must be:
+
+`validate exact Knowledge ownership → durable exact-generation remove → exact local remove → success`
+
+Failed durable create must keep Knowledge locally absent. Failed/conflicting durable remove must keep local Knowledge live. Corrupt/incompatible/open failures must publish no partial Knowledge composition.
+
+First implementation slice must be the narrowest codec + reviewed restoration boundary. Keep durable wiring separate until codec/restoration contracts are GREEN.
+
+Keep Learning persistence, Android, SQLite/SQLCipher, Keystore, encryption implementation, licensing, scheduler, trust/confidence scoring, semantic deduplication, hidden retry and multi-writer reconciliation outside v0.1.
 
 ## Resume procedure
 
 1. verify current `main` SHA and latest merge/main CI;
-2. if the Memory persistence freeze checkpoint PR is open, finish that exact-head/main gate first;
-3. read `MEMORY_PERSISTENCE_INTEGRATION_V0_1_FREEZE.md` and frozen Knowledge models/store/contracts;
-4. draft `KNOWLEDGE_PERSISTENCE_INTEGRATION_V0_1_CONTRACT.md` before production changes;
-5. design the narrowest Knowledge codec + reviewed exact-generation restoration boundary;
-6. add executable compatibility/failure/privacy contracts before durable wiring;
-7. keep platform storage/encryption decisions outside the core domain integration stage.
+2. read `KNOWLEDGE_PERSISTENCE_INTEGRATION_V0_1_CONTRACT.md` plus frozen Knowledge and persistence contracts;
+3. inspect `KnowledgeModels`, `KnowledgeStore`, `KnowledgeComposition` and executable Knowledge contracts;
+4. implement the canonical Knowledge codec and reviewed exact-generation restoration boundary first;
+5. add executable round-trip/malformed/restoration/high-watermark/privacy contracts;
+6. only after that wire durable create/remove and reopen semantics;
+7. merge each architectural slice only after exact-head Core CI GREEN and readiness audit;
+8. keep platform storage/encryption decisions outside the core domain integration stage.
