@@ -1,16 +1,16 @@
 # CURRENT STATE
 
-Last journal update: 2026-08-30
+Last journal update: 2026-08-31
 
 ## Current verified baseline
 
-Current verified `main` before the License Core freeze-checkpoint PR:
+Current verified `main`:
 
-`3b249b1d1f7b2c0128e8f3ca6fe4cdc449cb663b`
+`6c66017136b4fcd4fcbba62530c3ecee7fae7dc7`
 
 Latest verified merge/main Core CI:
 
-`33327943577` — GREEN.
+`33336902044` — GREEN.
 
 ## Frozen persistence baselines
 
@@ -19,68 +19,35 @@ Latest verified merge/main Core CI:
 - Knowledge Persistence Integration v0.1 — **FROZEN**;
 - Learning Persistence Integration v0.1 — **FROZEN**.
 
-Canonical persistence documents:
+Canonical persistence documents remain the subsystem contract/freeze documents under `docs/development/`.
 
-- `PERSISTENT_COGNITIVE_STORAGE_V0_1_CONTRACT.md`
-- `PERSISTENT_COGNITIVE_STORAGE_V0_1_FREEZE.md`
-- `MEMORY_PERSISTENCE_INTEGRATION_V0_1_CONTRACT.md`
-- `MEMORY_PERSISTENCE_INTEGRATION_V0_1_FREEZE.md`
-- `KNOWLEDGE_PERSISTENCE_INTEGRATION_V0_1_CONTRACT.md`
-- `KNOWLEDGE_PERSISTENCE_INTEGRATION_V0_1_FREEZE.md`
-- `LEARNING_PERSISTENCE_INTEGRATION_V0_1_CONTRACT.md`
-- `LEARNING_PERSISTENCE_INTEGRATION_V0_1_FREEZE.md`
-
-## Learning/Persistence audit closure
-
-The delayed post-freeze Learning/Persistence observability audit has now been completed and documented.
-
-Result: **CLEAN**.
-
-Confirmed boundaries:
-
-- durable persistence transitions use Foundation Logging/Diagnostics/CoreObservability;
-- private cognitive payload and backend exception-message content remain absent from normal durable/public failure rendering;
-- corruption/incompatibility/reopen/generation mismatch paths remain fail closed;
-- no audited production path used `println`, `System.out`, `printStackTrace` or `throwable.message` as an observability bypass;
-- the readiness contract protecting private payload/exception-message rendering remains GREEN in the full Core suite.
-
-This closes the delayed process gate without changing frozen Learning semantics.
-
-## Learning retained limitation
-
-Learning persistence still does not create a transaction spanning Learning and Memory/Knowledge.
-
-The controlled path remains:
+Learning retains the explicit cross-domain crash window:
 
 `downstream Memory/Knowledge mutation → durable Learning completion`
 
-A crash/failure may occur between those boundaries. No exactly-once downstream guarantee, automatic replay, hidden retry, compensation or reconciliation is claimed.
+There is no exactly-once downstream guarantee, automatic replay, hidden retry or reconciliation.
 
-## License Core v0.1 status
+## Learning/Persistence observability audit
 
-License Core v0.1 implementation slices are complete and the documentation/freeze checkpoint is now the active gate.
+The delayed Learning/Persistence observability audit was completed and corrected in PR #39.
 
-Canonical documents:
+Result: **CLEAN for the audited Learning/Persistence production paths**.
 
-- `SECURITY_LICENSING_V0_1_CONTRACT.md`
-- `LICENSE_CORE_V0_1_CONTRACT.md`
-- `LICENSE_CORE_V0_1_FREEZE.md`
+Important caveat: Foundation is not a universal throwable-message sanitizer. Callers must not forward secret-bearing throwables unsanitized because Foundation logging/diagnostics can retain `throwable.message` when a throwable is explicitly supplied.
+
+The audited Learning/Persistence paths keep private cognitive payload and backend exception-message content out of normal operational observability and public failure rendering.
+
+## License Core v0.1
+
+License Core v0.1 is **FROZEN**.
+
+Freeze checkpoint PR #35 and merge/main gate completed GREEN.
 
 Frozen direction:
 
 `signed/canonical entitlement evidence → trusted verification boundary → exact license state ownership → explicit policy decision → optional scoped Authority request → controlled protected use`
 
-Implementation history:
-
-- PR #30 — immutable models + exact ownership;
-- PR #31 — canonical entitlement verification;
-- PR #32 — policy and decision semantics;
-- PR #33 — controlled License→Authority boundary;
-- PR #34 — readiness hardening.
-
-All five implementation slices passed exact-head Core CI before merge and merge/main Core CI after merge.
-
-## License Core frozen invariants
+Mandatory separations remain:
 
 `License != Signature != Device Enrollment != Key Access != Capability != Authority != Execution`
 
@@ -90,72 +57,75 @@ All five implementation slices passed exact-head Core CI before merge and merge/
 
 `License expiry != cognitive-data destruction`
 
-Key guarantees:
+Offline-lease semantics are part of the frozen local policy model; future licensing-service work may issue/refresh evidence but may not weaken those fail-closed semantics.
 
-- exact `(LicenseId, LicenseGeneration)` ownership and stale/ABA-safe removal;
-- canonical signed evidence with exact trusted key-ID lookup;
-- unsupported schema/algorithm, unknown key, key substitution, invalid signature and malformed payload fail closed;
-- explicit policy time input with no hidden system clock;
-- `notBefore` inclusive, `expiresAt` exclusive;
-- **offline-lease semantics are mandatory in License Core v0.1** and `offlineLeaseUntil` is an exclusive deadline when present;
-- stale revocation/replay and suspicious time/replay state deny;
-- product/feature/optional subject matching is exact;
-- old decisions/receipts are historical evidence only;
-- License denial performs zero Authority calls;
-- every License→Authority authorization call re-evaluates License policy;
-- normal observability excludes private subject/key/payload/signature content;
-- no direct console logging bypass exists in audited License production paths.
+## Android Device Key v0.1
 
-## Current freeze gate
+Phase B architecture is accepted. The overall boundary is **NOT FROZEN** yet.
 
-License Core v0.1 is declared fully **FROZEN only after** the current documentation/freeze PR itself passes exact-head Core CI, merges, and the resulting merge/main Core CI is GREEN.
+Canonical contract:
 
-Until that final merge/main gate completes, the implementation is freeze-ready but the canonical freeze checkpoint is not yet finalized on `main`.
+`ANDROID_DEVICE_KEY_V0_1_CONTRACT.md`
 
-## Next controlled architecture stage
+Accepted direction:
 
-After the License Core freeze checkpoint is verified on `main`, the next accepted security phase is:
+`Android Keystore key identity → verified security-level evidence → controlled device-key operation → structural enrollment/binding evidence → later DEK wrapping/unwrap consumers`
 
-`Android device-key boundary`
+Mandatory separation:
 
-This requires a separate reviewed architecture contract before implementation.
+`Device Key != Device Identity != Enrollment != License != DEK != Capability != Authority != Execution`
 
-Accepted roadmap:
+Completed implementation slices:
+
+- PR #37 — platform-neutral models, security levels, typed failures and exact ownership;
+- PR #38 — adapter abstraction and deterministic fake contracts;
+- PR #40 — Core-side Android Keystore creation/resolution/security inspection boundary;
+- PR #41 — proof-of-possession/signing and structural enrollment boundary, including platform-instance ABA hardening and detached capability state.
+
+Latest accepted merge/main baseline is PR #41 on `6c66017136b4fcd4fcbba62530c3ecee7fae7dc7`, Core CI `33336902044` GREEN.
+
+Current guarantees include:
+
+- exact local `(DeviceKeyId, DeviceKeyGeneration)` ownership;
+- opaque `DeviceKeyPlatformReference` to distinguish platform replacement under a reused alias;
+- proof signing requires exact current local generation and exact platform instance;
+- proof publication rechecks local state after signing;
+- challenge/signature/platform/enrollment references are not rendered as raw proof material;
+- enrollment evidence is structural and is not License, Capability or Authority;
+- no raw private-key extraction path exists in Core;
+- Core remains Android-framework-free and makes no real hardware-backed claim.
+
+## Current next step
+
+Proceed with Android Device Key v0.1 slice 5:
+
+`invalidation/recovery/concurrency/privacy readiness hardening`
+
+Before freeze, close remaining readiness concerns including typed failure granularity, explicit invalidation/recovery behavior, concurrency races, privacy/logging audit, defensive state boundaries and fallback semantics against the canonical contract.
+
+After slice 5, perform the Android Device Key v0.1 readiness audit and slice 6 freeze checkpoint. The phase may be called frozen only after exact-head and merge/main Core CI are GREEN and all readiness/security/privacy gates are satisfied.
+
+Real Android Keystore/StrongBox behavior still requires a future Android platform module plus Android runtime/instrumentation tests before any hardware-backed claim.
+
+## Accepted security roadmap
 
 `License Core → Android device-key boundary → cognitive storage encryption → protected model package/loader → runtime hardening → licensing service/offline lease issuance+refresh → Update System integration → red-team/readiness`
 
-The later licensing-service phase adds enrollment/issuance/refresh and stronger trusted-time evidence; it does not replace the already-frozen local offline-lease policy semantics.
+Do not start cognitive/model DEK unwrap or encrypted storage before the Device Key boundary freezes unless a separately reviewed dependency explicitly preserves phase separation.
 
-## Logging and diagnostics status
+## Logging and diagnostics
 
 Foundation Logging/Diagnostics/CoreObservability remains mandatory cross-cutting infrastructure.
 
-Operational observability may expose approved structural IDs, generations, schema/version, timestamps, key/epoch identifiers and typed decision/rejection categories. Private cognitive content, raw persistent payloads, bearer evidence, cryptographic key bytes and secret-bearing exception messages remain excluded from normal logs/diagnostics/rendering.
+Operational observability may expose approved structural IDs/generations/categories, but must not expose private key material, DEKs, raw attestation, raw proof/signature material, cognitive/model plaintext or secret-bearing exception messages.
 
-## Governed control-path invariants
-
-`Agent Identity != Agent Lifecycle != Delegation != Coordination != Autonomy != Authority != Execution`
-
-`Structural provenance != credential != capability != permission != Authority`
-
-`Persistence != Encryption != License != Authority != Cognitive Permission`
-
-Persisted cognitive/control/license state remains state/evidence, not permission. Fresh Authority remains mandatory at real side-effect boundaries.
-
-## Known cross-cutting debt
-
-1. Structural provenance/source references are consistency evidence, not cryptographic authenticity.
-2. Some compound cognitive operations do not yet share one correlation root across every frozen subsystem boundary.
-3. Physical crash durability still depends on a future concrete persistent backend.
-4. Learning application retains the downstream-mutation → Learning-completion crash window.
-5. No hardware-backed device binding or trusted monotonic time exists in current core-only `main`.
-6. Android/device key, authenticated cognitive encryption and protected model loading remain future reviewed phases.
+Direct console output remains forbidden in reviewed production paths.
 
 ## Repository continuity
 
 Primary repository: `yaroshenkopavel/LiliyaCore-`.
 
-Legacy `Vikrot123/LiliyaCore` is backup/migration history only.
+Legacy `Vikrot123/LiliyaCore` remains backup/migration history only.
 
 Source-of-truth precedence:
 
