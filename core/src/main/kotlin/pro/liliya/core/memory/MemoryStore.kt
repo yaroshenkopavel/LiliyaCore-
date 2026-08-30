@@ -17,16 +17,36 @@ internal sealed interface MemoryRegistrationResult {
     data class Rejected(val reason: String) : MemoryRegistrationResult
 }
 
-internal class MemoryStore(
-    private val observability: CoreObservability
+internal sealed interface MemoryRestorationResult {
+    data class Restored(val store: MemoryStore) : MemoryRestorationResult
+    data class Rejected(val reason: String) : MemoryRestorationResult
+}
+
+internal class MemoryStore private constructor(
+    private val observability: CoreObservability,
+    initialHighWatermark: Long,
+    initialEntries: List<MemoryRecordSnapshot>
 ) {
     private data class Entry(
         val generation: MemoryGeneration,
         val record: MemoryRecord
     )
 
-    private val nextGeneration = AtomicLong(0)
-    private val records = ConcurrentHashMap<MemoryRecordId, Entry>()
+    constructor(observability: CoreObservability) : this(
+        observability = observability,
+        initialHighWatermark = 0L,
+        initialEntries = emptyList()
+    )
+
+    private val nextGeneration = AtomicLong(initialHighWatermark)
+    private val records = ConcurrentHashMap<MemoryRecordId, Entry>().apply {
+        initialEntries.forEach { snapshot ->
+            put(
+                snapshot.record.id,
+                Entry(snapshot.generation, snapshot.record)
+            )
+        }
+    }
 
     fun register(record: MemoryRecord, context: LogContext): MemoryRegistrationResult {
         val entry = Entry(
@@ -55,26 +75,7 @@ internal class MemoryStore(
         )
 
         return MemoryRegistrationResult.Registered(
-            registration = object : MemoryRegistration {
-                override val record: MemoryRecord = record
-                override val generation: MemoryGeneration = entry.generation
-
-                override fun remove(context: LogContext): Boolean {
-                    val removed = records.remove(record.id, entry)
-                    observability.record(
-                        severity = if (removed) DiagnosticSeverity.INFO else DiagnosticSeverity.WARNING,
-                        code = if (removed) "MEMORY_REMOVED" else "MEMORY_REMOVAL_REJECTED",
-                        message = if (removed) {
-                            "memory record removed"
-                        } else {
-                            "memory registration is no longer current"
-                        },
-                        context = context,
-                        metadata = metadata(record, entry.generation)
-                    )
-                    return removed
-                }
-            }
+            registration = registration(entry)
         )
     }
 
@@ -105,6 +106,27 @@ internal class MemoryStore(
             )
         )
 
+    private fun registration(entry: Entry): MemoryRegistration = object : MemoryRegistration {
+        override val record: MemoryRecord = entry.record
+        override val generation: MemoryGeneration = entry.generation
+
+        override fun remove(context: LogContext): Boolean {
+            val removed = records.remove(record.id, entry)
+            observability.record(
+                severity = if (removed) DiagnosticSeverity.INFO else DiagnosticSeverity.WARNING,
+                code = if (removed) "MEMORY_REMOVED" else "MEMORY_REMOVAL_REJECTED",
+                message = if (removed) {
+                    "memory record removed"
+                } else {
+                    "memory registration is no longer current"
+                },
+                context = context,
+                metadata = metadata(record, entry.generation)
+            )
+            return removed
+        }
+    }
+
     private fun metadata(
         record: MemoryRecord,
         generation: MemoryGeneration
@@ -116,5 +138,39 @@ internal class MemoryStore(
             put("memorySourceReference", reference.value)
         }
         put("createdAt", record.createdAt.toString())
+    }
+
+    companion object {
+        fun restore(
+            observability: CoreObservability,
+            entries: List<MemoryRecordSnapshot>,
+            highWatermark: Long
+        ): MemoryRestorationResult {
+            if (highWatermark < 0L) {
+                return MemoryRestorationResult.Rejected("memory generation high watermark is negative")
+            }
+            if (entries.any { it.generation.value > highWatermark }) {
+                return MemoryRestorationResult.Rejected("memory generation exceeds restored high watermark")
+            }
+            if (entries.map { it.record.id }.toSet().size != entries.size) {
+                return MemoryRestorationResult.Rejected("duplicate restored memory record id")
+            }
+            if (entries.map { it.generation }.toSet().size != entries.size) {
+                return MemoryRestorationResult.Rejected("duplicate restored memory generation")
+            }
+
+            return MemoryRestorationResult.Restored(
+                MemoryStore(
+                    observability = observability,
+                    initialHighWatermark = highWatermark,
+                    initialEntries = entries.map { snapshot ->
+                        MemoryRecordSnapshot(
+                            record = snapshot.record,
+                            generation = snapshot.generation
+                        )
+                    }
+                )
+            )
+        }
     }
 }
