@@ -113,16 +113,30 @@ class DeviceKeyProofService(
         if (DeviceKeyCapability.SIGN_CHALLENGE !in state.capabilities) {
             return DeviceKeyOperationResult.Rejected(DeviceKeyFailureCategory.UNSUPPORTED_PROFILE)
         }
+        if (state.platformReference == null) {
+            return DeviceKeyOperationResult.Rejected(DeviceKeyFailureCategory.STALE_OWNERSHIP)
+        }
 
         return when (val signed = signer.signChallenge(state, request.challenge)) {
-            is DeviceKeyOperationResult.Success -> DeviceKeyOperationResult.Success(
-                DeviceKeyPossessionProof(
-                    key = request.key,
-                    algorithm = state.algorithm,
-                    securityLevel = state.securityLevel,
-                    signature = signed.value
-                )
-            )
+            is DeviceKeyOperationResult.Success -> {
+                val current = composition.inspect(request.key.id)
+                if (
+                    current == null ||
+                    current.generation != request.key.generation ||
+                    current.state != state
+                ) {
+                    DeviceKeyOperationResult.Rejected(DeviceKeyFailureCategory.STALE_OWNERSHIP)
+                } else {
+                    DeviceKeyOperationResult.Success(
+                        DeviceKeyPossessionProof(
+                            key = request.key,
+                            algorithm = state.algorithm,
+                            securityLevel = state.securityLevel,
+                            signature = signed.value
+                        )
+                    )
+                }
+            }
 
             is DeviceKeyOperationResult.Rejected -> signed
             is DeviceKeyOperationResult.Failed -> signed
