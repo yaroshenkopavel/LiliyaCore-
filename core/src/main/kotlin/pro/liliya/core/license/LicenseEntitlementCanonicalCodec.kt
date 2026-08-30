@@ -41,49 +41,51 @@ object LicenseEntitlementCanonicalCodec {
             }
         )
 
-    fun decode(payload: LicenseCanonicalPayload): LicenseEntitlementDecodeResult = try {
-        val input = ByteArrayInputStream(payload.copyBytes())
-        val data = DataInputStream(input)
-        if (data.readInt() != MAGIC) return LicenseEntitlementDecodeResult.Corrupt
-        val id = LicenseId(data.readString(input))
-        val subject = LicenseSubject(data.readString(input))
-        val productId = LicenseProductId(data.readString(input))
-        val featureCount = data.readInt()
-        if (featureCount <= 0 || featureCount > input.available()) {
-            return LicenseEntitlementDecodeResult.Corrupt
-        }
-        val features = LinkedHashSet<LicenseFeature>()
-        repeat(featureCount) {
-            if (!features.add(LicenseFeature(data.readString(input)))) {
+    fun decode(payload: LicenseCanonicalPayload): LicenseEntitlementDecodeResult {
+        return try {
+            val input = ByteArrayInputStream(payload.copyBytes())
+            val data = DataInputStream(input)
+            if (data.readInt() != MAGIC) return LicenseEntitlementDecodeResult.Corrupt
+            val id = LicenseId(data.readString(input))
+            val subject = LicenseSubject(data.readString(input))
+            val productId = LicenseProductId(data.readString(input))
+            val featureCount = data.readInt()
+            if (featureCount <= 0 || featureCount > input.available()) {
                 return LicenseEntitlementDecodeResult.Corrupt
             }
-        }
-        val entitlement = LicenseEntitlement(
-            id = id,
-            subject = subject,
-            productId = productId,
-            features = features,
-            version = LicenseVersion(data.readLong()),
-            signingKeyId = LicenseKeyId(data.readString(input)),
-            issuedAt = data.readInstant(),
-            notBefore = data.readInstant(),
-            expiresAt = data.readNullableInstant(),
-            offlineLeaseUntil = data.readNullableInstant(),
-            revocationEpoch = LicenseRevocationEpoch(data.readLong()),
-            replaySequence = if (data.readBoolean()) {
-                LicenseReplaySequence(data.readLong())
-            } else {
-                null
+            val features = LinkedHashSet<LicenseFeature>()
+            repeat(featureCount) {
+                if (!features.add(LicenseFeature(data.readString(input)))) {
+                    return LicenseEntitlementDecodeResult.Corrupt
+                }
             }
-        )
-        if (input.available() != 0) return LicenseEntitlementDecodeResult.Corrupt
-        LicenseEntitlementDecodeResult.Decoded(entitlement)
-    } catch (_: EOFException) {
-        LicenseEntitlementDecodeResult.Corrupt
-    } catch (_: IllegalArgumentException) {
-        LicenseEntitlementDecodeResult.Corrupt
-    } catch (_: RuntimeException) {
-        LicenseEntitlementDecodeResult.Corrupt
+            val entitlement = LicenseEntitlement(
+                id = id,
+                subject = subject,
+                productId = productId,
+                features = features,
+                version = LicenseVersion(data.readLong()),
+                signingKeyId = LicenseKeyId(data.readString(input)),
+                issuedAt = data.readInstant(),
+                notBefore = data.readInstant(),
+                expiresAt = data.readNullableInstant(),
+                offlineLeaseUntil = data.readNullableInstant(),
+                revocationEpoch = LicenseRevocationEpoch(data.readLong()),
+                replaySequence = if (data.readBoolean()) {
+                    LicenseReplaySequence(data.readLong())
+                } else {
+                    null
+                }
+            )
+            if (input.available() != 0) return LicenseEntitlementDecodeResult.Corrupt
+            LicenseEntitlementDecodeResult.Decoded(entitlement)
+        } catch (_: EOFException) {
+            LicenseEntitlementDecodeResult.Corrupt
+        } catch (_: IllegalArgumentException) {
+            LicenseEntitlementDecodeResult.Corrupt
+        } catch (_: RuntimeException) {
+            LicenseEntitlementDecodeResult.Corrupt
+        }
     }
 
     private fun DataOutputStream.writeString(value: String) {
