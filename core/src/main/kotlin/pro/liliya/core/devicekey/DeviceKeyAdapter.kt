@@ -32,8 +32,7 @@ internal object DeviceKeyProfilePolicy {
 
         return when (requested.requestedSecurityLevel) {
             DeviceKeySecurityLevel.UNKNOWN -> false
-            DeviceKeySecurityLevel.SOFTWARE ->
-                actualSecurityLevel == DeviceKeySecurityLevel.SOFTWARE
+            DeviceKeySecurityLevel.SOFTWARE -> true
 
             DeviceKeySecurityLevel.TRUSTED_ENVIRONMENT -> when (requested.fallbackPolicy) {
                 DeviceKeyFallbackPolicy.FAIL_CLOSED,
@@ -41,8 +40,7 @@ internal object DeviceKeyProfilePolicy {
                     actualSecurityLevel == DeviceKeySecurityLevel.TRUSTED_ENVIRONMENT ||
                         actualSecurityLevel == DeviceKeySecurityLevel.STRONGBOX
 
-                DeviceKeyFallbackPolicy.ALLOW_SOFTWARE ->
-                    actualSecurityLevel != DeviceKeySecurityLevel.UNKNOWN
+                DeviceKeyFallbackPolicy.ALLOW_SOFTWARE -> true
             }
 
             DeviceKeySecurityLevel.STRONGBOX -> when (requested.fallbackPolicy) {
@@ -53,8 +51,7 @@ internal object DeviceKeyProfilePolicy {
                     actualSecurityLevel == DeviceKeySecurityLevel.STRONGBOX ||
                         actualSecurityLevel == DeviceKeySecurityLevel.TRUSTED_ENVIRONMENT
 
-                DeviceKeyFallbackPolicy.ALLOW_SOFTWARE ->
-                    actualSecurityLevel != DeviceKeySecurityLevel.UNKNOWN
+                DeviceKeyFallbackPolicy.ALLOW_SOFTWARE -> true
             }
         }
     }
