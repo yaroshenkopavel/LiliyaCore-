@@ -42,15 +42,12 @@ class AndroidKeystoreBoundaryContractTest {
         }
     }
 
-    private fun profile(
-        level: DeviceKeySecurityLevel = DeviceKeySecurityLevel.STRONGBOX,
-        fallback: DeviceKeyFallbackPolicy = DeviceKeyFallbackPolicy.FAIL_CLOSED
-    ) = DeviceKeyProfile(
-        algorithm = algorithm,
-        requestedSecurityLevel = level,
-        fallbackPolicy = fallback,
-        capabilities = setOf(DeviceKeyCapability.SIGN_CHALLENGE)
-    )
+    private fun profile(level: DeviceKeySecurityLevel = DeviceKeySecurityLevel.STRONGBOX) =
+        DeviceKeyProfile(
+            algorithm = algorithm,
+            requestedSecurityLevel = level,
+            capabilities = setOf(DeviceKeyCapability.SIGN_CHALLENGE)
+        )
 
     private fun descriptor(
         id: String = "device-main",
@@ -87,21 +84,33 @@ class AndroidKeystoreBoundaryContractTest {
     }
 
     @Test
-    fun post_generation_security_mismatch_fails_closed_and_cleans_exact_requested_id() {
+    fun strongbox_unavailable_requires_new_explicit_tee_request() {
         val platform = FakePlatform().apply {
             generatedDescriptor = descriptor(level = DeviceKeySecurityLevel.TRUSTED_ENVIRONMENT)
             inspectedDescriptor = descriptor(level = DeviceKeySecurityLevel.TRUSTED_ENVIRONMENT)
         }
         val adapter = AndroidKeystoreDeviceKeyAdapter(platform)
-        val request = DeviceKeyCreationRequest(DeviceKeyId("device-main"), profile())
+        val id = DeviceKeyId("device-main")
 
-        val result = adapter.create(request, createdAt)
-
+        val strongbox = adapter.create(
+            DeviceKeyCreationRequest(id, profile(DeviceKeySecurityLevel.STRONGBOX)),
+            createdAt
+        )
         assertEquals(
             DeviceKeyFailureCategory.REQUIRED_SECURITY_LEVEL_UNAVAILABLE,
-            assertIs<DeviceKeyOperationResult.Rejected>(result).category
+            assertIs<DeviceKeyOperationResult.Rejected>(strongbox).category
         )
-        assertEquals(listOf(request.id), platform.deletedIds)
+        assertEquals(listOf(id), platform.deletedIds)
+
+        platform.deletedIds.clear()
+        val tee = assertIs<DeviceKeyOperationResult.Success<DeviceKeyState>>(
+            adapter.create(
+                DeviceKeyCreationRequest(id, profile(DeviceKeySecurityLevel.TRUSTED_ENVIRONMENT)),
+                createdAt
+            )
+        ).value
+        assertEquals(DeviceKeySecurityLevel.TRUSTED_ENVIRONMENT, tee.securityLevel)
+        assertTrue(platform.deletedIds.isEmpty())
     }
 
     @Test
@@ -168,26 +177,24 @@ class AndroidKeystoreBoundaryContractTest {
     }
 
     @Test
-    fun explicit_tee_fallback_preserves_actual_inspected_level() {
-        val platform = FakePlatform().apply {
-            generatedDescriptor = descriptor(level = DeviceKeySecurityLevel.TRUSTED_ENVIRONMENT)
-            inspectedDescriptor = descriptor(level = DeviceKeySecurityLevel.TRUSTED_ENVIRONMENT)
-        }
+    fun invalidated_unavailable_auth_and_malformed_metadata_outcomes_propagate_fail_closed() {
+        val platform = FakePlatform()
         val adapter = AndroidKeystoreDeviceKeyAdapter(platform)
-        val request = DeviceKeyCreationRequest(
-            DeviceKeyId("device-main"),
-            profile(
-                level = DeviceKeySecurityLevel.STRONGBOX,
-                fallback = DeviceKeyFallbackPolicy.ALLOW_TRUSTED_ENVIRONMENT
-            )
+        val id = DeviceKeyId("device-main")
+        val categories = listOf(
+            DeviceKeyFailureCategory.KEY_INVALIDATED,
+            DeviceKeyFailureCategory.KEY_TEMPORARILY_UNAVAILABLE,
+            DeviceKeyFailureCategory.AUTHENTICATION_REQUIRED,
+            DeviceKeyFailureCategory.MALFORMED_METADATA
         )
 
-        val state = assertIs<DeviceKeyOperationResult.Success<DeviceKeyState>>(
-            adapter.create(request, createdAt)
-        ).value
-
-        assertEquals(DeviceKeySecurityLevel.TRUSTED_ENVIRONMENT, state.securityLevel)
-        assertTrue(state.securityLevel.hardwareBacked)
+        for (category in categories) {
+            platform.inspectResult = AndroidKeystorePlatformResult.Rejected(category)
+            assertEquals(
+                category,
+                assertIs<DeviceKeyOperationResult.Rejected>(adapter.resolve(id)).category
+            )
+        }
     }
 
     @Test

@@ -62,7 +62,7 @@ class DeviceKeyComposition(
     fun snapshotEntries(): List<DeviceKeySnapshot> = store.snapshotEntries()
 
     private fun metadata(state: DeviceKeyState): Map<String, String> = mapOf(
-        "deviceKeyId" to state.id.value,
+        "deviceKeyId" to "[redacted]",
         "deviceKeyAlgorithm" to state.algorithm.value,
         "deviceKeySecurityLevel" to state.securityLevel.name.lowercase(),
         "deviceKeyCapabilityCount" to state.capabilities.size.toString(),
