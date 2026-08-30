@@ -26,13 +26,15 @@ Hard invariants: default deny; capability existence is not permission; exact pri
 
 Memory, Knowledge, Identity/Self, Trust/Security, Personality, Reflection, Learning foundations, Planning, Reasoning, Decision, Orchestration Intent, Controlled Orchestration, Autonomy Foundation, Controlled Autonomy Deliberation, Agents Foundation, Controlled Agent Initiative, Controlled Agent Lifecycle, Agent Delegation Foundation, Controlled Agent Delegation and Agent Coordination Foundation v0.1 are frozen.
 
-Canonical freeze documents are the detailed source for each boundary.
+Controlled Agent Coordination v0.1 is in progress and is not yet frozen.
+
+Canonical freeze documents are the detailed source for each frozen boundary.
 
 ## Cognitive/control chain
 
 `Interaction/Input → Context → Meaning → Goal → Planning → Reasoning → Decision → Orchestration Intent → Capability/Authority → Execution → Result → Reflection → Memory/Knowledge → Learning`
 
-Autonomy is a governed initiative layer around this chain. Agents add exact actor identity/lifecycle governance. Delegation adds exact parent/child provenance. Coordination currently adds exact participant-set provenance only. None of these layers propagates implicit permission.
+Autonomy is a governed initiative layer around this chain. Agents add exact actor identity/lifecycle governance. Delegation adds exact parent/child provenance. Coordination adds exact participant-set provenance plus controlled multi-participant transaction governance. None of these layers propagates implicit permission.
 
 ## Decision / Orchestration — FROZEN
 
@@ -112,22 +114,64 @@ Hard invariants:
 
 Canonical contract: `AGENT_COORDINATION_V0_1_FREEZE.md`.
 
-## Controlled Agent Coordination v0.1 — NEXT
+## Controlled Agent Coordination v0.1 — IN PROGRESS
 
-First direction:
+Implemented governed path through Planning:
 
-`exact Coordination ID+generation → fresh coordination lookup → exact participant Agent-generation validation → exact ACTIVE lifecycle validation → structural readiness evidence`
+`exact Coordination ID+generation → fresh exact participant ACTIVE preflight → exact coordination↔Autonomy work binding → compensated participant initiatives → transactional bounded attempt claims → exact coordination↔attempt binding → compensated deliberation transaction → exact live deliberation preflight → ordinary frozen Planning install → post-write governance revalidation → exact compensation on stale governance`
 
-Required first-slice invariants:
+Current mandatory invariants:
 
-- exact coordination generation must still be live;
-- every participant Agent ID+generation must still be live;
-- every participant lifecycle must be ACTIVE;
-- removed/replaced/CANCELLED/STOPPED participant fails closed;
-- readiness evidence is data only and never permission;
-- private purpose is excluded from evidence/observability;
-- no delegation creation, Autonomy creation, attempt claim, scheduler, fan-out, voting/consensus, Authority or Execution;
-- bounded work coordination, if introduced later, must be a separate independently audited layer.
+`Coordination Readiness != Work != Permission != Authority != Execution`
+
+`Coordination Transaction != Permission != Authority != Execution`
+
+`Coordination Attempt Transaction != Attempt Binding != Permission != Authority != Execution`
+
+`Coordinated Deliberation != Planning != Reasoning != Decision != Permission != Authority != Execution`
+
+`Coordinated Planning != Reasoning != Decision != Permission != Authority != Execution`.
+
+Hard guarantees implemented through PR #177:
+
+- exact coordination generation and every exact participant Agent generation are freshly live-validated;
+- every participant lifecycle must be exact ACTIVE at controlled preflight boundaries;
+- coordination work is bound to a complete deterministic participant→Autonomy set;
+- one exact Autonomy generation cannot be reused across coordination work sets;
+- multi-participant initiative creation is compensated if a later participant or post-write governance check fails;
+- bounded attempt accounting remains delegated to frozen Agent/Autonomy gates;
+- exact coordination-attempt provenance is committed before a coordinated attempt receipt is returned;
+- exact deliberation requests are created from committed attempt provenance and compensated as one transaction;
+- live deliberation preflight re-derives the exact Autonomy attempt and rechecks the exact coordination-attempt binding;
+- coordinated Planning writes only ordinary frozen Planning data;
+- coordinated Planning performs a fresh preflight before the write and a fresh preflight after the write;
+- if governance changes after Planning install, the exact newly-created Planning generation is removed;
+- if exact compensation cannot restore the invariant, the bridge returns explicit failure and emits CRITICAL observability;
+- private coordination purpose, deliberation objective, Planning goal and Planning steps are not bridge-observable content;
+- no scheduler, voting/consensus, implicit permission, Authority or Execution is introduced by any implemented coordination slice.
+
+### Next controlled cognitive slice
+
+Preferred next stage:
+
+`exact live coordinated deliberation + exact live coordinated Planning generation → ordinary frozen Reasoning data`
+
+Required design constraints:
+
+- use fresh coordinated deliberation preflight immediately before Reasoning installation;
+- require exact live Planning generation that belongs to the same structural coordination/deliberation provenance;
+- install through ordinary frozen Reasoning composition rather than creating a coordination-specific reasoning authority;
+- revalidate coordination/deliberation/Planning provenance immediately after the write;
+- compensate the exact newly-created Reasoning generation on a post-write governance race;
+- treat compensation failure as explicit failure, never successful rejection;
+- keep private cognitive text outside bridge observability;
+- expose no Decision, Orchestration, permission, Authority, scheduler or Execution semantics.
+
+### Known cross-cutting debt, not a bridge-local blocker
+
+Structural provenance strings/source references are evidence and consistency markers, not cryptographic or capability-authenticity tokens. A caller being able to construct the same string is not equivalent to gaining Authority or Execution; downstream trusted layers must continue to combine provenance with fresh exact live evidence.
+
+Correlation is also fragmented across some compound cognitive operations because frozen subsystem compositions may create their own operation roots. This is architectural debt to address deliberately later; do not silently introduce unrelated hidden context or widen one cognitive bridge PR into a cross-cutting correlation redesign.
 
 ## Update System v0.1 — ARCHITECTURE CONTRACT
 
