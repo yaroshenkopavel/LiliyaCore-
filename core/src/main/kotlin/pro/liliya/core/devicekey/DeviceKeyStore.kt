@@ -136,7 +136,7 @@ internal class DeviceKeyStore(
         state: DeviceKeyState,
         generation: DeviceKeyGeneration?
     ): Map<String, String> = buildMap {
-        put("deviceKeyId", state.id.value)
+        put("deviceKeyId", "[redacted]")
         generation?.let { put("deviceKeyGeneration", it.value.toString()) }
         put("deviceKeyAlgorithm", state.algorithm.value)
         put("deviceKeySecurityLevel", state.securityLevel.name.lowercase())
