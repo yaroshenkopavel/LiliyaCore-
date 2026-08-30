@@ -1,16 +1,14 @@
 # License Core v0.1 Architecture Contract
 
-Status: **ARCHITECTURE CONTRACT — IMPLEMENTATION NOT YET FROZEN**
+Status: **FROZEN after freeze-checkpoint merge/main CI GREEN**
 
 ## Purpose
 
-Define the first core-only licensing boundary selected from `SECURITY_LICENSING_V0_1_CONTRACT.md` before Android Keystore, protected model loading, encrypted cognitive storage adapters or online enrollment are implemented.
+License Core v0.1 is the storage/platform-neutral licensing boundary that precedes Android Keystore, device enrollment, encrypted cognitive storage and protected model loading.
 
-Selected direction:
+Frozen direction:
 
 `signed/canonical entitlement evidence → trusted verification boundary → exact license state ownership → explicit policy decision → optional scoped Authority request → controlled protected use`
-
-This stage is deliberately narrower than the full Security & Licensing roadmap. It establishes immutable core models, exact ownership, verification/policy semantics, replay/expiry/revocation handling and privacy-safe observability without pretending that a Kotlin/JVM-only implementation can provide device-bound hardware security.
 
 ## Mandatory separation
 
@@ -22,312 +20,199 @@ This stage is deliberately narrower than the full Security & Licensing roadmap. 
 
 `License expiry != cognitive-data destruction`
 
-No license model, receipt or verification result may silently become a general execution permission.
+No License model, verification result, decision or receipt is a general execution permission.
 
-## Scope of License Core v0.1
+## Frozen implementation surface
 
-The implementation stage may introduce core equivalents of:
+License Core v0.1 contains:
 
-- `LicenseId`;
-- `LicenseSubject`;
-- `LicenseProductId`;
-- `LicenseFeature`;
-- `LicenseVersion`;
-- `LicenseKeyId`;
-- `LicenseIssuedAt` / `notBefore` / `expiry`;
-- explicit offline-lease state where needed by the chosen policy;
-- revocation/key epoch;
-- canonical signed entitlement payload/envelope representation;
-- trusted verification-key lookup abstraction;
-- signature verification result abstraction;
-- exact-generation live license state ownership;
-- `LicensePolicy`;
-- `LicenseDecision`;
-- structural `LicenseReceipt` or equivalent decision evidence;
-- composition-owned store/registry and deterministic snapshots;
-- privacy-safe Logging/Diagnostics.
+- immutable structural License models;
+- exact positive `LicenseGeneration` ownership;
+- composition-owned exact License store with stale/ABA-safe removal;
+- deterministic detached snapshots;
+- canonical entitlement payload/envelope representation;
+- exact trusted key-ID lookup and allowed-algorithm verification boundary;
+- typed verification rejection;
+- explicit `LicensePolicyRequest` and `LicensePolicyContext`;
+- typed `LicenseDecision` / structural receipt evidence;
+- explicit offline-lease, revocation-epoch and replay-sequence semantics;
+- controlled License→Authority composition with fresh policy evaluation;
+- Foundation Logging/Diagnostics/CoreObservability integration;
+- readiness contracts for malformed evidence, concurrency/isolation, replay/revocation/time boundaries and privacy-safe observability.
 
-Names may change during implementation if responsibilities remain explicit and the executable contracts preserve this boundary.
+## Canonical verification boundary
 
-## Explicit non-goals
+The trusted path is:
 
-License Core v0.1 does **not** implement:
+`canonical envelope → schema/algorithm gate → exact trusted key-id lookup → exact key identity/algorithm match → signature verification → canonical payload decode → signing-key consistency → Verified evidence`
 
-- Android Keystore or StrongBox;
-- hardware-backed device binding;
-- attestation/Play Integrity;
-- enrollment server protocols;
-- SQLite/SQLCipher;
-- cognitive-store encryption;
-- protected model decryption/streaming;
-- online billing or purchase flows;
-- Update System activation;
-- background refresh;
-- scheduler/retry/reconciliation;
-- distributed license coordination;
-- secret storage in source code;
-- a universal anti-tamper guarantee.
+The envelope cannot select its own trust root.
 
-Those remain later phases of the accepted Security & Licensing roadmap.
+Forbidden behavior remains:
 
-## Canonical entitlement evidence
-
-License/lease evidence must be versioned and canonical enough that the verifier signs/verifies one unambiguous byte representation.
-
-The canonical payload must preserve at least the information required by policy, such as:
-
-- license identity;
-- subject/product identity;
-- entitled features/scopes;
-- issued-at;
-- not-before;
-- expiry or explicit non-expiring policy;
-- offline lease deadline where applicable;
-- license/schema version;
-- signing key ID;
-- revocation/key epoch;
-- device-binding reference only if a future enrollment adapter supplies one;
-- replay/sequence value where the chosen protocol requires it.
-
-The envelope must not be allowed to select its own trust root.
-
-Forbidden verification behavior:
-
-- `alg=none` or equivalent unsigned acceptance;
+- `alg=none` or unsigned fallback;
 - algorithm confusion;
-- arbitrary embedded verification key acceptance;
-- unknown signing algorithm fallback;
-- caller-supplied trust root bypass;
+- embedded/caller-selected arbitrary trust roots;
+- unknown algorithm fallback;
 - treating parse success as signature success;
 - treating signature success as entitlement or Authority success.
 
-The architecture does not require JWT/JWS. If a standard envelope is later selected, its accepted profile must remain explicit and constrained.
+Verification failures fail closed and cannot produce policy entitlement.
 
-## Trusted verification boundary
+## Exact ownership
 
-The verification path must conceptually remain:
+A live License record is owned by exact `(LicenseId, LicenseGeneration)`.
 
-`canonical envelope → trusted key-id lookup → allowed algorithm check → signature verification → structural validation → verified entitlement evidence`
+Frozen invariants:
 
-A trusted key resolver supplies already-trusted verification material by exact key ID/epoch. The envelope itself cannot promote an untrusted key into the trusted set.
-
-Verification failures must be typed/structural enough to distinguish categories such as:
-
-- malformed/incompatible envelope;
-- unknown key ID;
-- unsupported algorithm;
-- invalid signature;
-- invalid canonical payload;
-- unsupported schema/license version.
-
-Verification failure performs no policy grant and no protected operation.
-
-## Exact license-state ownership
-
-A live accepted license record/state must use exact `(LicenseId, LicenseGeneration)` ownership semantics consistent with frozen foundation rules.
-
-Required invariants:
-
-- positive generation;
-- duplicate live License ID rejection unless an explicit replacement operation is separately defined;
+- generation is positive;
+- duplicate live License ID is rejected;
 - stale ownership cannot remove a newer generation;
-- one-shot exact removal;
-- deterministic detached snapshots;
-- composition isolation by default;
-- no mutable registry exposure;
-- generation values are labels/ownership evidence, not trust or permission.
-
-If replacement/renewal is introduced in v0.1, it must be an explicit exact transition with executable stale-generation protection rather than an ID-only overwrite.
+- removal is exact and one-shot;
+- snapshots are deterministic detached views;
+- independent compositions are isolated unless an explicit shared dependency is supplied;
+- generation is ownership evidence, not permission.
 
 ## Time semantics
 
-Policy must evaluate time explicitly; wall-clock values are inputs, not hidden globals.
+Policy time is always an explicit caller-supplied input; License Core does not read a hidden global/system clock.
 
-At minimum:
+Frozen boundary rules:
 
-- `notBefore` is strict: evidence is unusable before its permitted start;
-- expiry is strict according to one documented inclusive/exclusive rule;
-- issued-at cannot by itself prove current validity;
-- a local clock rollback cannot be claimed solved by wall-clock comparison alone;
-- offline lease semantics must be explicit if implemented;
-- suspicious rollback/replay state must fail closed according to policy rather than silently extending entitlement.
+- `notBefore` is inclusive: evidence is denied strictly before that instant;
+- `expiresAt` is an exclusive deadline: entitlement is denied at and after it;
+- **offline lease semantics are mandatory in License Core v0.1**;
+- when an entitlement carries `offlineLeaseUntil`, it is an exclusive deadline and entitlement is denied at and after it;
+- suspicious time/replay state explicitly fails closed;
+- wall-clock comparison alone is not claimed to solve rollback attacks;
+- trusted monotonic/device/server time remains a later adapter concern.
 
-Core v0.1 may model trusted-time/replay evidence abstractly. It must not claim hardware-backed monotonic time before an adapter exists.
+This mandatory offline-lease policy semantics satisfies Phase A of `SECURITY_LICENSING_V0_1_CONTRACT.md`. Phase F later adds enrollment/service-driven issuance and refresh; it does not redefine the already-frozen local policy semantics.
 
-## Replay, version and revocation semantics
+## Replay, revocation and version semantics
 
-The policy boundary must be able to reject stale/replayed evidence where the selected entitlement profile supplies a sequence, version or revocation epoch.
+License policy accepts explicit minimum revocation/replay evidence from its caller.
 
-Required rules:
+Frozen rules:
 
-- unknown/future unsupported schema or license version fails explicitly;
-- older revocation/key epoch cannot silently supersede a newer accepted epoch;
-- stale exact ownership cannot remove/replace newer state;
-- decision receipts from an earlier evaluation are historical evidence only and are not reusable permission tokens;
-- no hidden automatic refresh/retry is added when replay/revocation checks reject.
+- unsupported schema/version fails explicitly;
+- stale revocation epoch denies;
+- required replay sequence missing denies;
+- replay sequence below the required minimum denies;
+- suspicious replay/time evidence denies;
+- no hidden refresh/retry/reconciliation occurs;
+- an old decision receipt is historical evidence only and cannot bypass a fresh policy evaluation.
 
-## License policy and decision
-
-Policy consumes verified structural evidence plus explicit evaluation context and produces a typed decision.
+## License policy
 
 Conceptual path:
 
-`VerifiedEntitlement + requested product/feature/scope + explicit time/revocation/device evidence → LicenseDecision`
+`Verified entitlement + exact requested product/feature/optional subject + explicit time/revocation/replay evidence → LicenseDecision`
 
 Default posture is fail closed.
 
-A positive decision must require exact requested product/feature/scope agreement. Broad wildcard behavior is forbidden unless separately contracted and tested.
+A positive decision requires exact product and feature agreement and exact subject agreement when a subject is explicitly requested.
 
-A negative decision must perform zero protected-use calls at the license gate.
-
-Suggested rejection categories include:
-
-- license missing;
-- signature/verification invalid;
-- not yet valid;
-- expired;
-- offline lease expired;
-- product mismatch;
-- feature not entitled;
-- subject mismatch where required;
-- device binding missing/mismatch where a future adapter supplies it;
-- stale/replayed evidence;
-- revocation detected;
-- unsupported version/epoch;
-- suspicious time/replay state.
-
-Exact public names are implementation details; these responsibilities are not optional.
+Typed denial covers product/feature/subject mismatch, not-yet-valid, expiry, offline-lease expiry, stale revocation, replay missing/stale and suspicious time/replay state.
 
 ## Authority boundary
 
-A License decision does not replace existing frozen Authority.
+Licensing does not replace frozen Authority.
 
-For protected operations that require both licensing and Authority, the dependency direction remains:
+Frozen integration direction:
 
-`fresh LicenseDecision.Entitled + exact protected capability/scope → fresh AuthorityRequest → AuthorityDecision → controlled use`
+`fresh Verified evidence → fresh LicensePolicy evaluation → fresh exact AuthorityRequest → AuthorityDecision`
 
 Hard rules:
 
-- a valid license cannot grant arbitrary execution/device control;
-- an Authority grant cannot turn invalid/unentitled license evidence into entitled state where licensing is mandatory;
-- old license receipts do not bypass fresh Authority;
-- old Authority receipts do not bypass fresh license policy where the protected operation requires a license check;
-- the protected-use boundary must remain explicit about which checks are required.
+- License denial performs zero Authority calls;
+- a positive License decision is not an Authority grant;
+- an Authority denial never becomes an authorized License result;
+- every integration authorization call re-evaluates License policy, so an earlier entitled result cannot bypass later expiry/revocation/replay changes;
+- execution/protected asset access remains outside License Core v0.1.
 
-License Core v0.1 may stop at producing the decision/receipt; protected asset/store adapters arrive later.
+## Privacy and observability
 
-## Device-binding boundary
+All License transitions use Foundation Logging/Diagnostics/CoreObservability.
 
-License Core must be ready to carry an opaque structural device-enrollment reference, but it must not invent a raw HWID scheme.
+Approved operational metadata is structural, for example License ID/reference, product/feature ID, generation, schema/version, signing key ID, revocation/replay fields and typed decision/rejection category.
 
-Forbidden as cryptographic trust anchors:
+Normal logs/diagnostics/failure rendering must not expose:
 
-- IMEI;
-- Android ID;
-- serial number;
-- advertising ID;
-- arbitrary concatenated device properties;
-- hashes of the above treated as secret device keys.
+- private/signing/verification key material;
+- DEKs/wrapping keys;
+- raw bearer tokens;
+- full canonical payload/envelope bytes;
+- signature bytes;
+- private subject data;
+- Memory/Knowledge/model plaintext;
+- attestation tokens;
+- secret-bearing exception messages.
 
-The future accepted direction remains cryptographic enrollment backed by Android Keystore/StrongBox/TEE policy.
+Readiness contracts exercise emitted logs and diagnostics and verify that private subject, key material, raw payload and signature content are absent.
 
-Until that adapter exists, any device reference in Core is structural data only, not proof of hardware possession.
+No License production path may bypass Foundation observability with `println`, `System.out`, `printStackTrace` or hidden global logging.
 
 ## Cognitive-data separation
 
-Commercial entitlement and user cognitive-data recovery are separate security domains.
+Commercial entitlement and user cognitive-data recovery are separate domains.
 
-License Core v0.1 must not:
+License denial/expiry must not delete Memory/Knowledge or intentionally make legitimate cognitive state unrecoverable. Cognitive encryption keys must not be derived directly from a License signature/token.
 
-- derive a cognitive-store key directly from a license signature/token;
-- make license expiry destroy or intentionally render legitimate Memory/Knowledge unrecoverable;
-- delete user cognitive state because entitlement is denied;
-- log cognitive plaintext as part of license diagnostics.
+## Explicit non-goals
 
-A future protected cognitive-store gate may deny protected use while preserving recovery/migration policy independently.
+License Core v0.1 does not implement:
 
-## Logging and diagnostics
-
-All license verification/state/policy transitions use Foundation Logging/Diagnostics/CoreObservability rather than direct console output or hidden global logging.
-
-Safe structural metadata may include:
-
-- redacted/stable License ID reference;
-- product/feature ID;
-- license generation;
-- schema/license version;
-- signing key ID/epoch;
-- decision/rejection code;
-- issued/not-before/expiry timestamps when policy permits;
-- operation correlation ID.
-
-Never log by default:
-
-- private/signing keys;
-- DEKs or wrapping keys;
-- raw bearer license tokens;
-- full signed envelope bytes;
-- arbitrary signature bytes;
-- Memory/Knowledge plaintext;
-- model plaintext;
-- attestation/integrity tokens;
-- exception messages that may embed secrets/raw envelopes.
-
-Public failure rendering should expose structural category plus exception class where relevant, not secret-bearing exception messages.
-
-Listener/observability failures remain isolated according to frozen Foundation behavior; license failures themselves must not be swallowed.
-
-## Determinism and isolation
-
-Core tests must be deterministic and must not depend on network, Android, system wall-clock globals or real private keys.
-
-Use explicit clock/time inputs and test verification abstractions/fixtures.
-
-Separate compositions must remain isolated unless a shared backing object is intentionally supplied.
-
-No global mutable entitlement cache, global policy singleton or hidden trusted-key registry may be introduced.
-
-## First implementation slices
-
-The implementation should proceed through reviewed slices rather than a single broad security patch:
-
-1. immutable License models + exact-generation store ownership contracts;
-2. canonical entitlement/envelope representation + trusted verification abstraction and malformed/signature/version contracts;
-3. LicensePolicy/LicenseDecision with explicit time, feature/product, replay/revocation semantics;
-4. controlled License→Authority integration boundary where useful without introducing protected asset adapters;
-5. readiness hardening for privacy, deterministic time, concurrency/isolation, stale ownership and observability;
-6. freeze checkpoint.
-
-Each slice requires exact-head Core CI GREEN, architecture/security/privacy/logging-diagnostics audit, exact-head merge and merge/main CI GREEN.
+- Android Keystore/StrongBox;
+- cryptographic device enrollment/binding;
+- attestation/Play Integrity;
+- SQLite/SQLCipher or filesystem storage;
+- cognitive-store encryption;
+- protected model package/decryption/streaming;
+- online enrollment/billing;
+- background refresh/retry/reconciliation;
+- Update System activation;
+- universal anti-tamper/anti-dump guarantees.
 
 ## Executable readiness gates
 
-Before License Core v0.1 can freeze, executable contracts must prove at minimum:
+The frozen implementation proves:
 
-1. invalid/malformed/incompatible entitlement evidence cannot produce an entitled decision;
-2. unknown key ID/unsupported algorithm/invalid signature fail closed;
-3. trusted key material cannot be selected by untrusted envelope content outside exact key-ID lookup;
+1. malformed/incompatible signed evidence cannot become Verified/Entitled;
+2. unknown key ID, unsupported algorithm/schema and invalid signature fail closed;
+3. envelope content cannot promote its own trust root;
 4. exact License ID/generation ownership is stale/ABA-safe;
-5. duplicate/live replacement semantics are explicit and deterministic;
-6. not-before and expiry boundary behavior is exact;
-7. explicit offline-lease behavior is exact if included;
-8. requested product/feature mismatch denies;
-9. stale replay/version/revocation evidence denies according to selected profile;
-10. an entitled License decision is not itself an Authority grant;
-11. denied License means zero protected-boundary calls in any integration gate added by this stage;
-12. old decision/receipt evidence is not durable permission;
-13. composition isolation and deterministic snapshots hold;
-14. normal logs/diagnostics/failure rendering contain no bearer token, key, raw envelope or private cognitive/model content;
-15. no direct console logging bypass exists in new production paths;
-16. no Android/Keystore/hardware-security claim is made by core-only code;
-17. cognitive data is not destroyed or made irrecoverable merely by license expiry/denial.
+5. duplicate/live behavior and deterministic snapshots are explicit;
+6. not-before, expiry and **mandatory offline-lease** boundaries are exact;
+7. product/feature/subject mismatch denies;
+8. stale revocation/replay and suspicious state deny;
+9. old decisions/receipts are not durable permission;
+10. License entitlement is not Authority;
+11. License denial causes zero Authority calls in the integration gate;
+12. concurrency and composition isolation hold;
+13. normal observability excludes private License/security content;
+14. no direct console logging bypass exists in License production paths;
+15. no Android/hardware-security claim is made by this core-only layer;
+16. License denial/expiry does not destroy cognitive data.
+
+## Freeze evidence
+
+Implementation slices:
+
+- PR #30 — immutable models + exact ownership;
+- PR #31 — canonical entitlement verification;
+- PR #32 — policy and decision semantics;
+- PR #33 — controlled License→Authority boundary;
+- PR #34 — readiness hardening.
+
+Each implementation slice passed exact-head Core CI before merge and merge/main Core CI afterward. The freeze checkpoint updates canonical documentation only after PR #34 merge/main CI `33327943577` is GREEN on `3b249b1d1f7b2c0128e8f3ca6fe4cdc449cb663b`.
 
 ## Relationship to accepted roadmap
 
-This is Phase A of the existing Security & Licensing roadmap.
+License Core v0.1 is Phase A of `SECURITY_LICENSING_V0_1_CONTRACT.md`.
 
-After License Core v0.1 is frozen, the next security stages remain separately reviewed:
+After this freeze:
 
-`Android device-key boundary → cognitive storage encryption → protected model package/loader → runtime hardening → licensing service/offline leases → Update System integration → red-team/readiness`
+`Android device-key boundary → cognitive storage encryption → protected model package/loader → runtime hardening → licensing service/offline lease issuance+refresh → Update System integration → red-team/readiness`
 
-No later phase may weaken frozen exact ownership, Authority separation, privacy, observability, rollback/recovery or composition-isolation rules.
+Later phases may add stronger device/time/service evidence, but must not weaken the frozen exact ownership, fail-closed policy, Authority separation, privacy, observability or cognitive-data separation rules.
