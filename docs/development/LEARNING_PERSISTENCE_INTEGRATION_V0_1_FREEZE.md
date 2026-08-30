@@ -4,6 +4,8 @@ Status: **FROZEN**
 
 Canonical architecture contract: `LEARNING_PERSISTENCE_INTEGRATION_V0_1_CONTRACT.md`.
 
+Canonical observability audit: `LEARNING_PERSISTENCE_OBSERVABILITY_AUDIT_V0_1.md`.
+
 ## Verified implementation history
 
 - PR #23 — Architecture Contract;
@@ -74,27 +76,33 @@ A crash/failure may happen between these boundaries. No exactly-once downstream 
 
 ## Privacy, logging and diagnostics
 
-Learning persistence may store private cognitive payloads, but normal observability excludes private Memory/Knowledge content, raw persistent bytes, serialized plan bodies and secret-bearing backend exception messages.
+Learning persistence may store private cognitive payloads, but normal Learning/Persistence observability excludes private Memory/Knowledge content, raw persistent bytes, serialized plan bodies and secret-bearing backend exception messages.
 
 Failure rendering may expose structural reason/category plus exception class.
 
 Foundation Logging/Diagnostics/CoreObservability remains the only production observability path.
 
+Important Foundation caveat: `DiagnosticRecorder` and `StructuredLogger` retain `throwable.message` in event fields when a caller explicitly passes a throwable. Therefore this Learning/Persistence privacy guarantee depends on the audited callsites not forwarding potentially secret-bearing backend throwables into operational emission; it is not a repository-wide guarantee that arbitrary throwables are automatically sanitized.
+
 ## Post-freeze observability audit
 
-A post-freeze observability audit that should have been closed before the original freeze handoff was completed later against the frozen production paths.
+The required observability audit was not actually completed before the original Learning freeze handoff and later License work advanced past that gate. Earlier documentation that declared the delayed audit `CLEAN` before the full Foundation emission plumbing was inspected was premature.
 
-Audit result: **CLEAN**.
+The corrective audit has now been completed and is recorded in `LEARNING_PERSISTENCE_OBSERVABILITY_AUDIT_V0_1.md`.
+
+Audit result for the frozen Learning/Persistence boundary: **CLEAN**.
 
 Verified:
 
 - durable persistence transitions route through Foundation observability;
+- `PersistentRecordStore` emits structural failure metadata but does not forward backend throwables into `CoreObservability.record(...)`;
+- `LearningApplicationMutationApplier` emits structural result metadata without forwarding throwables;
 - private payload and backend exception-message content remain absent from normal Learning durable/public failure rendering;
 - corruption/incompatibility/reopen/generation mismatch remains fail closed;
-- targeted production-path searches found no `println`, `System.out`, `printStackTrace` or `throwable.message` observability bypass;
-- `durable_failure_rendering_does_not_expose_private_payload_or_exception_message` remains GREEN in the full Core suite.
+- targeted production-path searches and direct file inspection found no `println`, `System.out` or `printStackTrace` bypass in the audited Learning/Persistence boundary;
+- `durable_failure_rendering_does_not_expose_private_payload_or_exception_message` remains part of the full Core suite.
 
-The delayed audit closes a process/documentation gap only; it does not alter frozen Learning semantics.
+The audit closes the missed process gate and corrects the documentation record; it does not alter frozen Learning semantics.
 
 ## Physical durability / encryption boundary
 
