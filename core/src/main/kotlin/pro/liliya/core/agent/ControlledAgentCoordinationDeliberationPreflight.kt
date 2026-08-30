@@ -48,10 +48,11 @@ internal fun interface AgentAutonomyDeliberationPreflightChecker {
 /**
  * Evidence-only live preflight for one exact coordinated deliberation request.
  *
- * The exact Autonomy attempt is derived from the live deliberation request, resolved back to the
- * trusted coordination-attempt binding, and then checked against the current exact binding
- * generation plus fresh coordination participant/lifecycle governance. No Planning/Reasoning/
- * Decision, scheduling, Authority or Execution is performed and returned evidence is not permission.
+ * The exact Autonomy attempt is derived from the live deliberation request itself, cross-checked
+ * against frozen deliberation readiness evidence, resolved back to the trusted coordination-attempt
+ * binding, and then checked against the current exact binding generation plus fresh coordination
+ * participant/lifecycle governance. No Planning/Reasoning/Decision, scheduling, Authority or
+ * Execution is performed and returned evidence is not permission.
  */
 class ControlledAgentCoordinationDeliberationPreflight private constructor(
     private val foundation: FoundationComposition,
@@ -102,7 +103,11 @@ class ControlledAgentCoordinationDeliberationPreflight private constructor(
             )
         }
 
-        val attempt = exactAttempt(autonomyEvidence)
+        val attempt = autonomyEvidence.request.autonomy
+        if (!matchesFrozenAttemptEvidence(attempt, autonomyEvidence)) {
+            return reject("autonomy deliberation evidence does not match live request attempt", context)
+        }
+
         val binding = attemptBindings.findByAttempt(attempt)
             ?: return reject("exact deliberation attempt is not coordination-bound", context)
         val bindingSnapshot = attemptBindings.inspect(binding.coordination)
@@ -164,12 +169,13 @@ class ControlledAgentCoordinationDeliberationPreflight private constructor(
         return AgentCoordinationDeliberationPreflightResult.Ready(evidence)
     }
 
-    private fun exactAttempt(evidence: AutonomyDeliberationReadyEvidence): AutonomyAttemptReference =
-        AutonomyAttemptReference(
-            proposalId = evidence.attempt.proposal.id,
-            proposalGeneration = evidence.attempt.generation,
-            attemptNumber = evidence.attempt.attemptNumber
-        )
+    private fun matchesFrozenAttemptEvidence(
+        attempt: AutonomyAttemptReference,
+        evidence: AutonomyDeliberationReadyEvidence
+    ): Boolean =
+        evidence.attempt.proposal.id == attempt.proposalId &&
+            evidence.attempt.generation == attempt.proposalGeneration &&
+            evidence.attempt.attemptNumber == attempt.attemptNumber
 
     private fun reject(
         reason: String,
