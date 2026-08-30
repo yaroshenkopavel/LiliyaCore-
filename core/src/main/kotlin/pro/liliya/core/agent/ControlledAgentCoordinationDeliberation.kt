@@ -13,7 +13,7 @@ import pro.liliya.core.autonomy.ControlledAutonomyDeliberationGate
 import pro.liliya.core.diagnostics.DiagnosticSeverity
 import pro.liliya.core.foundation.FoundationComposition
 
-data class AgentCoordinationDeliberationSpec(
+class AgentCoordinationDeliberationSpec(
     val participant: ExactAgentReference,
     val requestId: AutonomyDeliberationRequestId,
     val objective: String,
@@ -22,6 +22,10 @@ data class AgentCoordinationDeliberationSpec(
     init {
         require(objective.isNotBlank()) { "coordination deliberation objective must not be blank" }
     }
+
+    override fun toString(): String =
+        "AgentCoordinationDeliberationSpec(" +
+            "participant=$participant, requestId=$requestId, objective=<redacted>, createdAt=$createdAt)"
 }
 
 class AgentCoordinationDeliberationRequest(
