@@ -7,7 +7,7 @@
 Hard invariants:
 
 - Runtime is the single runtime-state authority;
-- Lifecycle orchestrates Runtime rather than shadowing state;
+- Lifecycle orchestrates Runtime rather than shadowing it;
 - mutable ownership is explicit and stale/ABA-safe;
 - listener failures are isolated and observable;
 - raw mutable registries stay behind composition boundaries;
@@ -20,159 +20,133 @@ Hard invariants:
 
 `ExecutionRequest → trusted action/capability resolution → fresh Authority → executor → ExecutionResult`
 
-Hard invariants: default deny; capability existence is not permission; exact principal+capability+scope matching; strict expiry; bounded non-amplifying delegation; unknown/mismatched action mapping rejects before executor; denied Authority means zero executor calls; old authorization evidence is never durable permission.
+Hard invariants: default deny; capability existence is not permission; exact principal+capability+scope matching; strict expiry; bounded delegation; denied Authority means zero executor calls; old authorization evidence is not durable permission.
 
 ## Frozen cognitive/control foundations
 
-Memory, Knowledge, Identity/Self, Trust/Security, Personality, Reflection, Learning foundations, Planning, Reasoning, Decision, Orchestration Intent, Controlled Orchestration, Autonomy Foundation, Controlled Autonomy Deliberation, Agents Foundation, Controlled Agent Initiative, Controlled Agent Lifecycle, Agent Delegation Foundation, Controlled Agent Delegation, Agent Coordination Foundation and **Controlled Agent Coordination v0.1** are frozen.
+Memory, Knowledge, Identity/Self, Trust/Security, Personality, Reflection, Learning, Planning, Reasoning, Decision, Orchestration, Autonomy, Agents, Delegation and Coordination foundations are frozen through **Controlled Agent Coordination v0.1**.
 
-Canonical freeze documents are the detailed source for each frozen boundary.
+Canonical subsystem freeze documents remain the detailed source of truth.
 
 ## Cognitive/control chain
 
 `Interaction/Input → Context → Meaning → Goal → Planning → Reasoning → Decision → Orchestration Intent → Capability/Authority → Execution → Result → Reflection → Memory/Knowledge → Learning`
 
-Autonomy is a governed initiative layer around this chain. Agents add exact actor identity/lifecycle governance. Delegation adds exact parent/child provenance. Coordination adds exact participant-set provenance plus controlled multi-participant transaction governance. None of these layers propagates implicit permission.
+Autonomy, Agents, Delegation and Coordination govern initiative/provenance around this chain. None of those layers propagates implicit permission.
 
-## Decision / Orchestration — FROZEN
+Mandatory invariants remain:
 
-`Decision → non-executing OrchestrationIntent → exact live preflight → trusted action policy → fresh Authority → frozen Execution → fresh Authority → executor`
+`Decision != Orchestration Intent != Authorization != Execution`
 
-Mandatory invariant:
+`Autonomy != Deliberation != Planning != Reasoning != Decision != Orchestration Intent != Authority != Execution`
 
-`Decision != Orchestration Intent != Authorization != Execution`.
+`Agent Identity != Agent Lifecycle != Delegation != Coordination != Autonomy != Authority != Execution`
 
-## Autonomy — FROZEN
+`Structural provenance != credential != capability != permission != Authority`
 
-`explicit provenance + objective + trigger + priority + finite attempt budget → AutonomyProposal → exact AutonomyGeneration ownership`
+## Persistence foundation — FROZEN
 
-Controlled path:
+Persistent Cognitive Storage v0.1 plus Memory, Knowledge and Learning persistence integrations are frozen.
 
-`exact live AutonomyProposal → bounded exact attempt → Deliberation → Planning → Reasoning → Decision → OrchestrationIntent → final Autonomy guard → Controlled Orchestration → fresh Authority → Execution`
+Generic persistence provides exact entity/generation ownership, deterministic snapshots, explicit backend CAS conflicts and a narrow internal exact-transition primitive used by Learning completion.
 
-Mandatory invariant:
+Learning durable path:
 
-`Autonomy != Deliberation != Planning != Reasoning != Decision != Orchestration Intent != Authority != Execution`.
+`prepared record → exact durable transition → completed record`
 
-## Agents / Initiative / Lifecycle — FROZEN
+Known retained limitation:
 
-Agent identity:
+`downstream Memory/Knowledge mutation → durable Learning completion`
 
-`explicit Agent identity + origin + private role/purpose → AgentRecord → exact AgentGeneration ownership`
+There is no cross-domain exactly-once guarantee, hidden retry, automatic replay or reconciliation.
 
-Controlled Agent initiative:
+The delayed Learning/Persistence post-freeze observability audit is closed **CLEAN**. Audited durable paths use Foundation observability; private cognitive payload and secret-bearing backend exception messages stay out of normal public/durable rendering; corruption/incompatibility/reopen mismatch remains fail closed.
 
-`exact live ACTIVE Agent → trusted Agent provenance → finite-budget AutonomyProposal → fresh Agent/lifecycle attempt guard → frozen Autonomy chain → final Agent/lifecycle execution guard`
+## License Core v0.1 — FREEZE-READY / FROZEN AFTER CHECKPOINT CI
 
-Lifecycle:
+Canonical direction:
 
-`exact AgentId + AgentGeneration → explicit ACTIVE / CANCELLED / STOPPED state`
+`signed/canonical entitlement evidence → trusted verification boundary → exact license state ownership → explicit LicensePolicy → LicenseDecision → optional fresh scoped Authority request`
 
-Mandatory invariant:
+Mandatory separation:
 
-`Agent Identity != Agent Lifecycle != Autonomy != Authority != Execution`.
+`License != Signature != Device Enrollment != Key Access != Capability != Authority != Execution`
 
-## Agent Delegation / Controlled Delegation — FROZEN
+`Valid signature != entitlement decision != Authority grant`
 
-Structural relation:
+`License evidence != durable permission`
 
-`exact parent Agent generation + exact child Agent generation + private purpose + createdAt → AgentDelegationRecord → exact AgentDelegationGeneration ownership`
+`License expiry != cognitive-data destruction`
 
-Controlled delegated path:
+### Verification boundary
 
-`exact Delegation → fresh exact parent/child ACTIVE preflight → compensated child Agent Autonomy + exact delegation↔Autonomy binding → delegated attempt gate → frozen Autonomy cognitive path → final delegated execution guard → frozen ControlledAgentExecution → fresh Authority → Execution`
+`canonical envelope → schema/algorithm gate → exact trusted key-id lookup → exact trusted key identity/algorithm match → signature verification → canonical payload decode → signing-key consistency → Verified evidence`
 
-Mandatory invariants:
+The envelope cannot select its own trust root. Unknown key, unsupported algorithm/schema, trusted-key substitution, invalid signature and malformed canonical payload fail closed.
 
-`Delegation != Capability != Authority != Execution`
+### Exact License ownership
 
-`Delegation != Initiative != Attempt Evidence != Permission != Authority != Execution`.
+Live state uses exact `(LicenseId, LicenseGeneration)` ownership.
 
-Hard guarantees include exact endpoint/lifecycle revalidation, compensated two-store creation, post-claim race cancellation, final binding/delegation/lifecycle revalidation and zero downstream execution calls on stale governance.
+Duplicate live ID is rejected; stale/ABA ownership cannot remove a newer generation; removal is one-shot; snapshots are deterministic detached views; composition isolation is default.
 
-Canonical contracts: `AGENT_DELEGATION_V0_1_FREEZE.md`, `CONTROLLED_AGENT_DELEGATION_V0_1_FREEZE.md`.
+### License policy/time/replay semantics
 
-## Agent Coordination Foundation v0.1 — FROZEN
+Policy reads no hidden system clock. Time/revocation/replay evidence is explicit input.
 
-Structural relation:
+Frozen rules:
 
-`Coordination identity + exact participant Agent generations + private purpose + createdAt → AgentCoordinationRecord → exact AgentCoordinationGeneration ownership`
+- `notBefore` inclusive;
+- `expiresAt` exclusive;
+- **offline-lease semantics are mandatory in License Core v0.1**;
+- `offlineLeaseUntil`, when present, is exclusive;
+- stale revocation epoch denies;
+- replay sequence missing/stale when required denies;
+- suspicious time/replay state denies;
+- exact product/feature and optional subject matching;
+- no hidden refresh/retry/reconciliation.
 
-Mandatory invariant:
+### License → Authority boundary
 
-`Coordination != Capability != Authority != Execution`.
+`fresh Verified evidence → fresh LicensePolicy evaluation → fresh AuthorityRequest → AuthorityDecision`
 
-Hard invariants:
+License denial means zero Authority calls. Authority denial cannot become an authorized License result. Old License receipts are historical evidence only and cannot bypass fresh policy evaluation.
 
-- at least two exact participant Agent references are required;
-- duplicate exact references are rejected;
-- multiple generations of one Agent ID in one coordination are rejected;
-- participant order is normalized deterministically;
-- private purpose is redacted;
-- exact ownership is stale/ABA-safe and one-shot;
-- private store is composition-owned and composition-isolated;
-- snapshots are deterministic detached views;
-- structural composition has no Agent registry/lifecycle/delegation dependency;
-- coordination data exposes no scheduler, fan-out, voting, consensus, delegation, Autonomy, Authority or Execution semantics;
-- structural coordination does not prove participant liveness and creates no work.
+Execution/protected asset use remains outside License Core v0.1.
 
-Canonical contract: `AGENT_COORDINATION_V0_1_FREEZE.md`.
+### License privacy / observability
 
-## Controlled Agent Coordination v0.1 — FROZEN
+License transitions use Foundation Logging/Diagnostics/CoreObservability.
 
-Frozen governed path:
+Normal observability excludes private subject text, raw canonical payload/envelope bytes, signature bytes, verification/private key material, bearer evidence, cognitive/model plaintext and secret-bearing exception messages.
 
-`exact live Coordination → exact participant ACTIVE preflight → exact coordination↔Autonomy work binding → compensated multi-participant initiative → transactional bounded attempts → exact coordination↔attempt binding → compensated exact deliberation requests → exact live deliberation preflight → ordinary frozen Planning → ordinary frozen Reasoning → ordinary frozen Decision → ordinary frozen Orchestration Intent → final coordinated execution guard → frozen Controlled Orchestration → fresh Authority → frozen Execution`
+Targeted License production-path audit found no `println`, `System.out` or `printStackTrace` bypass.
 
-Mandatory invariants:
+## Security & Licensing dependency direction
 
-`Coordination Readiness != Work != Permission != Authority != Execution`
+Current accepted security sequence:
 
-`Coordination Transaction != Permission != Authority != Execution`
+`License Core → Android device-key boundary → cognitive storage encryption → protected model package/loader → runtime hardening → licensing service/offline lease issuance+refresh → Update System integration → red-team/readiness`
 
-`Coordination Attempt Transaction != Attempt Binding != Permission != Authority != Execution`
+This replaces the older deferred-roadmap ordering that placed persistent encrypted cognitive storage before Android Keystore/device-key work.
 
-`Coordinated Deliberation != Planning != Reasoning != Decision != Orchestration Intent != Permission != Authority != Execution`
+The Android device-key boundary must come first so later cognitive/model encryption can depend on an explicit non-exportable device-root abstraction rather than inventing raw HWID-derived trust.
 
-`Structural provenance != credential != capability != permission != Authority`.
+## Android device-key boundary — NEXT CONTRACT, NOT IMPLEMENTED
 
-Hard guarantees:
+Next phase must be separately reviewed before code.
 
-- exact coordination generation and exact participant Agent generations are freshly live-validated at controlled readiness boundaries;
-- participant lifecycle must be exact ACTIVE where readiness requires it;
-- coordination work and attempt binding ownership are exact-generation and stale/ABA-safe;
-- multi-participant initiative and deliberation transactions are compensated if post-write governance changes;
-- bounded attempt accounting remains delegated to frozen Agent/Autonomy gates;
-- exact coordination-attempt provenance is committed before coordinated deliberation/cognitive work proceeds;
-- live deliberation preflight re-derives the exact Autonomy attempt and rechecks exact attempt binding;
-- coordinated Planning, Reasoning, Decision and Orchestration write only ordinary frozen subsystem data;
-- each write-capable coordinated cognitive bridge follows `fresh preflight → exact source validation → write → fresh preflight → exact source revalidation`;
-- any post-write governance/provenance change compensates only the exact downstream generation created by the operation;
-- stale ownership cannot remove a newer replacement generation;
-- failed exact removal is CRITICAL only if the exact created generation remains live and cannot be removed; a newer replacement generation is preserved;
-- the final coordinated execution guard repeats fresh readiness and full Planning → Reasoning → Decision → Orchestration validation immediately before delegation;
-- stale coordination/governance/cognitive/orchestration state means zero downstream Authority/executor calls;
-- the final guard delegates only to existing frozen `ControlledOrchestrationExecution`;
-- fresh Authority and frozen Execution remain the only permission/side-effect path;
-- structural provenance strings/source references are evidence/consistency markers only, not cryptographic authenticity, capability, permission or Authority tokens;
-- private coordination purpose, deliberation objective, Planning goal/steps, Reasoning premise/analysis/conclusion, Decision options/rationale and Orchestration description remain outside coordination-bridge observability;
-- no coordination-specific Capability grant, Authority grant, scheduler, retry loop, executor, implicit fan-out, voting, quorum, consensus or leader-election semantics.
+Expected architecture direction:
 
-Canonical contract: `CONTROLLED_AGENT_COORDINATION_V0_1_FREEZE.md`.
+`Android Keystore/StrongBox capability → non-exportable device wrapping key → explicit enrollment/binding evidence → controlled key-use boundary`
 
-## Cross-cutting debt that does not weaken frozen boundaries
+Hard rules:
 
-- Structural provenance strings are not cryptographic provenance; future authenticity requirements need an explicit cryptographic design rather than pretending current strings are credentials.
-- Some compound cognitive operations do not share one correlation root across every frozen subsystem boundary; fix deliberately rather than introducing hidden global context.
-- In-memory ownership/idempotency is not crash-durable exactly-once across process restart; persistence requires an explicit transaction/outcome store.
-
-## Repository continuity
-
-Active repository: `yaroshenkopavel/LiliyaCore-`.
-
-The prior `Vikrot123/LiliyaCore` repository is migration history/backup only. GitHub service metadata identities such as old PR numbers remain historical references.
-
-Active source of truth is current `main`, executable contracts, canonical freeze documents and current CI evidence.
+- IMEI, Android ID, serial, advertising ID or hashes of them are not cryptographic device roots;
+- hardware-backed guarantees must not be claimed without platform evidence;
+- software fallback policy must be explicit;
+- key invalidation/recovery/migration semantics must be reviewed;
+- no cognitive/model data encryption implementation is smuggled into the device-key contract.
 
 ## Update System v0.1 — ARCHITECTURE CONTRACT
 
@@ -180,25 +154,23 @@ Active source of truth is current `main`, executable contracts, canonical freeze
 
 Network origin is transport, not trust. Signature validity is not activation permission.
 
-## Security & Licensing v0.1 — ARCHITECTURE CONTRACT
+## Cross-cutting debt that does not weaken frozen boundaries
 
-`Signed Entitlement → Device Enrollment → Keystore-backed Key Boundary → License Policy → Authority → Protected Asset/Store Access → Controlled Operation`
+- structural provenance strings are not cryptographic authenticity;
+- some compound cognitive operations do not share one correlation root across every frozen subsystem boundary;
+- physical persistence durability still depends on a future concrete backend;
+- Learning retains the downstream-mutation → completion crash window;
+- current core-only code has no hardware-backed device binding or trusted monotonic time;
+- authenticated cognitive encryption and protected model loading remain future phases.
 
-License != Authority; device binding uses cryptographic enrollment/Keystore rather than HWID-derived trust; protected model/runtime keys and user cognitive-data keys remain separate domains.
+## Repository continuity
 
-## Deferred roadmap
+Active repository: `yaroshenkopavel/LiliyaCore-`.
 
-After Controlled Agent Coordination v0.1 freeze:
+Legacy `Vikrot123/LiliyaCore` is migration history/backup only.
 
-- persistent encrypted cognitive storage and crash recovery;
-- Android Keystore/StrongBox enrollment;
-- protected model package/streaming loader;
-- licensing/revocation/device transfer;
-- Update System runtime/staging/migration/rollback;
-- Android integration/updater;
-- Liliya Network delivery/automation;
-- security/readiness/red-team verification.
+Source-of-truth precedence:
 
-Any bounded multi-agent runtime behavior must be built only through the frozen coordination governance and must not mutate the frozen coordination foundation into a scheduler/consensus/permission subsystem.
+`current GitHub/main + CI → production source + executable contracts → canonical architecture/freeze docs → CURRENT_STATE.md → chat history`
 
-All future layers must preserve exact provenance, explicit ownership, observability, fail-closed Authority, privacy, rollback/safety and composition isolation.
+All future layers must preserve exact provenance, explicit ownership, fail-closed Authority, privacy, observability, rollback/recovery and composition isolation.
