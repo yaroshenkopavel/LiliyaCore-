@@ -1,8 +1,10 @@
 package pro.liliya.core.license
 
 import java.nio.charset.StandardCharsets
+import java.time.Instant
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
+import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
@@ -23,6 +25,7 @@ class LicenseVerificationContractTest {
         algorithm = algorithm,
         material = "private-test-key-material".toByteArray(StandardCharsets.UTF_8)
     )
+    private val issuedAt = Instant.parse("2026-08-30T17:30:00Z")
 
     private fun foundation(): FoundationComposition {
         val sequence = AtomicInteger(0)
@@ -32,6 +35,27 @@ class LicenseVerificationContractTest {
             correlationIds = CorrelationIdGenerator { "license-verification-${sequence.incrementAndGet()}" }
         )
     }
+
+    private fun entitlement(
+        signingKeyId: LicenseKeyId = trustedKey.keyId,
+        features: Set<LicenseFeature> = linkedSetOf(
+            LicenseFeature("memory.protected"),
+            LicenseFeature("model.local")
+        )
+    ) = LicenseEntitlement(
+        id = LicenseId("license-verified-1"),
+        subject = LicenseSubject("private-subject-reference"),
+        productId = LicenseProductId("liliya-pro"),
+        features = features,
+        version = LicenseVersion(7),
+        signingKeyId = signingKeyId,
+        issuedAt = issuedAt,
+        notBefore = issuedAt.minusSeconds(30),
+        expiresAt = issuedAt.plusSeconds(86_400),
+        offlineLeaseUntil = issuedAt.plusSeconds(43_200),
+        revocationEpoch = LicenseRevocationEpoch(4),
+        replaySequence = LicenseReplaySequence(19)
+    )
 
     private fun composition(
         resolver: LicenseTrustedKeyResolver = LicenseTrustedKeyResolver { keyId ->
@@ -47,13 +71,14 @@ class LicenseVerificationContractTest {
     )
 
     private fun envelope(
+        entitlement: LicenseEntitlement = entitlement(),
         keyId: LicenseKeyId = trustedKey.keyId,
         algorithm: LicenseAlgorithm = this.algorithm,
         schemaVersion: LicenseVersion = this.schemaVersion,
-        payloadText: String = "private signed entitlement payload",
-        corruptSignature: Boolean = false
+        corruptSignature: Boolean = false,
+        payloadOverride: LicenseCanonicalPayload? = null
     ): LicenseSignedEnvelope {
-        val payload = payloadText.licenseCanonicalPayload()
+        val payload = payloadOverride ?: LicenseEntitlementCanonicalCodec.encode(entitlement)
         val signature = if (corruptSignature) {
             LicenseSignature.of(byteArrayOf(1, 2, 3, 4))
         } else {
@@ -66,6 +91,30 @@ class LicenseVerificationContractTest {
             payload = payload,
             signature = signature
         )
+    }
+
+    @Test
+    fun canonical_codec_round_trips_exact_entitlement_and_normalizes_feature_order() {
+        val first = entitlement(
+            features = linkedSetOf(
+                LicenseFeature("memory.protected"),
+                LicenseFeature("model.local")
+            )
+        )
+        val second = entitlement(
+            features = linkedSetOf(
+                LicenseFeature("model.local"),
+                LicenseFeature("memory.protected")
+            )
+        )
+
+        val encodedFirst = LicenseEntitlementCanonicalCodec.encode(first)
+        val encodedSecond = LicenseEntitlementCanonicalCodec.encode(second)
+        assertContentEquals(encodedFirst.copyBytes(), encodedSecond.copyBytes())
+        val decoded = assertIs<LicenseEntitlementDecodeResult.Decoded>(
+            LicenseEntitlementCanonicalCodec.decode(encodedFirst)
+        )
+        assertEquals(first, decoded.entitlement)
     }
 
     @Test
@@ -91,9 +140,12 @@ class LicenseVerificationContractTest {
     }
 
     @Test
-    fun exact_trusted_key_id_and_supported_algorithm_produce_verified_result() {
-        val result = composition().verify(envelope())
-        assertIs<LicenseVerificationResult.Verified>(result)
+    fun exact_trusted_key_id_supported_algorithm_and_valid_canonical_payload_produce_verified_entitlement() {
+        val expected = entitlement()
+        val result = assertIs<LicenseVerificationResult.Verified>(
+            composition().verify(envelope(entitlement = expected))
+        )
+        assertEquals(expected, result.entitlement)
     }
 
     @Test
@@ -161,7 +213,7 @@ class LicenseVerificationContractTest {
     }
 
     @Test
-    fun invalid_signature_fails_closed() {
+    fun invalid_signature_fails_closed_before_canonical_payload_can_be_accepted() {
         val result = composition().verify(envelope(corruptSignature = true))
         assertEquals(
             LicenseVerificationRejection.INVALID_SIGNATURE,
@@ -170,7 +222,27 @@ class LicenseVerificationContractTest {
     }
 
     @Test
-    fun resolver_cannot_return_different_key_identity_or_algorithm() {
+    fun signed_but_malformed_canonical_payload_fails_closed() {
+        val malformed = "not-a-license-entitlement".licenseCanonicalPayload()
+        val result = composition().verify(envelope(payloadOverride = malformed))
+        assertEquals(
+            LicenseVerificationRejection.INVALID_CANONICAL_PAYLOAD,
+            assertIs<LicenseVerificationResult.Rejected>(result).reason
+        )
+    }
+
+    @Test
+    fun signed_entitlement_key_id_must_match_envelope_key_id() {
+        val payloadEntitlement = entitlement(signingKeyId = LicenseKeyId("different-key"))
+        val result = composition().verify(envelope(entitlement = payloadEntitlement))
+        assertEquals(
+            LicenseVerificationRejection.SIGNING_KEY_ID_MISMATCH,
+            assertIs<LicenseVerificationResult.Rejected>(result).reason
+        )
+    }
+
+    @Test
+    fun resolver_cannot_substitute_a_different_trusted_key_identity() {
         val wrongKey = LicenseTrustedVerificationKey.of(
             keyId = LicenseKeyId("different-key"),
             algorithm = algorithm,
@@ -181,16 +253,16 @@ class LicenseVerificationContractTest {
         ).verify(envelope())
 
         assertEquals(
-            LicenseVerificationRejection.UNSUPPORTED_ALGORITHM,
+            LicenseVerificationRejection.TRUSTED_KEY_MISMATCH,
             assertIs<LicenseVerificationResult.Rejected>(result).reason
         )
     }
 
     @Test
-    fun envelope_rendering_never_exposes_payload_or_signature_bytes() {
-        val signed = envelope(payloadText = "top-secret-license-body")
+    fun envelope_rendering_never_exposes_payload_signature_or_private_subject() {
+        val signed = envelope()
         val rendered = signed.toString()
-        assertFalse(rendered.contains("top-secret-license-body"))
+        assertFalse(rendered.contains("private-subject-reference"))
         assertTrue(rendered.contains("payload=<redacted>"))
         assertTrue(rendered.contains("signature=<redacted>"))
     }
