@@ -1,6 +1,6 @@
 # LiliyaCore — Current Repository Structure and Subsystem Guide
 
-Scope: verified `main` at `249ae23947c3a707d6d03dfb31503d1d858cd873`.
+Scope: verified code `main` at `51c19d07710a0606cb619f9164e0bd6ab8f4414f`.
 
 This file is a concise map of the current core-only repository. Detailed invariants live in `ARCHITECTURE.md`, `NUANCES.md`, canonical freeze documents, production source, and executable contract tests.
 
@@ -12,25 +12,21 @@ This file is a concise map of the current core-only repository. Detailed invaria
 - `core/src/test/kotlin/pro/liliya/core/` — executable architecture contracts.
 - `docs/development/` — durable journals, freeze documents and architecture contracts.
 
-Android application/device adapters are still deferred; the current repository remains core-only.
+Android application/device adapters remain deferred; the repository is core-only.
 
 ## Foundational production areas
 
-Current top-level production areas include:
+Top-level production areas include:
 
-- `logging` — structured operational trace, correlation, bootstrap buffering and writer failure isolation;
-- `diagnostics` — semantic failures/conditions and diagnostic sinks;
-- `observability` — shared Logging + Diagnostics observation path;
-- `runtime` — authoritative runtime state and transitions;
-- `lifecycle` — lifecycle orchestration over Runtime state authority;
-- `recovery` — retry/restart/fail reliability policy and active recovery ownership;
-- `events` — synchronous deterministic in-process event delivery;
-- `services` — service descriptors, registry, dependency resolution and exact lifecycle ownership;
-- `modules` — module structure/dependencies and transactional module-service installation;
-- `foundation` — composition root for foundational infrastructure;
-- `capability` — capability identity/descriptor foundation;
-- `authority` — fail-closed authorization and bounded delegation;
-- `execution` — Authority-gated action execution foundation.
+- `logging` — structured trace/correlation/bootstrap buffering/writer isolation;
+- `diagnostics` — semantic failures/conditions and sinks;
+- `observability` — shared Logging + Diagnostics path;
+- `runtime`, `lifecycle`, `recovery`, `events`, `services`, `modules`, `foundation` — frozen Core Foundation chain;
+- `capability`, `authority`, `execution` — fail-closed permission and side-effect boundary;
+- `memory`, `knowledge`, `identity`, `trust`, `personality`, `reflection`, `learning` — cognitive/support foundations;
+- `planning`, `reasoning`, `decision`, `orchestration` — frozen descriptive cognition through Authority-gated execution;
+- `autonomy` — bounded proposal/attempt/deliberation governance;
+- `agent` — exact Agent identity/lifecycle plus controlled initiative, delegation and coordination governance.
 
 Foundation direction:
 
@@ -40,90 +36,66 @@ Security/action direction:
 
 `Capability → Authority → Execution`
 
-## Cognitive and control areas
-
-Implemented/frozen cognitive and control packages include:
-
-- `memory` — exact-generation owned Memory records;
-- `knowledge` — exact-generation owned Knowledge items;
-- `identity` — Self/identity foundation;
-- `trust` — explicit trust anchors;
-- `personality` — stored personality profile data;
-- `reflection` — explicit reflection records;
-- `learning` — controlled learning candidate/decision/policy/application foundation;
-- `planning` — descriptive Planning proposals with exact generation ownership;
-- `reasoning` — descriptive Reasoning artifacts with exact generation ownership;
-- `decision` — recorded Decision data;
-- orchestration/control code — non-executing Orchestration Intent plus controlled Authority-gated execution path;
-- `autonomy` — bounded proposal/attempt/deliberation governance;
-- `agent` — exact Agent identity/lifecycle, delegated and coordinated governance bridges.
-
 Conceptual cognitive chain:
 
 `Interaction/Input → Context → Meaning → Goal → Planning → Reasoning → Decision → Orchestration Intent → Capability/Authority → Execution → Result → Reflection → Memory/Knowledge → Learning`
 
 Autonomy, Agent, Delegation and Coordination layers govern provenance/readiness around this chain; they do not replace or bypass Authority.
 
-## Planning
+## Planning / Reasoning / Decision / Orchestration
 
-Location:
-`core/src/main/kotlin/pro/liliya/core/planning/`
+Planning and Reasoning are descriptive exact-generation owned data. Decision records a choice from exact inputs. Orchestration Intent records a non-executing exact Decision reference.
 
-Important properties:
+Important common properties:
 
-- Planning is descriptive data only;
-- installs return exact `PlanningOwnership` with generation-safe removal;
-- stale ownership cannot remove a newer replacement generation;
-- bridge provenance is structural evidence, not permission;
-- private goal/step content is not meant to leak through coordination bridge observability.
-
-## Reasoning
-
-Location:
-`core/src/main/kotlin/pro/liliya/core/reasoning/`
-
-Important properties:
-
-- Reasoning is descriptive data only;
-- `ReasoningComposition.install(...)` returns exact `ReasoningOwnership`;
-- exact generation ownership is stale/ABA-safe;
-- premises are defensively copied;
-- `ReasoningArtifact.toString()` redacts premise/analysis/conclusion content;
-- operational metadata exposes structural IDs/counts/provenance, not private cognitive text.
+- exact generation ownership;
+- stale/ABA-safe removal;
+- private cognitive text redaction;
+- structural provenance is evidence, not permission;
+- controlled bridges never turn data installation into Authority.
 
 ## Agent Coordination
 
 Location:
 `core/src/main/kotlin/pro/liliya/core/agent/`
 
-Agent Coordination Foundation v0.1 is frozen. Controlled Agent Coordination v0.1 is in progress.
+Both **Agent Coordination Foundation v0.1** and **Controlled Agent Coordination v0.1** are frozen.
 
-Verified controlled path currently reaches Reasoning:
+Frozen controlled path:
 
-`exact live Coordination → exact participant ACTIVE preflight → exact coordination↔Autonomy work binding → compensated participant initiatives → transactional attempt claims → exact coordination↔attempt binding → compensated deliberation transaction → live deliberation preflight → ordinary Planning → ordinary Reasoning → post-write exact revalidation/compensation`
+`exact live Coordination → exact participant ACTIVE preflight → exact coordination↔Autonomy work binding → compensated participant initiatives → transactional bounded attempts → exact coordination↔attempt binding → compensated deliberation → exact live deliberation preflight → ordinary Planning → ordinary Reasoning → ordinary Decision → ordinary Orchestration Intent → final coordinated execution guard → frozen Controlled Orchestration → fresh Authority → frozen Execution`
 
-Current coordination production includes governed slices for:
+Key controlled-coordination production files include:
 
-- exact live coordination/participant preflight;
-- work binding and ownership;
-- compensated multi-participant initiative;
-- transactional bounded attempt claiming;
-- exact attempt binding and ownership;
-- compensated deliberation transaction;
-- live deliberation preflight;
-- Planning bridge;
-- Reasoning bridge.
+- `ControlledAgentCoordinationPreflight.kt`;
+- work/attempt binding compositions and controlled initiative/attempt/deliberation gates;
+- `ControlledAgentCoordinationDeliberationPreflight.kt`;
+- `ControlledAgentCoordinationPlanningBridge.kt`;
+- `ControlledAgentCoordinationReasoningBridge.kt`;
+- `ControlledAgentCoordinationDecisionBridge.kt`;
+- `ControlledAgentCoordinationOrchestrationBridge.kt`;
+- `ControlledAgentCoordinationExecution.kt`.
 
-The Reasoning bridge production file is:
+Executable contracts include normal and race/TOCTOU coverage for coordinated cognitive bridges plus `ControlledAgentCoordinationReadinessContractTest.kt` for the final freeze boundary.
 
-`core/src/main/kotlin/pro/liliya/core/agent/ControlledAgentCoordinationReasoningBridge.kt`
+Hard guarantees:
 
-Its executable contracts include:
+- exact coordination/participant/attempt/deliberation generations;
+- fresh ACTIVE lifecycle validation where readiness requires it;
+- exact-generation stale/ABA-safe ownership;
+- pre/post validation around coordinated cognitive writes;
+- exact-generation compensation only for the generation created by the current operation;
+- newer replacement generations are preserved;
+- final execution revalidates the full exact chain immediately before downstream delegation;
+- stale governance produces zero downstream Authority/executor calls;
+- downstream permission/side effects are owned only by frozen Controlled Orchestration → fresh Authority → frozen Execution;
+- no coordination-specific Capability/Authority/executor/scheduler/retry/voting/consensus/fan-out semantics;
+- private cognitive text remains outside coordination bridge observability.
 
-- `ControlledAgentCoordinationReasoningBridgeContractTest.kt`;
-- `ControlledAgentCoordinationReasoningBridgeRaceContractTest.kt`.
+Canonical freeze documents:
 
-Hard Reasoning-bridge guarantees include exact Planning generation/provenance validation, fresh pre/post coordinated readiness, exact Reasoning compensation on stale governance, explicit CRITICAL failure when compensation cannot restore the same live generation, privacy-safe observability, and no Decision/Authority/Execution semantics.
+- `AGENT_COORDINATION_V0_1_FREEZE.md`;
+- `CONTROLLED_AGENT_COORDINATION_V0_1_FREEZE.md`.
 
 ## Authority and Execution
 
@@ -168,8 +140,6 @@ Persistent encrypted storage, Android integration, Liliya Network runtime, real 
 
 ## Current next structural area
 
-The preferred next Controlled Agent Coordination slice is:
+Controlled Agent Coordination v0.1 is frozen. Do not extend it ad hoc.
 
-`exact live coordinated Reasoning generation → ordinary frozen Decision data`
-
-It must preserve the existing fail-closed pattern and must not introduce Orchestration, permission, Authority, scheduler or Execution semantics.
+The next architecture stage should be chosen from the deferred roadmap using a fresh architecture audit. Leading candidates are persistent encrypted cognitive storage/crash recovery, Security & Licensing runtime foundations, Update System runtime foundations, and later Android/device integration behind frozen Authority/Execution.
