@@ -49,7 +49,8 @@ internal sealed interface AndroidKeystorePlatformResult<out T> {
  *
  * A key becomes ready only after generation has succeeded, the exact generated identity has been
  * inspected, and its actual properties satisfy the requested profile. If post-generation
- * validation fails, only the exact generated key ID is offered for cleanup.
+ * validation fails, cleanup is limited to the exact key ID that the caller requested; a hostile or
+ * corrupted platform descriptor cannot redirect cleanup to another key identity.
  */
 internal class AndroidKeystoreDeviceKeyAdapter(
     private val platform: AndroidKeystorePlatform
@@ -68,7 +69,7 @@ internal class AndroidKeystoreDeviceKeyAdapter(
 
         if (generated.id != request.id) {
             return rejectAfterCleanup(
-                id = generated.id,
+                id = request.id,
                 category = DeviceKeyFailureCategory.PLATFORM_REJECTED
             )
         }
