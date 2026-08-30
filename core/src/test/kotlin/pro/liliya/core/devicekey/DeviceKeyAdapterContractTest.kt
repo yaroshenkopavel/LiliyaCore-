@@ -51,7 +51,7 @@ class DeviceKeyAdapterContractTest {
         }
 
         override fun resolve(id: DeviceKeyId): DeviceKeyOperationResult<DeviceKeyState> =
-            entries[id]?.let(DeviceKeyOperationResult::Success)
+            entries[id]?.let { DeviceKeyOperationResult.Success(it) }
                 ?: DeviceKeyOperationResult.Rejected(DeviceKeyFailureCategory.KEY_MISSING)
 
         override fun retire(id: DeviceKeyId): DeviceKeyOperationResult<Unit> =
