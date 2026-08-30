@@ -1,8 +1,10 @@
 # License Core v0.1 — Freeze Checkpoint
 
-Status: **FROZEN after this checkpoint merges and merge/main Core CI is GREEN**
+Status: **FROZEN**
 
-Verified pre-freeze baseline: `3b249b1d1f7b2c0128e8f3ca6fe4cdc449cb663b`.
+Verified implementation baseline before freeze documentation: `3b249b1d1f7b2c0128e8f3ca6fe4cdc449cb663b`.
+
+Verified freeze checkpoint merge: `255b711a2577cae9358d19f22728ef0ea1ba2ebb`, with PR #35 exact-head Core CI `33328382254` GREEN and merge/main Core CI `33328556949` GREEN.
 
 Canonical architecture contract: `LICENSE_CORE_V0_1_CONTRACT.md`.
 
@@ -30,7 +32,9 @@ Mandatory separations remain:
 - PR #33 — controlled fresh License→Authority integration;
 - PR #34 — readiness hardening for malformed evidence, stale/replay/revocation/time boundaries, concurrency/isolation and privacy-safe observability.
 
-All slices were merged only after exact-head Core CI GREEN and were followed by merge/main Core CI verification. PR #34 merge/main Core CI `33327943577` is GREEN on `3b249b1d1f7b2c0128e8f3ca6fe4cdc449cb663b`.
+Each implementation slice had exact-head Core CI GREEN before its merge and merge/main Core CI verification afterward. PR #34 merge/main Core CI `33327943577` is GREEN on `3b249b1d1f7b2c0128e8f3ca6fe4cdc449cb663b`.
+
+Process note: License slices #32-#34 advanced while the required Learning/Persistence observability gate was still overdue. That sequencing was a process violation even though the individual License code CI gates were GREEN. The missed Learning/Persistence gate is corrected by `LEARNING_PERSISTENCE_OBSERVABILITY_AUDIT_V0_1.md`; this correction does not retroactively describe the original sequencing as compliant.
 
 ## Frozen verification guarantees
 
@@ -93,7 +97,9 @@ Readiness contracts verify emitted normal observability excludes private subject
 
 No direct `println`, `System.out` or `printStackTrace` bypass was found in the License production paths audited for this freeze.
 
-Operational metadata remains structural only. Secret-bearing exception messages, bearer evidence, cryptographic key bytes and private cognitive/model content are excluded from normal observability.
+Operational metadata remains structural only. Secret-bearing exception messages, bearer evidence, cryptographic key bytes and private cognitive/model content are excluded from normal License observability.
+
+Foundation caveat: `DiagnosticRecorder` and `StructuredLogger` retain `throwable.message` when callers explicitly supply a throwable. Therefore secret-bearing exceptions must not be forwarded unsanitized; the Foundation plumbing is not itself a universal exception-message redactor.
 
 ## Cognitive-data separation
 
@@ -101,21 +107,27 @@ License expiry or denial is not a cognitive-data deletion policy. Memory/Knowled
 
 License tokens/signatures are not cognitive-store keys.
 
-## Delayed Learning/Persistence observability audit closure
+## Corrected Learning/Persistence observability audit closure
 
-The previously deferred post-freeze Learning/Persistence observability audit has now been completed against the frozen production paths.
+The Learning/Persistence observability audit was required before later License work but was not actually completed at that time. PR #35 documentation prematurely described that delayed audit as `CLEAN` before the Foundation throwable emission plumbing had been inspected.
 
-Audit result: **CLEAN**.
+The corrective audit is now completed and recorded in:
 
-Confirmed:
+`LEARNING_PERSISTENCE_OBSERVABILITY_AUDIT_V0_1.md`
+
+Result for the frozen Learning/Persistence boundary: **CLEAN**, with an explicit Foundation throwable caveat.
+
+Confirmed by the corrective audit:
 
 - durable persistence transitions route through Foundation observability;
-- Learning durable/public failure rendering keeps private payload and backend exception messages out of normal rendering while retaining structural reason/exception class;
+- `PersistentRecordStore` does not forward backend throwables into operational emission;
+- `LearningApplicationMutationApplier` emits structural result metadata without forwarding throwables;
+- Learning durable/public failure rendering keeps private payload and backend exception messages out of rendering while retaining structural reason/exception class;
 - malformed/corrupt/incompatible/reopen/generation mismatch paths remain fail closed;
-- no audited production path used `println`, `System.out`, `printStackTrace` or `throwable.message` as an observability bypass;
-- readiness contract `durable_failure_rendering_does_not_expose_private_payload_or_exception_message` remains part of the GREEN full Core test suite.
+- targeted production-path inspection found no direct console bypass in the audited Learning/Persistence boundary;
+- readiness contract `durable_failure_rendering_does_not_expose_private_payload_or_exception_message` remains part of the Core suite.
 
-This audit closes the process gap left after the Learning Persistence v0.1 freeze checkpoint; it does not change the frozen Learning semantics.
+This correction closes the missed audit evidence gate; it does not change frozen Learning or License semantics.
 
 ## Explicit non-goals retained
 
@@ -123,8 +135,8 @@ This freeze does not claim or implement Android Keystore/StrongBox, hardware-bac
 
 ## Next controlled stage
 
-After this freeze checkpoint itself has exact-head and merge/main Core CI GREEN, the next security phase is:
+The next security phase after the fully verified License Core freeze is:
 
 `Android device-key boundary`
 
-That phase requires a separate architecture contract and must preserve all License Core v0.1 frozen boundaries.
+That phase has a separate architecture contract and must preserve all License Core v0.1 frozen boundaries.
