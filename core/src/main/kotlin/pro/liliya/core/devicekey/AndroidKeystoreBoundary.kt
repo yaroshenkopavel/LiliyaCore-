@@ -18,7 +18,7 @@ internal interface AndroidKeystorePlatform {
     fun inspect(id: DeviceKeyId): AndroidKeystorePlatformResult<AndroidKeystoreKeyDescriptor>
 
     fun signChallenge(
-        id: DeviceKeyId,
+        expected: AndroidKeystoreKeyDescriptor,
         challenge: DeviceKeyChallenge
     ): AndroidKeystorePlatformResult<AndroidKeystoreSignatureDescriptor>
 
@@ -30,7 +30,8 @@ internal data class AndroidKeystoreKeyDescriptor(
     val algorithm: DeviceKeyAlgorithm,
     val securityLevel: DeviceKeySecurityLevel,
     val capabilities: Set<DeviceKeyCapability>,
-    val createdAt: Instant
+    val createdAt: Instant,
+    val platformReference: DeviceKeyPlatformReference
 ) {
     init {
         require(capabilities.isNotEmpty()) { "android keystore key capabilities must not be empty" }
@@ -39,6 +40,7 @@ internal data class AndroidKeystoreKeyDescriptor(
 
 internal data class AndroidKeystoreSignatureDescriptor(
     val id: DeviceKeyId,
+    val platformReference: DeviceKeyPlatformReference,
     val signature: DeviceKeyProofSignature
 )
 
@@ -92,7 +94,7 @@ internal class AndroidKeystoreDeviceKeyAdapter(
                 return failAfterCleanup(request.id, result.category, result.throwable)
         }
 
-        if (inspected.id != request.id) {
+        if (inspected.id != request.id || inspected.platformReference != generated.platformReference) {
             return rejectAfterCleanup(
                 id = request.id,
                 category = DeviceKeyFailureCategory.PLATFORM_REJECTED
@@ -140,6 +142,8 @@ internal class AndroidKeystoreDeviceKeyAdapter(
         if (DeviceKeyCapability.SIGN_CHALLENGE !in expectedState.capabilities) {
             return DeviceKeyOperationResult.Rejected(DeviceKeyFailureCategory.UNSUPPORTED_PROFILE)
         }
+        val expectedPlatformReference = expectedState.platformReference
+            ?: return DeviceKeyOperationResult.Rejected(DeviceKeyFailureCategory.STALE_OWNERSHIP)
 
         val inspected = when (val result = platform.inspect(expectedState.id)) {
             is AndroidKeystorePlatformResult.Success -> result.value
@@ -149,13 +153,20 @@ internal class AndroidKeystoreDeviceKeyAdapter(
                 return DeviceKeyOperationResult.Failed(result.category, result.throwable)
         }
 
-        if (inspected.id != expectedState.id || inspected.toState() != expectedState) {
+        if (
+            inspected.id != expectedState.id ||
+            inspected.platformReference != expectedPlatformReference ||
+            inspected.toState() != expectedState
+        ) {
             return DeviceKeyOperationResult.Rejected(DeviceKeyFailureCategory.STALE_OWNERSHIP)
         }
 
-        return when (val result = platform.signChallenge(expectedState.id, challenge)) {
+        return when (val result = platform.signChallenge(inspected, challenge)) {
             is AndroidKeystorePlatformResult.Success -> {
-                if (result.value.id != expectedState.id) {
+                if (
+                    result.value.id != expectedState.id ||
+                    result.value.platformReference != expectedPlatformReference
+                ) {
                     DeviceKeyOperationResult.Rejected(DeviceKeyFailureCategory.PLATFORM_REJECTED)
                 } else {
                     DeviceKeyOperationResult.Success(result.value.signature)
@@ -204,6 +215,7 @@ internal class AndroidKeystoreDeviceKeyAdapter(
         algorithm = algorithm,
         securityLevel = securityLevel,
         capabilities = capabilities.toSet(),
-        createdAt = createdAt
+        createdAt = createdAt,
+        platformReference = platformReference
     )
 }
