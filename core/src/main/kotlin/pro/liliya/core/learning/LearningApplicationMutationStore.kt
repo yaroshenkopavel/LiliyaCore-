@@ -23,6 +23,14 @@ internal sealed interface LearningApplicationMutationRegistrationResult {
     data class Rejected(val reason: String) : LearningApplicationMutationRegistrationResult
 }
 
+internal sealed interface LearningApplicationMutationPrepareValidation {
+    data object Ready : LearningApplicationMutationPrepareValidation
+    data class AlreadyCompleted(
+        val receipt: LearningApplicationMutationApplicationReceipt
+    ) : LearningApplicationMutationPrepareValidation
+    data class Rejected(val reason: String) : LearningApplicationMutationPrepareValidation
+}
+
 internal interface LearningApplicationMutationClaimRegistration {
     val plan: LearningApplicationMutationPlan
     val generation: LearningApplicationMutationGeneration
@@ -49,9 +57,12 @@ internal sealed interface LearningApplicationMutationClaimRegistrationResult {
     ) : LearningApplicationMutationClaimRegistrationResult
 }
 
-internal class LearningApplicationMutationStore(
-    private val observability: CoreObservability
+internal class LearningApplicationMutationStore private constructor(
+    private val observability: CoreObservability,
+    initialHighWatermark: Long
 ) {
+    constructor(observability: CoreObservability) : this(observability, 0L)
+
     private class ClaimToken
 
     private data class Entry(
@@ -66,7 +77,7 @@ internal class LearningApplicationMutationStore(
     )
 
     private val lock = Any()
-    private val nextGeneration = AtomicLong(0)
+    private val nextGeneration = AtomicLong(initialHighWatermark)
     private val entries = mutableMapOf<LearningApplicationMutationId, Entry>()
     private val idempotency = mutableMapOf<LearningApplicationIdempotencyKey, Entry>()
     private val completedByMutationId = mutableMapOf<LearningApplicationMutationId, CompletedEntry>()
@@ -76,83 +87,80 @@ internal class LearningApplicationMutationStore(
         plan: LearningApplicationMutationPlan,
         context: LogContext
     ): LearningApplicationMutationRegistrationResult = synchronized(lock) {
-        if (entries.containsKey(plan.id)) {
-            return@synchronized rejected(plan, null, "learning application mutation id is already registered", context)
+        when (val validation = validatePrepareLocked(plan)) {
+            LearningApplicationMutationPrepareValidation.Ready -> Unit
+            is LearningApplicationMutationPrepareValidation.AlreadyCompleted -> {
+                observeAlreadyCompleted(plan, validation.receipt, context)
+                return@synchronized LearningApplicationMutationRegistrationResult.AlreadyCompleted(validation.receipt)
+            }
+            is LearningApplicationMutationPrepareValidation.Rejected ->
+                return@synchronized rejected(plan, null, validation.reason, context)
         }
-        val completedById = completedByMutationId[plan.id]
-        if (completedById != null) {
-            return@synchronized completedOrRejected(
-                plan = plan,
-                completed = completedById,
-                conflictReason = "learning application mutation id is already completed",
-                context = context
-            )
+
+        val nextValue = nextGeneration.incrementAndGet()
+        if (nextValue <= 0L) {
+            return@synchronized rejected(plan, null, "learning application mutation generation overflow", context)
         }
-        if (idempotency.containsKey(plan.idempotencyKey)) {
+        val entry = Entry(
+            generation = LearningApplicationMutationGeneration(nextValue),
+            plan = plan
+        )
+        installEntry(entry)
+        observePrepared(plan, entry.generation, context)
+        LearningApplicationMutationRegistrationResult.Registered(registration(entry))
+    }
+
+    internal fun validatePrepare(plan: LearningApplicationMutationPlan): LearningApplicationMutationPrepareValidation =
+        synchronized(lock) { validatePrepareLocked(plan) }
+
+    internal fun installCommitted(
+        plan: LearningApplicationMutationPlan,
+        generation: LearningApplicationMutationGeneration,
+        highWatermark: Long,
+        context: LogContext
+    ): LearningApplicationMutationRegistrationResult = synchronized(lock) {
+        when (val validation = validatePrepareLocked(plan)) {
+            LearningApplicationMutationPrepareValidation.Ready -> Unit
+            is LearningApplicationMutationPrepareValidation.AlreadyCompleted -> {
+                observeAlreadyCompleted(plan, validation.receipt, context)
+                return@synchronized LearningApplicationMutationRegistrationResult.AlreadyCompleted(validation.receipt)
+            }
+            is LearningApplicationMutationPrepareValidation.Rejected ->
+                return@synchronized rejected(plan, generation, validation.reason, context)
+        }
+        if (highWatermark < generation.value) {
             return@synchronized rejected(
                 plan,
-                null,
-                "learning application idempotency key is already reserved",
+                generation,
+                "learning application mutation high-watermark is below committed generation",
                 context
             )
         }
-        val completedByKey = completedByIdempotencyKey[plan.idempotencyKey]
-        if (completedByKey != null) {
-            return@synchronized completedOrRejected(
-                plan = plan,
-                completed = completedByKey,
-                conflictReason = "learning application idempotency key is already completed",
-                context = context
+        if (generation.value != highWatermark) {
+            return@synchronized rejected(
+                plan,
+                generation,
+                "learning application mutation committed generation must equal current high-watermark",
+                context
             )
         }
+        if (highWatermark <= nextGeneration.get()) {
+            return@synchronized rejected(
+                plan,
+                generation,
+                "learning application mutation committed high-watermark is not newer than local state",
+                context
+            )
+        }
+        if (entries.values.any { it.generation == generation }) {
+            return@synchronized rejected(plan, generation, "learning application mutation generation is already live", context)
+        }
 
-        val entry = Entry(
-            generation = LearningApplicationMutationGeneration(nextGeneration.incrementAndGet()),
-            plan = plan
-        )
-        entries[plan.id] = entry
-        idempotency[plan.idempotencyKey] = entry
-
-        observability.record(
-            severity = DiagnosticSeverity.INFO,
-            code = "LEARNING_APPLICATION_MUTATION_PREPARED",
-            message = "learning application mutation prepared",
-            context = context,
-            metadata = metadata(plan, entry.generation)
-        )
-
-        LearningApplicationMutationRegistrationResult.Registered(
-            registration = object : LearningApplicationMutationRegistration {
-                override val plan: LearningApplicationMutationPlan = plan
-                override val generation: LearningApplicationMutationGeneration = entry.generation
-
-                override fun remove(context: LogContext): Boolean = synchronized(lock) {
-                    val current = entries[plan.id]
-                    val removed = current === entry && entry.activeClaim == null && entries.remove(plan.id) === entry
-                    if (removed) {
-                        idempotency.remove(plan.idempotencyKey, entry)
-                    }
-                    observability.record(
-                        severity = if (removed) DiagnosticSeverity.INFO else DiagnosticSeverity.WARNING,
-                        code = if (removed) {
-                            "LEARNING_APPLICATION_MUTATION_REMOVED"
-                        } else {
-                            "LEARNING_APPLICATION_MUTATION_REMOVAL_REJECTED"
-                        },
-                        message = if (removed) {
-                            "learning application mutation removed"
-                        } else if (current === entry && entry.activeClaim != null) {
-                            "learning application mutation is actively claimed"
-                        } else {
-                            "learning application mutation registration is no longer current"
-                        },
-                        context = context,
-                        metadata = metadata(plan, entry.generation)
-                    )
-                    removed
-                }
-            }
-        )
+        val entry = Entry(generation = generation, plan = plan)
+        installEntry(entry)
+        nextGeneration.set(highWatermark)
+        observePrepared(plan, generation, context)
+        LearningApplicationMutationRegistrationResult.Registered(registration(entry))
     }
 
     fun claim(
@@ -303,23 +311,103 @@ internal class LearningApplicationMutationStore(
             )
     }
 
-    private fun completedOrRejected(
-        plan: LearningApplicationMutationPlan,
-        completed: CompletedEntry,
-        conflictReason: String,
-        context: LogContext
-    ): LearningApplicationMutationRegistrationResult {
-        if (completed.plan == plan) {
-            observability.record(
-                severity = DiagnosticSeverity.INFO,
-                code = "LEARNING_APPLICATION_MUTATION_ALREADY_COMPLETED",
-                message = "learning application mutation is already completed",
-                context = context,
-                metadata = metadata(plan, completed.receipt.mutation.generation)
+    private fun validatePrepareLocked(plan: LearningApplicationMutationPlan): LearningApplicationMutationPrepareValidation {
+        if (entries.containsKey(plan.id)) {
+            return LearningApplicationMutationPrepareValidation.Rejected(
+                "learning application mutation id is already registered"
             )
-            return LearningApplicationMutationRegistrationResult.AlreadyCompleted(completed.receipt)
         }
-        return rejected(plan, null, conflictReason, context)
+        val completedById = completedByMutationId[plan.id]
+        if (completedById != null) {
+            return if (completedById.plan == plan) {
+                LearningApplicationMutationPrepareValidation.AlreadyCompleted(completedById.receipt)
+            } else {
+                LearningApplicationMutationPrepareValidation.Rejected(
+                    "learning application mutation id is already completed"
+                )
+            }
+        }
+        if (idempotency.containsKey(plan.idempotencyKey)) {
+            return LearningApplicationMutationPrepareValidation.Rejected(
+                "learning application idempotency key is already reserved"
+            )
+        }
+        val completedByKey = completedByIdempotencyKey[plan.idempotencyKey]
+        if (completedByKey != null) {
+            return if (completedByKey.plan == plan) {
+                LearningApplicationMutationPrepareValidation.AlreadyCompleted(completedByKey.receipt)
+            } else {
+                LearningApplicationMutationPrepareValidation.Rejected(
+                    "learning application idempotency key is already completed"
+                )
+            }
+        }
+        return LearningApplicationMutationPrepareValidation.Ready
+    }
+
+    private fun installEntry(entry: Entry) {
+        entries[entry.plan.id] = entry
+        idempotency[entry.plan.idempotencyKey] = entry
+    }
+
+    private fun registration(entry: Entry): LearningApplicationMutationRegistration =
+        object : LearningApplicationMutationRegistration {
+            override val plan: LearningApplicationMutationPlan = entry.plan
+            override val generation: LearningApplicationMutationGeneration = entry.generation
+
+            override fun remove(context: LogContext): Boolean = synchronized(lock) {
+                val current = entries[entry.plan.id]
+                val removed = current === entry && entry.activeClaim == null && entries.remove(entry.plan.id) === entry
+                if (removed) {
+                    idempotency.remove(entry.plan.idempotencyKey, entry)
+                }
+                observability.record(
+                    severity = if (removed) DiagnosticSeverity.INFO else DiagnosticSeverity.WARNING,
+                    code = if (removed) {
+                        "LEARNING_APPLICATION_MUTATION_REMOVED"
+                    } else {
+                        "LEARNING_APPLICATION_MUTATION_REMOVAL_REJECTED"
+                    },
+                    message = if (removed) {
+                        "learning application mutation removed"
+                    } else if (current === entry && entry.activeClaim != null) {
+                        "learning application mutation is actively claimed"
+                    } else {
+                        "learning application mutation registration is no longer current"
+                    },
+                    context = context,
+                    metadata = metadata(entry.plan, entry.generation)
+                )
+                removed
+            }
+        }
+
+    private fun observePrepared(
+        plan: LearningApplicationMutationPlan,
+        generation: LearningApplicationMutationGeneration,
+        context: LogContext
+    ) {
+        observability.record(
+            severity = DiagnosticSeverity.INFO,
+            code = "LEARNING_APPLICATION_MUTATION_PREPARED",
+            message = "learning application mutation prepared",
+            context = context,
+            metadata = metadata(plan, generation)
+        )
+    }
+
+    private fun observeAlreadyCompleted(
+        plan: LearningApplicationMutationPlan,
+        receipt: LearningApplicationMutationApplicationReceipt,
+        context: LogContext
+    ) {
+        observability.record(
+            severity = DiagnosticSeverity.INFO,
+            code = "LEARNING_APPLICATION_MUTATION_ALREADY_COMPLETED",
+            message = "learning application mutation is already completed",
+            context = context,
+            metadata = metadata(plan, receipt.mutation.generation)
+        )
     }
 
     private fun rejected(
@@ -380,6 +468,27 @@ internal class LearningApplicationMutationStore(
         when (val payload = plan.payload) {
             is LearningApplicationMutationPayload.Memory -> put("memoryRecordId", payload.record.id.value)
             is LearningApplicationMutationPayload.Knowledge -> put("knowledgeItemId", payload.item.id.value)
+        }
+    }
+
+    companion object {
+        internal fun restore(
+            observability: CoreObservability,
+            state: LearningApplicationMutationRestoredState
+        ): LearningApplicationMutationStore {
+            val store = LearningApplicationMutationStore(observability, state.highWatermark)
+            synchronized(store.lock) {
+                state.liveEntries.forEach { restored ->
+                    val entry = Entry(restored.generation, restored.plan)
+                    store.installEntry(entry)
+                }
+                state.completedEntries.forEach { restored ->
+                    val completed = CompletedEntry(restored.plan, restored.receipt)
+                    store.completedByMutationId[restored.plan.id] = completed
+                    store.completedByIdempotencyKey[restored.plan.idempotencyKey] = completed
+                }
+            }
+            return store
         }
     }
 }
