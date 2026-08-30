@@ -171,7 +171,7 @@ object LicenseDigestTestVerifier : LicenseSignatureVerifier {
         if (algorithm.value != "TEST-SHA256") return false
         val digest = MessageDigest.getInstance("SHA-256")
         digest.update(key.copyMaterial())
-        digest.update(0)
+        digest.update(byteArrayOf(0))
         digest.update(payload.copyBytes())
         return MessageDigest.isEqual(digest.digest(), signature.copyBytes())
     }
@@ -182,7 +182,7 @@ object LicenseDigestTestVerifier : LicenseSignatureVerifier {
     ): LicenseSignature {
         val digest = MessageDigest.getInstance("SHA-256")
         digest.update(key.copyMaterial())
-        digest.update(0)
+        digest.update(byteArrayOf(0))
         digest.update(payload.copyBytes())
         return LicenseSignature.of(digest.digest())
     }
