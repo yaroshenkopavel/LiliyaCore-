@@ -96,6 +96,12 @@ internal sealed interface RuntimeSessionQuiescingTransitionResult {
     data object Stale : RuntimeSessionQuiescingTransitionResult
 }
 
+internal sealed interface RuntimeSessionFailureTransitionResult {
+    data class Failed(val reason: RuntimeHardeningFailure) : RuntimeSessionFailureTransitionResult
+    data class AlreadyFailed(val reason: RuntimeHardeningFailure) : RuntimeSessionFailureTransitionResult
+    data object Stale : RuntimeSessionFailureTransitionResult
+}
+
 interface RuntimeModelSessionOwnership {
     val reference: RuntimeModelSessionReference
     fun isCurrent(): Boolean
@@ -117,6 +123,7 @@ class RuntimeModelSessionRegistry internal constructor(
     private data class Entry(
         val reference: RuntimeModelSessionReference,
         var lifecycle: RuntimeModelSessionLifecycle = RuntimeModelSessionLifecycle.PREPARED,
+        var failure: RuntimeHardeningFailure? = null,
         var publicationInProgress: Boolean = false
     )
 
@@ -162,6 +169,10 @@ class RuntimeModelSessionRegistry internal constructor(
 
     fun currentLifecycle(): RuntimeModelSessionLifecycle? = synchronized(lock) {
         current?.lifecycle
+    }
+
+    fun currentFailure(): RuntimeHardeningFailure? = synchronized(lock) {
+        current?.failure
     }
 
     fun snapshot(): List<RuntimeModelSessionReference> = synchronized(lock) {
@@ -213,6 +224,35 @@ class RuntimeModelSessionRegistry internal constructor(
         }
     }
 
+    internal fun failIfCurrent(
+        reference: RuntimeModelSessionReference,
+        reason: RuntimeHardeningFailure
+    ): RuntimeSessionFailureTransitionResult = synchronized(lock) {
+        require(reason == RuntimeHardeningFailure.SESSION_FAILED || reason == RuntimeHardeningFailure.PROVIDER_FAILED) {
+            "runtime session failure reason must be SESSION_FAILED or PROVIDER_FAILED"
+        }
+        val entry = current
+        if (entry == null || entry.reference != reference) {
+            return@synchronized RuntimeSessionFailureTransitionResult.Stale
+        }
+        check(!entry.publicationInProgress) {
+            "runtime session failure transition is not allowed from inside publication"
+        }
+        when (entry.lifecycle) {
+            RuntimeModelSessionLifecycle.ACTIVE,
+            RuntimeModelSessionLifecycle.QUIESCING -> {
+                entry.lifecycle = RuntimeModelSessionLifecycle.FAILED
+                entry.failure = reason
+                RuntimeSessionFailureTransitionResult.Failed(reason)
+            }
+            RuntimeModelSessionLifecycle.FAILED ->
+                RuntimeSessionFailureTransitionResult.AlreadyFailed(
+                    checkNotNull(entry.failure) { "failed runtime session must retain structural failure reason" }
+                )
+            else -> RuntimeSessionFailureTransitionResult.Stale
+        }
+    }
+
     internal fun isCurrentQuiescing(reference: RuntimeModelSessionReference): Boolean = synchronized(lock) {
         val entry = current
         entry != null &&
@@ -232,6 +272,23 @@ class RuntimeModelSessionRegistry internal constructor(
         }
         check(!entry.publicationInProgress) {
             "runtime session retirement is not allowed from inside publication"
+        }
+        entry.lifecycle = RuntimeModelSessionLifecycle.RETIRED
+        current = null
+        true
+    }
+
+    internal fun retireFailedIfCurrent(reference: RuntimeModelSessionReference): Boolean = synchronized(lock) {
+        val entry = current
+        if (
+            entry == null ||
+            entry.reference != reference ||
+            entry.lifecycle != RuntimeModelSessionLifecycle.FAILED
+        ) {
+            return@synchronized false
+        }
+        check(!entry.publicationInProgress) {
+            "failed runtime session retirement is not allowed from inside publication"
         }
         entry.lifecycle = RuntimeModelSessionLifecycle.RETIRED
         current = null
@@ -290,6 +347,7 @@ class RuntimeModelSessionRegistry internal constructor(
                 } catch (throwable: Throwable) {
                     if (current === entry) {
                         entry.lifecycle = RuntimeModelSessionLifecycle.FAILED
+                        entry.failure = RuntimeHardeningFailure.ACTIVATION_FAILED
                         current = null
                     }
                     RuntimeSessionPublicationResult.Failed(throwable)
@@ -303,11 +361,7 @@ class RuntimeModelSessionRegistry internal constructor(
                     "runtime session retirement is not allowed from inside publication"
                 }
                 if (current !== entry) return@synchronized false
-                if (
-                    operationSupervisorClaimed &&
-                    (entry.lifecycle == RuntimeModelSessionLifecycle.ACTIVE ||
-                        entry.lifecycle == RuntimeModelSessionLifecycle.QUIESCING)
-                ) {
+                if (operationSupervisorClaimed && entry.lifecycle != RuntimeModelSessionLifecycle.PREPARED) {
                     return@synchronized false
                 }
                 entry.lifecycle = RuntimeModelSessionLifecycle.RETIRED
