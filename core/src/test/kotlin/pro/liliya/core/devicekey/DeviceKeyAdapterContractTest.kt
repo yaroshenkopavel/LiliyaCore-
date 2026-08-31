@@ -149,7 +149,7 @@ class DeviceKeyAdapterContractTest {
         val missingCapability = FakeDeviceKeyAdapter(
             actualSecurityLevel = DeviceKeySecurityLevel.STRONGBOX,
             actualAlgorithm = algorithm,
-            actualCapabilities = setOf(DeviceKeyCapability.SIGN_CHALLENGE)
+            actualCapabilities = emptySet()
         )
         val id1 = DeviceKeyId("wrong-algorithm")
         val id2 = DeviceKeyId("missing-capability")
@@ -162,16 +162,7 @@ class DeviceKeyAdapterContractTest {
         )
         assertIs<DeviceKeyOperationResult.Rejected>(
             missingCapability.create(
-                DeviceKeyCreationRequest(
-                    id2,
-                    profile(
-                        DeviceKeySecurityLevel.STRONGBOX,
-                        capabilities = setOf(
-                            DeviceKeyCapability.SIGN_CHALLENGE,
-                            DeviceKeyCapability.UNWRAP_WRAPPED_KEY
-                        )
-                    )
-                ),
+                DeviceKeyCreationRequest(id2, profile(DeviceKeySecurityLevel.STRONGBOX)),
                 createdAt
             )
         )
