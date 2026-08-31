@@ -8,7 +8,7 @@ Default branch: `main`
 
 Legacy `Vikrot123/LiliyaCore` is backup/migration history only.
 
-Current phase: **Runtime Hardening v0.1 — ACTIVE, NOT FROZEN; Slice 2 complete, Slice 3 next.**
+Current phase: **Runtime Hardening v0.1 — ACTIVE, NOT FROZEN; Slice 3 complete, Slice 4 next.**
 
 ## Read this first
 
@@ -32,13 +32,13 @@ If documentation conflicts with GitHub/source, verify GitHub/source first and re
 
 Verified implementation `main`:
 
-`076b0c4dfa18dbdde178f741edd7f63237ceaf28`
+`7a3794bab338d90813a0a82067ad65db4ae52982`
 
-Runtime Hardening Slice 2 / PR #66.
+Runtime Hardening Slice 3 / PR #69.
 
 Verified merge/main CI:
 
-`33435578143` / Core CI run #418 — GREEN for both:
+`33443333795` / Core CI run #456 — GREEN for both:
 
 - `Test LiliyaCore`;
 - `Android Keystore Instrumentation`.
@@ -61,24 +61,27 @@ Hard separations:
 
 - architecture gate — PR #64, merged and merge/main GREEN;
 - Slice 1 exact session models/ownership — PR #65, merged and merge/main GREEN;
-- Slice 2 activation/publication barrier — PR #66, exact-head audit CLEAN, merged as `076b0c4...`, merge/main run #418 GREEN.
+- Slice 2 activation/publication barrier — PR #66, exact-head audit CLEAN, merged, merge/main run #418 GREEN;
+- Slice 3 operation supervision/resource bounds — PR #69, exact head `f083deaa...`, exact-head run #455 GREEN, focused audit CLEAN, merged as `7a3794ba...`, merge/main run #456 GREEN.
+
+Slice 3 established atomic ACTIVE-session admission, bounded per-session in-flight operations, one supervisor per registry, identity-based exact operation tickets, exactly-one local terminal release, explicit failure/cancellation/timeout outcomes, stale-success publication rejection, reentrant publication barriers and bounded state with no hidden retry/replay history.
 
 ### Next
 
-**Slice 3 — Operation Supervision and Resource Bounds.**
+**Slice 4 — Failure Containment, Replacement and Recovery Readiness.**
 
-Implement only the contract-required operation-supervision surface:
+Implement only the contract-required failure/replacement/recovery surface:
 
-- exact operation tickets bound to exact ACTIVE session generation;
-- no admission for unavailable/non-ACTIVE sessions;
-- enforce `maxInFlightOperationsPerSession` atomically;
-- exactly one terminal local release;
-- stale completion may clean up locally but cannot publish into a newer session;
-- explicit cancellation/timeout seams, not hidden wall-clock behavior;
-- operation completion remains separate from Authority/Execution permission;
+- explicit stop-new-admission / quiescing / exact retirement / fresh replacement sequence;
+- explicit policy for in-flight work: await local cleanup or explicitly cancel it;
+- structural failure classification and fail-closed retirement/recovery behavior;
+- stale workers cannot publish into replacement state;
+- recovery is a fresh explicit attempt and new generation, not resurrection;
+- privacy-safe structural observability;
+- deterministic concurrency tests for replacement/retirement while operations are in flight;
 - no hidden retry/replay/reconciliation/exactly-once semantics.
 
-Do not drift into Slice 4 replacement/recovery unless a concrete correctness blocker requires an explicit contract change.
+Do not drift into License service, Update System, Authority changes or unnecessary Android coupling.
 
 ## Frozen baselines
 
@@ -116,7 +119,7 @@ CI GREEN does not replace the focused audit.
 
 Never claim an audit that was not performed against the exact changed-file set/head.
 
-Do not start a new implementation slice until the previous merge/main required CI is GREEN.
+Do not start a new implementation slice until the previous merge/main required CI is GREEN and the journal checkpoint is current.
 
 ## Privacy / observability
 
@@ -131,7 +134,7 @@ Foundation can retain throwable messages when a throwable is explicitly forwarde
 1. verify current `main` and required CI still match or supersede this checkpoint;
 2. read `HANDOFF.md`, `CURRENT_STATE.md` and `RUNTIME_HARDENING_V0_1_CONTRACT.md`;
 3. inspect current Runtime Hardening production/tests plus the frozen Protected Model access boundary;
-4. create a fresh Slice 3 feature branch from verified current `main`;
-5. implement only operation supervision/resource bounds;
+4. create a fresh Slice 4 feature branch from verified current `main` only after this journal checkpoint itself passes its required gate;
+5. implement only failure containment/replacement/recovery readiness;
 6. close exact-head CI + focused audit + expected-head merge + merge/main CI;
-7. update the journal before starting Slice 4.
+7. update the journal before starting Slice 5.

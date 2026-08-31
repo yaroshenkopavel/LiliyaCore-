@@ -1,8 +1,8 @@
 # Runtime Hardening v0.1 — Architecture Contract
 
-Status: **ACCEPTED — implementation active, Slice 2 complete, not yet frozen**.
+Status: **ACCEPTED — implementation active, Slice 3 complete, not yet frozen**.
 
-Architecture gate is complete. Slices 1 and 2 are implemented and verified; Slice 3 is the next allowed implementation slice. Runtime Hardening v0.1 becomes formally frozen only after the remaining slices and final freeze checkpoint satisfy the required gates.
+Architecture gate and Slices 1–3 are implemented and verified; Slice 4 is the next allowed implementation slice. Runtime Hardening v0.1 becomes formally frozen only after the remaining slices and final freeze checkpoint satisfy the required gates.
 
 ## Direction
 
@@ -86,6 +86,8 @@ Required behavior:
 - stale operations may finish local cleanup but cannot publish success/state into a newer session;
 - timeout/cancellation policy is explicit at the supervisor boundary and is not inferred from wall-clock globals hidden inside the model primitive;
 - operation completion is not an Authority decision and cannot itself authorize a side effect.
+
+Slice 3 implementation evidence now additionally proves that v0.1 permits exactly one operation supervisor per runtime-session registry and that terminal ownership is identity-based: reconstructing the same sequence/session values does not grant release ownership.
 
 ## Fault containment
 
@@ -211,13 +213,23 @@ Composed already-approved protected-model output into exact runtime activation w
 
 Verified implementation evidence is recorded in `CURRENT_STATE.md` and `HANDOFF.md`.
 
-### Slice 3 — Operation supervision and resource bounds — NEXT
+### Slice 3 — Operation supervision and resource bounds — COMPLETE
 
-Add exact operation tickets, bounded admission, terminal release, stale-completion protection and explicit cancellation/timeout seams.
+Implemented atomic admission only for the exact current `ACTIVE` session, configured per-session in-flight bounds, one supervisor per registry, exact identity-based operation tickets, exactly-one local terminal release, explicit failure/cancellation/timeout classifications, stale-success publication rejection, reentrant publication barriers and bounded active-operation state with no hidden retry/replay history.
 
-### Slice 4 — Failure containment, replacement and recovery readiness
+Verified implementation evidence:
+
+- PR #69 exact head `f083deaa9e5a9352a06cdedf1629bfaa3108e3bd`;
+- exact-head Core CI run `33442898637` / #455 — Core + Android GREEN;
+- focused final architecture/security/privacy/logging/readiness audit — CLEAN;
+- merge `7a3794bab338d90813a0a82067ad65db4ae52982`;
+- merge/main Core CI run `33443333795` / #456 — Core + Android GREEN.
+
+### Slice 4 — Failure containment, replacement and recovery readiness — NEXT
 
 Add quiescence/replacement/retirement contracts, failure classification, recovery-as-new-attempt semantics, concurrency and privacy/readiness tests.
+
+Slice 4 must explicitly define whether in-flight work is awaited for local cleanup or explicitly cancelled during replacement; this policy must not emerge accidentally from lock scheduling.
 
 ### Slice 5 — Platform/runtime integration evidence if required
 
@@ -229,9 +241,9 @@ Record exact-head/merge-main evidence, focused audits, explicit limitations and 
 
 ## Gate
 
-The Runtime Hardening architecture gate is complete. PR #64 passed exact-head Core + Android CI, focused architecture/security/privacy/logging/readiness audit, expected-head merge and merge/main Core + Android CI before implementation began.
+The Runtime Hardening architecture gate and Slices 1–3 are complete. Each completed slice passed exact-head Core + Android CI, focused audit, expected-head merge and merge/main required CI before the next implementation slice was allowed.
 
-Every implementation slice remains subject to the same discipline:
+Every remaining implementation slice remains subject to the same discipline:
 
 `feature branch → minimal coherent commits → PR → exact-head Core/required platform CI GREEN → focused architecture/security/privacy/logging-diagnostics/readiness audit → merge with verified expected head → merge/main CI GREEN → journal/freeze checkpoint`
 

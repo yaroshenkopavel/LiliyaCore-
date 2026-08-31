@@ -1,8 +1,8 @@
 # LiliyaCore — Canonical Project Handoff
 
-Status: **ACTIVE DEVELOPMENT — Runtime Hardening v0.1 Slice 2 complete; Slice 3 is next.**
+Status: **ACTIVE DEVELOPMENT — Runtime Hardening v0.1 Slice 3 complete; Slice 4 is next.**
 
-Checkpoint date: 2026-08-31.
+Checkpoint date: 2026-09-01.
 
 Primary repository: `yaroshenkopavel/LiliyaCore-`.
 
@@ -27,13 +27,13 @@ If documentation conflicts with GitHub/source, verify GitHub/source first and re
 
 Current verified implementation `main`:
 
-`076b0c4dfa18dbdde178f741edd7f63237ceaf28`
+`7a3794bab338d90813a0a82067ad65db4ae52982`
 
-This is Runtime Hardening v0.1 Slice 2, PR #66.
+This is Runtime Hardening v0.1 Slice 3, PR #69.
 
 Verified merge/main CI:
 
-`33435578143` / Core CI run #418 — GREEN for both required jobs:
+`33443333795` / Core CI run #456 — GREEN for both required jobs:
 
 - `Test LiliyaCore` — success;
 - `Android Keystore Instrumentation` — success.
@@ -42,7 +42,7 @@ Do not start work from an older SHA without first reconciling it with current `m
 
 ## Current phase
 
-**Runtime Hardening v0.1 — ACTIVE, NOT FROZEN, SLICE 2 COMPLETE.**
+**Runtime Hardening v0.1 — ACTIVE, NOT FROZEN, SLICE 3 COMPLETE.**
 
 Canonical architecture contract:
 
@@ -80,23 +80,12 @@ PR #64:
 
 ## Slice 1 — completed
 
-PR #65 exact head:
+PR #65 exact head `f2567296189142b7f51b76006728457121eee6ad`.
 
-`f2567296189142b7f51b76006728457121eee6ad`
-
-Exact-head CI:
-
-`33426885570` — Core + Android GREEN.
-
-Focused pre-merge audit: CLEAN.
-
-Merge:
-
-`ca7b43c971eccd473d64617ef2f6c8e25a93b2b6`
-
-Merge/main CI:
-
-`33427756131` — Core + Android GREEN.
+- exact-head CI `33426885570` — Core + Android GREEN;
+- focused pre-merge audit — CLEAN;
+- merge `ca7b43c971eccd473d64617ef2f6c8e25a93b2b6`;
+- merge/main CI `33427756131` — Core + Android GREEN.
 
 Established positive monotonic runtime-session generation, exact session/model reference binding, one-live-session v0.1 ownership, duplicate/overflow fail-closed behavior, stale/ABA-safe retirement, deterministic snapshot and explicit structural limits.
 
@@ -104,23 +93,11 @@ Established positive monotonic runtime-session generation, exact session/model r
 
 PR #66: `Runtime Hardening v0.1: Slice 2 Activation Barrier`.
 
-Exact verified head:
-
-`b07f18601d6183beb35883f3796b66f92ecb5a6a`
-
-Exact-head CI:
-
-`33431660506` / Core CI run #417 — GREEN for both required jobs.
-
-Focused architecture/security/privacy/logging/readiness audit inspected all three changed files and found **no merge blocker**.
-
-Merge:
-
-`076b0c4dfa18dbdde178f741edd7f63237ceaf28`
-
-Merge/main CI:
-
-`33435578143` / Core CI run #418 — GREEN for both required jobs.
+- exact head `b07f18601d6183beb35883f3796b66f92ecb5a6a`;
+- exact-head CI `33431660506` / run #417 — Core + Android GREEN;
+- focused architecture/security/privacy/logging/readiness audit — CLEAN;
+- merge `076b0c4dfa18dbdde178f741edd7f63237ceaf28`;
+- merge/main CI `33435578143` / run #418 — Core + Android GREEN.
 
 Slice 2 guarantees:
 
@@ -134,29 +111,67 @@ Slice 2 guarantees:
 - activation does not grant License, Capability, Authority or Execution permission;
 - no operation supervision, retry, replay, recovery or reconciliation is introduced by Slice 2.
 
-Audit note: one deterministic-concurrency contract uses a short bounded wait only to prove that a competing retirement has not completed while publication holds the monitor. Correctness itself is enforced by the production monitor barrier and reentrant mutation guards; the wait is test-quality debt, not the ownership mechanism.
+## Slice 3 — completed
 
-## Next implementation — Slice 3
+PR #69: `Runtime Hardening v0.1: Slice 3 Operation Supervision`.
 
-**Runtime Hardening Slice 3 — Operation Supervision and Resource Bounds.**
+Exact verified head:
+
+`f083deaa9e5a9352a06cdedf1629bfaa3108e3bd`
+
+Exact-head CI:
+
+`33442898637` / Core CI run #455 — GREEN for both required jobs.
+
+Focused architecture/security/privacy/logging/readiness audit of the final four-file diff: **CLEAN; no merge blocker**.
+
+Merge:
+
+`7a3794bab338d90813a0a82067ad65db4ae52982`
+
+Merge/main CI:
+
+`33443333795` / Core CI run #456 — GREEN for both required jobs.
+
+Slice 3 guarantees:
+
+- admission is atomic with exact current ownership and requires an `ACTIVE` session;
+- `maxInFlightOperationsPerSession` is enforced before admission;
+- exactly one operation supervisor may belong to one registry in v0.1, preventing duplicate-supervisor limit bypass;
+- tickets bind to one exact runtime-session generation and use instance identity for terminal ownership;
+- reconstructing identical ticket values cannot release the actual operation;
+- exactly one terminal local release is allowed per admitted ticket;
+- `FAILED`, `CANCELLED` and `TIMED_OUT` are explicit structural outcomes;
+- stale success after retirement/replacement releases its own local capacity but cannot publish into the replacement session;
+- success publication is serialized behind the same session publication/ownership barrier;
+- same-thread reentrant retirement and admission cannot bypass that barrier;
+- failure rendering exposes structural reason + exception class rather than exception message;
+- operation tracking remains bounded and retains no hidden terminal-history/retry/replay buffer;
+- operation completion remains structural runtime state, not Authority and not permission for external side effects;
+- no hidden retry, replay, reconciliation or exactly-once inference is introduced.
+
+A temporary GitHub-hosted runner allocation incident occurred during Slice 3 verification. It was independently reproduced on an already-known GREEN SHA and therefore separated from Slice 3 code. Runner availability recovered before final acceptance; exact-head run #455 and merge/main run #456 both executed normally and passed Core + Android.
+
+## Next implementation — Slice 4
+
+**Runtime Hardening Slice 4 — Failure Containment, Replacement and Recovery Readiness.**
 
 Required behavior from the canonical contract:
 
-1. issue exact operation tickets bound to one exact ACTIVE runtime-session generation;
-2. issue no ticket for a missing, PREPARED, QUIESCING, FAILED or RETIRED session;
-3. enforce `maxInFlightOperationsPerSession` before admission;
-4. give each admitted operation exactly one terminal local release;
-5. prevent replacement/retirement from allowing stale operation success/state to publish into a newer session;
-6. allow stale operations to finish their own local cleanup without mutating replacement state;
-7. keep timeout/cancellation policy explicit at the supervisor boundary rather than hiding wall-clock behavior inside model primitives;
-8. preserve the rule that operation completion is structural runtime state, not Authority and not permission for external side effects;
-9. introduce no hidden retry, replay, reconciliation or exactly-once inference claim.
+1. make replacement explicit: stop new admission → establish quiescing barrier → retire/invalidate exact current ownership → publish a fresh exact session;
+2. make the in-flight policy explicit: await local cleanup or explicitly cancel it; do not let incidental lock scheduling define semantics;
+3. structurally classify session/provider/retirement/recovery failures and fail closed;
+4. prevent stale workers from publishing or mutating state in a replacement session;
+5. preserve exact local cleanup ownership for stale work;
+6. make recovery a fresh explicit attempt/new generation rather than resurrection of a failed session;
+7. introduce no hidden retry, replay, reconciliation or exactly-once claim;
+8. preserve privacy-safe structural observability;
+9. cover retirement/replacement races with deterministic concurrency tests.
 
-Do not widen Slice 3 into replacement/recovery logic that belongs to Slice 4 unless a concrete correctness blocker proves the contract needs an explicit amendment.
+Do not widen Slice 4 into License service, update transport, Authority changes or platform coupling unless a concrete contract requirement proves it necessary.
 
 ## Remaining Runtime Hardening plan
 
-- Slice 3 — operation supervision and resource bounds;
 - Slice 4 — failure containment, replacement and recovery readiness;
 - Slice 5 — platform/runtime integration evidence only if actually required; otherwise explicit no-op evidence checkpoint;
 - Slice 6 — formal freeze checkpoint.
@@ -200,7 +215,7 @@ Never claim a focused audit unless the exact changed-file set and relevant patch
 
 Never merge merely because CI is GREEN.
 
-Do not start the next implementation slice until the previous merge/main required CI is GREEN.
+Do not start the next implementation slice until the previous merge/main required CI is GREEN and the journal checkpoint is current.
 
 Fail closed on uncertain ownership, stale state, authentication or cleanup.
 
