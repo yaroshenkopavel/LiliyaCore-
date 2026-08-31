@@ -8,7 +8,7 @@ Default branch: `main`
 
 Legacy `Vikrot123/LiliyaCore` is backup/migration history only.
 
-Current phase: **Runtime Hardening v0.1 — ACTIVE, NOT FROZEN; Slice 3 complete, Slice 4 next.**
+Current phase: **Runtime Hardening v0.1 — ACTIVE, NOT FROZEN; Slice 4 complete, Slice 5 next.**
 
 ## Read this first
 
@@ -26,19 +26,19 @@ Source-of-truth priority:
 
 `current GitHub/main + CI → production source + executable contracts → HANDOFF.md + CURRENT_STATE.md → canonical contract/freeze docs → other journal docs → chat history`
 
-If documentation conflicts with GitHub/source, verify GitHub/source first and repair the documentation before implementation continues.
+If documentation conflicts with GitHub/source, verify GitHub/source first and repair documentation before implementation continues.
 
 ## Current verified checkpoint
 
 Verified implementation `main`:
 
-`7a3794bab338d90813a0a82067ad65db4ae52982`
+`c09b37d14f4cbd367bba9165ccb09dc4fd37116f`
 
-Runtime Hardening Slice 3 / PR #69.
+Runtime Hardening Slice 4 / PR #71.
 
 Verified merge/main CI:
 
-`33443333795` / Core CI run #456 — GREEN for both:
+`33448183290` / Core CI run #480 — GREEN for both:
 
 - `Test LiliyaCore`;
 - `Android Keystore Instrumentation`.
@@ -61,27 +61,25 @@ Hard separations:
 
 - architecture gate — PR #64, merged and merge/main GREEN;
 - Slice 1 exact session models/ownership — PR #65, merged and merge/main GREEN;
-- Slice 2 activation/publication barrier — PR #66, exact-head audit CLEAN, merged, merge/main run #418 GREEN;
-- Slice 3 operation supervision/resource bounds — PR #69, exact head `f083deaa...`, exact-head run #455 GREEN, focused audit CLEAN, merged as `7a3794ba...`, merge/main run #456 GREEN.
+- Slice 2 activation/publication barrier — PR #66, focused audit CLEAN, merged and merge/main GREEN;
+- Slice 3 operation supervision/resource bounds — PR #69, exact head `f083deaa...`, audit CLEAN, merged as `7a3794ba...`, merge/main #456 GREEN;
+- Slice 4 failure containment/replacement/recovery readiness — PR #71, exact head `459be183...`, push #478 + PR #479 Core/Android GREEN, focused audit CLEAN, merged as `c09b37d1...`, merge/main #480 GREEN.
 
-Slice 3 established atomic ACTIVE-session admission, bounded per-session in-flight operations, one supervisor per registry, identity-based exact operation tickets, exactly-one local terminal release, explicit failure/cancellation/timeout outcomes, stale-success publication rejection, reentrant publication barriers and bounded state with no hidden retry/replay history.
+Slice 4 established explicit quiescing and drain-before-retire, structural session/provider failures, stale-worker publication barriers, fail-closed retirement cleanup, `RETIREMENT_FAILED` ownership retention, explicit recovery cleanup and fresh-generation-only replacement. It introduced no hidden retry, replay, reconciliation or exactly-once semantics.
 
 ### Next
 
-**Slice 4 — Failure Containment, Replacement and Recovery Readiness.**
+**Slice 5 — Platform/runtime integration evidence if required.**
 
-Implement only the contract-required failure/replacement/recovery surface:
+Start with an evidence review. Do not add Android code merely because Slice 5 exists.
 
-- explicit stop-new-admission / quiescing / exact retirement / fresh replacement sequence;
-- explicit policy for in-flight work: await local cleanup or explicitly cancel it;
-- structural failure classification and fail-closed retirement/recovery behavior;
-- stale workers cannot publish into replacement state;
-- recovery is a fresh explicit attempt and new generation, not resurrection;
-- privacy-safe structural observability;
-- deterministic concurrency tests for replacement/retirement while operations are in flight;
-- no hidden retry/replay/reconciliation/exactly-once semantics.
+- inspect the completed platform-neutral Runtime Hardening contracts and the frozen Protected Model/runtime boundary;
+- identify any guarantee that genuinely requires Android/process/lifecycle behavior;
+- if one exists, add the smallest platform integration and real instrumentation proving only that property;
+- if none exists, record a deliberate no-op evidence checkpoint;
+- preserve exact ownership, fail-closed cleanup, privacy and no-hidden-retry guarantees.
 
-Do not drift into License service, Update System, Authority changes or unnecessary Android coupling.
+Do not drift into License service, offline leases, Update System, Authority changes, model transport, local-LLM integration or a general Android shell.
 
 ## Frozen baselines
 
@@ -115,11 +113,7 @@ Frozen Android Device Key v0.1 remains signing-only and exposes only `SIGN_CHALL
 
 `feature branch → minimal coherent commits → PR → exact-head Core/required platform CI GREEN → focused architecture/security/privacy/logging-diagnostics/readiness audit → merge with verified expected head → merge/main CI GREEN → journal/freeze checkpoint`
 
-CI GREEN does not replace the focused audit.
-
-Never claim an audit that was not performed against the exact changed-file set/head.
-
-Do not start a new implementation slice until the previous merge/main required CI is GREEN and the journal checkpoint is current.
+CI GREEN does not replace the focused audit. Never claim an audit not performed against the exact changed-file set/head. Do not start a new implementation slice until the previous merge/main required CI is GREEN and the journal checkpoint is current.
 
 ## Privacy / observability
 
@@ -133,8 +127,9 @@ Foundation can retain throwable messages when a throwable is explicitly forwarde
 
 1. verify current `main` and required CI still match or supersede this checkpoint;
 2. read `HANDOFF.md`, `CURRENT_STATE.md` and `RUNTIME_HARDENING_V0_1_CONTRACT.md`;
-3. inspect current Runtime Hardening production/tests plus the frozen Protected Model access boundary;
-4. create a fresh Slice 4 feature branch from verified current `main` only after this journal checkpoint itself passes its required gate;
-5. implement only failure containment/replacement/recovery readiness;
-6. close exact-head CI + focused audit + expected-head merge + merge/main CI;
-7. update the journal before starting Slice 5.
+3. inspect completed Runtime Hardening production/tests and the frozen Protected Model boundary;
+4. create a fresh Slice 5 evidence branch only after this journal checkpoint itself passes its required gate;
+5. determine whether platform-specific runtime integration is genuinely required;
+6. implement only required platform evidence, or record an explicit no-op checkpoint;
+7. close exact-head CI + focused audit + expected-head merge + merge/main CI;
+8. update the journal before Slice 6 formal freeze.
