@@ -84,9 +84,10 @@ internal sealed interface RuntimeActiveSessionGuardResult<out T> {
     data object Unavailable : RuntimeActiveSessionGuardResult<Nothing>
 }
 
-internal enum class RuntimeOperationPublicationResult {
-    PUBLISHED,
-    STALE
+internal sealed interface RuntimeOperationPublicationResult {
+    data object Published : RuntimeOperationPublicationResult
+    data object Stale : RuntimeOperationPublicationResult
+    data class Failed(val throwable: Throwable) : RuntimeOperationPublicationResult
 }
 
 interface RuntimeModelSessionOwnership {
@@ -177,10 +178,21 @@ class RuntimeModelSessionRegistry internal constructor(
     ): RuntimeOperationPublicationResult = synchronized(lock) {
         val entry = current
         if (entry == null || entry.reference != reference || entry.lifecycle != RuntimeModelSessionLifecycle.ACTIVE) {
-            RuntimeOperationPublicationResult.STALE
-        } else {
+            return@synchronized RuntimeOperationPublicationResult.Stale
+        }
+        check(!entry.publicationInProgress) { "nested runtime session publication is not allowed" }
+        entry.publicationInProgress = true
+        try {
             publish()
-            RuntimeOperationPublicationResult.PUBLISHED
+            if (current !== entry || entry.lifecycle != RuntimeModelSessionLifecycle.ACTIVE) {
+                RuntimeOperationPublicationResult.Stale
+            } else {
+                RuntimeOperationPublicationResult.Published
+            }
+        } catch (throwable: Throwable) {
+            RuntimeOperationPublicationResult.Failed(throwable)
+        } finally {
+            entry.publicationInProgress = false
         }
     }
 
