@@ -125,10 +125,14 @@ class ProtectedModelPayloadLoader(
             )
         }
         key.encoded?.let { encoded ->
-            if (encoded.size != AES_256_KEY_SIZE_BYTES) {
-                return ProtectedModelOpenResult.Rejected(
-                    ProtectedModelOpenFailure.MODEL_DEK_REJECTED
-                )
+            try {
+                if (encoded.size != AES_256_KEY_SIZE_BYTES) {
+                    return ProtectedModelOpenResult.Rejected(
+                        ProtectedModelOpenFailure.MODEL_DEK_REJECTED
+                    )
+                }
+            } finally {
+                encoded.fill(0)
             }
         }
 
