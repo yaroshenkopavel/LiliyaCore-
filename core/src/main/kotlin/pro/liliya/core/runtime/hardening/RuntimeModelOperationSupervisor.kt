@@ -30,6 +30,13 @@ sealed interface RuntimeOperationReleaseResult {
     data object Published : RuntimeOperationReleaseResult
     data object Stale : RuntimeOperationReleaseResult
     data object AlreadyReleased : RuntimeOperationReleaseResult
+    data class Failed(
+        val reason: RuntimeHardeningFailure,
+        val throwable: Throwable
+    ) : RuntimeOperationReleaseResult {
+        override fun toString(): String =
+            "Failed(reason=$reason, throwable=${throwable.javaClass.name})"
+    }
 }
 
 /**
@@ -108,9 +115,13 @@ class RuntimeModelOperationSupervisor internal constructor(
             return RuntimeOperationReleaseResult.Released
         }
 
-        return when (registry.publishOperationIfCurrent(ticket.session, publishSuccess)) {
-            RuntimeOperationPublicationResult.PUBLISHED -> RuntimeOperationReleaseResult.Published
-            RuntimeOperationPublicationResult.STALE -> RuntimeOperationReleaseResult.Stale
+        return when (val publication = registry.publishOperationIfCurrent(ticket.session, publishSuccess)) {
+            RuntimeOperationPublicationResult.Published -> RuntimeOperationReleaseResult.Published
+            RuntimeOperationPublicationResult.Stale -> RuntimeOperationReleaseResult.Stale
+            is RuntimeOperationPublicationResult.Failed -> RuntimeOperationReleaseResult.Failed(
+                reason = RuntimeHardeningFailure.OPERATION_FAILED,
+                throwable = publication.throwable
+            )
         }
     }
 
