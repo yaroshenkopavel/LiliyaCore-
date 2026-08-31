@@ -49,6 +49,9 @@ sealed interface RuntimeOperationReleaseResult {
  * Terminal release is local and exactly-once. A successful stale operation may finish its local
  * cleanup but cannot publish state into a replacement session. Cancellation and timeout are explicit
  * caller-selected terminal outcomes; this supervisor has no hidden clock, retry or replay policy.
+ *
+ * One registry may own exactly one supervisor in v0.1. This makes the configured per-session
+ * in-flight bound composition-wide rather than accidentally supervisor-local.
  */
 class RuntimeModelOperationSupervisor internal constructor(
     private val registry: RuntimeModelSessionRegistry,
@@ -58,6 +61,12 @@ class RuntimeModelOperationSupervisor internal constructor(
     private data class ActiveOperation(
         val ticket: RuntimeModelOperationTicket
     )
+
+    init {
+        check(registry.claimOperationSupervisor()) {
+            "runtime model session registry already owns an operation supervisor"
+        }
+    }
 
     private val lock = Any()
     private val nextSequence = AtomicLong(initialSequence)
