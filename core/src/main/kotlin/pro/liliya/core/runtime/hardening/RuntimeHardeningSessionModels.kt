@@ -117,6 +117,7 @@ class RuntimeModelSessionRegistry internal constructor(
     private val lock = Any()
     private val nextGeneration = AtomicLong(initialGeneration)
     private var current: Entry? = null
+    private var operationSupervisorClaimed = false
 
     fun register(
         id: RuntimeModelSessionId,
@@ -159,6 +160,15 @@ class RuntimeModelSessionRegistry internal constructor(
 
     fun snapshot(): List<RuntimeModelSessionReference> = synchronized(lock) {
         listOfNotNull(current?.reference)
+    }
+
+    internal fun claimOperationSupervisor(): Boolean = synchronized(lock) {
+        if (operationSupervisorClaimed) {
+            false
+        } else {
+            operationSupervisorClaimed = true
+            true
+        }
     }
 
     internal fun <T> withCurrentActiveSession(
