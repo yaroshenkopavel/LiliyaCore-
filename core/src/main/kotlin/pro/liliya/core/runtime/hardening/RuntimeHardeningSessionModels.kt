@@ -102,6 +102,12 @@ internal sealed interface RuntimeSessionFailureTransitionResult {
     data object Stale : RuntimeSessionFailureTransitionResult
 }
 
+internal sealed interface RuntimeSessionRetirementTransitionResult {
+    data object Retired : RuntimeSessionRetirementTransitionResult
+    data class Failed(val throwable: Throwable) : RuntimeSessionRetirementTransitionResult
+    data object Stale : RuntimeSessionRetirementTransitionResult
+}
+
 interface RuntimeModelSessionOwnership {
     val reference: RuntimeModelSessionReference
     fun isCurrent(): Boolean
@@ -261,21 +267,34 @@ class RuntimeModelSessionRegistry internal constructor(
             !entry.publicationInProgress
     }
 
-    internal fun retireQuiescingIfCurrent(reference: RuntimeModelSessionReference): Boolean = synchronized(lock) {
+    internal fun retireQuiescingIfCurrent(
+        reference: RuntimeModelSessionReference,
+        retire: () -> Unit
+    ): RuntimeSessionRetirementTransitionResult = synchronized(lock) {
         val entry = current
         if (
             entry == null ||
             entry.reference != reference ||
             entry.lifecycle != RuntimeModelSessionLifecycle.QUIESCING
         ) {
-            return@synchronized false
+            return@synchronized RuntimeSessionRetirementTransitionResult.Stale
         }
         check(!entry.publicationInProgress) {
             "runtime session retirement is not allowed from inside publication"
         }
-        entry.lifecycle = RuntimeModelSessionLifecycle.RETIRED
-        current = null
-        true
+        entry.publicationInProgress = true
+        try {
+            retire()
+            entry.lifecycle = RuntimeModelSessionLifecycle.RETIRED
+            current = null
+            RuntimeSessionRetirementTransitionResult.Retired
+        } catch (throwable: Throwable) {
+            entry.lifecycle = RuntimeModelSessionLifecycle.FAILED
+            entry.failure = RuntimeHardeningFailure.RETIREMENT_FAILED
+            RuntimeSessionRetirementTransitionResult.Failed(throwable)
+        } finally {
+            entry.publicationInProgress = false
+        }
     }
 
     internal fun retireFailedIfCurrent(reference: RuntimeModelSessionReference): Boolean = synchronized(lock) {
