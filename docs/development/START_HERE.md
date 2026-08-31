@@ -6,7 +6,7 @@ Repository: `yaroshenkopavel/LiliyaCore-`
 
 Default branch: `main`
 
-Project type: Kotlin core foundation with a separate concrete Android Device Key platform module.
+Project type: Kotlin core foundation with separate concrete Android security/platform modules.
 
 ## Source of truth
 
@@ -40,79 +40,78 @@ Before changing code, read:
 
 Verified `main`:
 
-`2cc6279ef481915531267ac52ce06ff3c36036a6`
+`2aab6175e8aad9513382968c3357965c04b15fb7`
 
 Latest merge/main CI:
 
-`33365191210` — GREEN for both `Test LiliyaCore` and `Android Keystore Instrumentation`.
+`33366740469` — GREEN for both `Test LiliyaCore` and `Android Keystore Instrumentation`.
 
-## Frozen persistence baselines
+## Frozen baselines
 
-Persistent Cognitive Storage v0.1, Memory Persistence Integration v0.1, Knowledge Persistence Integration v0.1 and Learning Persistence Integration v0.1 are **FROZEN**.
+Persistent Cognitive Storage v0.1, Memory Persistence Integration v0.1, Knowledge Persistence Integration v0.1, Learning Persistence Integration v0.1, License Core v0.1 and Android Device Key v0.1 are **FROZEN**.
 
 The delayed Learning/Persistence observability audit is closed **CLEAN for the audited Learning/Persistence production paths** through corrective PR #39.
 
-## License Core v0.1
-
-License Core v0.1 is **FROZEN**.
-
-Mandatory separation:
-
-`License != Signature != Device Enrollment != Key Access != Capability != Authority != Execution`
-
-## Android Device Key v0.1
-
-Android Device Key v0.1 is **FROZEN**.
+## Android Device Key v0.1 boundary
 
 Read:
 
 - `ANDROID_DEVICE_KEY_V0_1_CONTRACT.md`
 - `ANDROID_DEVICE_KEY_V0_1_FREEZE.md`
 
+Frozen Device Key v0.1 provides exact device-key ownership, security-level evidence, proof signing and structural enrollment using a concrete Android Keystore EC P-256 signing boundary.
+
+Important hard limit:
+
+- v0.1 exposes only `SIGN_CHALLENGE`;
+- there is no frozen DEK wrap/unwrap capability/API;
+- the EC signing key must not be treated as a cognitive DEK wrapping key;
+- emulator evidence proves concrete Keystore runtime/lifecycle behavior, not StrongBox/TEE availability on arbitrary hardware.
+
+Final Device Key freeze/closeout baseline:
+
+- PR #46 merge `2cc6279ef481915531267ac52ce06ff3c36036a6`, merge/main `33365191210` GREEN;
+- PR #47 merge `2aab6175e8aad9513382968c3357965c04b15fb7`, merge/main `33366740469` GREEN.
+
+## Cognitive Storage Encryption v0.1
+
+Status: **ARCHITECTURE CONTRACT ACTIVE — IMPLEMENTATION NOT YET STARTED / NOT FROZEN**.
+
+Read first:
+
+`COGNITIVE_STORAGE_ENCRYPTION_V0_1_CONTRACT.md`
+
 Direction:
 
-`Android Keystore key identity → verified security-level evidence → controlled device-key operation → structural enrollment/binding evidence → later DEK wrapping/unwrap consumers`
+`persistent cognitive payload → explicit encryption profile → exact DEK identity/generation → authenticated ciphertext envelope → exact wrapped-DEK binding → purpose-specific key-protector boundary → bounded plaintext consumer`
 
 Mandatory separation:
 
-`Device Key != Device Identity != Enrollment != License != DEK != Capability != Authority != Execution`
+`Persistence != Encryption != Ciphertext != DEK != Wrapping Key != Device Key != Enrollment != License != Capability != Authority != Execution`
 
-Frozen work includes exact generation ownership, typed failure/invalidation semantics, explicit no-same-operation fallback, defensive state detachment, privacy/redaction gates, platform-instance ABA protection, proof signing, structural enrollment, concrete Android Keystore implementation, post-generation cleanup hardening and real emulator instrumentation.
+Selected initial data-encryption profile:
 
-Important platform boundary:
+`AES-256-GCM / 96-bit nonce / 128-bit authentication tag`
 
-- `:core` remains Android-framework-free;
-- `:android-device-key` contains the concrete Android Keystore adapter;
-- emulator instrumentation proves concrete Android Keystore runtime integration/lifecycle behavior;
-- emulator success does **not** prove StrongBox/TEE availability on arbitrary user hardware;
-- hardware-backed claims require runtime-observed security-level evidence on the actual device;
-- v0.1 exposes only `SIGN_CHALLENGE`; no DEK unwrap capability/API is part of the frozen Device Key surface.
+Critical architecture correction: Cognitive Storage Encryption owns a **separate purpose-specific key-protector/KEK boundary**. It must not retrofit DEK wrapping/unwrapping into frozen Android Device Key v0.1. On Android, the preferred future key protector is a dedicated non-exportable Android Keystore key for cognitive DEK protection, with its own identity/profile/security/lifecycle contract.
 
-Final freeze evidence:
+The encryption contract requires exact `(CognitiveDekId, CognitiveDekGeneration)` ownership, canonical AEAD binding to store/entity/generation/schema/DEK metadata, raw-DEK non-persistence, exact wrapped-DEK/protector binding, explicit rotation/migration/recovery semantics, fail-closed authentication, bounded plaintext lifetime and privacy-safe observability.
 
-- PR #46 exact head `8565a65348d800d646a1760bf99c34579e3a00c1`;
-- PR #46 exact-head run `33364507220` GREEN for Core + Android instrumentation;
-- PR #46 merge `2cc6279ef481915531267ac52ce06ff3c36036a6`;
-- PR #46 merge/main run `33365191210` GREEN for Core + Android instrumentation.
+License expiry must not intentionally destroy legitimate user cognitive data. Successful unwrap/decrypt is not Authority. Higher protected-use layers may require fresh policy/Authority, while recovery/export remains a distinct future policy path.
 
 ## Current next step
 
-Begin Cognitive Storage Encryption v0.1 architecture and contract work.
+Finish the Cognitive Storage Encryption v0.1 architecture-contract PR first.
 
-Required direction:
+Required gate:
 
-`persistent cognitive payload → explicit encryption policy → exact DEK identity/generation → wrapped DEK binding → controlled device-key unwrap boundary → bounded plaintext consumer`
+`exact-head Core + required Android CI GREEN → merge with expected head → merge/main Core + Android CI GREEN`
 
-The new phase must define, before implementation:
+Only after that gate is closed begin Slice 1:
 
-- exact DEK ownership and generation semantics;
-- canonical wrapped-DEK format and binding to the intended device-key/platform instance;
-- explicit policy/Authority gating for unwrap/use;
-- typed corruption, stale binding, key loss, invalidation, migration and recovery outcomes;
-- crash consistency and persistence ordering;
-- plaintext lifetime/bounded-consumer rules;
-- structural observability that excludes DEKs, plaintext and secret-bearing backend exception messages;
-- Android integration without retroactively expanding the frozen Device Key v0.1 contract.
+`platform-neutral encryption models + exact DEK ownership + envelope structural types + typed failures + privacy-safe rendering`
+
+Do not start Android key-protector implementation, persistent encrypted payload integration, rotation or recovery code before Slice 1 is independently GREEN and reviewed.
 
 ## Accepted roadmap
 
@@ -121,7 +120,7 @@ The new phase must define, before implementation:
 ## Resume procedure
 
 1. verify current `main` SHA and latest required CI;
-2. treat Android Device Key v0.1 as frozen and do not add DEK unwrap semantics back into it;
-3. read the frozen persistent cognitive-storage contracts before defining encrypted-storage semantics;
-4. create a dedicated Cognitive Storage Encryption v0.1 architecture/contract PR before implementation;
-5. preserve exact ownership, fail-closed policy, Authority separation and privacy/observability rules throughout the new phase.
+2. read the frozen Persistent Cognitive Storage and Android Device Key contracts plus `COGNITIVE_STORAGE_ENCRYPTION_V0_1_CONTRACT.md`;
+3. if the encryption architecture PR/CI gate is active, finish that exact gate before implementation;
+4. after architecture merge/main GREEN, begin only Slice 1;
+5. preserve exact ownership, fail-closed AEAD binding, Device Key freeze compatibility, License/Authority separation and strict privacy rules throughout the phase.
