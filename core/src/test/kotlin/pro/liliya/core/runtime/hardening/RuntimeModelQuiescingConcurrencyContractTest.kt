@@ -98,6 +98,8 @@ class RuntimeModelQuiescingConcurrencyContractTest {
                     supervisor.retireIfDrained(ownership.reference)
                 )
             }
+            is RuntimeSessionDrainRetirementResult.Failed ->
+                error("default retirement cleanup must not fail: ${result.throwable.javaClass.name}")
             RuntimeSessionDrainRetirementResult.Stale ->
                 error("exact quiescing session must not become stale without retirement")
             null -> error("retirement result missing")
