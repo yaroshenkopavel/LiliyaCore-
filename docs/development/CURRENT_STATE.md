@@ -6,11 +6,11 @@ Last journal update: 2026-08-31
 
 Current verified `main`:
 
-`91c43d83cd2077bdb3c14d6bb7cbdb20c7c4cd27`
+`2cc6279ef481915531267ac52ce06ff3c36036a6`
 
-Latest verified merge/main Core CI:
+Latest verified merge/main CI:
 
-`33363644453` — GREEN for both `Test LiliyaCore` and `Android Keystore Instrumentation`.
+`33365191210` — GREEN for both `Test LiliyaCore` and `Android Keystore Instrumentation`.
 
 ## Frozen persistence baselines
 
@@ -53,7 +53,7 @@ Mandatory separations remain:
 
 ## Android Device Key v0.1
 
-Android Device Key v0.1 implementation and readiness gates are complete. The subsystem is at its **freeze checkpoint PR**; it becomes formally **FROZEN** only after that checkpoint PR itself passes exact-head Core + Android instrumentation, merges, and its merge/main gate is GREEN.
+Android Device Key v0.1 is **FROZEN**.
 
 Canonical documents:
 
@@ -76,34 +76,31 @@ Completed implementation/readiness slices:
 - PR #41 — proof-of-possession/signing and structural enrollment boundary, platform-instance ABA hardening and detached capability state;
 - PR #43 — explicit no-same-operation fallback, malformed-metadata handling, concurrency/privacy readiness hardening;
 - PR #44 — concrete `:android-device-key` module using real Android Keystore plus emulator instrumentation;
-- PR #45 — final readiness cleanup removing pre-freeze `UNWRAP_WRAPPED_KEY` surface.
+- PR #45 — final readiness cleanup removing pre-freeze `UNWRAP_WRAPPED_KEY` surface;
+- PR #46 — formal freeze checkpoint.
 
-Verified PR #44 evidence:
+Final freeze evidence:
 
-- exact-head run `33360156420` — Core GREEN + Android instrumentation GREEN;
-- merge `cdc2e279f5b3bf56f7c14a0f3cc00f82ff7aac09`;
-- merge/main run `33362045123` — Core GREEN + Android instrumentation GREEN.
+- PR #46 exact head `8565a65348d800d646a1760bf99c34579e3a00c1`;
+- PR #46 exact-head run `33364507220` — Core GREEN + Android instrumentation GREEN;
+- PR #46 merge `2cc6279ef481915531267ac52ce06ff3c36036a6`;
+- PR #46 merge/main run `33365191210` — Core GREEN + Android instrumentation GREEN.
 
-Verified PR #45 evidence:
+Frozen guarantees include exact `(DeviceKeyId, DeviceKeyGeneration)` ownership, generation-overflow fail-closed behavior, opaque platform-instance evidence, no same-operation StrongBox downgrade, typed malformed/invalidation/cleanup outcomes, exact signing/ABA checks, post-sign ownership recheck, redacted rendering, private-key non-export, and structural enrollment separation.
 
-- exact head `88c7789ba3acb689fba5083eb6586ddabf51fc33`;
-- exact-head run `33363112163` — Core GREEN + Android instrumentation GREEN;
-- merge `91c43d83cd2077bdb3c14d6bb7cbdb20c7c4cd27`;
-- merge/main run `33363644453` — Core GREEN + Android instrumentation GREEN.
+Concrete Android runtime evidence exists. The emulator validates Android Keystore integration/lifecycle behavior, but it does **not** prove that arbitrary user hardware provides StrongBox or TEE. Hardware-backed claims remain conditional on runtime-observed evidence from the actual device.
 
-Current guarantees include exact `(DeviceKeyId, DeviceKeyGeneration)` ownership, generation-overflow fail-closed behavior, opaque platform-instance evidence, no same-operation StrongBox downgrade, typed malformed/invalidation/cleanup outcomes, exact signing/ABA checks, post-sign ownership recheck, redacted rendering, private-key non-export, and structural enrollment separation.
-
-Concrete Android runtime evidence now exists. The emulator validates Android Keystore integration/lifecycle behavior, but it does **not** prove that arbitrary user hardware provides StrongBox or TEE. Hardware-backed claims remain conditional on runtime-observed evidence from the actual device.
-
-No DEK unwrap API is part of v0.1. DEK wrapping/unwrap belongs to the later cognitive-storage-encryption phase and must remain separately policy/Authority bound.
+No DEK unwrap API is part of Device Key v0.1. DEK wrapping/unwrap belongs to the next cognitive-storage-encryption phase and must be introduced through a separately reviewed binding/policy/Authority contract.
 
 ## Current next step
 
-Finish the Android Device Key v0.1 freeze checkpoint PR. Require:
+Begin Cognitive Storage Encryption v0.1 architecture and contract work.
 
-`exact-head Core GREEN + Android Keystore Instrumentation GREEN → merge → merge/main Core GREEN + Android Keystore Instrumentation GREEN`
+Required direction:
 
-Only then mark Android Device Key v0.1 **FROZEN** and proceed to cognitive storage encryption.
+`persistent cognitive payload → explicit encryption policy → exact DEK identity/generation → wrapped DEK binding → controlled device-key unwrap boundary → bounded plaintext consumer`
+
+Do not retroactively add DEK unwrap semantics to the frozen Device Key v0.1 contract. The encryption phase must define its own exact ownership, wrapped-DEK format/binding, policy/Authority gating, failure semantics, recovery/migration boundaries, observability privacy rules and Android integration plan before implementation.
 
 ## Accepted security roadmap
 
