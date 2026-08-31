@@ -5,6 +5,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -55,5 +56,23 @@ class ProtectedModelAccessCoordinatorConcurrencyContractTest {
         assertEquals(0L, replacementFinished.count)
         assertEquals(newReference, ownership.currentReference())
         assertFalse(ownership.isCurrent(ticket))
+    }
+
+    @Test
+    fun reentrant_replacement_is_rejected_inside_publication_barrier() {
+        val packageId = ProtectedModelPackageId("reentrant-model")
+        val oldReference = ProtectedModelReference(packageId, ProtectedModelGeneration(1))
+        val newReference = ProtectedModelReference(packageId, ProtectedModelGeneration(2))
+        val ownership = ProtectedModelRuntimeOwnership()
+        val ticket = ownership.replaceTarget(oldReference)
+
+        assertFailsWith<IllegalStateException> {
+            ownership.publishIfCurrent(ticket) {
+                ownership.replaceTarget(newReference)
+            }
+        }
+
+        assertEquals(oldReference, ownership.currentReference())
+        assertTrue(ownership.isCurrent(ticket))
     }
 }
