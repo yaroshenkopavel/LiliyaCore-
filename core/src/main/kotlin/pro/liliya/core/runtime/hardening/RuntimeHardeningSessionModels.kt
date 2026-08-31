@@ -79,6 +79,16 @@ sealed interface RuntimeSessionPublicationResult {
     }
 }
 
+internal sealed interface RuntimeActiveSessionGuardResult<out T> {
+    data class Available<T>(val value: T) : RuntimeActiveSessionGuardResult<T>
+    data object Unavailable : RuntimeActiveSessionGuardResult<Nothing>
+}
+
+internal enum class RuntimeOperationPublicationResult {
+    PUBLISHED,
+    STALE
+}
+
 interface RuntimeModelSessionOwnership {
     val reference: RuntimeModelSessionReference
     fun isCurrent(): Boolean
@@ -148,6 +158,30 @@ class RuntimeModelSessionRegistry internal constructor(
 
     fun snapshot(): List<RuntimeModelSessionReference> = synchronized(lock) {
         listOfNotNull(current?.reference)
+    }
+
+    internal fun <T> withCurrentActiveSession(
+        block: (RuntimeModelSessionReference) -> T
+    ): RuntimeActiveSessionGuardResult<T> = synchronized(lock) {
+        val entry = current
+        if (entry == null || entry.lifecycle != RuntimeModelSessionLifecycle.ACTIVE) {
+            RuntimeActiveSessionGuardResult.Unavailable
+        } else {
+            RuntimeActiveSessionGuardResult.Available(block(entry.reference))
+        }
+    }
+
+    internal fun publishOperationIfCurrent(
+        reference: RuntimeModelSessionReference,
+        publish: () -> Unit
+    ): RuntimeOperationPublicationResult = synchronized(lock) {
+        val entry = current
+        if (entry == null || entry.reference != reference || entry.lifecycle != RuntimeModelSessionLifecycle.ACTIVE) {
+            RuntimeOperationPublicationResult.STALE
+        } else {
+            publish()
+            RuntimeOperationPublicationResult.PUBLISHED
+        }
     }
 
     private fun ownership(entry: Entry): RuntimeModelSessionOwnership =
