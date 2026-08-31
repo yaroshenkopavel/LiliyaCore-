@@ -6,6 +6,7 @@ import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
@@ -128,6 +129,48 @@ class RuntimeModelOperationSupervisorContractTest {
         assertTrue(published)
         assertTrue(ownership.isCurrent())
         assertTrue(ownership.retire())
+    }
+
+    @Test
+    fun same_thread_reentrant_retirement_cannot_bypass_operation_publication_barrier() {
+        val registry = RuntimeModelSessionRegistry()
+        val ownership = register(registry, "active", 1)
+        publish(ownership)
+        val supervisor = supervisor(registry, maxInFlight = 1)
+        val ticket = assertIs<RuntimeOperationAdmissionResult.Admitted>(supervisor.admit()).ticket
+
+        val failed = assertIs<RuntimeOperationReleaseResult.Failed>(
+            supervisor.release(ticket, RuntimeOperationTerminal.SUCCEEDED) {
+                ownership.retire()
+            }
+        )
+
+        assertEquals(RuntimeHardeningFailure.OPERATION_FAILED, failed.reason)
+        assertTrue(failed.throwable is IllegalStateException)
+        assertTrue(ownership.isCurrent())
+        assertEquals(RuntimeModelSessionLifecycle.ACTIVE, ownership.lifecycle())
+        assertEquals(0, supervisor.inFlightCount())
+    }
+
+    @Test
+    fun publication_failure_is_structural_and_does_not_render_secret_exception_message() {
+        val registry = RuntimeModelSessionRegistry()
+        val ownership = register(registry, "active", 1)
+        publish(ownership)
+        val supervisor = supervisor(registry, maxInFlight = 1)
+        val ticket = assertIs<RuntimeOperationAdmissionResult.Admitted>(supervisor.admit()).ticket
+
+        val failed = assertIs<RuntimeOperationReleaseResult.Failed>(
+            supervisor.release(ticket, RuntimeOperationTerminal.SUCCEEDED) {
+                throw IllegalStateException("secret-operation-publication-message")
+            }
+        )
+
+        assertEquals(RuntimeHardeningFailure.OPERATION_FAILED, failed.reason)
+        assertFalse(failed.toString().contains("secret-operation-publication-message"))
+        assertTrue(failed.toString().contains(IllegalStateException::class.java.name))
+        assertTrue(ownership.isCurrent())
+        assertEquals(0, supervisor.inFlightCount())
     }
 
     @Test
