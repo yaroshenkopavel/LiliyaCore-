@@ -195,6 +195,11 @@ class AndroidSystemKeystorePlatform(context: Context) : AndroidKeystorePlatform 
             val alias = aliasFor(expected.id)
             val entry = keyStore().getEntry(alias, null) as? KeyStore.PrivateKeyEntry
                 ?: return AndroidKeystorePlatformResult.Rejected(DeviceKeyFailureCategory.KEY_MISSING)
+            val signingReference = platformReference(entry.certificate.publicKey.encoded)
+            if (signingReference != expected.platformReference) {
+                return AndroidKeystorePlatformResult.Rejected(DeviceKeyFailureCategory.STALE_OWNERSHIP)
+            }
+
             val signature = Signature.getInstance(SIGNATURE_ALGORITHM)
             signature.initSign(entry.privateKey)
             signature.update(challenge.copyBytes())
@@ -202,7 +207,7 @@ class AndroidSystemKeystorePlatform(context: Context) : AndroidKeystorePlatform 
             AndroidKeystorePlatformResult.Success(
                 AndroidKeystoreSignatureDescriptor(
                     id = expected.id,
-                    platformReference = expected.platformReference,
+                    platformReference = signingReference,
                     signature = DeviceKeyProofSignature(signature.sign())
                 )
             )
