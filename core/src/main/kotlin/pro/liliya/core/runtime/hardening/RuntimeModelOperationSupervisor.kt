@@ -8,7 +8,7 @@ value class RuntimeModelOperationSequence(val value: Long) {
     override fun toString(): String = value.toString()
 }
 
-data class RuntimeModelOperationTicket(
+class RuntimeModelOperationTicket internal constructor(
     val sequence: RuntimeModelOperationSequence,
     val session: RuntimeModelSessionReference
 )
@@ -49,6 +49,9 @@ sealed interface RuntimeOperationReleaseResult {
  * Terminal release is local and exactly-once. A successful stale operation may finish its local
  * cleanup but cannot publish state into a replacement session. Cancellation and timeout are explicit
  * caller-selected terminal outcomes; this supervisor has no hidden clock, retry or replay policy.
+ *
+ * Operation tickets use instance identity for terminal ownership. Reconstructing the same sequence
+ * and session values does not grant release ownership.
  *
  * One registry may own exactly one supervisor in v0.1. This makes the configured per-session
  * in-flight bound composition-wide rather than accidentally supervisor-local.
@@ -110,7 +113,7 @@ class RuntimeModelOperationSupervisor internal constructor(
         val released = synchronized(lock) {
             val sequence = ticket.sequence.value
             val active = activeOperations[sequence]
-            if (active == null || active.ticket != ticket) {
+            if (active == null || active.ticket !== ticket) {
                 return@synchronized false
             }
 
