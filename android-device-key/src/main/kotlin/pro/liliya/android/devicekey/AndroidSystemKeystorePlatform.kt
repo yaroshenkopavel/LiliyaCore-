@@ -53,6 +53,7 @@ class AndroidSystemKeystorePlatform(context: Context) : AndroidKeystorePlatform 
 
         val alias = aliasFor(request.id)
         val metadataKey = createdAtKey(alias)
+        var generatedByThisCall = false
 
         return try {
             val keyStore = keyStore()
@@ -80,6 +81,7 @@ class AndroidSystemKeystorePlatform(context: Context) : AndroidKeystorePlatform 
             )
             generator.initialize(builder.build())
             generator.generateKeyPair()
+            generatedByThisCall = true
 
             if (!preferences.edit().putLong(metadataKey, createdAt.toEpochMilli()).commit()) {
                 return cleanupGenerated(
@@ -103,7 +105,17 @@ class AndroidSystemKeystorePlatform(context: Context) : AndroidKeystorePlatform 
                 DeviceKeyFailureCategory.REQUIRED_SECURITY_LEVEL_UNAVAILABLE
             )
         } catch (_: Throwable) {
-            AndroidKeystorePlatformResult.Rejected(DeviceKeyFailureCategory.PLATFORM_REJECTED)
+            if (generatedByThisCall) {
+                cleanupGenerated(
+                    alias = alias,
+                    metadataKey = metadataKey,
+                    original = AndroidKeystorePlatformResult.Rejected(
+                        DeviceKeyFailureCategory.PLATFORM_REJECTED
+                    )
+                )
+            } else {
+                AndroidKeystorePlatformResult.Rejected(DeviceKeyFailureCategory.PLATFORM_REJECTED)
+            }
         }
     }
 
