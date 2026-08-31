@@ -1,0 +1,146 @@
+package pro.liliya.core.runtime.hardening
+
+import java.util.concurrent.atomic.AtomicLong
+import pro.liliya.core.protectedmodel.ProtectedModelReference
+
+@JvmInline
+value class RuntimeModelSessionId(val value: String) {
+    init { require(value.isNotBlank()) { "runtime model session id must not be blank" } }
+    override fun toString(): String = "RuntimeModelSessionId([redacted])"
+}
+
+@JvmInline
+value class RuntimeModelSessionGeneration(val value: Long) {
+    init { require(value > 0L) { "runtime model session generation must be positive" } }
+    override fun toString(): String = value.toString()
+}
+
+data class RuntimeModelSessionReference(
+    val id: RuntimeModelSessionId,
+    val generation: RuntimeModelSessionGeneration,
+    val model: ProtectedModelReference
+)
+
+data class RuntimeHardeningLimits(
+    val maxLiveSessions: Int = 1,
+    val maxInFlightOperationsPerSession: Int,
+    val maxDiagnosticSnapshotEntries: Int = 32
+) {
+    init {
+        require(maxLiveSessions == 1) { "Runtime Hardening v0.1 supports exactly one live runtime session" }
+        require(maxInFlightOperationsPerSession > 0) {
+            "maximum in-flight operations per session must be positive"
+        }
+        require(maxDiagnosticSnapshotEntries > 0) {
+            "maximum diagnostic snapshot entries must be positive"
+        }
+    }
+}
+
+enum class RuntimeModelSessionLifecycle {
+    PREPARED,
+    ACTIVE,
+    QUIESCING,
+    FAILED,
+    RETIRED
+}
+
+enum class RuntimeHardeningFailure {
+    ACTIVATION_REJECTED,
+    ACTIVATION_FAILED,
+    SESSION_STALE,
+    SESSION_UNAVAILABLE,
+    SESSION_FAILED,
+    RESOURCE_LIMIT_REJECTED,
+    OPERATION_REJECTED,
+    OPERATION_FAILED,
+    OPERATION_CANCELLED,
+    OPERATION_TIMEOUT,
+    RETIREMENT_FAILED,
+    RECOVERY_REJECTED,
+    PROVIDER_FAILED
+}
+
+sealed interface RuntimeSessionRegistrationResult {
+    data class Registered(val ownership: RuntimeModelSessionOwnership) : RuntimeSessionRegistrationResult
+    data class Rejected(val reason: RuntimeSessionRegistrationFailure) : RuntimeSessionRegistrationResult
+}
+
+enum class RuntimeSessionRegistrationFailure {
+    LIVE_SESSION_EXISTS,
+    GENERATION_OVERFLOW
+}
+
+interface RuntimeModelSessionOwnership {
+    val reference: RuntimeModelSessionReference
+    fun isCurrent(): Boolean
+    fun retire(): Boolean
+}
+
+/**
+ * Process-local exact ownership for Runtime Hardening v0.1.
+ *
+ * This registry owns structural runtime-session identity only. It is not License, Authority,
+ * capability, protected-model policy or execution permission. V0.1 intentionally permits at most
+ * one live runtime session in one registry/composition.
+ */
+class RuntimeModelSessionRegistry internal constructor(
+    initialGeneration: Long = 0L
+) {
+    private data class Entry(val reference: RuntimeModelSessionReference)
+
+    private val lock = Any()
+    private val nextGeneration = AtomicLong(initialGeneration)
+    private var current: Entry? = null
+
+    fun register(
+        id: RuntimeModelSessionId,
+        model: ProtectedModelReference
+    ): RuntimeSessionRegistrationResult = synchronized(lock) {
+        if (current != null) {
+            return@synchronized RuntimeSessionRegistrationResult.Rejected(
+                RuntimeSessionRegistrationFailure.LIVE_SESSION_EXISTS
+            )
+        }
+
+        val nextValue = nextGeneration.incrementAndGet()
+        if (nextValue <= 0L) {
+            return@synchronized RuntimeSessionRegistrationResult.Rejected(
+                RuntimeSessionRegistrationFailure.GENERATION_OVERFLOW
+            )
+        }
+
+        val entry = Entry(
+            RuntimeModelSessionReference(
+                id = id,
+                generation = RuntimeModelSessionGeneration(nextValue),
+                model = model
+            )
+        )
+        current = entry
+        RuntimeSessionRegistrationResult.Registered(ownership(entry))
+    }
+
+    fun currentReference(): RuntimeModelSessionReference? = synchronized(lock) {
+        current?.reference
+    }
+
+    fun snapshot(): List<RuntimeModelSessionReference> = synchronized(lock) {
+        listOfNotNull(current?.reference)
+    }
+
+    private fun ownership(entry: Entry): RuntimeModelSessionOwnership =
+        object : RuntimeModelSessionOwnership {
+            override val reference: RuntimeModelSessionReference = entry.reference
+
+            override fun isCurrent(): Boolean = synchronized(lock) {
+                current === entry
+            }
+
+            override fun retire(): Boolean = synchronized(lock) {
+                if (current !== entry) return@synchronized false
+                current = null
+                true
+            }
+        }
+}
