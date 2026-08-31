@@ -14,9 +14,8 @@ data class CognitiveKeyProtectorCreationRequest(
     val purpose: CognitiveKeyPurpose = CognitiveKeyPurpose.COGNITIVE_STORAGE
 ) {
     init {
-        require(requestedSecurityLevel == CognitiveKeyProtectorSecurityLevel.STRONGBOX ||
-            requestedSecurityLevel == CognitiveKeyProtectorSecurityLevel.TRUSTED_ENVIRONMENT) {
-            "cognitive key protector must request a hardware-backed security level"
+        require(requestedSecurityLevel != CognitiveKeyProtectorSecurityLevel.UNKNOWN) {
+            "cognitive key protector requested security level must be explicit"
         }
     }
 }
