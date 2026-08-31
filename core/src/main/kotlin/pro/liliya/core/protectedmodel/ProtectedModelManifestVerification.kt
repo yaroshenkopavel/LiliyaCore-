@@ -32,25 +32,36 @@ object ProtectedModelManifestCanonicalCodec {
 
     fun signatureInput(
         manifest: ProtectedModelManifest,
-        payloadDigest: ByteArray
+        payloadDigest: ByteArray,
+        nonce: ByteArray,
+        authenticationTag: ByteArray
     ): ByteArray {
         require(payloadDigest.isNotEmpty()) { "protected model payload digest must not be empty" }
+        require(nonce.size == manifest.encryptionProfile.nonceSizeBytes) {
+            "invalid protected model nonce size"
+        }
+        require(authenticationTag.size * 8 == manifest.encryptionProfile.authenticationTagSizeBits) {
+            "invalid protected model authentication tag size"
+        }
         val manifestBytes = encode(manifest)
         return ByteArrayOutputStream().also { buffer ->
             DataOutputStream(buffer).use { out ->
                 out.writeInt(SIGNATURE_INPUT_VERSION)
-                out.writeInt(manifestBytes.size)
-                out.write(manifestBytes)
-                out.writeInt(payloadDigest.size)
-                out.write(payloadDigest)
+                writeBytes(out, manifestBytes)
+                writeBytes(out, payloadDigest)
+                writeBytes(out, nonce)
+                writeBytes(out, authenticationTag)
             }
         }.toByteArray()
     }
 
     private fun writeString(out: DataOutputStream, value: String) {
-        val bytes = value.encodeToByteArray()
-        out.writeInt(bytes.size)
-        out.write(bytes)
+        writeBytes(out, value.encodeToByteArray())
+    }
+
+    private fun writeBytes(out: DataOutputStream, value: ByteArray) {
+        out.writeInt(value.size)
+        out.write(value)
     }
 
     private const val CANONICAL_VERSION = 1
@@ -102,37 +113,45 @@ class ProtectedModelPackageVerifier(
             )
         }
 
-        val expectedDigest = envelope.copyPayloadDigest()
-        val actualDigest = MessageDigest.getInstance(PAYLOAD_DIGEST_ALGORITHM).digest(ciphertext)
-        if (!MessageDigest.isEqual(expectedDigest, actualDigest)) {
-            expectedDigest.fill(0)
-            actualDigest.fill(0)
-            return ProtectedModelVerificationResult.Rejected(
-                ProtectedModelVerificationFailure.PAYLOAD_DIGEST_MISMATCH
-            )
-        }
-
+        var expectedDigest: ByteArray? = null
+        var actualDigest: ByteArray? = null
+        var nonce: ByteArray? = null
+        var authenticationTag: ByteArray? = null
+        var signatureInput: ByteArray? = null
+        var signatureBytes: ByteArray? = null
         return try {
+            expectedDigest = envelope.copyPayloadDigest()
+            actualDigest = MessageDigest.getInstance(PAYLOAD_DIGEST_ALGORITHM).digest(ciphertext)
+            if (!MessageDigest.isEqual(expectedDigest, actualDigest)) {
+                return ProtectedModelVerificationResult.Rejected(
+                    ProtectedModelVerificationFailure.PAYLOAD_DIGEST_MISMATCH
+                )
+            }
+
             val signerKey = signerResolver.resolve(manifest.signerId, manifest.signatureAlgorithm)
                 ?: return ProtectedModelVerificationResult.Rejected(
                     ProtectedModelVerificationFailure.SIGNER_KEY_UNAVAILABLE
                 )
-            val signatureInput = ProtectedModelManifestCanonicalCodec.signatureInput(manifest, expectedDigest)
-            val signatureBytes = envelope.copySignature()
-            try {
-                val verifier = Signature.getInstance(signatureName(manifest.signatureAlgorithm))
-                verifier.initVerify(signerKey)
-                verifier.update(signatureInput)
-                if (verifier.verify(signatureBytes)) {
-                    ProtectedModelVerificationResult.Verified(manifest.model)
-                } else {
-                    ProtectedModelVerificationResult.Rejected(
-                        ProtectedModelVerificationFailure.SIGNATURE_INVALID
-                    )
-                }
-            } finally {
-                signatureInput.fill(0)
-                signatureBytes.fill(0)
+
+            nonce = envelope.copyNonce()
+            authenticationTag = envelope.copyAuthenticationTag()
+            signatureInput = ProtectedModelManifestCanonicalCodec.signatureInput(
+                manifest = manifest,
+                payloadDigest = expectedDigest,
+                nonce = nonce,
+                authenticationTag = authenticationTag
+            )
+            signatureBytes = envelope.copySignature()
+
+            val verifier = Signature.getInstance(signatureName(manifest.signatureAlgorithm))
+            verifier.initVerify(signerKey)
+            verifier.update(signatureInput)
+            if (verifier.verify(signatureBytes)) {
+                ProtectedModelVerificationResult.Verified(manifest.model)
+            } else {
+                ProtectedModelVerificationResult.Rejected(
+                    ProtectedModelVerificationFailure.SIGNATURE_INVALID
+                )
             }
         } catch (throwable: Throwable) {
             ProtectedModelVerificationResult.Failed(
@@ -140,8 +159,12 @@ class ProtectedModelPackageVerifier(
                 throwable
             )
         } finally {
-            expectedDigest.fill(0)
-            actualDigest.fill(0)
+            expectedDigest?.fill(0)
+            actualDigest?.fill(0)
+            nonce?.fill(0)
+            authenticationTag?.fill(0)
+            signatureInput?.fill(0)
+            signatureBytes?.fill(0)
         }
     }
 
