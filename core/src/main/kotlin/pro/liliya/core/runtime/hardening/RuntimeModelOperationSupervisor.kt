@@ -49,6 +49,13 @@ sealed interface RuntimeSessionDrainRetirementResult {
     data object Retired : RuntimeSessionDrainRetirementResult
     data class DrainRequired(val inFlightOperations: Int) : RuntimeSessionDrainRetirementResult
     data object Stale : RuntimeSessionDrainRetirementResult
+    data class Failed(
+        val reason: RuntimeHardeningFailure,
+        val throwable: Throwable
+    ) : RuntimeSessionDrainRetirementResult {
+        override fun toString(): String =
+            "Failed(reason=$reason, throwable=${throwable.javaClass.name})"
+    }
 }
 
 sealed interface RuntimeSessionFailureResult {
@@ -75,7 +82,9 @@ sealed interface RuntimeFailedSessionRetirementResult {
  *
  * Slice 4 normal replacement uses an explicit drain-before-retire policy. Entering QUIESCING atomically
  * closes new admission. Retirement never waits or cancels work implicitly: it returns DrainRequired
- * until all exact in-flight operations for that session have released locally.
+ * until all exact in-flight operations for that session have released locally. Exact retirement
+ * cleanup runs once behind the registry transition barrier; cleanup failure becomes RETIREMENT_FAILED
+ * and is never retried implicitly.
  *
  * Session/provider failure uses explicit fail-closed invalidation instead. Marking an exact session
  * FAILED closes admission immediately. retireFailed() removes only that exact current failed session
@@ -145,7 +154,10 @@ class RuntimeModelOperationSupervisor internal constructor(
             RuntimeSessionQuiescingTransitionResult.Stale -> RuntimeSessionQuiescenceResult.Stale
         }
 
-    fun retireIfDrained(session: RuntimeModelSessionReference): RuntimeSessionDrainRetirementResult {
+    fun retireIfDrained(
+        session: RuntimeModelSessionReference,
+        retire: () -> Unit = {}
+    ): RuntimeSessionDrainRetirementResult {
         if (!registry.isCurrentQuiescing(session)) {
             return RuntimeSessionDrainRetirementResult.Stale
         }
@@ -157,10 +169,13 @@ class RuntimeModelOperationSupervisor internal constructor(
             return RuntimeSessionDrainRetirementResult.DrainRequired(inFlight)
         }
 
-        return if (registry.retireQuiescingIfCurrent(session)) {
-            RuntimeSessionDrainRetirementResult.Retired
-        } else {
-            RuntimeSessionDrainRetirementResult.Stale
+        return when (val transition = registry.retireQuiescingIfCurrent(session, retire)) {
+            RuntimeSessionRetirementTransitionResult.Retired -> RuntimeSessionDrainRetirementResult.Retired
+            RuntimeSessionRetirementTransitionResult.Stale -> RuntimeSessionDrainRetirementResult.Stale
+            is RuntimeSessionRetirementTransitionResult.Failed -> RuntimeSessionDrainRetirementResult.Failed(
+                reason = RuntimeHardeningFailure.RETIREMENT_FAILED,
+                throwable = transition.throwable
+            )
         }
     }
 
