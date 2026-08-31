@@ -83,6 +83,56 @@ class ProtectedModelManifestVerificationContractTest {
     }
 
     @Test
+    fun nonce_substitution_invalidates_signature() {
+        val keys = KeyPairGenerator.getInstance("Ed25519").generateKeyPair()
+        val ciphertext = "protected-model-ciphertext".encodeToByteArray()
+        val original = signedEnvelope(manifest(ciphertext.size.toLong()), ciphertext, keys.private)
+        val substitutedNonce = original.copyNonce().also { it[0] = (it[0].toInt() xor 0x01).toByte() }
+        val substituted = ProtectedModelPackageEnvelope(
+            manifest = original.manifest,
+            payloadDigest = original.copyPayloadDigest(),
+            nonce = substitutedNonce,
+            authenticationTag = original.copyAuthenticationTag(),
+            signature = original.copySignature()
+        )
+        val verifier = ProtectedModelPackageVerifier(
+            ProtectedModelSignerResolver { _, _ -> keys.public }
+        )
+
+        val result = verifier.verify(substituted, ciphertext)
+        assertEquals(
+            ProtectedModelVerificationFailure.SIGNATURE_INVALID,
+            assertIs<ProtectedModelVerificationResult.Rejected>(result).reason
+        )
+    }
+
+    @Test
+    fun authentication_tag_substitution_invalidates_signature() {
+        val keys = KeyPairGenerator.getInstance("Ed25519").generateKeyPair()
+        val ciphertext = "protected-model-ciphertext".encodeToByteArray()
+        val original = signedEnvelope(manifest(ciphertext.size.toLong()), ciphertext, keys.private)
+        val substitutedTag = original.copyAuthenticationTag().also {
+            it[it.lastIndex] = (it[it.lastIndex].toInt() xor 0x01).toByte()
+        }
+        val substituted = ProtectedModelPackageEnvelope(
+            manifest = original.manifest,
+            payloadDigest = original.copyPayloadDigest(),
+            nonce = original.copyNonce(),
+            authenticationTag = substitutedTag,
+            signature = original.copySignature()
+        )
+        val verifier = ProtectedModelPackageVerifier(
+            ProtectedModelSignerResolver { _, _ -> keys.public }
+        )
+
+        val result = verifier.verify(substituted, ciphertext)
+        assertEquals(
+            ProtectedModelVerificationFailure.SIGNATURE_INVALID,
+            assertIs<ProtectedModelVerificationResult.Rejected>(result).reason
+        )
+    }
+
+    @Test
     fun signer_mismatch_fails_closed() {
         val keys = KeyPairGenerator.getInstance("Ed25519").generateKeyPair()
         val ciphertext = "protected-model-ciphertext".encodeToByteArray()
@@ -115,7 +165,14 @@ class ProtectedModelManifestVerificationContractTest {
         privateKey: java.security.PrivateKey
     ): ProtectedModelPackageEnvelope {
         val digest = MessageDigest.getInstance("SHA-256").digest(ciphertext)
-        val input = ProtectedModelManifestCanonicalCodec.signatureInput(manifest, digest)
+        val nonce = ByteArray(12) { (it + 1).toByte() }
+        val authenticationTag = ByteArray(16) { (it + 17).toByte() }
+        val input = ProtectedModelManifestCanonicalCodec.signatureInput(
+            manifest = manifest,
+            payloadDigest = digest,
+            nonce = nonce,
+            authenticationTag = authenticationTag
+        )
         val signature = Signature.getInstance("Ed25519").run {
             initSign(privateKey)
             update(input)
@@ -125,8 +182,8 @@ class ProtectedModelManifestVerificationContractTest {
         return ProtectedModelPackageEnvelope(
             manifest = manifest,
             payloadDigest = digest,
-            nonce = ByteArray(12) { (it + 1).toByte() },
-            authenticationTag = ByteArray(16) { (it + 17).toByte() },
+            nonce = nonce,
+            authenticationTag = authenticationTag,
             signature = signature
         )
     }
