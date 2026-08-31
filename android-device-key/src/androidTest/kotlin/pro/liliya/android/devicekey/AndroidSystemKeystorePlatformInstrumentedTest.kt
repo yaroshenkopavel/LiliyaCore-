@@ -78,7 +78,7 @@ class AndroidSystemKeystorePlatformInstrumentedTest {
     }
 
     @Test
-    fun reused_logical_id_gets_a_new_platform_instance_reference() {
+    fun reused_logical_id_gets_a_new_platform_instance_reference_and_rejects_old_state() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val platform = AndroidSystemKeystorePlatform(context)
         val adapter = AndroidKeystoreDeviceKeyAdapter(platform)
@@ -104,6 +104,15 @@ class AndroidSystemKeystorePlatformInstrumentedTest {
             val secondReference = assertNotNull(second.platformReference)
 
             assertNotEquals(firstReference, secondReference)
+            assertEquals(
+                DeviceKeyFailureCategory.STALE_OWNERSHIP,
+                assertIs<DeviceKeyOperationResult.Rejected>(
+                    adapter.signChallenge(
+                        expectedState = first,
+                        challenge = DeviceKeyChallenge("stale-proof".encodeToByteArray())
+                    )
+                ).category
+            )
         } finally {
             platform.delete(id)
         }
