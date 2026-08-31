@@ -6,11 +6,11 @@ Last journal update: 2026-08-31
 
 Current verified `main`:
 
-`2cc6279ef481915531267ac52ce06ff3c36036a6`
+`2aab6175e8aad9513382968c3357965c04b15fb7`
 
 Latest verified merge/main CI:
 
-`33365191210` — GREEN for both `Test LiliyaCore` and `Android Keystore Instrumentation`.
+`33366740469` — GREEN for both `Test LiliyaCore` and `Android Keystore Instrumentation`.
 
 ## Frozen persistence baselines
 
@@ -60,47 +60,54 @@ Canonical documents:
 - `ANDROID_DEVICE_KEY_V0_1_CONTRACT.md`
 - `ANDROID_DEVICE_KEY_V0_1_FREEZE.md`
 
-Frozen direction:
+Final freeze checkpoint was PR #46; freeze closeout was PR #47.
 
-`Android Keystore key identity → verified security-level evidence → controlled device-key operation → structural enrollment/binding evidence → later DEK wrapping/unwrap consumers`
-
-Mandatory separation:
-
-`Device Key != Device Identity != Enrollment != License != DEK != Capability != Authority != Execution`
-
-Completed implementation/readiness slices:
-
-- PR #37 — platform-neutral models, security levels, typed failures and exact ownership;
-- PR #38 — adapter abstraction and deterministic fake contracts;
-- PR #40 — Core-side Android Keystore creation/resolution/security inspection boundary;
-- PR #41 — proof-of-possession/signing and structural enrollment boundary, platform-instance ABA hardening and detached capability state;
-- PR #43 — explicit no-same-operation fallback, malformed-metadata handling, concurrency/privacy readiness hardening;
-- PR #44 — concrete `:android-device-key` module using real Android Keystore plus emulator instrumentation;
-- PR #45 — final readiness cleanup removing pre-freeze `UNWRAP_WRAPPED_KEY` surface;
-- PR #46 — formal freeze checkpoint.
-
-Final freeze evidence:
+Verified final baseline:
 
 - PR #46 exact head `8565a65348d800d646a1760bf99c34579e3a00c1`;
 - PR #46 exact-head run `33364507220` — Core GREEN + Android instrumentation GREEN;
 - PR #46 merge `2cc6279ef481915531267ac52ce06ff3c36036a6`;
-- PR #46 merge/main run `33365191210` — Core GREEN + Android instrumentation GREEN.
+- PR #46 merge/main run `33365191210` — Core GREEN + Android instrumentation GREEN;
+- PR #47 merge `2aab6175e8aad9513382968c3357965c04b15fb7`;
+- PR #47 merge/main run `33366740469` — Core GREEN + Android instrumentation GREEN.
 
-Frozen guarantees include exact `(DeviceKeyId, DeviceKeyGeneration)` ownership, generation-overflow fail-closed behavior, opaque platform-instance evidence, no same-operation StrongBox downgrade, typed malformed/invalidation/cleanup outcomes, exact signing/ABA checks, post-sign ownership recheck, redacted rendering, private-key non-export, and structural enrollment separation.
+Frozen Device Key v0.1 exposes only `SIGN_CHALLENGE`. It does **not** expose a DEK wrap/unwrap capability or API. Concrete Android runtime evidence validates Keystore integration/lifecycle on the emulator but does not prove StrongBox/TEE availability on arbitrary hardware.
 
-Concrete Android runtime evidence exists. The emulator validates Android Keystore integration/lifecycle behavior, but it does **not** prove that arbitrary user hardware provides StrongBox or TEE. Hardware-backed claims remain conditional on runtime-observed evidence from the actual device.
+## Cognitive Storage Encryption v0.1
 
-No DEK unwrap API is part of Device Key v0.1. DEK wrapping/unwrap belongs to the next cognitive-storage-encryption phase and must be introduced through a separately reviewed binding/policy/Authority contract.
+Status: **ARCHITECTURE CONTRACT ACTIVE — IMPLEMENTATION NOT YET STARTED / NOT FROZEN**.
+
+Canonical contract:
+
+`COGNITIVE_STORAGE_ENCRYPTION_V0_1_CONTRACT.md`
+
+Direction:
+
+`persistent cognitive payload → explicit encryption profile → exact DEK identity/generation → authenticated ciphertext envelope → exact wrapped-DEK binding → purpose-specific key-protector boundary → bounded plaintext consumer`
+
+Mandatory separation:
+
+`Persistence != Encryption != Ciphertext != DEK != Wrapping Key != Device Key != Enrollment != License != Capability != Authority != Execution`
+
+Critical compatibility rule: this phase must not retrofit DEK wrapping/unwrapping into frozen Android Device Key v0.1. The frozen Device Key is an EC P-256 signing/proof boundary. Cognitive encryption therefore owns a separate purpose-specific key-protector/KEK boundary; on Android the preferred future implementation is a dedicated non-exportable Android Keystore key for cognitive DEK protection.
+
+Initial cryptographic profile selected by the architecture contract:
+
+`AES-256-GCM / 96-bit nonce / 128-bit authentication tag`
+
+The contract requires exact `(CognitiveDekId, CognitiveDekGeneration)` ownership, canonical AEAD binding to persistent store/entity/generation/schema/DEK metadata, raw-DEK non-persistence, exact wrapped-DEK/protector binding, no same-operation silent downgrade, explicit rotation/migration/recovery semantics, bounded plaintext lifetime and structural observability with no plaintext/DEK/wrapped-key/secret-exception leakage.
+
+License expiry must not intentionally destroy user cognitive data. Protected assistant use may still require fresh higher-layer policy/Authority, but successful unwrap/decrypt is not permission and the crypto primitive itself does not cache or mint Authority.
 
 ## Current next step
 
-Begin Cognitive Storage Encryption v0.1 architecture and contract work.
+Complete the Cognitive Storage Encryption v0.1 architecture-contract PR and require exact-head Core + Android CI GREEN, merge with expected head, then verify merge/main Core + Android CI GREEN.
 
-Required direction:
+After the architecture contract is accepted, begin Slice 1 only:
 
-`persistent cognitive payload → explicit encryption policy → exact DEK identity/generation → wrapped DEK binding → controlled device-key unwrap boundary → bounded plaintext consumer`
+`platform-neutral encryption models + exact DEK ownership + envelope structural types + typed failures + privacy-safe rendering`
 
-Do not retroactively add DEK unwrap semantics to the frozen Device Key v0.1 contract. The encryption phase must define its own exact ownership, wrapped-DEK format/binding, policy/Authority gating, failure semantics, recovery/migration boundaries, observability privacy rules and Android integration plan before implementation.
+Do not begin Android key-protector implementation or persistence encryption integration before Slice 1 contracts are independently GREEN and reviewed.
 
 ## Accepted security roadmap
 
@@ -110,7 +117,7 @@ Do not retroactively add DEK unwrap semantics to the frozen Device Key v0.1 cont
 
 Foundation Logging/Diagnostics/CoreObservability remains mandatory cross-cutting infrastructure.
 
-Operational observability may expose approved structural IDs/generations/categories, but must not expose private key material, DEKs, raw attestation, raw proof/signature material, cognitive/model plaintext or secret-bearing exception messages.
+Operational observability may expose approved structural IDs/generations/categories, but must not expose private key material, DEKs, wrapped-DEK bytes, raw ciphertext envelopes, cognitive/model plaintext, raw attestation/proof material or secret-bearing exception messages.
 
 Direct console output remains forbidden in reviewed production paths.
 
