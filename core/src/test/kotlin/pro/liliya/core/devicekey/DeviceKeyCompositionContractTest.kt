@@ -137,7 +137,6 @@ class DeviceKeyCompositionContractTest {
             composition.register(input)
         ).ownership
         capabilities.clear()
-        capabilities += DeviceKeyCapability.UNWRAP_WRAPPED_KEY
 
         val stored = composition.inspect(input.id)!!.state
         assertEquals(setOf(DeviceKeyCapability.SIGN_CHALLENGE), stored.capabilities)
@@ -158,7 +157,6 @@ class DeviceKeyCompositionContractTest {
         )
 
         capabilities.clear()
-        capabilities += DeviceKeyCapability.UNWRAP_WRAPPED_KEY
 
         assertEquals(setOf(DeviceKeyCapability.SIGN_CHALLENGE), profile.capabilities)
         assertFailsWith<UnsupportedOperationException> {
