@@ -1,126 +1,121 @@
 # START HERE — LiliyaCore Session Handoff
 
-## Active project
+## Stop condition
 
-Repository: `yaroshenkopavel/LiliyaCore-`
+**The project is intentionally PAUSED for transfer to another chat/session. Do not resume implementation until the user explicitly asks to resume.**
 
-Default branch: `main`
+Primary repository: `yaroshenkopavel/LiliyaCore-`.
 
-Project type: Kotlin core foundation with separate concrete Android security/platform modules.
+Default branch: `main`.
 
-## Source of truth
+Legacy `Vikrot123/LiliyaCore` is backup/migration history only and is not the active development target.
 
-Before changing code, read:
+## Read this first
 
-1. `CURRENT_STATE.md`;
-2. `ARCHITECTURE.md`;
-3. `STRUCTURE.md`;
-4. `NUANCES.md`;
-5. canonical contract/freeze docs for the touched subsystem;
-6. production source and executable contracts;
+A new session must read in this order before changing anything:
+
+1. `HANDOFF.md` — canonical transfer checkpoint, exact pause state, next allowed slice, gates and caveats;
+2. `CURRENT_STATE.md` — compact live state;
+3. `RUNTIME_HARDENING_V0_1_CONTRACT.md` — current active architecture contract;
+4. `PROTECTED_MODEL_PACKAGE_V0_1_FREEZE.md` and its contract — immediate frozen dependency;
+5. `ARCHITECTURE.md`, `STRUCTURE.md`, `NUANCES.md`, `DECISIONS.md`;
+6. production source and executable contracts for the touched subsystem;
 7. current GitHub PR/CI state.
 
-## Hard engineering rules
+Source-of-truth priority:
 
-- work on feature branches;
-- merge only after exact-head required CI GREEN;
-- verify merge/main CI after architectural/security slices;
-- exact `(ID, generation)` ownership beats ID-only ownership;
-- stale/ABA ownership must not delete or authorize replacement generations;
-- platform alias alone is not sufficient ABA evidence when replacement can reuse it;
-- capability is not permission; Authority is separate from Execution;
-- structural provenance/enrollment/device evidence is not credential/capability/Authority;
-- persistence, encryption, licensing, device enrollment, Authority and cognitive permission remain separate;
-- private cognitive/security content stays out of normal observability;
-- Foundation Logging/Diagnostics/CoreObservability must not be bypassed by direct console output;
-- Foundation itself can retain throwable messages when an unsanitized throwable is supplied, so secret-bearing throwables must not be forwarded blindly;
-- frozen baselines are not casually redesigned.
+`current GitHub/main + CI → production source + executable contracts → HANDOFF.md + CURRENT_STATE.md → canonical contract/freeze docs → other journal docs → chat history`
 
-## Current verified baseline
+If documentation conflicts with GitHub/source, verify GitHub/source first and repair the documentation before implementation continues.
 
-Verified `main`:
+## Exact implementation pause checkpoint
 
-`2aab6175e8aad9513382968c3357965c04b15fb7`
+Last implementation merge before the documentation-only handoff:
 
-Latest merge/main CI:
+`ca7b43c971eccd473d64617ef2f6c8e25a93b2b6`
 
-`33366740469` — GREEN for both `Test LiliyaCore` and `Android Keystore Instrumentation`.
+PR #65 — Runtime Hardening v0.1 Slice 1.
+
+Merge/main CI:
+
+`33427756131` — GREEN for both `Test LiliyaCore` and `Android Keystore Instrumentation`.
+
+The handoff documentation PR may advance `main` beyond that SHA. On resume, use current verified `main`, while treating `ca7b43c971eccd473d64617ef2f6c8e25a93b2b6` as the last code implementation checkpoint unless GitHub proves later reviewed code changes.
+
+## Current phase
+
+**Runtime Hardening v0.1 — ACTIVE, NOT FROZEN, PAUSED AFTER SLICE 1.**
+
+Architecture PR #64 is merged and merge/main GREEN.
+
+Slice 1 is merged and merge/main GREEN.
+
+Slice 2 has **not** started.
+
+Next implementation after explicit resume:
+
+**Slice 2 — Activation and Publication Barrier.**
+
+Do not begin Slice 3, later Runtime Hardening work, licensing-service work or Update System integration before the required Slice 2 gates close.
 
 ## Frozen baselines
 
-Persistent Cognitive Storage v0.1, Memory Persistence Integration v0.1, Knowledge Persistence Integration v0.1, Learning Persistence Integration v0.1, License Core v0.1 and Android Device Key v0.1 are **FROZEN**.
+Treat these as frozen dependencies:
 
-The delayed Learning/Persistence observability audit is closed **CLEAN for the audited Learning/Persistence production paths** through corrective PR #39.
+- Persistent Cognitive Storage v0.1;
+- Memory Persistence Integration v0.1;
+- Knowledge Persistence Integration v0.1;
+- Learning Persistence Integration v0.1;
+- License Core v0.1;
+- Android Device Key v0.1;
+- Cognitive Storage Encryption v0.1;
+- Protected Model Package / Loader v0.1.
 
-## Android Device Key v0.1 boundary
+Protected Model Package / Loader final freeze merge:
 
-Read:
+`aeccc0713ad1466a9ed371ff028e48406ed945e4`
 
-- `ANDROID_DEVICE_KEY_V0_1_CONTRACT.md`
-- `ANDROID_DEVICE_KEY_V0_1_FREEZE.md`
+Merge/main CI `33416794458` — Core + Android GREEN.
 
-Frozen Device Key v0.1 provides exact device-key ownership, security-level evidence, proof signing and structural enrollment using a concrete Android Keystore EC P-256 signing boundary.
+## Hard security boundaries
 
-Important hard limit:
+- Android Device Key v0.1 remains signing-only and exposes only `SIGN_CHALLENGE`;
+- do not retrofit DEK wrap/unwrap/decrypt into Device Key;
+- cognitive and protected-model key protectors remain separate purpose-specific domains;
+- Persistence, Encryption, License, Capability, Authority and Execution remain distinct;
+- successful decrypt/unwrap is not License entitlement or Authority;
+- runtime/model ownership is not durable permission;
+- model activation is not autonomous execution;
+- no hidden retry, replay, reconciliation or exactly-once semantics may be invented.
 
-- v0.1 exposes only `SIGN_CHALLENGE`;
-- there is no frozen DEK wrap/unwrap capability/API;
-- the EC signing key must not be treated as a cognitive DEK wrapping key;
-- emulator evidence proves concrete Keystore runtime/lifecycle behavior, not StrongBox/TEE availability on arbitrary hardware.
+## Mandatory workflow
 
-Final Device Key freeze/closeout baseline:
+`feature branch → minimal coherent commits → PR → exact-head Core/required platform CI GREEN → focused architecture/security/privacy/logging-diagnostics/readiness audit → merge with verified expected head → merge/main CI GREEN → journal/freeze checkpoint`
 
-- PR #46 merge `2cc6279ef481915531267ac52ce06ff3c36036a6`, merge/main `33365191210` GREEN;
-- PR #47 merge `2aab6175e8aad9513382968c3357965c04b15fb7`, merge/main `33366740469` GREEN.
+CI GREEN does not replace the focused audit.
 
-## Cognitive Storage Encryption v0.1
+Never claim an audit that was not actually performed against the exact changed-file set/head.
 
-Status: **ARCHITECTURE CONTRACT ACTIVE — IMPLEMENTATION NOT YET STARTED / NOT FROZEN**.
+Do not start a new implementation slice until the previous merge/main required CI is GREEN.
 
-Read first:
+## Privacy / observability
 
-`COGNITIVE_STORAGE_ENCRYPTION_V0_1_CONTRACT.md`
+Use Foundation Logging/Diagnostics/CoreObservability. Do not introduce direct production console-output bypasses.
 
-Direction:
+Normal observability must not expose cognitive/model plaintext, raw DEKs, wrapped-key bytes, protected payloads, private proof material or secret-bearing exception messages.
 
-`persistent cognitive payload → explicit encryption profile → exact DEK identity/generation → authenticated ciphertext envelope → exact wrapped-DEK binding → purpose-specific key-protector boundary → bounded plaintext consumer`
-
-Mandatory separation:
-
-`Persistence != Encryption != Ciphertext != DEK != Wrapping Key != Device Key != Enrollment != License != Capability != Authority != Execution`
-
-Selected initial data-encryption profile:
-
-`AES-256-GCM / 96-bit nonce / 128-bit authentication tag`
-
-Critical architecture correction: Cognitive Storage Encryption owns a **separate purpose-specific key-protector/KEK boundary**. It must not retrofit DEK wrapping/unwrapping into frozen Android Device Key v0.1. On Android, the preferred future key protector is a dedicated non-exportable Android Keystore key for cognitive DEK protection, with its own identity/profile/security/lifecycle contract.
-
-The encryption contract requires exact `(CognitiveDekId, CognitiveDekGeneration)` ownership, canonical AEAD binding to store/entity/generation/schema/DEK metadata, raw-DEK non-persistence, exact wrapped-DEK/protector binding, explicit rotation/migration/recovery semantics, fail-closed authentication, bounded plaintext lifetime and privacy-safe observability.
-
-License expiry must not intentionally destroy legitimate user cognitive data. Successful unwrap/decrypt is not Authority. Higher protected-use layers may require fresh policy/Authority, while recovery/export remains a distinct future policy path.
-
-## Current next step
-
-Finish the Cognitive Storage Encryption v0.1 architecture-contract PR first.
-
-Required gate:
-
-`exact-head Core + required Android CI GREEN → merge with expected head → merge/main Core + Android CI GREEN`
-
-Only after that gate is closed begin Slice 1:
-
-`platform-neutral encryption models + exact DEK ownership + envelope structural types + typed failures + privacy-safe rendering`
-
-Do not start Android key-protector implementation, persistent encrypted payload integration, rotation or recovery code before Slice 1 is independently GREEN and reviewed.
-
-## Accepted roadmap
-
-`License Core → Android device-key boundary → cognitive storage encryption → protected model package/loader → runtime hardening → licensing service/offline lease issuance+refresh → Update System integration → red-team/readiness`
+Foundation can retain throwable messages when a throwable is explicitly forwarded, so secret-bearing throwables must not be passed blindly.
 
 ## Resume procedure
 
-1. verify current `main` SHA and latest required CI;
-2. read the frozen Persistent Cognitive Storage and Android Device Key contracts plus `COGNITIVE_STORAGE_ENCRYPTION_V0_1_CONTRACT.md`;
-3. if the encryption architecture PR/CI gate is active, finish that exact gate before implementation;
-4. after architecture merge/main GREEN, begin only Slice 1;
-5. preserve exact ownership, fail-closed AEAD binding, Device Key freeze compatibility, License/Authority separation and strict privacy rules throughout the phase.
+Only after an explicit user resume request:
+
+1. verify current `main` SHA and current CI;
+2. verify the handoff docs are the only changes after the recorded implementation checkpoint unless later code work is explicitly proven;
+3. read `HANDOFF.md` and the Runtime Hardening/Protected Model contracts;
+4. inspect Slice 1 source/tests;
+5. create a fresh Runtime Hardening Slice 2 branch from verified current `main`;
+6. implement only Activation and Publication Barrier scope;
+7. close exact-head CI + focused audit + expected-head merge + merge/main CI before any Slice 3 work.
+
+For complete transfer detail, `HANDOFF.md` is authoritative.
