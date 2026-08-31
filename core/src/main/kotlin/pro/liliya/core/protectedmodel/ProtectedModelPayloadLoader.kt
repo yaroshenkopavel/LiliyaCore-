@@ -27,6 +27,7 @@ fun interface ProtectedModelPlaintextConsumer<T> {
 
 enum class ProtectedModelOpenFailure {
     PLAINTEXT_SIZE_OUT_OF_BOUNDS,
+    CIPHERTEXT_SIZE_OUT_OF_BOUNDS,
     PACKAGE_VERIFICATION_REJECTED,
     PACKAGE_VERIFICATION_FAILED,
     VERIFIED_MODEL_MISMATCH,
@@ -58,7 +59,7 @@ sealed interface ProtectedModelOpenResult<out T> {
 /**
  * Authenticated protected-model open boundary.
  *
- * Order is deliberate: structural size bound -> package authenticity/integrity -> exact scoped DEK
+ * Order is deliberate: structural size bounds -> package authenticity/integrity -> exact scoped DEK
  * resolution -> AES-256-GCM authentication/decryption -> exact plaintext-size check -> synchronous
  * consumer handoff. Successful open is still not License entitlement, Authority, or execution permission.
  */
@@ -86,6 +87,16 @@ class ProtectedModelPayloadLoader(
         ) {
             return ProtectedModelOpenResult.Rejected(
                 ProtectedModelOpenFailure.PLAINTEXT_SIZE_OUT_OF_BOUNDS
+            )
+        }
+        if (manifest.ciphertextSizeBytes <= 0L ||
+            manifest.ciphertextSizeBytes > maxPlaintextSizeBytes ||
+            manifest.ciphertextSizeBytes != manifest.plaintextSizeBytes ||
+            ciphertext.size.toLong() != manifest.ciphertextSizeBytes ||
+            ciphertext.size > Int.MAX_VALUE - GCM_TAG_SIZE_BYTES
+        ) {
+            return ProtectedModelOpenResult.Rejected(
+                ProtectedModelOpenFailure.CIPHERTEXT_SIZE_OUT_OF_BOUNDS
             )
         }
 
@@ -124,16 +135,24 @@ class ProtectedModelPayloadLoader(
                 ProtectedModelOpenFailure.MODEL_DEK_REJECTED
             )
         }
-        key.encoded?.let { encoded ->
-            try {
-                if (encoded.size != AES_256_KEY_SIZE_BYTES) {
-                    return ProtectedModelOpenResult.Rejected(
-                        ProtectedModelOpenFailure.MODEL_DEK_REJECTED
-                    )
-                }
-            } finally {
-                encoded.fill(0)
+        val encoded = try {
+            key.encoded
+        } catch (throwable: Throwable) {
+            return ProtectedModelOpenResult.Failed(
+                ProtectedModelOpenFailure.PROVIDER_FAILED,
+                throwable
+            )
+        } ?: return ProtectedModelOpenResult.Rejected(
+            ProtectedModelOpenFailure.MODEL_DEK_REJECTED
+        )
+        try {
+            if (encoded.size != AES_256_KEY_SIZE_BYTES) {
+                return ProtectedModelOpenResult.Rejected(
+                    ProtectedModelOpenFailure.MODEL_DEK_REJECTED
+                )
             }
+        } finally {
+            encoded.fill(0)
         }
 
         var nonce: ByteArray? = null
@@ -199,6 +218,7 @@ class ProtectedModelPayloadLoader(
 
     private companion object {
         const val AES_256_KEY_SIZE_BYTES = 32
+        const val GCM_TAG_SIZE_BYTES = 16
         const val AES_GCM_TRANSFORMATION = "AES/GCM/NoPadding"
     }
 }
