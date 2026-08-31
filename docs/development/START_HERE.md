@@ -6,7 +6,7 @@ Repository: `yaroshenkopavel/LiliyaCore-`
 
 Default branch: `main`
 
-Project type: core-only Kotlin/JVM foundation. Concrete Android framework adapters are not yet part of the repository baseline.
+Project type: Kotlin core foundation with a separate concrete Android Device Key platform module.
 
 ## Source of truth
 
@@ -23,8 +23,8 @@ Before changing code, read:
 ## Hard engineering rules
 
 - work on feature branches;
-- merge only after exact-head Core CI GREEN;
-- verify merge/main CI after architectural slices;
+- merge only after exact-head required CI GREEN;
+- verify merge/main CI after architectural/security slices;
 - exact `(ID, generation)` ownership beats ID-only ownership;
 - stale/ABA ownership must not delete or authorize replacement generations;
 - platform alias alone is not sufficient ABA evidence when replacement can reuse it;
@@ -40,51 +40,34 @@ Before changing code, read:
 
 Verified `main`:
 
-`6c66017136b4fcd4fcbba62530c3ecee7fae7dc7`
+`91c43d83cd2077bdb3c14d6bb7cbdb20c7c4cd27`
 
-Latest merge/main Core CI:
+Latest merge/main CI:
 
-`33336902044` — GREEN.
+`33363644453` — GREEN for both `Test LiliyaCore` and `Android Keystore Instrumentation`.
 
 ## Frozen persistence baselines
 
 Persistent Cognitive Storage v0.1, Memory Persistence Integration v0.1, Knowledge Persistence Integration v0.1 and Learning Persistence Integration v0.1 are **FROZEN**.
 
-Learning retains the explicit downstream crash window:
-
-`downstream Memory/Knowledge mutation → durable Learning completion`
-
-There is no exactly-once downstream guarantee, automatic replay, hidden retry or reconciliation.
-
 The delayed Learning/Persistence observability audit is closed **CLEAN for the audited Learning/Persistence production paths** through corrective PR #39.
 
 ## License Core v0.1
 
-License Core v0.1 is **FROZEN**. Freeze PR #35 and its merge/main Core CI gate completed GREEN.
-
-Frozen direction:
-
-`signed/canonical entitlement evidence → trusted verification boundary → exact license state ownership → explicit LicensePolicy → LicenseDecision → optional fresh scoped Authority request`
+License Core v0.1 is **FROZEN**.
 
 Mandatory separation:
 
 `License != Signature != Device Enrollment != Key Access != Capability != Authority != Execution`
 
-`Valid signature != entitlement decision != Authority grant`
-
-`License evidence != durable permission`
-
-`License expiry != cognitive-data destruction`
-
-Offline-lease policy semantics are already part of the frozen local model. Later service issuance/refresh may provide evidence but may not weaken the fail-closed local policy.
-
 ## Android Device Key v0.1
 
-Phase B architecture is accepted, but the overall Device Key boundary is **NOT FROZEN**.
+Implementation and readiness work are complete. The subsystem is at its formal freeze checkpoint.
 
-Canonical document:
+Read:
 
-`ANDROID_DEVICE_KEY_V0_1_CONTRACT.md`
+- `ANDROID_DEVICE_KEY_V0_1_CONTRACT.md`
+- `ANDROID_DEVICE_KEY_V0_1_FREEZE.md`
 
 Direction:
 
@@ -94,47 +77,45 @@ Mandatory separation:
 
 `Device Key != Device Identity != Enrollment != License != DEK != Capability != Authority != Execution`
 
-Completed slices:
+Completed work includes exact generation ownership, typed failure/invalidation semantics, explicit no-same-operation fallback, defensive state detachment, privacy/redaction gates, platform-instance ABA protection, proof signing, structural enrollment, concrete Android Keystore implementation, post-generation cleanup hardening and real emulator instrumentation.
 
-- PR #37 — models/security levels/typed failures/exact ownership;
-- PR #38 — adapter abstraction + deterministic fake;
-- PR #40 — Core-side Keystore create/resolve/security-inspection boundary;
-- PR #41 — proof-of-possession/signing + structural enrollment, platform-instance ABA hardening, defensive state detachment.
+Important platform boundary:
 
-Important current semantics:
+- `:core` remains Android-framework-free;
+- `:android-device-key` contains the concrete Android Keystore adapter;
+- emulator instrumentation proves concrete Android Keystore runtime integration/lifecycle behavior;
+- emulator success does **not** prove StrongBox/TEE availability on arbitrary user hardware;
+- hardware-backed claims require runtime-observed security-level evidence on the actual device;
+- v0.1 exposes only `SIGN_CHALLENGE`; no DEK unwrap capability/API is frozen into Device Key.
 
-- local ownership is exact `(DeviceKeyId, DeviceKeyGeneration)`;
-- Android-facing state may carry opaque `DeviceKeyPlatformReference` so a reused alias cannot hide platform replacement;
-- signing re-inspects exact platform state and exact platform instance;
-- proof publication rechecks local generation/state after signing;
-- missing `SIGN_CHALLENGE`, missing key, stale generation or stale platform instance fail closed;
-- challenge/signature/platform/enrollment references do not expose raw proof material in rendering;
-- enrollment evidence is not License, Capability, Authority or Execution;
-- private key material is never exported through Core APIs;
-- Core has no concrete Android Keystore implementation yet and therefore makes no real hardware-backed claim.
+Verified final readiness evidence:
+
+- PR #44 exact-head `33360156420` GREEN for Core + Android instrumentation;
+- PR #44 merge/main `33362045123` GREEN for Core + Android instrumentation;
+- PR #45 exact head `88c7789ba3acb689fba5083eb6586ddabf51fc33`;
+- PR #45 exact-head `33363112163` GREEN for Core + Android instrumentation;
+- PR #45 merge `91c43d83cd2077bdb3c14d6bb7cbdb20c7c4cd27`;
+- PR #45 merge/main `33363644453` GREEN for Core + Android instrumentation.
 
 ## Current next step
 
-Proceed with slice 5:
+Finish the Android Device Key v0.1 freeze checkpoint PR itself.
 
-`invalidation/recovery/concurrency/privacy readiness hardening`
+Required gate:
 
-Close typed invalidation/recovery outcomes, concurrency races, fallback-policy semantics, detached-state boundaries, logging/privacy gates and any remaining readiness blockers.
+`exact-head Core GREEN + Android Keystore Instrumentation GREEN → merge → merge/main Core GREEN + Android Keystore Instrumentation GREEN`
 
-Then perform the readiness audit and slice 6 freeze checkpoint. Do not call Android Device Key v0.1 frozen until exact-head and merge/main Core CI are GREEN and all required readiness/security/privacy gates are clean.
+Only after that gate is closed may Android Device Key v0.1 be called **FROZEN**.
 
-A real Android platform module plus runtime/instrumentation tests are still required before documenting actual StrongBox/TEE hardware-backed behavior.
+Then proceed to cognitive storage encryption. Any wrapped-DEK/unwrap API must be introduced in that later phase through a separately reviewed exact binding/policy/Authority contract.
 
 ## Accepted roadmap
 
 `License Core → Android device-key boundary → cognitive storage encryption → protected model package/loader → runtime hardening → licensing service/offline lease issuance+refresh → Update System integration → red-team/readiness`
 
-Do not jump to cognitive/model DEK unwrap or encryption before Device Key v0.1 freezes unless a separate reviewed dependency explicitly preserves the phase boundary.
-
 ## Resume procedure
 
-1. verify current `main` SHA and latest merge/main Core CI;
-2. read `ANDROID_DEVICE_KEY_V0_1_CONTRACT.md` and the current device-key production/tests;
-3. if a Device Key PR or CI gate is active, finish that exact gate before mutating the next slice;
-4. otherwise continue slice 5 readiness hardening;
-5. preserve License/Authority/cognitive-data separation and never infer hardware security from Core-only models.
+1. verify current `main` SHA and active freeze PR/CI;
+2. if the Device Key freeze PR gate is active, finish that exact gate before any next-phase mutation;
+3. after freeze merge/main GREEN, mark Device Key v0.1 FROZEN in state docs;
+4. then begin cognitive storage encryption without adding DEK unwrap semantics retroactively to the frozen Device Key contract.
