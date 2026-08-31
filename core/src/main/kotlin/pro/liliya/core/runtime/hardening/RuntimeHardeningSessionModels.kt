@@ -98,6 +98,13 @@ interface RuntimeModelSessionOwnership {
     fun retire(): Boolean
 }
 
+/**
+ * Process-local exact ownership for Runtime Hardening v0.1.
+ *
+ * This registry owns structural runtime-session identity only. It is not License, Authority,
+ * capability, protected-model policy or execution permission. V0.1 intentionally permits at most
+ * one live runtime session in one registry/composition.
+ */
 class RuntimeModelSessionRegistry internal constructor(
     initialGeneration: Long = 0L
 ) {
@@ -123,12 +130,14 @@ class RuntimeModelSessionRegistry internal constructor(
                 RuntimeSessionRegistrationFailure.LIVE_SESSION_EXISTS
             )
         }
+
         val nextValue = nextGeneration.incrementAndGet()
         if (nextValue <= 0L) {
             return@synchronized RuntimeSessionRegistrationResult.Rejected(
                 RuntimeSessionRegistrationFailure.GENERATION_OVERFLOW
             )
         }
+
         val entry = Entry(
             RuntimeModelSessionReference(
                 id = id,
@@ -140,11 +149,17 @@ class RuntimeModelSessionRegistry internal constructor(
         RuntimeSessionRegistrationResult.Registered(ownership(entry))
     }
 
-    fun currentReference(): RuntimeModelSessionReference? = synchronized(lock) { current?.reference }
+    fun currentReference(): RuntimeModelSessionReference? = synchronized(lock) {
+        current?.reference
+    }
 
-    fun currentLifecycle(): RuntimeModelSessionLifecycle? = synchronized(lock) { current?.lifecycle }
+    fun currentLifecycle(): RuntimeModelSessionLifecycle? = synchronized(lock) {
+        current?.lifecycle
+    }
 
-    fun snapshot(): List<RuntimeModelSessionReference> = synchronized(lock) { listOfNotNull(current?.reference) }
+    fun snapshot(): List<RuntimeModelSessionReference> = synchronized(lock) {
+        listOfNotNull(current?.reference)
+    }
 
     internal fun <T> withCurrentActiveSession(
         block: (RuntimeModelSessionReference) -> T
@@ -189,9 +204,13 @@ class RuntimeModelSessionRegistry internal constructor(
         object : RuntimeModelSessionOwnership {
             override val reference: RuntimeModelSessionReference = entry.reference
 
-            override fun isCurrent(): Boolean = synchronized(lock) { current === entry }
+            override fun isCurrent(): Boolean = synchronized(lock) {
+                current === entry
+            }
 
-            override fun lifecycle(): RuntimeModelSessionLifecycle = synchronized(lock) { entry.lifecycle }
+            override fun lifecycle(): RuntimeModelSessionLifecycle = synchronized(lock) {
+                entry.lifecycle
+            }
 
             override fun publishIfCurrent(publish: () -> Unit): RuntimeSessionPublicationResult = synchronized(lock) {
                 if (current !== entry || entry.lifecycle != RuntimeModelSessionLifecycle.PREPARED) {
