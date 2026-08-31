@@ -1,6 +1,8 @@
 # Runtime Hardening v0.1 — Architecture Contract
 
-Status: **PROPOSED — architecture gate required before implementation**.
+Status: **ACCEPTED — implementation active, Slice 2 complete, not yet frozen**.
+
+Architecture gate is complete. Slices 1 and 2 are implemented and verified; Slice 3 is the next allowed implementation slice. Runtime Hardening v0.1 becomes formally frozen only after the remaining slices and final freeze checkpoint satisfy the required gates.
 
 ## Direction
 
@@ -197,15 +199,19 @@ Runtime Hardening v0.1 does not claim:
 
 ## Implementation slices
 
-### Slice 1 — Core session models and exact ownership
+### Slice 1 — Core session models and exact ownership — COMPLETE
 
-Introduce runtime session/reference/configuration/failure models plus exact process-local ownership with generation and stale/ABA contracts.
+Introduced runtime session/reference/configuration/failure models plus exact process-local ownership with generation and stale/ABA contracts.
 
-### Slice 2 — Activation and publication barrier
+Verified implementation evidence is recorded in `CURRENT_STATE.md` and `HANDOFF.md`.
 
-Compose already-approved protected-model output into exact runtime activation with bounded publication and stale/reentrant protection.
+### Slice 2 — Activation and publication barrier — COMPLETE
 
-### Slice 3 — Operation supervision and resource bounds
+Composed already-approved protected-model output into exact runtime activation with bounded publication and stale/reentrant protection.
+
+Verified implementation evidence is recorded in `CURRENT_STATE.md` and `HANDOFF.md`.
+
+### Slice 3 — Operation supervision and resource bounds — NEXT
 
 Add exact operation tickets, bounded admission, terminal release, stale-completion protection and explicit cancellation/timeout seams.
 
@@ -223,6 +229,10 @@ Record exact-head/merge-main evidence, focused audits, explicit limitations and 
 
 ## Gate
 
-This architecture contract may merge only after its exact head passes both required Core and Android CI jobs and a focused architecture/security/privacy/logging/readiness audit finds no blocker. The merge must use the verified expected head SHA, followed by merge/main Core + Android GREEN before Slice 1 begins.
+The Runtime Hardening architecture gate is complete. PR #64 passed exact-head Core + Android CI, focused architecture/security/privacy/logging/readiness audit, expected-head merge and merge/main Core + Android CI before implementation began.
 
-Runtime Hardening v0.1 becomes formally **FROZEN** only after all implementation slices and the final freeze checkpoint satisfy the same gate discipline.
+Every implementation slice remains subject to the same discipline:
+
+`feature branch → minimal coherent commits → PR → exact-head Core/required platform CI GREEN → focused architecture/security/privacy/logging-diagnostics/readiness audit → merge with verified expected head → merge/main CI GREEN → journal/freeze checkpoint`
+
+Runtime Hardening v0.1 becomes formally **FROZEN** only after all required implementation slices and the final freeze checkpoint satisfy that discipline.
