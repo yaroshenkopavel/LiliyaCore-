@@ -3,13 +3,12 @@ package pro.liliya.core.devicekey
 import java.time.Instant
 
 /**
- * Platform-neutral orchestration boundary for an eventual Android Keystore implementation.
+ * Public platform SPI for Android Keystore-backed device-key lifecycle and proof operations.
  *
- * The concrete Android implementation belongs in a platform module and must translate
- * Android Keystore facts into [AndroidKeystoreKeyDescriptor] without exporting private
- * key material.
+ * A concrete Android module translates Android Keystore facts into typed structural descriptors
+ * without exporting private key material.
  */
-internal interface AndroidKeystorePlatform {
+interface AndroidKeystorePlatform {
     fun generate(
         request: DeviceKeyCreationRequest,
         createdAt: Instant
@@ -25,7 +24,7 @@ internal interface AndroidKeystorePlatform {
     fun delete(id: DeviceKeyId): AndroidKeystorePlatformResult<Unit>
 }
 
-internal data class AndroidKeystoreKeyDescriptor(
+data class AndroidKeystoreKeyDescriptor(
     val id: DeviceKeyId,
     val algorithm: DeviceKeyAlgorithm,
     val securityLevel: DeviceKeySecurityLevel,
@@ -38,13 +37,13 @@ internal data class AndroidKeystoreKeyDescriptor(
     }
 }
 
-internal data class AndroidKeystoreSignatureDescriptor(
+data class AndroidKeystoreSignatureDescriptor(
     val id: DeviceKeyId,
     val platformReference: DeviceKeyPlatformReference,
     val signature: DeviceKeyProofSignature
 )
 
-internal sealed interface AndroidKeystorePlatformResult<out T> {
+sealed interface AndroidKeystorePlatformResult<out T> {
     data class Success<T>(val value: T) : AndroidKeystorePlatformResult<T>
     data class Rejected(val category: DeviceKeyFailureCategory) : AndroidKeystorePlatformResult<Nothing>
     data class Failed(
@@ -57,14 +56,13 @@ internal sealed interface AndroidKeystorePlatformResult<out T> {
 }
 
 /**
- * Implements the create/resolve/retire state machine around a future Android Keystore binding.
+ * Core state machine around an Android Keystore platform implementation.
  *
  * A key becomes ready only after generation has succeeded, the exact generated identity has been
- * inspected, and its actual properties satisfy the requested profile. If post-generation
- * validation fails, cleanup is limited to the exact key ID that the caller requested; a hostile or
- * corrupted platform descriptor cannot redirect cleanup to another key identity.
+ * re-inspected, and actual properties satisfy the requested profile. Failed post-generation
+ * validation can clean up only the exact caller-requested identity.
  */
-internal class AndroidKeystoreDeviceKeyAdapter(
+class AndroidKeystoreDeviceKeyAdapter(
     private val platform: AndroidKeystorePlatform
 ) : DeviceKeyAdapter, DeviceKeyProofSigner {
     override fun create(
