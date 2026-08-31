@@ -26,10 +26,10 @@ enum class RuntimeOperationTerminal {
 }
 
 sealed interface RuntimeOperationReleaseResult {
-    data object Released : RuntimeOperationReleaseResult
     data object Published : RuntimeOperationReleaseResult
     data object Stale : RuntimeOperationReleaseResult
     data object AlreadyReleased : RuntimeOperationReleaseResult
+    data class Terminated(val reason: RuntimeHardeningFailure) : RuntimeOperationReleaseResult
     data class Failed(
         val reason: RuntimeHardeningFailure,
         val throwable: Throwable
@@ -111,8 +111,14 @@ class RuntimeModelOperationSupervisor internal constructor(
 
         if (!released) return RuntimeOperationReleaseResult.AlreadyReleased
 
-        if (terminal != RuntimeOperationTerminal.SUCCEEDED) {
-            return RuntimeOperationReleaseResult.Released
+        when (terminal) {
+            RuntimeOperationTerminal.FAILED ->
+                return RuntimeOperationReleaseResult.Terminated(RuntimeHardeningFailure.OPERATION_FAILED)
+            RuntimeOperationTerminal.CANCELLED ->
+                return RuntimeOperationReleaseResult.Terminated(RuntimeHardeningFailure.OPERATION_CANCELLED)
+            RuntimeOperationTerminal.TIMED_OUT ->
+                return RuntimeOperationReleaseResult.Terminated(RuntimeHardeningFailure.OPERATION_TIMEOUT)
+            RuntimeOperationTerminal.SUCCEEDED -> Unit
         }
 
         return when (val publication = registry.publishOperationIfCurrent(ticket.session, publishSuccess)) {
