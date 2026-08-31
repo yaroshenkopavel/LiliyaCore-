@@ -177,9 +177,12 @@ class AndroidCognitiveKeyProtector(context: Context) : CognitiveKeyProtector {
         return try {
             val key = keyFor(current.reference)
                 ?: return CognitiveEncryptionResult.Rejected(CognitiveEncryptionFailureCategory.PROTECTOR_MISSING)
-            val nonce = ByteArray(NONCE_BYTES).also(secureRandom::nextBytes)
             val cipher = Cipher.getInstance(CIPHER)
-            cipher.init(Cipher.ENCRYPT_MODE, key, GCMParameterSpec(TAG_BITS, nonce))
+            cipher.init(Cipher.ENCRYPT_MODE, key)
+            val nonce = cipher.iv
+            if (nonce == null || nonce.size != NONCE_BYTES) {
+                return CognitiveEncryptionResult.Rejected(CognitiveEncryptionFailureCategory.NONCE_VALIDATION_FAILED)
+            }
             cipher.updateAAD(wrappingAssociatedData(dek, current.reference))
             val rawMaterial = material.copyBytes()
             val output = try {
