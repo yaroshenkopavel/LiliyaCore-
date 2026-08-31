@@ -303,6 +303,13 @@ class RuntimeModelSessionRegistry internal constructor(
                     "runtime session retirement is not allowed from inside publication"
                 }
                 if (current !== entry) return@synchronized false
+                if (
+                    operationSupervisorClaimed &&
+                    (entry.lifecycle == RuntimeModelSessionLifecycle.ACTIVE ||
+                        entry.lifecycle == RuntimeModelSessionLifecycle.QUIESCING)
+                ) {
+                    return@synchronized false
+                }
                 entry.lifecycle = RuntimeModelSessionLifecycle.RETIRED
                 current = null
                 true
