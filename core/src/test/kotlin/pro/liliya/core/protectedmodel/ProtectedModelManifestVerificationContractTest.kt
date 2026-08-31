@@ -43,7 +43,7 @@ class ProtectedModelManifestVerificationContractTest {
     fun payload_substitution_is_rejected_before_signature_acceptance() {
         val keys = KeyPairGenerator.getInstance("Ed25519").generateKeyPair()
         val ciphertext = "protected-model-ciphertext".encodeToByteArray()
-        val substituted = "substituted-model-payload".encodeToByteArray()
+        val substituted = "substituted-model-payloadX".encodeToByteArray()
         val envelope = signedEnvelope(manifest(ciphertext.size.toLong()), ciphertext, keys.private)
         val verifier = ProtectedModelPackageVerifier(
             ProtectedModelSignerResolver { _, _ -> keys.public }
