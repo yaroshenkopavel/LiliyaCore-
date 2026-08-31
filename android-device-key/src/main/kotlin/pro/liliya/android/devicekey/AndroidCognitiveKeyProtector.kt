@@ -10,7 +10,6 @@ import android.security.keystore.StrongBoxUnavailableException
 import android.security.keystore.UserNotAuthenticatedException
 import java.io.ByteArrayOutputStream
 import java.io.DataOutputStream
-import java.security.KeyFactory
 import java.security.KeyStore
 import java.security.MessageDigest
 import java.security.SecureRandom
@@ -18,6 +17,7 @@ import java.util.Base64
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
+import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.GCMParameterSpec
 import pro.liliya.core.encryption.CognitiveDekMaterial
 import pro.liliya.core.encryption.CognitiveDekReference
@@ -76,7 +76,7 @@ class AndroidCognitiveKeyProtector(context: Context) : CognitiveKeyProtector {
 
             val platformReference = randomPlatformReference()
             if (!preferences.edit().putString(metadataKey, platformReference.value).commit()) {
-                return cleanupGenerated(alias, metadataKey)
+                return cleanupAndReject(alias, metadataKey, CognitiveEncryptionFailureCategory.CLEANUP_FAILED)
             }
 
             val reference = CognitiveKeyProtectorReference(
@@ -86,22 +86,25 @@ class AndroidCognitiveKeyProtector(context: Context) : CognitiveKeyProtector {
             )
             when (val inspected = inspect(reference)) {
                 is CognitiveEncryptionResult.Success -> {
-                    if (inspected.value.securityLevel != request.requestedSecurityLevel &&
-                        request.requestedSecurityLevel == CognitiveKeyProtectorSecurityLevel.STRONGBOX) {
-                        cleanupGenerated(alias, metadataKey)
-                    } else if (inspected.value.securityLevel == CognitiveKeyProtectorSecurityLevel.SOFTWARE ||
-                        inspected.value.securityLevel == CognitiveKeyProtectorSecurityLevel.UNKNOWN) {
-                        cleanupGenerated(alias, metadataKey)
-                    } else {
+                    if (meetsRequestedSecurity(
+                            request.requestedSecurityLevel,
+                            inspected.value.securityLevel
+                        )) {
                         inspected
+                    } else {
+                        cleanupAndReject(
+                            alias,
+                            metadataKey,
+                            CognitiveEncryptionFailureCategory.REQUIRED_SECURITY_LEVEL_UNAVAILABLE
+                        )
                     }
                 }
                 is CognitiveEncryptionResult.Rejected -> {
-                    cleanupGenerated(alias, metadataKey)
+                    cleanupExact(alias, metadataKey)
                     inspected
                 }
                 is CognitiveEncryptionResult.Failed -> {
-                    cleanupGenerated(alias, metadataKey)
+                    cleanupExact(alias, metadataKey)
                     inspected
                 }
             }
@@ -110,8 +113,11 @@ class AndroidCognitiveKeyProtector(context: Context) : CognitiveKeyProtector {
                 CognitiveEncryptionFailureCategory.REQUIRED_SECURITY_LEVEL_UNAVAILABLE
             )
         } catch (_: Throwable) {
-            if (generated) cleanupGenerated(alias, metadataKey)
-            else CognitiveEncryptionResult.Rejected(CognitiveEncryptionFailureCategory.PROVIDER_FAILED)
+            if (generated) cleanupAndReject(
+                alias,
+                metadataKey,
+                CognitiveEncryptionFailureCategory.PROVIDER_FAILED
+            ) else CognitiveEncryptionResult.Rejected(CognitiveEncryptionFailureCategory.PROVIDER_FAILED)
         }
     }
 
@@ -136,8 +142,8 @@ class AndroidCognitiveKeyProtector(context: Context) : CognitiveKeyProtector {
             }
             val key = keyStore.getKey(alias, null) as? SecretKey
                 ?: return CognitiveEncryptionResult.Rejected(CognitiveEncryptionFailureCategory.PROTECTOR_MISSING)
-            val info = KeyFactory.getInstance(key.algorithm, ANDROID_KEYSTORE)
-                .getKeySpec(key, KeyInfo::class.java)
+            val info = SecretKeyFactory.getInstance(key.algorithm, ANDROID_KEYSTORE)
+                .getKeySpec(key, KeyInfo::class.java) as KeyInfo
             if (info.keySize != KEY_SIZE_BITS ||
                 info.purposes and KeyProperties.PURPOSE_ENCRYPT == 0 ||
                 info.purposes and KeyProperties.PURPOSE_DECRYPT == 0 ||
@@ -175,7 +181,12 @@ class AndroidCognitiveKeyProtector(context: Context) : CognitiveKeyProtector {
             val cipher = Cipher.getInstance(CIPHER)
             cipher.init(Cipher.ENCRYPT_MODE, key, GCMParameterSpec(TAG_BITS, nonce))
             cipher.updateAAD(wrappingAssociatedData(dek, current.reference))
-            val output = cipher.doFinal(material.copyBytes())
+            val rawMaterial = material.copyBytes()
+            val output = try {
+                cipher.doFinal(rawMaterial)
+            } finally {
+                rawMaterial.fill(0)
+            }
             val ciphertextSize = output.size - TAG_BYTES
             if (ciphertextSize <= 0) {
                 return CognitiveEncryptionResult.Rejected(CognitiveEncryptionFailureCategory.WRAP_FAILED)
@@ -216,8 +227,16 @@ class AndroidCognitiveKeyProtector(context: Context) : CognitiveKeyProtector {
             cipher.init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(TAG_BITS, envelope.copyNonce()))
             cipher.updateAAD(wrappingAssociatedData(envelope.dek, current.reference))
             val input = envelope.copyWrappedDek() + envelope.copyAuthenticationTag()
-            val plaintext = cipher.doFinal(input)
-            CognitiveEncryptionResult.Success(CognitiveDekMaterial(plaintext))
+            val plaintext = try {
+                cipher.doFinal(input)
+            } finally {
+                input.fill(0)
+            }
+            try {
+                CognitiveEncryptionResult.Success(CognitiveDekMaterial(plaintext))
+            } finally {
+                plaintext.fill(0)
+            }
         } catch (_: KeyPermanentlyInvalidatedException) {
             CognitiveEncryptionResult.Rejected(CognitiveEncryptionFailureCategory.PROTECTOR_INVALIDATED)
         } catch (_: UserNotAuthenticatedException) {
@@ -262,13 +281,34 @@ class AndroidCognitiveKeyProtector(context: Context) : CognitiveKeyProtector {
         return keyStore().getKey(alias, null) as? SecretKey
     }
 
-    private fun cleanupGenerated(alias: String, metadataKey: String): CognitiveEncryptionResult<Nothing> = try {
+    private fun meetsRequestedSecurity(
+        requested: CognitiveKeyProtectorSecurityLevel,
+        actual: CognitiveKeyProtectorSecurityLevel
+    ): Boolean = when (requested) {
+        CognitiveKeyProtectorSecurityLevel.STRONGBOX -> actual == CognitiveKeyProtectorSecurityLevel.STRONGBOX
+        CognitiveKeyProtectorSecurityLevel.TRUSTED_ENVIRONMENT ->
+            actual == CognitiveKeyProtectorSecurityLevel.TRUSTED_ENVIRONMENT ||
+                actual == CognitiveKeyProtectorSecurityLevel.STRONGBOX
+        CognitiveKeyProtectorSecurityLevel.SOFTWARE -> actual != CognitiveKeyProtectorSecurityLevel.UNKNOWN
+        CognitiveKeyProtectorSecurityLevel.UNKNOWN -> false
+    }
+
+    private fun cleanupAndReject(
+        alias: String,
+        metadataKey: String,
+        category: CognitiveEncryptionFailureCategory
+    ): CognitiveEncryptionResult<Nothing> = if (cleanupExact(alias, metadataKey)) {
+        CognitiveEncryptionResult.Rejected(category)
+    } else {
+        CognitiveEncryptionResult.Rejected(CognitiveEncryptionFailureCategory.CLEANUP_FAILED)
+    }
+
+    private fun cleanupExact(alias: String, metadataKey: String): Boolean = try {
         val keyStore = keyStore()
         if (keyStore.containsAlias(alias)) keyStore.deleteEntry(alias)
         preferences.edit().remove(metadataKey).commit()
-        CognitiveEncryptionResult.Rejected(CognitiveEncryptionFailureCategory.CLEANUP_FAILED)
     } catch (_: Throwable) {
-        CognitiveEncryptionResult.Rejected(CognitiveEncryptionFailureCategory.CLEANUP_FAILED)
+        false
     }
 
     private fun wrappingAssociatedData(
