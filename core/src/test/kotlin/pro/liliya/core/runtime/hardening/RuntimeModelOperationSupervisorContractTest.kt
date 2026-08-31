@@ -84,6 +84,31 @@ class RuntimeModelOperationSupervisorContractTest {
     }
 
     @Test
+    fun reconstructed_ticket_with_same_values_cannot_release_exact_operation() {
+        val registry = RuntimeModelSessionRegistry()
+        val ownership = register(registry, "active", 1)
+        publish(ownership)
+        val supervisor = supervisor(registry, maxInFlight = 1)
+        val ticket = assertIs<RuntimeOperationAdmissionResult.Admitted>(supervisor.admit()).ticket
+        val reconstructed = RuntimeModelOperationTicket(
+            sequence = ticket.sequence,
+            session = ticket.session
+        )
+
+        assertSame(
+            RuntimeOperationReleaseResult.AlreadyReleased,
+            supervisor.release(reconstructed, RuntimeOperationTerminal.FAILED)
+        )
+        assertEquals(1, supervisor.inFlightCount())
+
+        val realResult = assertIs<RuntimeOperationReleaseResult.Terminated>(
+            supervisor.release(ticket, RuntimeOperationTerminal.FAILED)
+        )
+        assertEquals(RuntimeHardeningFailure.OPERATION_FAILED, realResult.reason)
+        assertEquals(0, supervisor.inFlightCount())
+    }
+
+    @Test
     fun stale_success_releases_locally_but_cannot_publish_into_replacement_session() {
         val registry = RuntimeModelSessionRegistry()
         val first = register(registry, "same-label", 1)
