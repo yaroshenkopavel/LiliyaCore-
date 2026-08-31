@@ -102,10 +102,18 @@ class ProtectedModelRuntimeOwnership {
     }
 
     fun isCurrent(ticket: ProtectedModelOpenTicket): Boolean = synchronized(lock) {
-        val current = target
-        current != null &&
-            current.reference == ticket.reference &&
-            current.epoch == ticket.attemptId.value
+        matchesCurrent(ticket)
+    }
+
+    /**
+     * Runs the final runtime publication while holding the same ownership barrier used by replacement
+     * and retirement. A competing replacement therefore cannot commit between the stale check and the
+     * publication callback.
+     */
+    fun publishIfCurrent(ticket: ProtectedModelOpenTicket, publish: () -> Unit): Boolean = synchronized(lock) {
+        if (!matchesCurrent(ticket)) return@synchronized false
+        publish()
+        true
     }
 
     fun retire(expected: ProtectedModelReference): Boolean = synchronized(lock) {
@@ -113,13 +121,20 @@ class ProtectedModelRuntimeOwnership {
         target = null
         true
     }
+
+    private fun matchesCurrent(ticket: ProtectedModelOpenTicket): Boolean {
+        val current = target
+        return current != null &&
+            current.reference == ticket.reference &&
+            current.epoch == ticket.attemptId.value
+    }
 }
 
 /**
  * Higher-layer protected-model access composition.
  *
- * Order: exact active target -> fresh policy decision -> authenticated loader open -> exact stale check
- * -> bounded publication callback. There is no hidden retry, replay, reconciliation or rollback.
+ * Order: exact active target -> fresh policy decision -> authenticated loader open -> exact atomic
+ * ownership/publication barrier. There is no hidden retry, replay, reconciliation or rollback.
  */
 class ProtectedModelAccessCoordinator(
     private val policy: ProtectedModelAccessPolicy,
@@ -175,13 +190,12 @@ class ProtectedModelAccessCoordinator(
                 )
         }
 
-        if (!ownership.isCurrent(ticket)) {
-            return ProtectedModelAccessResult.Rejected(ProtectedModelAccessFailure.STALE_OWNERSHIP)
-        }
-
         return try {
-            publish(reference, value)
-            ProtectedModelAccessResult.Opened(reference, value)
+            if (!ownership.publishIfCurrent(ticket) { publish(reference, value) }) {
+                ProtectedModelAccessResult.Rejected(ProtectedModelAccessFailure.STALE_OWNERSHIP)
+            } else {
+                ProtectedModelAccessResult.Opened(reference, value)
+            }
         } catch (throwable: Throwable) {
             ProtectedModelAccessResult.Failed(
                 ProtectedModelAccessFailure.PUBLISH_FAILED,
