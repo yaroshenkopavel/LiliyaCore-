@@ -64,7 +64,12 @@ data class CognitivePayloadBinding(
     val schemaId: PersistentSchemaId,
     val schemaVersion: PersistentSchemaVersion,
     val dek: CognitiveDekReference
-)
+) {
+    override fun toString(): String =
+        "CognitivePayloadBinding(storeId=[redacted], entityId=[redacted], " +
+            "entityGeneration=${entityGeneration.value}, schemaId=[redacted], " +
+            "schemaVersion=${schemaVersion.value}, dek=$dek)"
+}
 
 class EncryptedCognitivePayloadEnvelope(
     val version: CognitiveEnvelopeVersion,
@@ -142,12 +147,16 @@ enum class CognitiveDekWrappingAlgorithm {
     AES_256_GCM
 }
 
+enum class CognitiveKeyPurpose {
+    COGNITIVE_STORAGE
+}
+
 class WrappedCognitiveDekEnvelope(
     val version: CognitiveEnvelopeVersion,
     val dek: CognitiveDekReference,
     val protector: CognitiveKeyProtectorReference,
     val wrappingAlgorithm: CognitiveDekWrappingAlgorithm,
-    val purpose: String,
+    val purpose: CognitiveKeyPurpose,
     wrappedDek: ByteArray,
     nonce: ByteArray,
     authenticationTag: ByteArray
@@ -157,7 +166,6 @@ class WrappedCognitiveDekEnvelope(
     private val authenticationTagBytes = authenticationTag.copyOf()
 
     init {
-        require(purpose.isNotBlank()) { "wrapped DEK purpose must not be blank" }
         require(wrappedDekBytes.isNotEmpty()) { "wrapped DEK bytes must not be empty" }
         require(nonceBytes.size == 12) { "wrapped DEK nonce must be 12 bytes" }
         require(authenticationTagBytes.size == 16) { "wrapped DEK authentication tag must be 16 bytes" }
