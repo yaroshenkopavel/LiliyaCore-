@@ -133,7 +133,7 @@ class RuntimeModelActivationCoordinatorContractTest {
         }
 
         val failed = assertIs<RuntimeSessionPublicationResult.Failed>(result)
-        assertEquals(IllegalStateException::class.java, failed.throwable.javaClass)
+        assertTrue(failed.throwable is IllegalStateException)
         assertFalse(failed.toString().contains("not allowed from inside publication"))
         assertFalse(ownership.isCurrent())
         assertEquals(RuntimeModelSessionLifecycle.FAILED, ownership.lifecycle())
