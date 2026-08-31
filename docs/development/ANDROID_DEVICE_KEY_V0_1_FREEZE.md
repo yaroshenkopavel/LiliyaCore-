@@ -1,6 +1,6 @@
 # Android Device Key v0.1 — Freeze Checkpoint
 
-Status: **FROZEN pending this checkpoint PR merge/main gate**.
+Status: **FROZEN**.
 
 ## Frozen direction
 
@@ -83,6 +83,27 @@ Verified PR #45 merge/main gate:
 - run `33363644453` — `Test LiliyaCore` GREEN;
 - run `33363644453` — `Android Keystore Instrumentation` GREEN.
 
+## Freeze checkpoint evidence
+
+PR #46 is the formal freeze checkpoint.
+
+Verified PR #46 exact-head gate:
+
+- exact head `8565a65348d800d646a1760bf99c34579e3a00c1`;
+- run `33364507220` — `Test LiliyaCore` GREEN;
+- run `33364507220` — `Android Keystore Instrumentation` GREEN.
+
+PR #46 merge commit:
+
+`2cc6279ef481915531267ac52ce06ff3c36036a6`
+
+Verified PR #46 merge/main gate:
+
+- run `33365191210` — `Test LiliyaCore` GREEN;
+- run `33365191210` — `Android Keystore Instrumentation` GREEN.
+
+The freeze gate is therefore closed and Android Device Key v0.1 is formally **FROZEN**.
+
 ## Explicit limitations
 
 The emulator gate proves concrete Android Keystore runtime integration and lifecycle semantics for the tested software-backed emulator environment. It does **not** prove that an arbitrary user device has StrongBox or TEE hardware backing.
@@ -93,6 +114,6 @@ No Play Integrity trust root, generic attestation service, license issuance/refr
 
 ## Freeze boundary
 
-Once this freeze checkpoint PR itself passes exact-head Core + Android instrumentation, merges, and its merge/main Core + Android instrumentation gate is GREEN, Android Device Key v0.1 is **FROZEN**.
+Android Device Key v0.1 is frozen at merge/main baseline `2cc6279ef481915531267ac52ce06ff3c36036a6` with run `33365191210` GREEN for both required jobs.
 
 The next roadmap phase is cognitive storage encryption. Any wrapped-DEK API must be introduced there through a separately reviewed exact binding/policy/Authority contract and may not weaken this frozen Device Key boundary.
