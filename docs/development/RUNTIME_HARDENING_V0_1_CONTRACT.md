@@ -1,8 +1,8 @@
 # Runtime Hardening v0.1 — Architecture Contract
 
-Status: **ACCEPTED — implementation active, Slice 3 complete, not yet frozen**.
+Status: **ACCEPTED — implementation active, Slice 4 complete, not yet frozen**.
 
-Architecture gate and Slices 1–3 are implemented and verified; Slice 4 is the next allowed implementation slice. Runtime Hardening v0.1 becomes formally frozen only after the remaining slices and final freeze checkpoint satisfy the required gates.
+Architecture gate and Slices 1–4 are implemented and verified. Slice 5 is the next allowed phase and is an evidence decision: add platform/runtime integration only where a v0.1 guarantee genuinely requires platform behavior; otherwise record an explicit no-op checkpoint. Runtime Hardening v0.1 becomes formally frozen only after Slice 5 and the final Slice 6 freeze checkpoint satisfy the required gates.
 
 ## Direction
 
@@ -32,14 +32,14 @@ Runtime Hardening v0.1 defines process-local safeguards around activation and us
 
 - exact runtime session identity/generation and stale/ABA-safe ownership;
 - bounded activation and publication of one already-approved protected-model target;
-- explicit lifecycle states for prepared, active, quiescing, failed and retired sessions;
-- fail-closed behavior when the active model/session becomes stale, invalid or unavailable;
-- supervised operation admission with explicit in-flight ownership and completion/release;
-- bounded concurrency and resource-limit contracts independent of model semantics;
-- explicit fault categories and structural observability without secret/model-payload leakage;
-- deterministic replacement/retirement barriers so stale workers cannot publish or complete into a newer session;
-- controlled restart/recovery classification without hidden retry, replay or reconciliation;
-- Android/process integration evidence only where platform behavior is actually required.
+- explicit `PREPARED`, `ACTIVE`, `QUIESCING`, `FAILED` and `RETIRED` lifecycle states;
+- fail-closed behavior when a current model/session becomes stale, invalid or unavailable;
+- supervised operation admission with exact in-flight ownership and terminal release;
+- bounded concurrency and resource limits independent of model semantics;
+- structural fault classification and privacy-safe failure rendering;
+- deterministic quiescing/replacement/retirement barriers;
+- explicit cleanup failure handling and recovery readiness without hidden retry/replay/reconciliation;
+- Android/process integration evidence only where a claimed property genuinely depends on platform behavior.
 
 This phase does not grant Authority, decide License entitlement, issue offline leases, download/update model packages or execute external capabilities.
 
@@ -53,11 +53,10 @@ Requirements:
 - duplicate live ownership fails closed;
 - generation overflow fails closed;
 - retirement is exact-owner only;
-- replacement invalidates all prior activation/use tickets immediately;
-- stale or ABA-reused tickets cannot publish, complete or release state into the replacement session;
-- session identifiers and references are not permission tokens.
-
-No global mutable authorization registry may be introduced to implement runtime ownership.
+- stale/ABA ownership cannot mutate or delete a replacement;
+- operation tickets bind to one exact runtime-session generation;
+- session identifiers/references/tickets are structural ownership, not permission tokens;
+- no global mutable authorization registry is introduced for runtime ownership.
 
 ## Activation boundary
 
@@ -65,33 +64,33 @@ Activation accepts only a value already produced through the frozen protected-mo
 
 Activation must:
 
-1. bind one exact protected-model reference to one exact runtime session generation;
-2. enforce configured structural/resource bounds before publication;
-3. create no durable plaintext model copy as part of the hardening contract;
-4. publish the active session only behind the same exact ownership barrier used by replacement/retirement;
+1. bind one exact protected-model reference to one exact runtime-session generation;
+2. enforce reviewed structural/resource bounds before publication;
+3. create no durable plaintext model copy as part of this contract;
+4. publish behind the same exact ownership barrier used by session transitions;
 5. fail closed on stale ownership, activation failure or publication race.
 
 Successful activation means only that the runtime may host the model. It does not imply Authority or capability execution permission.
 
 ## Operation supervision
 
-Runtime use is represented by exact operation tickets bound to one active runtime session generation.
+Runtime use is represented by exact identity-based operation tickets bound to one active runtime-session generation.
 
-Required behavior:
+Required and implemented behavior:
 
-- no ticket is issued for a missing, failed, quiescing or retired session;
-- configurable maximum in-flight operations is enforced before admission;
-- each admitted operation has exact ownership and exactly one terminal local release;
-- replacement/retirement prevents new admission immediately;
+- no ticket is issued for missing, prepared, failed, quiescing or retired sessions;
+- configured maximum in-flight operations is enforced atomically before admission;
+- v0.1 permits exactly one operation supervisor per runtime-session registry so the bound cannot be bypassed by duplicate supervisors;
+- each admitted operation has exactly one terminal local release;
+- reconstructing the same ticket values does not grant release ownership;
+- cancellation and timeout are explicit caller-selected terminal outcomes, not hidden wall-clock policy;
 - stale operations may finish local cleanup but cannot publish success/state into a newer session;
-- timeout/cancellation policy is explicit at the supervisor boundary and is not inferred from wall-clock globals hidden inside the model primitive;
-- operation completion is not an Authority decision and cannot itself authorize a side effect.
-
-Slice 3 implementation evidence now additionally proves that v0.1 permits exactly one operation supervisor per runtime-session registry and that terminal ownership is identity-based: reconstructing the same sequence/session values does not grant release ownership.
+- operation completion is not an Authority decision and cannot authorize a side effect;
+- no terminal-history/retry/replay queue is retained.
 
 ## Fault containment
 
-Faults are classified structurally. Minimum v0.1 categories:
+Minimum structural categories remain:
 
 - `ACTIVATION_REJECTED`
 - `ACTIVATION_FAILED`
@@ -107,71 +106,99 @@ Faults are classified structurally. Minimum v0.1 categories:
 - `RECOVERY_REJECTED`
 - `PROVIDER_FAILED`
 
-A fault in one model operation must not silently mutate ownership of another session or reinterpret a protected-model policy decision.
+Slice 4 further establishes:
 
-Secret exception messages, model plaintext, model-DEK material and protected payload bytes are not normal observability payloads. Reviewed failure rendering exposes structural category and exception class only where a throwable is retained.
+- `SESSION_FAILED` and `PROVIDER_FAILED` transition only the exact current `ACTIVE`/`QUIESCING` session to `FAILED`;
+- repeated failure preserves the first retained structural reason;
+- a fault cannot silently mutate replacement ownership;
+- failed-session retirement does not imply cancellation of outstanding local operation tickets;
+- retirement cleanup failure becomes `RETIREMENT_FAILED` and retains exact ownership fail-closed;
+- ordinary failed-session retirement cannot discard a `RETIREMENT_FAILED` entry;
+- failed explicit cleanup recovery reports `RECOVERY_REJECTED` while the underlying retained failure remains `RETIREMENT_FAILED`;
+- exception messages, model plaintext, model-DEK material and protected payload bytes are not normal diagnostic payloads.
+
+Reviewed result rendering exposes structural category and throwable class only where a throwable is retained.
 
 ## Resource bounds
 
-Runtime Hardening v0.1 must expose explicit immutable configuration for reviewed process-local limits. At minimum:
+Runtime Hardening v0.1 exposes explicit immutable configuration for reviewed process-local limits, including:
 
-- maximum live runtime sessions for the owning composition (v0.1 target: one active model session unless a later explicit version changes this);
+- exactly one live runtime session per owning registry/composition in v0.1;
 - maximum in-flight operations per session;
-- maximum activation payload/handle metadata accepted by the hardening boundary where applicable;
 - bounded diagnostic/snapshot metadata;
-- no unbounded hidden retry queue, replay queue or failure buffer.
+- no unbounded hidden retry queue, replay queue, terminal-history queue or failure buffer.
 
-Resource rejection is structural and fail-closed. It is not a signal to bypass policy or silently downgrade a security guarantee.
+Resource rejection is structural and fail-closed. It is never a signal to bypass policy or downgrade a security guarantee.
 
 ## Replacement and quiescence
 
-Replacement is explicit:
+Normal replacement is explicit:
 
-`current exact session → stop new admission → establish quiescing barrier → retire/invalidate current ownership → publish new exact session`
+`current exact ACTIVE session → stop new admission via QUIESCING → drain exact local in-flight work → exact retirement cleanup → clear current ownership → later fresh activation/new generation`
 
 V0.1 guarantees:
 
-- old and new sessions are never simultaneously current in the same ownership registry;
+- entering `QUIESCING` atomically closes new admission;
+- retirement never waits for or cancels in-flight work implicitly;
+- while exact operations remain, `retireIfDrained` returns structural drain-required evidence;
+- stale successful operations after quiescing release locally but cannot publish state;
+- direct ownership retirement cannot bypass the supervised quiescing policy after an operation supervisor is claimed;
+- old and new sessions are never simultaneously current in the same registry;
 - stale workers cannot publish runtime state after replacement;
-- same-thread reentrant ownership mutation must not bypass the publication/replacement barrier;
+- same-thread reentrant ownership mutation cannot bypass publication/transition barriers;
 - retirement does not destroy protected-model package or License evidence;
-- replacement does not imply hidden replay of failed or in-flight operations.
+- replacement does not imply replay of failed or in-flight operations.
 
-Whether the owner waits for in-flight cleanup or cancels outstanding operations must be explicit in the operation supervisor contract and covered by tests; it must not emerge accidentally from lock scheduling.
+## Retirement cleanup failure
+
+Retirement cleanup is an explicit caller-provided transition callback executed once behind the exact registry transition barrier.
+
+If that cleanup fails:
+
+- lifecycle becomes `FAILED`;
+- retained structural reason becomes `RETIREMENT_FAILED`;
+- current exact ownership remains present;
+- replacement/activation remains blocked;
+- ordinary `retireFailed()` cannot discard the uncertain cleanup state;
+- the cleanup attempt is not retried automatically.
+
+Uncertain cleanup can be cleared only through an explicit `recoverRetirementFailure` cleanup attempt. A failed recovery returns `RECOVERY_REJECTED`, leaves the exact session `FAILED/RETIREMENT_FAILED`, and performs no implicit retry. A successful recovery retires the exact failed ownership; it does not reactivate that session.
 
 ## Recovery semantics
 
-Recovery is classification plus a new explicit attempt, not invisible continuation.
+Recovery is classification plus a new explicit attempt, never invisible continuation.
 
-V0.1 does not claim automatic crash-safe replay, exactly-once model operation execution or cross-process durable session resurrection.
+Allowed direction:
 
-Allowed recovery direction:
+`observed runtime failure → exact failure/retirement handling → external decision to recover → fresh protected-model access/policy path where required → new exact runtime session generation`
 
-`observed runtime failure → exact failed-session retirement/invalidation → external decision to recover → fresh protected-model access/policy path where required → new exact runtime session generation`
+No failed session may become active again merely because a provider or cleanup path becomes available later. A new activation attempt is required after ownership is safely retired.
 
-No failed session may become active again merely because a provider becomes available later. A new activation attempt is required.
+V0.1 does not claim automatic crash-safe replay, exactly-once model operation execution, transparent retry/reconciliation or cross-process durable session resurrection.
 
 ## Concurrency requirements
 
-Contracts must cover at least:
+Contracts cover:
 
-- competing activation/replacement attempts;
-- stale operation completion after replacement;
-- retirement while operations are in flight;
-- concurrent admission at the configured limit;
-- same-thread reentrant mutation attempts from activation/publication callbacks;
-- failure during publication/retirement cleanup;
-- deterministic snapshot/current-session visibility.
+- activation/publication versus retirement barriers;
+- concurrent admission at configured limits;
+- admission versus quiescing with only linearizable outcomes;
+- final operation release versus drain retirement with only linearizable outcomes;
+- stale operation completion after quiescing/replacement;
+- same-thread reentrant mutation attempts from publication/transition callbacks;
+- failure during retirement cleanup;
+- stale failure/retirement attempts against replacement ownership;
+- deterministic current-session visibility.
 
-Tests must avoid timing-only correctness where a deterministic latch/barrier can prove ordering.
+Tests must avoid timing-only correctness where deterministic synchronization or allowed-outcome reasoning can prove behavior.
 
 ## Android / platform boundary
 
 Core runtime-hardening contracts remain Android-framework-free.
 
-Platform-specific integration belongs outside Core and is required only for behavior that cannot be represented by the platform-neutral session/supervision contracts. This phase must not add decryption permission to the frozen Device Key surface or merge the dedicated protected-model Android key domain into runtime ownership.
+Platform-specific integration belongs outside Core and is required only for behavior that cannot be represented by the completed platform-neutral session/supervision contracts. Runtime Hardening must not add decryption permission to the frozen Device Key surface or merge dedicated cognitive/protected-model key domains into runtime ownership.
 
-If Android process/lifecycle integration is added, exact-head Android instrumentation is required before merge and must demonstrate only the platform behavior claimed by that slice.
+Slice 5 must begin by determining whether any remaining v0.1 guarantee actually needs Android/process/lifecycle integration. If yes, add only that minimum surface with real instrumentation. If no, record an explicit no-op evidence checkpoint rather than inventing platform coupling.
 
 ## Observability and privacy
 
@@ -181,7 +208,7 @@ Normal runtime-hardening observability is structural:
 - protected-model package ids, model-DEK ids, key-protector ids/platform references and payload bytes remain redacted;
 - exception messages are not normal diagnostic fields;
 - no `println`, `System.out`, `System.err`, `printStackTrace` or equivalent production bypass is introduced;
-- failure/transition events must be observable without requiring raw model data.
+- failure/transition evidence must be understandable without raw model data.
 
 ## Non-goals / explicit limitations
 
@@ -205,46 +232,41 @@ Runtime Hardening v0.1 does not claim:
 
 Introduced runtime session/reference/configuration/failure models plus exact process-local ownership with generation and stale/ABA contracts.
 
-Verified implementation evidence is recorded in `CURRENT_STATE.md` and `HANDOFF.md`.
-
 ### Slice 2 — Activation and publication barrier — COMPLETE
 
 Composed already-approved protected-model output into exact runtime activation with bounded publication and stale/reentrant protection.
 
-Verified implementation evidence is recorded in `CURRENT_STATE.md` and `HANDOFF.md`.
-
 ### Slice 3 — Operation supervision and resource bounds — COMPLETE
 
-Implemented atomic admission only for the exact current `ACTIVE` session, configured per-session in-flight bounds, one supervisor per registry, exact identity-based operation tickets, exactly-one local terminal release, explicit failure/cancellation/timeout classifications, stale-success publication rejection, reentrant publication barriers and bounded active-operation state with no hidden retry/replay history.
+PR #69 exact head `f083deaa9e5a9352a06cdedf1629bfaa3108e3bd`; exact-head run `33442898637` / #455 Core + Android GREEN; focused audit CLEAN; merge `7a3794bab338d90813a0a82067ad65db4ae52982`; merge/main run `33443333795` / #456 GREEN.
+
+### Slice 4 — Failure containment, replacement and recovery readiness — COMPLETE
+
+Implemented explicit quiescing, drain-before-retire, exact structural failure containment, stale-worker publication protection, deterministic replacement/retirement concurrency contracts, fail-closed retirement cleanup, explicit recovery cleanup and fresh-generation-only replacement.
 
 Verified implementation evidence:
 
-- PR #69 exact head `f083deaa9e5a9352a06cdedf1629bfaa3108e3bd`;
-- exact-head Core CI run `33442898637` / #455 — Core + Android GREEN;
-- focused final architecture/security/privacy/logging/readiness audit — CLEAN;
-- merge `7a3794bab338d90813a0a82067ad65db4ae52982`;
-- merge/main Core CI run `33443333795` / #456 — Core + Android GREEN.
+- PR #71 exact head `459be1834156a5d4cc1220d6a611c918c4c11f26`;
+- push exact-head Core CI `33447325465` / #478 — Core + Android GREEN;
+- PR exact-head Core CI `33447713754` / #479 — Core + Android GREEN;
+- focused architecture/security/privacy/logging-diagnostics/readiness audit of the exact seven-file changed set — CLEAN;
+- merge `c09b37d14f4cbd367bba9165ccb09dc4fd37116f`;
+- merge/main Core CI `33448183290` / #480 — Core + Android GREEN.
 
-### Slice 4 — Failure containment, replacement and recovery readiness — NEXT
+### Slice 5 — Platform/runtime integration evidence if required — NEXT
 
-Add quiescence/replacement/retirement contracts, failure classification, recovery-as-new-attempt semantics, concurrency and privacy/readiness tests.
-
-Slice 4 must explicitly define whether in-flight work is awaited for local cleanup or explicitly cancelled during replacement; this policy must not emerge accidentally from lock scheduling.
-
-### Slice 5 — Platform/runtime integration evidence if required
-
-Add only the Android/process integration actually required by the Core contract, with real instrumentation for each claimed platform property. If no platform-specific behavior is required, this slice becomes an explicit no-op evidence checkpoint rather than inventing Android coupling.
+Determine whether any remaining Runtime Hardening v0.1 guarantee genuinely depends on Android/process-specific behavior. Add only the required platform surface plus real instrumentation, or record an explicit no-op evidence checkpoint if Core already expresses all claimed semantics.
 
 ### Slice 6 — Formal freeze checkpoint
 
-Record exact-head/merge-main evidence, focused audits, explicit limitations and freeze the phase before License service/offline-lease issuance + refresh begins.
+Record exact-head/merge-main evidence, focused audits, explicit limitations and freeze Runtime Hardening v0.1 before License service/offline-lease issuance + refresh begins.
 
 ## Gate
 
-The Runtime Hardening architecture gate and Slices 1–3 are complete. Each completed slice passed exact-head Core + Android CI, focused audit, expected-head merge and merge/main required CI before the next implementation slice was allowed.
+Architecture gate and Slices 1–4 are complete. Each completed implementation slice passed exact-head required CI, focused audit, expected-head merge and merge/main required CI before progression.
 
-Every remaining implementation slice remains subject to the same discipline:
+Every remaining slice remains subject to:
 
 `feature branch → minimal coherent commits → PR → exact-head Core/required platform CI GREEN → focused architecture/security/privacy/logging-diagnostics/readiness audit → merge with verified expected head → merge/main CI GREEN → journal/freeze checkpoint`
 
-Runtime Hardening v0.1 becomes formally **FROZEN** only after all required implementation slices and the final freeze checkpoint satisfy that discipline.
+Runtime Hardening v0.1 becomes formally **FROZEN** only after Slice 5 and Slice 6 satisfy that discipline.
