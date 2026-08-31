@@ -55,20 +55,48 @@ class AndroidProtectedModelKeyProtector(context: Context) : ProtectedModelKeyPro
             val reference = ProtectedModelKeyProtectorReference(request.id, request.generation, platform)
             when (val inspected = inspect(reference)) {
                 is ProtectedModelKeyProtectorResult.Success -> {
-                    if (meets(request.requestedSecurityLevel, inspected.value.securityLevel)) inspected
-                    else {
-                        cleanup(alias, metadataKey)
-                        ProtectedModelKeyProtectorResult.Rejected(ProtectedModelKeyProtectorFailure.REQUIRED_SECURITY_LEVEL_UNAVAILABLE)
+                    if (meets(request.requestedSecurityLevel, inspected.value.securityLevel)) {
+                        inspected
+                    } else if (cleanup(alias, metadataKey)) {
+                        ProtectedModelKeyProtectorResult.Rejected(
+                            ProtectedModelKeyProtectorFailure.REQUIRED_SECURITY_LEVEL_UNAVAILABLE
+                        )
+                    } else {
+                        ProtectedModelKeyProtectorResult.Rejected(
+                            ProtectedModelKeyProtectorFailure.CLEANUP_FAILED
+                        )
                     }
                 }
-                is ProtectedModelKeyProtectorResult.Rejected -> inspected
-                is ProtectedModelKeyProtectorResult.Failed -> inspected
+                is ProtectedModelKeyProtectorResult.Rejected -> {
+                    if (cleanup(alias, metadataKey)) inspected
+                    else ProtectedModelKeyProtectorResult.Rejected(
+                        ProtectedModelKeyProtectorFailure.CLEANUP_FAILED
+                    )
+                }
+                is ProtectedModelKeyProtectorResult.Failed -> {
+                    if (cleanup(alias, metadataKey)) inspected
+                    else ProtectedModelKeyProtectorResult.Rejected(
+                        ProtectedModelKeyProtectorFailure.CLEANUP_FAILED
+                    )
+                }
             }
         } catch (_: StrongBoxUnavailableException) {
-            ProtectedModelKeyProtectorResult.Rejected(ProtectedModelKeyProtectorFailure.REQUIRED_SECURITY_LEVEL_UNAVAILABLE)
+            if (generated && !cleanup(alias, metadataKey)) {
+                ProtectedModelKeyProtectorResult.Rejected(ProtectedModelKeyProtectorFailure.CLEANUP_FAILED)
+            } else {
+                ProtectedModelKeyProtectorResult.Rejected(
+                    ProtectedModelKeyProtectorFailure.REQUIRED_SECURITY_LEVEL_UNAVAILABLE
+                )
+            }
         } catch (throwable: Throwable) {
-            if (generated) cleanup(alias, metadataKey)
-            ProtectedModelKeyProtectorResult.Failed(ProtectedModelKeyProtectorFailure.PROVIDER_FAILED, throwable)
+            if (generated && !cleanup(alias, metadataKey)) {
+                ProtectedModelKeyProtectorResult.Rejected(ProtectedModelKeyProtectorFailure.CLEANUP_FAILED)
+            } else {
+                ProtectedModelKeyProtectorResult.Failed(
+                    ProtectedModelKeyProtectorFailure.PROVIDER_FAILED,
+                    throwable
+                )
+            }
         }
     }
 
@@ -120,6 +148,8 @@ class AndroidProtectedModelKeyProtector(context: Context) : ProtectedModelKeyPro
             } finally {
                 output.fill(0); nonce.fill(0)
             }
+        } catch (_: KeyPermanentlyInvalidatedException) {
+            ProtectedModelKeyProtectorResult.Rejected(ProtectedModelKeyProtectorFailure.PROTECTOR_INVALIDATED)
         } catch (throwable: Throwable) {
             ProtectedModelKeyProtectorResult.Failed(ProtectedModelKeyProtectorFailure.WRAP_FAILED, throwable)
         }
