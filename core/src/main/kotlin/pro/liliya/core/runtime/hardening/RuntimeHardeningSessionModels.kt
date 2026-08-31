@@ -79,6 +79,17 @@ sealed interface RuntimeSessionPublicationResult {
     }
 }
 
+internal sealed interface RuntimeActiveSessionGuardResult<out T> {
+    data class Available<T>(val value: T) : RuntimeActiveSessionGuardResult<T>
+    data object Unavailable : RuntimeActiveSessionGuardResult<Nothing>
+}
+
+internal sealed interface RuntimeOperationPublicationResult {
+    data object Published : RuntimeOperationPublicationResult
+    data object Stale : RuntimeOperationPublicationResult
+    data class Failed(val throwable: Throwable) : RuntimeOperationPublicationResult
+}
+
 interface RuntimeModelSessionOwnership {
     val reference: RuntimeModelSessionReference
     fun isCurrent(): Boolean
@@ -106,6 +117,7 @@ class RuntimeModelSessionRegistry internal constructor(
     private val lock = Any()
     private val nextGeneration = AtomicLong(initialGeneration)
     private var current: Entry? = null
+    private var operationSupervisorClaimed = false
 
     fun register(
         id: RuntimeModelSessionId,
@@ -148,6 +160,54 @@ class RuntimeModelSessionRegistry internal constructor(
 
     fun snapshot(): List<RuntimeModelSessionReference> = synchronized(lock) {
         listOfNotNull(current?.reference)
+    }
+
+    internal fun claimOperationSupervisor(): Boolean = synchronized(lock) {
+        if (operationSupervisorClaimed) {
+            false
+        } else {
+            operationSupervisorClaimed = true
+            true
+        }
+    }
+
+    internal fun <T> withCurrentActiveSession(
+        block: (RuntimeModelSessionReference) -> T
+    ): RuntimeActiveSessionGuardResult<T> = synchronized(lock) {
+        val entry = current
+        if (
+            entry == null ||
+            entry.lifecycle != RuntimeModelSessionLifecycle.ACTIVE ||
+            entry.publicationInProgress
+        ) {
+            RuntimeActiveSessionGuardResult.Unavailable
+        } else {
+            RuntimeActiveSessionGuardResult.Available(block(entry.reference))
+        }
+    }
+
+    internal fun publishOperationIfCurrent(
+        reference: RuntimeModelSessionReference,
+        publish: () -> Unit
+    ): RuntimeOperationPublicationResult = synchronized(lock) {
+        val entry = current
+        if (entry == null || entry.reference != reference || entry.lifecycle != RuntimeModelSessionLifecycle.ACTIVE) {
+            return@synchronized RuntimeOperationPublicationResult.Stale
+        }
+        check(!entry.publicationInProgress) { "nested runtime session publication is not allowed" }
+        entry.publicationInProgress = true
+        try {
+            publish()
+            if (current !== entry || entry.lifecycle != RuntimeModelSessionLifecycle.ACTIVE) {
+                RuntimeOperationPublicationResult.Stale
+            } else {
+                RuntimeOperationPublicationResult.Published
+            }
+        } catch (throwable: Throwable) {
+            RuntimeOperationPublicationResult.Failed(throwable)
+        } finally {
+            entry.publicationInProgress = false
+        }
     }
 
     private fun ownership(entry: Entry): RuntimeModelSessionOwnership =
