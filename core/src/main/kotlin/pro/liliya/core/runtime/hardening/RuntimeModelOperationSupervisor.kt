@@ -55,7 +55,6 @@ class RuntimeModelOperationSupervisor internal constructor(
     private val lock = Any()
     private val nextSequence = AtomicLong(initialSequence)
     private val activeOperations = linkedMapOf<Long, ActiveOperation>()
-    private val releasedSequences = mutableSetOf<Long>()
 
     fun admit(): RuntimeOperationAdmissionResult =
         when (val guarded = registry.withCurrentActiveSession { session ->
@@ -94,17 +93,12 @@ class RuntimeModelOperationSupervisor internal constructor(
     ): RuntimeOperationReleaseResult {
         val released = synchronized(lock) {
             val sequence = ticket.sequence.value
-            if (releasedSequences.contains(sequence)) {
-                return@synchronized false
-            }
-
             val active = activeOperations[sequence]
             if (active == null || active.ticket != ticket) {
                 return@synchronized false
             }
 
             activeOperations.remove(sequence)
-            releasedSequences += sequence
             true
         }
 
