@@ -90,6 +90,12 @@ internal sealed interface RuntimeOperationPublicationResult {
     data class Failed(val throwable: Throwable) : RuntimeOperationPublicationResult
 }
 
+internal sealed interface RuntimeSessionQuiescingTransitionResult {
+    data object Quiescing : RuntimeSessionQuiescingTransitionResult
+    data object AlreadyQuiescing : RuntimeSessionQuiescingTransitionResult
+    data object Stale : RuntimeSessionQuiescingTransitionResult
+}
+
 interface RuntimeModelSessionOwnership {
     val reference: RuntimeModelSessionReference
     fun isCurrent(): Boolean
@@ -184,6 +190,52 @@ class RuntimeModelSessionRegistry internal constructor(
         } else {
             RuntimeActiveSessionGuardResult.Available(block(entry.reference))
         }
+    }
+
+    internal fun beginQuiescingIfCurrent(
+        reference: RuntimeModelSessionReference
+    ): RuntimeSessionQuiescingTransitionResult = synchronized(lock) {
+        val entry = current
+        if (entry == null || entry.reference != reference) {
+            return@synchronized RuntimeSessionQuiescingTransitionResult.Stale
+        }
+        check(!entry.publicationInProgress) {
+            "runtime session quiescing is not allowed from inside publication"
+        }
+        when (entry.lifecycle) {
+            RuntimeModelSessionLifecycle.ACTIVE -> {
+                entry.lifecycle = RuntimeModelSessionLifecycle.QUIESCING
+                RuntimeSessionQuiescingTransitionResult.Quiescing
+            }
+            RuntimeModelSessionLifecycle.QUIESCING ->
+                RuntimeSessionQuiescingTransitionResult.AlreadyQuiescing
+            else -> RuntimeSessionQuiescingTransitionResult.Stale
+        }
+    }
+
+    internal fun isCurrentQuiescing(reference: RuntimeModelSessionReference): Boolean = synchronized(lock) {
+        val entry = current
+        entry != null &&
+            entry.reference == reference &&
+            entry.lifecycle == RuntimeModelSessionLifecycle.QUIESCING &&
+            !entry.publicationInProgress
+    }
+
+    internal fun retireQuiescingIfCurrent(reference: RuntimeModelSessionReference): Boolean = synchronized(lock) {
+        val entry = current
+        if (
+            entry == null ||
+            entry.reference != reference ||
+            entry.lifecycle != RuntimeModelSessionLifecycle.QUIESCING
+        ) {
+            return@synchronized false
+        }
+        check(!entry.publicationInProgress) {
+            "runtime session retirement is not allowed from inside publication"
+        }
+        entry.lifecycle = RuntimeModelSessionLifecycle.RETIRED
+        current = null
+        true
     }
 
     internal fun publishOperationIfCurrent(
