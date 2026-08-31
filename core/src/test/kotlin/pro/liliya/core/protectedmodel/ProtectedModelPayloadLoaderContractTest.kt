@@ -91,6 +91,20 @@ class ProtectedModelPayloadLoaderContractTest {
     }
 
     @Test
+    fun non_aes256_dek_is_rejected_before_decryption() {
+        val fixture = fixture("model-bytes-v1".encodeToByteArray())
+        val aes128 = KeyGenerator.getInstance("AES").apply { init(128) }.generateKey()
+        val loader = loader(fixture) { _, _ -> aes128 }
+
+        val result = loader.open(fixture.envelope, fixture.ciphertext) { _, _ -> "unused" }
+
+        assertEquals(
+            ProtectedModelOpenFailure.MODEL_DEK_REJECTED,
+            assertIs<ProtectedModelOpenResult.Rejected>(result).reason
+        )
+    }
+
+    @Test
     fun plaintext_bound_is_enforced_before_key_resolution() {
         val fixture = fixture("model-bytes-v1".encodeToByteArray())
         var keyResolutionCalled = false
@@ -107,6 +121,35 @@ class ProtectedModelPayloadLoaderContractTest {
 
         assertEquals(
             ProtectedModelOpenFailure.PLAINTEXT_SIZE_OUT_OF_BOUNDS,
+            assertIs<ProtectedModelOpenResult.Rejected>(result).reason
+        )
+        assertFalse(keyResolutionCalled)
+    }
+
+    @Test
+    fun ciphertext_bound_is_enforced_before_verification_or_key_resolution() {
+        val fixture = fixture("model-bytes-v1".encodeToByteArray())
+        val oversizedManifest = fixture.manifest.copy(
+            plaintextSizeBytes = fixture.manifest.plaintextSizeBytes,
+            ciphertextSizeBytes = fixture.manifest.ciphertextSizeBytes + 1L
+        )
+        val oversizedEnvelope = ProtectedModelPackageEnvelope(
+            manifest = oversizedManifest,
+            payloadDigest = fixture.envelope.copyPayloadDigest(),
+            nonce = fixture.envelope.copyNonce(),
+            authenticationTag = fixture.envelope.copyAuthenticationTag(),
+            signature = fixture.envelope.copySignature()
+        )
+        var keyResolutionCalled = false
+        val loader = loader(fixture) { _, _ ->
+            keyResolutionCalled = true
+            fixture.modelKey
+        }
+
+        val result = loader.open(oversizedEnvelope, fixture.ciphertext) { _, _ -> "unused" }
+
+        assertEquals(
+            ProtectedModelOpenFailure.CIPHERTEXT_SIZE_OUT_OF_BOUNDS,
             assertIs<ProtectedModelOpenResult.Rejected>(result).reason
         )
         assertFalse(keyResolutionCalled)
