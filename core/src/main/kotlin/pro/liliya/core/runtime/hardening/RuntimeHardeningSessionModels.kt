@@ -159,7 +159,7 @@ class RuntimeModelSessionRegistry internal constructor(
             }
 
             override fun lifecycle(): RuntimeModelSessionLifecycle = synchronized(lock) {
-                if (current !== entry) RuntimeModelSessionLifecycle.RETIRED else entry.lifecycle
+                entry.lifecycle
             }
 
             override fun publishIfCurrent(publish: () -> Unit): RuntimeSessionPublicationResult = synchronized(lock) {
