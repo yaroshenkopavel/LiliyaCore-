@@ -70,10 +70,10 @@ class RuntimeModelOperationSupervisorContractTest {
         val supervisor = supervisor(registry, maxInFlight = 1)
         val ticket = assertIs<RuntimeOperationAdmissionResult.Admitted>(supervisor.admit()).ticket
 
-        assertSame(
-            RuntimeOperationReleaseResult.Released,
+        val failed = assertIs<RuntimeOperationReleaseResult.Terminated>(
             supervisor.release(ticket, RuntimeOperationTerminal.FAILED)
         )
+        assertEquals(RuntimeHardeningFailure.OPERATION_FAILED, failed.reason)
         assertEquals(0, supervisor.inFlightCount())
         assertSame(
             RuntimeOperationReleaseResult.AlreadyReleased,
@@ -183,15 +183,15 @@ class RuntimeModelOperationSupervisorContractTest {
         val timedOut = assertIs<RuntimeOperationAdmissionResult.Admitted>(supervisor.admit()).ticket
         var publishCalls = 0
 
-        assertSame(
-            RuntimeOperationReleaseResult.Released,
+        val cancelledResult = assertIs<RuntimeOperationReleaseResult.Terminated>(
             supervisor.release(cancelled, RuntimeOperationTerminal.CANCELLED) { publishCalls += 1 }
         )
-        assertSame(
-            RuntimeOperationReleaseResult.Released,
+        val timedOutResult = assertIs<RuntimeOperationReleaseResult.Terminated>(
             supervisor.release(timedOut, RuntimeOperationTerminal.TIMED_OUT) { publishCalls += 1 }
         )
 
+        assertEquals(RuntimeHardeningFailure.OPERATION_CANCELLED, cancelledResult.reason)
+        assertEquals(RuntimeHardeningFailure.OPERATION_TIMEOUT, timedOutResult.reason)
         assertEquals(0, publishCalls)
         assertEquals(0, supervisor.inFlightCount())
     }
