@@ -85,8 +85,12 @@ class ProtectedModelRuntimeOwnership {
     private val lock = Any()
     private val nextEpoch = AtomicLong(0L)
     private var target: Target? = null
+    private var publicationInProgress = false
 
     fun replaceTarget(reference: ProtectedModelReference): ProtectedModelOpenTicket = synchronized(lock) {
+        check(!publicationInProgress) {
+            "protected model target replacement is not allowed from inside publication"
+        }
         val epoch = nextEpoch.incrementAndGet()
         check(epoch > 0L) { "protected model ownership epoch overflow" }
         target = Target(reference, epoch)
@@ -106,17 +110,26 @@ class ProtectedModelRuntimeOwnership {
     }
 
     /**
-     * Runs the final runtime publication while holding the same ownership barrier used by replacement
-     * and retirement. A competing replacement therefore cannot commit between the stale check and the
-     * publication callback.
+     * Runs final runtime publication behind the same ownership barrier used by replacement and retirement.
+     * Cross-thread mutations wait for publication to finish; same-thread reentrant mutations are rejected,
+     * so monitor reentrancy cannot turn a stale publication into a successful one.
      */
     fun publishIfCurrent(ticket: ProtectedModelOpenTicket, publish: () -> Unit): Boolean = synchronized(lock) {
         if (!matchesCurrent(ticket)) return@synchronized false
-        publish()
-        true
+        check(!publicationInProgress) { "nested protected model publication is not allowed" }
+        publicationInProgress = true
+        try {
+            publish()
+            true
+        } finally {
+            publicationInProgress = false
+        }
     }
 
     fun retire(expected: ProtectedModelReference): Boolean = synchronized(lock) {
+        check(!publicationInProgress) {
+            "protected model target retirement is not allowed from inside publication"
+        }
         if (target?.reference != expected) return@synchronized false
         target = null
         true
