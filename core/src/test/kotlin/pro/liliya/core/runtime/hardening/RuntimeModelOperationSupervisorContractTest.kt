@@ -153,6 +153,28 @@ class RuntimeModelOperationSupervisorContractTest {
     }
 
     @Test
+    fun same_thread_reentrant_admission_is_rejected_inside_operation_publication() {
+        val registry = RuntimeModelSessionRegistry()
+        val ownership = register(registry, "active", 1)
+        publish(ownership)
+        val supervisor = supervisor(registry, maxInFlight = 2)
+        val ticket = assertIs<RuntimeOperationAdmissionResult.Admitted>(supervisor.admit()).ticket
+        var nested: RuntimeOperationAdmissionResult? = null
+
+        assertSame(
+            RuntimeOperationReleaseResult.Published,
+            supervisor.release(ticket, RuntimeOperationTerminal.SUCCEEDED) {
+                nested = supervisor.admit()
+            }
+        )
+
+        val rejected = assertIs<RuntimeOperationAdmissionResult.Rejected>(nested)
+        assertEquals(RuntimeHardeningFailure.SESSION_UNAVAILABLE, rejected.reason)
+        assertEquals(0, supervisor.inFlightCount())
+        assertTrue(ownership.isCurrent())
+    }
+
+    @Test
     fun publication_failure_is_structural_and_does_not_render_secret_exception_message() {
         val registry = RuntimeModelSessionRegistry()
         val ownership = register(registry, "active", 1)
