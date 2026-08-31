@@ -71,9 +71,19 @@ enum class RuntimeSessionRegistrationFailure {
     GENERATION_OVERFLOW
 }
 
+sealed interface RuntimeSessionPublicationResult {
+    data object Published : RuntimeSessionPublicationResult
+    data object Stale : RuntimeSessionPublicationResult
+    data class Failed(val throwable: Throwable) : RuntimeSessionPublicationResult {
+        override fun toString(): String = "Failed(throwable=${throwable.javaClass.name})"
+    }
+}
+
 interface RuntimeModelSessionOwnership {
     val reference: RuntimeModelSessionReference
     fun isCurrent(): Boolean
+    fun lifecycle(): RuntimeModelSessionLifecycle
+    fun publishIfCurrent(publish: () -> Unit): RuntimeSessionPublicationResult
     fun retire(): Boolean
 }
 
@@ -87,7 +97,11 @@ interface RuntimeModelSessionOwnership {
 class RuntimeModelSessionRegistry internal constructor(
     initialGeneration: Long = 0L
 ) {
-    private data class Entry(val reference: RuntimeModelSessionReference)
+    private data class Entry(
+        val reference: RuntimeModelSessionReference,
+        var lifecycle: RuntimeModelSessionLifecycle = RuntimeModelSessionLifecycle.PREPARED,
+        var publicationInProgress: Boolean = false
+    )
 
     private val lock = Any()
     private val nextGeneration = AtomicLong(initialGeneration)
@@ -97,6 +111,9 @@ class RuntimeModelSessionRegistry internal constructor(
         id: RuntimeModelSessionId,
         model: ProtectedModelReference
     ): RuntimeSessionRegistrationResult = synchronized(lock) {
+        check(current?.publicationInProgress != true) {
+            "runtime session registration is not allowed from inside publication"
+        }
         if (current != null) {
             return@synchronized RuntimeSessionRegistrationResult.Rejected(
                 RuntimeSessionRegistrationFailure.LIVE_SESSION_EXISTS
@@ -125,6 +142,10 @@ class RuntimeModelSessionRegistry internal constructor(
         current?.reference
     }
 
+    fun currentLifecycle(): RuntimeModelSessionLifecycle? = synchronized(lock) {
+        current?.lifecycle
+    }
+
     fun snapshot(): List<RuntimeModelSessionReference> = synchronized(lock) {
         listOfNotNull(current?.reference)
     }
@@ -137,8 +158,40 @@ class RuntimeModelSessionRegistry internal constructor(
                 current === entry
             }
 
+            override fun lifecycle(): RuntimeModelSessionLifecycle = synchronized(lock) {
+                if (current !== entry) RuntimeModelSessionLifecycle.RETIRED else entry.lifecycle
+            }
+
+            override fun publishIfCurrent(publish: () -> Unit): RuntimeSessionPublicationResult = synchronized(lock) {
+                if (current !== entry || entry.lifecycle != RuntimeModelSessionLifecycle.PREPARED) {
+                    return@synchronized RuntimeSessionPublicationResult.Stale
+                }
+                check(!entry.publicationInProgress) { "nested runtime session publication is not allowed" }
+                entry.publicationInProgress = true
+                try {
+                    publish()
+                    if (current !== entry) {
+                        return@synchronized RuntimeSessionPublicationResult.Stale
+                    }
+                    entry.lifecycle = RuntimeModelSessionLifecycle.ACTIVE
+                    RuntimeSessionPublicationResult.Published
+                } catch (throwable: Throwable) {
+                    if (current === entry) {
+                        entry.lifecycle = RuntimeModelSessionLifecycle.FAILED
+                        current = null
+                    }
+                    RuntimeSessionPublicationResult.Failed(throwable)
+                } finally {
+                    entry.publicationInProgress = false
+                }
+            }
+
             override fun retire(): Boolean = synchronized(lock) {
+                check(!entry.publicationInProgress) {
+                    "runtime session retirement is not allowed from inside publication"
+                }
                 if (current !== entry) return@synchronized false
+                entry.lifecycle = RuntimeModelSessionLifecycle.RETIRED
                 current = null
                 true
             }
