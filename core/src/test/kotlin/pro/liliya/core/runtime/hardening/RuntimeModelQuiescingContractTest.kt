@@ -2,6 +2,7 @@ package pro.liliya.core.runtime.hardening
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
@@ -25,6 +26,30 @@ class RuntimeModelQuiescingContractTest {
         val rejected = assertIs<RuntimeOperationAdmissionResult.Rejected>(supervisor.admit())
         assertEquals(RuntimeHardeningFailure.SESSION_UNAVAILABLE, rejected.reason)
         assertTrue(ownership.isCurrent())
+    }
+
+    @Test
+    fun direct_retirement_cannot_bypass_supervised_quiescing_policy() {
+        val registry = RuntimeModelSessionRegistry()
+        val ownership = activeSession(registry, "session", 1)
+        val supervisor = supervisor(registry)
+
+        assertFalse(ownership.retire())
+        assertTrue(ownership.isCurrent())
+        assertEquals(RuntimeModelSessionLifecycle.ACTIVE, ownership.lifecycle())
+
+        assertSame(
+            RuntimeSessionQuiescenceResult.Quiescing,
+            supervisor.beginQuiescing(ownership.reference)
+        )
+        assertFalse(ownership.retire())
+        assertTrue(ownership.isCurrent())
+        assertEquals(RuntimeModelSessionLifecycle.QUIESCING, ownership.lifecycle())
+
+        assertSame(
+            RuntimeSessionDrainRetirementResult.Retired,
+            supervisor.retireIfDrained(ownership.reference)
+        )
     }
 
     @Test
@@ -58,7 +83,7 @@ class RuntimeModelQuiescingContractTest {
             supervisor.retireIfDrained(ownership.reference)
         )
         assertEquals(RuntimeModelSessionLifecycle.RETIRED, ownership.lifecycle())
-        assertTrue(!ownership.isCurrent())
+        assertFalse(ownership.isCurrent())
     }
 
     @Test
