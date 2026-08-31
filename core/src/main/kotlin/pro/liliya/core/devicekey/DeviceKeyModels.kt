@@ -40,8 +40,7 @@ enum class DeviceKeySecurityLevel {
 }
 
 enum class DeviceKeyCapability {
-    SIGN_CHALLENGE,
-    UNWRAP_WRAPPED_KEY
+    SIGN_CHALLENGE
 }
 
 /**

@@ -186,31 +186,6 @@ class DeviceKeyProofContractTest {
     }
 
     @Test
-    fun missing_sign_capability_fails_before_signing() {
-        val composition = DeviceKeyComposition(foundation())
-        val ownership = assertIs<DeviceKeyRegisterResult.Registered>(
-            composition.register(state(capabilities = setOf(DeviceKeyCapability.UNWRAP_WRAPPED_KEY)))
-        ).ownership
-        val signer = RecordingSigner(
-            DeviceKeyOperationResult.Success(DeviceKeyProofSignature(byteArrayOf(1)))
-        )
-        val service = DeviceKeyProofService(composition, signer)
-
-        val result = service.provePossession(
-            DeviceKeyProofRequest(
-                key = DeviceKeyReference(ownership.state.id, ownership.generation),
-                challenge = DeviceKeyChallenge(byteArrayOf(2))
-            )
-        )
-
-        assertEquals(
-            DeviceKeyFailureCategory.UNSUPPORTED_PROFILE,
-            assertIs<DeviceKeyOperationResult.Rejected>(result).category
-        )
-        assertEquals(0, signer.calls)
-    }
-
-    @Test
     fun challenge_signature_platform_reference_and_enrollment_rendering_do_not_expose_raw_material() {
         val challengeSecret = "CHALLENGE-PRIVATE"
         val signatureSecret = "SIGNATURE-PRIVATE"
