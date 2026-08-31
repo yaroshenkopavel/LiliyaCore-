@@ -39,6 +39,18 @@ sealed interface RuntimeOperationReleaseResult {
     }
 }
 
+sealed interface RuntimeSessionQuiescenceResult {
+    data object Quiescing : RuntimeSessionQuiescenceResult
+    data object AlreadyQuiescing : RuntimeSessionQuiescenceResult
+    data object Stale : RuntimeSessionQuiescenceResult
+}
+
+sealed interface RuntimeSessionDrainRetirementResult {
+    data object Retired : RuntimeSessionDrainRetirementResult
+    data class DrainRequired(val inFlightOperations: Int) : RuntimeSessionDrainRetirementResult
+    data object Stale : RuntimeSessionDrainRetirementResult
+}
+
 /**
  * Process-local operation supervision for one Runtime Hardening v0.1 composition.
  *
@@ -49,6 +61,10 @@ sealed interface RuntimeOperationReleaseResult {
  * Terminal release is local and exactly-once. A successful stale operation may finish its local
  * cleanup but cannot publish state into a replacement session. Cancellation and timeout are explicit
  * caller-selected terminal outcomes; this supervisor has no hidden clock, retry or replay policy.
+ *
+ * Slice 4 quiescing uses an explicit drain-before-retire policy. Entering QUIESCING atomically closes
+ * new admission. Retirement never waits or cancels work implicitly: it returns DrainRequired until
+ * all exact in-flight operations for that session have released locally.
  *
  * Operation tickets use instance identity for terminal ownership. Reconstructing the same sequence
  * and session values does not grant release ownership.
@@ -104,6 +120,33 @@ class RuntimeModelOperationSupervisor internal constructor(
             RuntimeActiveSessionGuardResult.Unavailable ->
                 RuntimeOperationAdmissionResult.Rejected(RuntimeHardeningFailure.SESSION_UNAVAILABLE)
         }
+
+    fun beginQuiescing(session: RuntimeModelSessionReference): RuntimeSessionQuiescenceResult =
+        when (registry.beginQuiescingIfCurrent(session)) {
+            RuntimeSessionQuiescingTransitionResult.Quiescing -> RuntimeSessionQuiescenceResult.Quiescing
+            RuntimeSessionQuiescingTransitionResult.AlreadyQuiescing ->
+                RuntimeSessionQuiescenceResult.AlreadyQuiescing
+            RuntimeSessionQuiescingTransitionResult.Stale -> RuntimeSessionQuiescenceResult.Stale
+        }
+
+    fun retireIfDrained(session: RuntimeModelSessionReference): RuntimeSessionDrainRetirementResult {
+        if (!registry.isCurrentQuiescing(session)) {
+            return RuntimeSessionDrainRetirementResult.Stale
+        }
+
+        val inFlight = synchronized(lock) {
+            activeOperations.values.count { it.ticket.session == session }
+        }
+        if (inFlight > 0) {
+            return RuntimeSessionDrainRetirementResult.DrainRequired(inFlight)
+        }
+
+        return if (registry.retireQuiescingIfCurrent(session)) {
+            RuntimeSessionDrainRetirementResult.Retired
+        } else {
+            RuntimeSessionDrainRetirementResult.Stale
+        }
+    }
 
     fun release(
         ticket: RuntimeModelOperationTicket,
