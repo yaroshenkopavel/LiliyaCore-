@@ -51,6 +51,17 @@ sealed interface RuntimeSessionDrainRetirementResult {
     data object Stale : RuntimeSessionDrainRetirementResult
 }
 
+sealed interface RuntimeSessionFailureResult {
+    data class Failed(val reason: RuntimeHardeningFailure) : RuntimeSessionFailureResult
+    data class AlreadyFailed(val reason: RuntimeHardeningFailure) : RuntimeSessionFailureResult
+    data object Stale : RuntimeSessionFailureResult
+}
+
+sealed interface RuntimeFailedSessionRetirementResult {
+    data object Retired : RuntimeFailedSessionRetirementResult
+    data object Stale : RuntimeFailedSessionRetirementResult
+}
+
 /**
  * Process-local operation supervision for one Runtime Hardening v0.1 composition.
  *
@@ -62,9 +73,14 @@ sealed interface RuntimeSessionDrainRetirementResult {
  * cleanup but cannot publish state into a replacement session. Cancellation and timeout are explicit
  * caller-selected terminal outcomes; this supervisor has no hidden clock, retry or replay policy.
  *
- * Slice 4 quiescing uses an explicit drain-before-retire policy. Entering QUIESCING atomically closes
- * new admission. Retirement never waits or cancels work implicitly: it returns DrainRequired until
- * all exact in-flight operations for that session have released locally.
+ * Slice 4 normal replacement uses an explicit drain-before-retire policy. Entering QUIESCING atomically
+ * closes new admission. Retirement never waits or cancels work implicitly: it returns DrainRequired
+ * until all exact in-flight operations for that session have released locally.
+ *
+ * Session/provider failure uses explicit fail-closed invalidation instead. Marking an exact session
+ * FAILED closes admission immediately. retireFailed() removes only that exact current failed session
+ * and does not cancel or delete outstanding local tickets; those tickets may release later but cannot
+ * publish into a replacement session.
  *
  * Operation tickets use instance identity for terminal ownership. Reconstructing the same sequence
  * and session values does not grant release ownership.
@@ -147,6 +163,25 @@ class RuntimeModelOperationSupervisor internal constructor(
             RuntimeSessionDrainRetirementResult.Stale
         }
     }
+
+    fun failSession(
+        session: RuntimeModelSessionReference,
+        reason: RuntimeHardeningFailure
+    ): RuntimeSessionFailureResult =
+        when (val transition = registry.failIfCurrent(session, reason)) {
+            is RuntimeSessionFailureTransitionResult.Failed ->
+                RuntimeSessionFailureResult.Failed(transition.reason)
+            is RuntimeSessionFailureTransitionResult.AlreadyFailed ->
+                RuntimeSessionFailureResult.AlreadyFailed(transition.reason)
+            RuntimeSessionFailureTransitionResult.Stale -> RuntimeSessionFailureResult.Stale
+        }
+
+    fun retireFailed(session: RuntimeModelSessionReference): RuntimeFailedSessionRetirementResult =
+        if (registry.retireFailedIfCurrent(session)) {
+            RuntimeFailedSessionRetirementResult.Retired
+        } else {
+            RuntimeFailedSessionRetirementResult.Stale
+        }
 
     fun release(
         ticket: RuntimeModelOperationTicket,
