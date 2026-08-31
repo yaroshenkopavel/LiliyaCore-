@@ -109,28 +109,35 @@ class RuntimeModelOperationSupervisorContractTest {
     }
 
     @Test
-    fun stale_success_releases_locally_but_cannot_publish_into_replacement_session() {
+    fun quiescing_success_releases_locally_then_replacement_gets_fresh_capacity() {
         val registry = RuntimeModelSessionRegistry()
         val first = register(registry, "same-label", 1)
         publish(first)
         val supervisor = supervisor(registry, maxInFlight = 1)
         val staleTicket = assertIs<RuntimeOperationAdmissionResult.Admitted>(supervisor.admit()).ticket
-
-        assertTrue(first.retire())
-        val replacement = register(registry, "same-label", 2)
-        publish(replacement)
         var stalePublicationCalls = 0
 
+        assertSame(
+            RuntimeSessionQuiescenceResult.Quiescing,
+            supervisor.beginQuiescing(first.reference)
+        )
         assertSame(
             RuntimeOperationReleaseResult.Stale,
             supervisor.release(staleTicket, RuntimeOperationTerminal.SUCCEEDED) {
                 stalePublicationCalls += 1
             }
         )
-
         assertEquals(0, stalePublicationCalls)
         assertEquals(0, supervisor.inFlightCount())
+        assertSame(
+            RuntimeSessionDrainRetirementResult.Retired,
+            supervisor.retireIfDrained(first.reference)
+        )
+
+        val replacement = register(registry, "same-label", 2)
+        publish(replacement)
         val replacementTicket = assertIs<RuntimeOperationAdmissionResult.Admitted>(supervisor.admit()).ticket
+
         assertEquals(replacement.reference, replacementTicket.session)
         assertTrue(replacement.reference.generation.value > staleTicket.session.generation.value)
     }
@@ -153,7 +160,15 @@ class RuntimeModelOperationSupervisorContractTest {
 
         assertTrue(published)
         assertTrue(ownership.isCurrent())
-        assertTrue(ownership.retire())
+        assertSame(
+            RuntimeSessionQuiescenceResult.Quiescing,
+            supervisor.beginQuiescing(ownership.reference)
+        )
+        assertSame(
+            RuntimeSessionDrainRetirementResult.Retired,
+            supervisor.retireIfDrained(ownership.reference)
+        )
+        assertFalse(ownership.isCurrent())
     }
 
     @Test

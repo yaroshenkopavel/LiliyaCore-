@@ -39,6 +39,48 @@ sealed interface RuntimeOperationReleaseResult {
     }
 }
 
+sealed interface RuntimeSessionQuiescenceResult {
+    data object Quiescing : RuntimeSessionQuiescenceResult
+    data object AlreadyQuiescing : RuntimeSessionQuiescenceResult
+    data object Stale : RuntimeSessionQuiescenceResult
+}
+
+sealed interface RuntimeSessionDrainRetirementResult {
+    data object Retired : RuntimeSessionDrainRetirementResult
+    data class DrainRequired(val inFlightOperations: Int) : RuntimeSessionDrainRetirementResult
+    data object Stale : RuntimeSessionDrainRetirementResult
+    data class Failed(
+        val reason: RuntimeHardeningFailure,
+        val throwable: Throwable
+    ) : RuntimeSessionDrainRetirementResult {
+        override fun toString(): String =
+            "Failed(reason=$reason, throwable=${throwable.javaClass.name})"
+    }
+}
+
+sealed interface RuntimeSessionFailureResult {
+    data class Failed(val reason: RuntimeHardeningFailure) : RuntimeSessionFailureResult
+    data class AlreadyFailed(val reason: RuntimeHardeningFailure) : RuntimeSessionFailureResult
+    data object Stale : RuntimeSessionFailureResult
+}
+
+sealed interface RuntimeFailedSessionRetirementResult {
+    data object Retired : RuntimeFailedSessionRetirementResult
+    data object Stale : RuntimeFailedSessionRetirementResult
+}
+
+sealed interface RuntimeRetirementRecoveryResult {
+    data object Retired : RuntimeRetirementRecoveryResult
+    data object Stale : RuntimeRetirementRecoveryResult
+    data class Failed(
+        val reason: RuntimeHardeningFailure,
+        val throwable: Throwable
+    ) : RuntimeRetirementRecoveryResult {
+        override fun toString(): String =
+            "Failed(reason=$reason, throwable=${throwable.javaClass.name})"
+    }
+}
+
 /**
  * Process-local operation supervision for one Runtime Hardening v0.1 composition.
  *
@@ -49,6 +91,21 @@ sealed interface RuntimeOperationReleaseResult {
  * Terminal release is local and exactly-once. A successful stale operation may finish its local
  * cleanup but cannot publish state into a replacement session. Cancellation and timeout are explicit
  * caller-selected terminal outcomes; this supervisor has no hidden clock, retry or replay policy.
+ *
+ * Slice 4 normal replacement uses an explicit drain-before-retire policy. Entering QUIESCING atomically
+ * closes new admission. Retirement never waits or cancels work implicitly: it returns DrainRequired
+ * until all exact in-flight operations for that session have released locally. Exact retirement
+ * cleanup runs once behind the registry transition barrier; cleanup failure becomes RETIREMENT_FAILED
+ * and is never retried implicitly.
+ *
+ * RETIREMENT_FAILED remains fail-closed: ordinary failed-session retirement cannot discard uncertain
+ * cleanup state. Recovery requires an explicit cleanup attempt through recoverRetirementFailure(); only
+ * a successful exact recovery cleanup permits retirement and a later fresh activation generation.
+ *
+ * Session/provider failure uses explicit fail-closed invalidation instead. Marking an exact session
+ * FAILED closes admission immediately. retireFailed() removes only an exact current SESSION_FAILED or
+ * PROVIDER_FAILED session and does not cancel or delete outstanding local tickets; those tickets may
+ * release later but cannot publish into a replacement session.
  *
  * Operation tickets use instance identity for terminal ownership. Reconstructing the same sequence
  * and session values does not grant release ownership.
@@ -103,6 +160,71 @@ class RuntimeModelOperationSupervisor internal constructor(
             is RuntimeActiveSessionGuardResult.Available -> guarded.value
             RuntimeActiveSessionGuardResult.Unavailable ->
                 RuntimeOperationAdmissionResult.Rejected(RuntimeHardeningFailure.SESSION_UNAVAILABLE)
+        }
+
+    fun beginQuiescing(session: RuntimeModelSessionReference): RuntimeSessionQuiescenceResult =
+        when (registry.beginQuiescingIfCurrent(session)) {
+            RuntimeSessionQuiescingTransitionResult.Quiescing -> RuntimeSessionQuiescenceResult.Quiescing
+            RuntimeSessionQuiescingTransitionResult.AlreadyQuiescing ->
+                RuntimeSessionQuiescenceResult.AlreadyQuiescing
+            RuntimeSessionQuiescingTransitionResult.Stale -> RuntimeSessionQuiescenceResult.Stale
+        }
+
+    fun retireIfDrained(
+        session: RuntimeModelSessionReference,
+        retire: () -> Unit = {}
+    ): RuntimeSessionDrainRetirementResult {
+        if (!registry.isCurrentQuiescing(session)) {
+            return RuntimeSessionDrainRetirementResult.Stale
+        }
+
+        val inFlight = synchronized(lock) {
+            activeOperations.values.count { it.ticket.session == session }
+        }
+        if (inFlight > 0) {
+            return RuntimeSessionDrainRetirementResult.DrainRequired(inFlight)
+        }
+
+        return when (val transition = registry.retireQuiescingIfCurrent(session, retire)) {
+            RuntimeSessionRetirementTransitionResult.Retired -> RuntimeSessionDrainRetirementResult.Retired
+            RuntimeSessionRetirementTransitionResult.Stale -> RuntimeSessionDrainRetirementResult.Stale
+            is RuntimeSessionRetirementTransitionResult.Failed -> RuntimeSessionDrainRetirementResult.Failed(
+                reason = RuntimeHardeningFailure.RETIREMENT_FAILED,
+                throwable = transition.throwable
+            )
+        }
+    }
+
+    fun failSession(
+        session: RuntimeModelSessionReference,
+        reason: RuntimeHardeningFailure
+    ): RuntimeSessionFailureResult =
+        when (val transition = registry.failIfCurrent(session, reason)) {
+            is RuntimeSessionFailureTransitionResult.Failed ->
+                RuntimeSessionFailureResult.Failed(transition.reason)
+            is RuntimeSessionFailureTransitionResult.AlreadyFailed ->
+                RuntimeSessionFailureResult.AlreadyFailed(transition.reason)
+            RuntimeSessionFailureTransitionResult.Stale -> RuntimeSessionFailureResult.Stale
+        }
+
+    fun retireFailed(session: RuntimeModelSessionReference): RuntimeFailedSessionRetirementResult =
+        if (registry.retireFailedIfCurrent(session)) {
+            RuntimeFailedSessionRetirementResult.Retired
+        } else {
+            RuntimeFailedSessionRetirementResult.Stale
+        }
+
+    fun recoverRetirementFailure(
+        session: RuntimeModelSessionReference,
+        recoverCleanup: () -> Unit
+    ): RuntimeRetirementRecoveryResult =
+        when (val transition = registry.recoverRetirementFailureIfCurrent(session, recoverCleanup)) {
+            RuntimeSessionRetirementTransitionResult.Retired -> RuntimeRetirementRecoveryResult.Retired
+            RuntimeSessionRetirementTransitionResult.Stale -> RuntimeRetirementRecoveryResult.Stale
+            is RuntimeSessionRetirementTransitionResult.Failed -> RuntimeRetirementRecoveryResult.Failed(
+                reason = RuntimeHardeningFailure.RECOVERY_REJECTED,
+                throwable = transition.throwable
+            )
         }
 
     fun release(
