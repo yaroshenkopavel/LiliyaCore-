@@ -27,9 +27,21 @@ class CognitiveGenerationFailureContractTest {
         val composition: CognitiveRuntimeComposition
     )
 
+    private fun candidate(): CognitiveMaterializationCandidate = CognitiveMaterializationCandidate(
+        planningGoal = "private goal",
+        planningSteps = listOf("private step"),
+        reasoningPremises = listOf("private premise"),
+        reasoningAnalysis = "private analysis",
+        reasoningConclusion = "private conclusion",
+        decisionOptions = listOf("private option"),
+        selectedDecisionOptionIndex = 0,
+        decisionRationale = "private rationale"
+    )
+
     private fun fixture(
         inference: CognitiveInferencePort,
-        materializer: CognitiveMaterializationPort
+        materializer: CognitiveMaterializationPort,
+        artifactIds: CognitiveArtifactIdSource? = null
     ): Fixture {
         val logs = InMemoryLogWriter()
         val correlation = AtomicInteger(0)
@@ -42,6 +54,9 @@ class CognitiveGenerationFailureContractTest {
         val planning = PlanningComposition(foundation)
         val reasoning = ReasoningComposition(foundation)
         val decision = DecisionComposition(foundation)
+        val idSource = artifactIds ?: CognitiveArtifactIdSource { kind ->
+            "${kind.name.lowercase().replace('_', '-')}-${ids.incrementAndGet()}"
+        }
         val composition = CognitiveRuntimeComposition(
             foundation = foundation,
             memoryRetrieval = MemoryRetrievalPort { MemoryRetrievalResult(emptyList()) },
@@ -53,9 +68,7 @@ class CognitiveGenerationFailureContractTest {
             planning = planning,
             reasoning = reasoning,
             decision = decision,
-            artifactIds = CognitiveArtifactIdSource { kind ->
-                "${kind.name.lowercase().replace('_', '-')}-${ids.incrementAndGet()}"
-            },
+            artifactIds = idSource,
             timestamps = CognitiveTimestampSource { Instant.parse("2026-09-01T16:45:00Z") }
         )
         return Fixture(logs, planning, reasoning, decision, composition)
@@ -127,5 +140,31 @@ class CognitiveGenerationFailureContractTest {
             assertFalse(event.message.contains(exceptionSecret))
             assertFalse(event.metadata.values.any { it.contains(exceptionSecret) })
         }
+    }
+
+    @Test
+    fun duplicate_id_across_artifact_kinds_fails_before_any_domain_installation() {
+        val inference = CognitiveInferencePort { request ->
+            CognitiveInferenceResult.Succeeded(request.turn, "private inference")
+        }
+        val materializer = CognitiveMaterializationPort {
+            CognitiveMaterializationResult.Succeeded(candidate())
+        }
+        val f = fixture(
+            inference = inference,
+            materializer = materializer,
+            artifactIds = CognitiveArtifactIdSource { "duplicate-id" }
+        )
+        val turn = readyTurn(f.composition)
+
+        val result = assertIs<CognitiveGenerationResult.Rejected>(
+            f.composition.generateCognition(turn.reference)
+        )
+
+        assertEquals(CognitiveGenerationFailure.ARTIFACT_ID_OR_TIME_FAILED, result.reason)
+        assertTrue(f.planning.snapshot().isEmpty())
+        assertTrue(f.reasoning.snapshot().isEmpty())
+        assertTrue(f.decision.snapshot().isEmpty())
+        assertEquals(CognitiveTurnLifecycle.FAILED, turn.lifecycle())
     }
 }
