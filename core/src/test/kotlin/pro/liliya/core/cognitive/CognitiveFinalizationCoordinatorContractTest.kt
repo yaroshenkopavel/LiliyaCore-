@@ -138,6 +138,26 @@ class CognitiveFinalizationCoordinatorContractTest {
     }
 
     @Test
+    fun completed_turn_finalization_is_one_shot_and_does_not_replay_downstream_installs() {
+        val f = fixture(
+            outcome = CognitiveOutcomeMaterializationPort {
+                CognitiveOutcomeMaterializationResult.Succeeded(outcomeCandidate())
+            }
+        )
+        val turn = readyTurn(f.composition)
+        assertIs<CognitiveGenerationResult.Succeeded>(f.composition.generateCognition(turn.reference))
+        assertIs<CognitiveFinalizationResult.Completed>(f.composition.finalizeCognition(turn.reference))
+        val reflectionAfterFirst = f.reflection.snapshotEntries()
+        val learningAfterFirst = f.learning.snapshotEntries()
+
+        assertEquals(CognitiveFinalizationResult.Stale, f.composition.finalizeCognition(turn.reference))
+        assertEquals(reflectionAfterFirst, f.reflection.snapshotEntries())
+        assertEquals(learningAfterFirst, f.learning.snapshotEntries())
+        assertEquals(CognitiveTurnLifecycle.COMPLETED, turn.lifecycle())
+        assertNull(f.composition.currentReference())
+    }
+
+    @Test
     fun finalization_observability_never_contains_raw_turn_or_private_outcome_payloads() {
         val rawTurnId = "raw-turn-id-never-log-slice4"
         val privateInput = "private-input-never-log-slice4"
