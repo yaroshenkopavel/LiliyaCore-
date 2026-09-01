@@ -88,6 +88,14 @@ class CognitiveTurnRegistry internal constructor(
     fun currentReference(): CognitiveTurnReference? = synchronized(lock) { current?.reference }
     fun currentLifecycle(): CognitiveTurnLifecycle? = synchronized(lock) { current?.lifecycle }
 
+    internal fun isCurrentAt(
+        reference: CognitiveTurnReference,
+        lifecycle: CognitiveTurnLifecycle
+    ): Boolean = synchronized(lock) {
+        val entry = current
+        entry != null && entry.reference == reference && entry.lifecycle == lifecycle
+    }
+
     internal fun inputIfCurrent(reference: CognitiveTurnReference): CognitiveInput? = synchronized(lock) {
         current?.takeIf { it.reference == reference }?.input
     }
