@@ -326,15 +326,27 @@ object LargeProtectedModelManifestCanonicalCodec {
                 out.writeInt(segment.index)
                 out.writeLong(segment.plaintextSizeBytes)
                 out.writeLong(segment.ciphertextSizeBytes)
-                writeBytes(out, segment.copyNonce())
-                writeBytes(out, segment.copyCiphertextDigest())
+                val nonce = segment.copyNonce()
+                val digest = segment.copyCiphertextDigest()
+                try {
+                    writeBytes(out, nonce)
+                    writeBytes(out, digest)
+                } finally {
+                    nonce.fill(0)
+                    digest.fill(0)
+                }
             }
         }
         return buffer.toByteArray()
     }
 
     private fun writeString(out: DataOutputStream, value: String) {
-        writeBytes(out, value.encodeToByteArray())
+        val bytes = value.encodeToByteArray()
+        try {
+            writeBytes(out, bytes)
+        } finally {
+            bytes.fill(0)
+        }
     }
 
     private fun writeBytes(out: DataOutputStream, value: ByteArray) {
