@@ -3,7 +3,7 @@ package pro.liliya.core.cognitive
 import java.util.concurrent.atomic.AtomicLong
 
 sealed interface CognitiveTurnRegistrationResult {
-    data class Registered(val ownership: CognitiveTurnOwnership) : CognitiveTurnRegistrationResult
+    data class Registered(val turn: CognitiveTurnHandle) : CognitiveTurnRegistrationResult
     data class Rejected(val reason: CognitiveTurnRegistrationFailure) : CognitiveTurnRegistrationResult
 }
 
@@ -28,29 +28,11 @@ sealed interface CognitiveTurnTransitionResult {
     data class Failed(val reason: CognitiveTurnFailure) : CognitiveTurnTransitionResult
 }
 
-interface CognitiveTurnOwnership {
+interface CognitiveTurnHandle {
     val reference: CognitiveTurnReference
-    val input: CognitiveInput
 
     fun isCurrent(): Boolean
     fun lifecycle(): CognitiveTurnLifecycle
-    fun context(): CognitiveContextSnapshot?
-    fun inference(): CognitiveInferenceResult?
-
-    fun publishContextIfCurrent(
-        context: CognitiveContextSnapshot,
-        publish: () -> Unit = {}
-    ): CognitiveTurnPublicationResult
-
-    fun beginGenerating(): CognitiveTurnTransitionResult
-
-    fun publishInferenceIfCurrent(
-        result: CognitiveInferenceResult,
-        publish: () -> Unit = {}
-    ): CognitiveTurnPublicationResult
-
-    fun complete(): CognitiveTurnTransitionResult
-    fun fail(reason: CognitiveTurnFailure = CognitiveTurnFailure.TURN_FAILED): CognitiveTurnTransitionResult
 }
 
 class CognitiveTurnRegistry internal constructor(
@@ -100,128 +82,154 @@ class CognitiveTurnRegistry internal constructor(
             input = input
         )
         current = entry
-        CognitiveTurnRegistrationResult.Registered(ownership(entry))
+        CognitiveTurnRegistrationResult.Registered(handle(entry))
     }
 
     fun currentReference(): CognitiveTurnReference? = synchronized(lock) { current?.reference }
     fun currentLifecycle(): CognitiveTurnLifecycle? = synchronized(lock) { current?.lifecycle }
 
-    private fun ownership(entry: Entry): CognitiveTurnOwnership = object : CognitiveTurnOwnership {
+    internal fun inputIfCurrent(reference: CognitiveTurnReference): CognitiveInput? = synchronized(lock) {
+        current?.takeIf { it.reference == reference }?.input
+    }
+
+    internal fun contextIfCurrent(reference: CognitiveTurnReference): CognitiveContextSnapshot? = synchronized(lock) {
+        current?.takeIf { it.reference == reference }?.context
+    }
+
+    internal fun inferenceIfCurrent(reference: CognitiveTurnReference): CognitiveInferenceResult? = synchronized(lock) {
+        current?.takeIf { it.reference == reference }?.inference
+    }
+
+    internal fun publishContextIfCurrent(
+        reference: CognitiveTurnReference,
+        context: CognitiveContextSnapshot,
+        publish: () -> Unit = {}
+    ): CognitiveTurnPublicationResult = synchronized(lock) {
+        val entry = current
+        if (entry == null || entry.reference != reference || entry.lifecycle != CognitiveTurnLifecycle.CREATED) {
+            return@synchronized CognitiveTurnPublicationResult.Stale
+        }
+        if (context.turn != entry.reference || !contextWithinLimits(context)) {
+            return@synchronized CognitiveTurnPublicationResult.Rejected(
+                CognitiveTurnFailure.CONTEXT_REJECTED
+            )
+        }
+        check(!entry.publicationInProgress) { "nested cognitive turn publication is not allowed" }
+        entry.publicationInProgress = true
+        try {
+            publish()
+            if (current !== entry || entry.lifecycle != CognitiveTurnLifecycle.CREATED) {
+                CognitiveTurnPublicationResult.Stale
+            } else {
+                entry.context = context
+                entry.lifecycle = CognitiveTurnLifecycle.CONTEXT_READY
+                CognitiveTurnPublicationResult.Published
+            }
+        } catch (throwable: Throwable) {
+            CognitiveTurnPublicationResult.Failed(throwable)
+        } finally {
+            entry.publicationInProgress = false
+        }
+    }
+
+    internal fun beginGeneratingIfCurrent(
+        reference: CognitiveTurnReference
+    ): CognitiveTurnTransitionResult = synchronized(lock) {
+        val entry = current
+        if (entry == null || entry.reference != reference || entry.lifecycle != CognitiveTurnLifecycle.CONTEXT_READY) {
+            return@synchronized CognitiveTurnTransitionResult.Stale
+        }
+        check(!entry.publicationInProgress) {
+            "cognitive generation transition is not allowed from inside publication"
+        }
+        entry.lifecycle = CognitiveTurnLifecycle.GENERATING
+        CognitiveTurnTransitionResult.Transitioned
+    }
+
+    internal fun publishInferenceIfCurrent(
+        reference: CognitiveTurnReference,
+        result: CognitiveInferenceResult,
+        publish: () -> Unit = {}
+    ): CognitiveTurnPublicationResult = synchronized(lock) {
+        val entry = current
+        if (entry == null || entry.reference != reference || entry.lifecycle != CognitiveTurnLifecycle.GENERATING) {
+            return@synchronized CognitiveTurnPublicationResult.Stale
+        }
+        if (result.turn != entry.reference) {
+            return@synchronized CognitiveTurnPublicationResult.Rejected(
+                CognitiveTurnFailure.INFERENCE_REJECTED
+            )
+        }
+        val succeeded = when (result) {
+            is CognitiveInferenceResult.Rejected -> {
+                return@synchronized CognitiveTurnPublicationResult.Rejected(
+                    CognitiveTurnFailure.INFERENCE_REJECTED
+                )
+            }
+            is CognitiveInferenceResult.Succeeded -> result
+        }
+        if (!inferenceWithinLimits(succeeded)) {
+            return@synchronized CognitiveTurnPublicationResult.Rejected(
+                CognitiveTurnFailure.INFERENCE_REJECTED
+            )
+        }
+        check(!entry.publicationInProgress) { "nested cognitive turn publication is not allowed" }
+        entry.publicationInProgress = true
+        try {
+            publish()
+            if (current !== entry || entry.lifecycle != CognitiveTurnLifecycle.GENERATING) {
+                CognitiveTurnPublicationResult.Stale
+            } else {
+                entry.inference = succeeded
+                entry.lifecycle = CognitiveTurnLifecycle.COGNITION_READY
+                CognitiveTurnPublicationResult.Published
+            }
+        } catch (throwable: Throwable) {
+            CognitiveTurnPublicationResult.Failed(throwable)
+        } finally {
+            entry.publicationInProgress = false
+        }
+    }
+
+    internal fun completeIfCurrent(
+        reference: CognitiveTurnReference
+    ): CognitiveTurnTransitionResult = synchronized(lock) {
+        val entry = current
+        if (entry == null || entry.reference != reference || entry.lifecycle != CognitiveTurnLifecycle.COGNITION_READY) {
+            return@synchronized CognitiveTurnTransitionResult.Stale
+        }
+        check(!entry.publicationInProgress) {
+            "cognitive turn completion is not allowed from inside publication"
+        }
+        entry.lifecycle = CognitiveTurnLifecycle.COMPLETED
+        current = null
+        CognitiveTurnTransitionResult.Transitioned
+    }
+
+    internal fun failIfCurrent(
+        reference: CognitiveTurnReference,
+        reason: CognitiveTurnFailure = CognitiveTurnFailure.TURN_FAILED
+    ): CognitiveTurnTransitionResult = synchronized(lock) {
+        val entry = current
+        if (entry == null || entry.reference != reference || entry.lifecycle == CognitiveTurnLifecycle.COMPLETED || entry.lifecycle == CognitiveTurnLifecycle.FAILED) {
+            return@synchronized CognitiveTurnTransitionResult.Stale
+        }
+        check(!entry.publicationInProgress) {
+            "cognitive turn failure is not allowed from inside publication"
+        }
+        entry.lifecycle = CognitiveTurnLifecycle.FAILED
+        current = null
+        CognitiveTurnTransitionResult.Failed(reason)
+    }
+
+    private fun handle(entry: Entry): CognitiveTurnHandle = object : CognitiveTurnHandle {
         override val reference: CognitiveTurnReference = entry.reference
-        override val input: CognitiveInput = entry.input
 
         override fun isCurrent(): Boolean = synchronized(lock) { current === entry }
+
         override fun lifecycle(): CognitiveTurnLifecycle = synchronized(lock) { entry.lifecycle }
-        override fun context(): CognitiveContextSnapshot? = synchronized(lock) { entry.context }
-        override fun inference(): CognitiveInferenceResult? = synchronized(lock) { entry.inference }
 
-        override fun publishContextIfCurrent(
-            context: CognitiveContextSnapshot,
-            publish: () -> Unit
-        ): CognitiveTurnPublicationResult = synchronized(lock) {
-            if (current !== entry || entry.lifecycle != CognitiveTurnLifecycle.CREATED) {
-                return@synchronized CognitiveTurnPublicationResult.Stale
-            }
-            if (context.turn != entry.reference || !contextWithinLimits(context)) {
-                return@synchronized CognitiveTurnPublicationResult.Rejected(
-                    CognitiveTurnFailure.CONTEXT_REJECTED
-                )
-            }
-            check(!entry.publicationInProgress) { "nested cognitive turn publication is not allowed" }
-            entry.publicationInProgress = true
-            try {
-                publish()
-                if (current !== entry || entry.lifecycle != CognitiveTurnLifecycle.CREATED) {
-                    CognitiveTurnPublicationResult.Stale
-                } else {
-                    entry.context = context
-                    entry.lifecycle = CognitiveTurnLifecycle.CONTEXT_READY
-                    CognitiveTurnPublicationResult.Published
-                }
-            } catch (throwable: Throwable) {
-                CognitiveTurnPublicationResult.Failed(throwable)
-            } finally {
-                entry.publicationInProgress = false
-            }
-        }
-
-        override fun beginGenerating(): CognitiveTurnTransitionResult = synchronized(lock) {
-            if (current !== entry || entry.lifecycle != CognitiveTurnLifecycle.CONTEXT_READY) {
-                return@synchronized CognitiveTurnTransitionResult.Stale
-            }
-            check(!entry.publicationInProgress) {
-                "cognitive generation transition is not allowed from inside publication"
-            }
-            entry.lifecycle = CognitiveTurnLifecycle.GENERATING
-            CognitiveTurnTransitionResult.Transitioned
-        }
-
-        override fun publishInferenceIfCurrent(
-            result: CognitiveInferenceResult,
-            publish: () -> Unit
-        ): CognitiveTurnPublicationResult = synchronized(lock) {
-            if (current !== entry || entry.lifecycle != CognitiveTurnLifecycle.GENERATING) {
-                return@synchronized CognitiveTurnPublicationResult.Stale
-            }
-            if (result.turn != entry.reference) {
-                return@synchronized CognitiveTurnPublicationResult.Rejected(
-                    CognitiveTurnFailure.INFERENCE_REJECTED
-                )
-            }
-            val succeeded = when (result) {
-                is CognitiveInferenceResult.Rejected -> {
-                    return@synchronized CognitiveTurnPublicationResult.Rejected(
-                        CognitiveTurnFailure.INFERENCE_REJECTED
-                    )
-                }
-                is CognitiveInferenceResult.Succeeded -> result
-            }
-            if (!inferenceWithinLimits(succeeded)) {
-                return@synchronized CognitiveTurnPublicationResult.Rejected(
-                    CognitiveTurnFailure.INFERENCE_REJECTED
-                )
-            }
-            check(!entry.publicationInProgress) { "nested cognitive turn publication is not allowed" }
-            entry.publicationInProgress = true
-            try {
-                publish()
-                if (current !== entry || entry.lifecycle != CognitiveTurnLifecycle.GENERATING) {
-                    CognitiveTurnPublicationResult.Stale
-                } else {
-                    entry.inference = succeeded
-                    entry.lifecycle = CognitiveTurnLifecycle.COGNITION_READY
-                    CognitiveTurnPublicationResult.Published
-                }
-            } catch (throwable: Throwable) {
-                CognitiveTurnPublicationResult.Failed(throwable)
-            } finally {
-                entry.publicationInProgress = false
-            }
-        }
-
-        override fun complete(): CognitiveTurnTransitionResult = synchronized(lock) {
-            if (current !== entry || entry.lifecycle != CognitiveTurnLifecycle.COGNITION_READY) {
-                return@synchronized CognitiveTurnTransitionResult.Stale
-            }
-            check(!entry.publicationInProgress) {
-                "cognitive turn completion is not allowed from inside publication"
-            }
-            entry.lifecycle = CognitiveTurnLifecycle.COMPLETED
-            current = null
-            CognitiveTurnTransitionResult.Transitioned
-        }
-
-        override fun fail(reason: CognitiveTurnFailure): CognitiveTurnTransitionResult = synchronized(lock) {
-            if (current !== entry || entry.lifecycle == CognitiveTurnLifecycle.COMPLETED || entry.lifecycle == CognitiveTurnLifecycle.FAILED) {
-                return@synchronized CognitiveTurnTransitionResult.Stale
-            }
-            check(!entry.publicationInProgress) {
-                "cognitive turn failure is not allowed from inside publication"
-            }
-            entry.lifecycle = CognitiveTurnLifecycle.FAILED
-            current = null
-            CognitiveTurnTransitionResult.Failed(reason)
-        }
+        override fun toString(): String = "CognitiveTurnHandle(reference=$reference)"
     }
 
     private fun contextWithinLimits(context: CognitiveContextSnapshot): Boolean {
