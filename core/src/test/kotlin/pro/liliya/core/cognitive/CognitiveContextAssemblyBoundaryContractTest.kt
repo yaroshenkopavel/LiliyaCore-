@@ -39,6 +39,7 @@ class CognitiveContextAssemblyBoundaryContractTest {
 
         composition = CognitiveRuntimeComposition(
             foundation = foundation,
+            scope = CognitiveRuntimeScopeId("scope-reentrant"),
             memoryRetrieval = MemoryRetrievalPort {
                 nestedResult = composition.beginTurn(
                     CognitiveTurnId("nested"),
@@ -74,6 +75,7 @@ class CognitiveContextAssemblyBoundaryContractTest {
         val registry = CognitiveTurnRegistry(limits)
         val composition = CognitiveRuntimeComposition(
             foundation = foundation("count"),
+            scope = CognitiveRuntimeScopeId("scope-count"),
             memoryRetrieval = MemoryRetrievalPort {
                 MemoryRetrievalResult(listOf(memorySnapshot()))
             },
@@ -112,6 +114,8 @@ class CognitiveContextAssemblyBoundaryContractTest {
     }
 
     private fun limits(maxContextItems: Int) = CognitiveRuntimeLimits(
+        maxRuntimeScopeIdChars = 64,
+        maxTurnIdChars = 64,
         maxInputChars = 64,
         maxContextItems = maxContextItems,
         maxContextItemChars = 64,
