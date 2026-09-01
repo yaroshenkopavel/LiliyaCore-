@@ -5,9 +5,9 @@ import pro.liliya.core.foundation.FoundationComposition
 
 class CognitiveRuntimeComposition(
     private val foundation: FoundationComposition,
-    val memoryRetrieval: MemoryRetrievalPort,
-    val knowledgeRetrieval: KnowledgeRetrievalPort,
-    val inference: CognitiveInferencePort,
+    private val memoryRetrieval: MemoryRetrievalPort,
+    private val knowledgeRetrieval: KnowledgeRetrievalPort,
+    private val inference: CognitiveInferencePort,
     val limits: CognitiveRuntimeLimits = CognitiveRuntimeLimits(),
     registry: CognitiveTurnRegistry? = null
 ) {
