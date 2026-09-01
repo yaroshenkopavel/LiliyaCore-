@@ -161,6 +161,29 @@ class CognitiveModelRuntimeCompositionContractTest {
     }
 
     @Test
+    fun minimum_v1_envelope_budget_rejects_before_engine_admission_without_ticket_leak() {
+        val engine = FakeEngine()
+        val fixture = runtimeFixture(
+            engineLoader = ModelEngineLoaderPort { _, _ -> ModelEngineLoadResult.Loaded(engine) }
+        )
+        val session = activate(fixture)
+
+        val result = assertIs<CognitiveInferenceResult.Rejected>(
+            fixture.composition.inferencePort.infer(
+                inferenceRequest(
+                    maxOutputChars = CognitiveStructuredResponseProtocol.minimumEnvelopeChars - 1
+                )
+            )
+        )
+
+        assertEquals(CognitiveInferenceFailure.RESOURCE_LIMIT_REJECTED, result.reason)
+        assertEquals(0, engine.inferCalls)
+        assertEquals(0, fixture.composition.operationSupervisor.inFlightCount(session))
+        assertEquals(RuntimeModelSessionLifecycle.ACTIVE, fixture.composition.currentLifecycle())
+        assertEquals(null, fixture.composition.currentFailure())
+    }
+
+    @Test
     fun malformed_over_bound_compiler_output_is_rejected_before_engine_call() {
         val engine = FakeEngine()
         val limits = CognitiveRuntimeLimits(maxModelPromptChars = 16)
