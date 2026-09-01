@@ -46,6 +46,7 @@ class LicenseServiceDurableStateEnvelopeContractTest {
         ).envelope
 
         assertEquals(original, decoded)
+        assertEquals(1, decoded.binding.stateSchemaVersion.value)
         assertEquals(9L, decoded.binding.generation.value)
         assertEquals(4L, decoded.binding.backendRevision.value)
         assertEquals(3L, decoded.binding.protector.generation.value)
@@ -143,6 +144,16 @@ class LicenseServiceDurableStateEnvelopeContractTest {
             assertIs<LicenseServiceDurableStateEnvelopeDecodeResult.Rejected>(
                 LicenseServiceDurableStateEnvelopeCanonicalCodec.decode(
                     LicenseServiceDurableStateEnvelopePayload.of(unsupportedEnvelope)
+                )
+            ).reason
+        )
+
+        val unsupportedSchema = canonical.copyOf().also { writeInt(it, 12, 2) }
+        assertEquals(
+            LicenseServiceDurableStateCodecRejection.UNSUPPORTED_VERSION,
+            assertIs<LicenseServiceDurableStateEnvelopeDecodeResult.Rejected>(
+                LicenseServiceDurableStateEnvelopeCanonicalCodec.decode(
+                    LicenseServiceDurableStateEnvelopePayload.of(unsupportedSchema)
                 )
             ).reason
         )
