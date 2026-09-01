@@ -189,9 +189,11 @@ internal class CognitiveGovernedLearningCoordinator(
             return rejected(CognitiveGovernedLearningFailure.GOVERNANCE_LIMIT_REJECTED)
         }
 
-        if (governanceResult is CognitiveLearningGovernanceResult.Approved &&
-            governanceResult.target !in allowedTargets
-        ) {
+        val approvedTarget = when (governanceResult) {
+            is CognitiveLearningGovernanceResult.Approved -> governanceResult.target
+            is CognitiveLearningGovernanceResult.Rejected -> null
+        }
+        if (approvedTarget != null && approvedTarget !in allowedTargets) {
             return rejected(CognitiveGovernedLearningFailure.GOVERNANCE_TARGET_REJECTED)
         }
 
@@ -213,7 +215,11 @@ internal class CognitiveGovernedLearningCoordinator(
             return CognitiveGovernedLearningResult.GovernanceRejected(decisionReference)
         }
 
-        val target = governanceResult.target
+        val target = approvedTarget
+            ?: return compensateDecision(
+                decisionOwnership,
+                CognitiveGovernedLearningFailure.GOVERNANCE_TARGET_REJECTED
+            )
         exactStateFailure(candidate, policy)?.let {
             return compensateDecision(decisionOwnership, it)
         }
@@ -347,6 +353,11 @@ internal class CognitiveGovernedLearningCoordinator(
                     content = content,
                     createdAt = prepared.payloadCreatedAt
                 )
+            )
+            else -> return compensateApplicationAndDecision(
+                applicationOwnership,
+                decisionOwnership,
+                CognitiveGovernedLearningFailure.GOVERNANCE_TARGET_REJECTED
             )
         }
 
