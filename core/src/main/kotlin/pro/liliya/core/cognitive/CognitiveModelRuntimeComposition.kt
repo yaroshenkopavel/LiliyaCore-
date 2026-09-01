@@ -437,7 +437,8 @@ class CognitiveModelRuntimeComposition(
             compiler.compile(
                 CognitiveModelRequestCompilerRequest(
                     inference = request,
-                    maxPromptChars = limits.maxModelPromptChars
+                    maxPromptChars = limits.maxModelPromptChars,
+                    responseBudgets = CognitiveStructuredResponseBudgets.from(limits)
                 )
             )
         } catch (_: Exception) {
