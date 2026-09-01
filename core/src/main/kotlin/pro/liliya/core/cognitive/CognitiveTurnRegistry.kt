@@ -25,7 +25,7 @@ sealed interface CognitiveTurnPublicationResult {
 sealed interface CognitiveTurnTransitionResult {
     data object Transitioned : CognitiveTurnTransitionResult
     data object Stale : CognitiveTurnTransitionResult
-    data class Rejected(val reason: CognitiveTurnFailure) : CognitiveTurnTransitionResult
+    data class Failed(val reason: CognitiveTurnFailure) : CognitiveTurnTransitionResult
 }
 
 interface CognitiveTurnOwnership {
@@ -163,7 +163,17 @@ class CognitiveTurnRegistry internal constructor(
             if (current !== entry || entry.lifecycle != CognitiveTurnLifecycle.GENERATING) {
                 return@synchronized CognitiveTurnPublicationResult.Stale
             }
-            if (result.turn != entry.reference || !inferenceWithinLimits(result)) {
+            if (result.turn != entry.reference) {
+                return@synchronized CognitiveTurnPublicationResult.Rejected(
+                    CognitiveTurnFailure.INFERENCE_REJECTED
+                )
+            }
+            if (result is CognitiveInferenceResult.Rejected) {
+                return@synchronized CognitiveTurnPublicationResult.Rejected(
+                    CognitiveTurnFailure.INFERENCE_REJECTED
+                )
+            }
+            if (!inferenceWithinLimits(result)) {
                 return@synchronized CognitiveTurnPublicationResult.Rejected(
                     CognitiveTurnFailure.INFERENCE_REJECTED
                 )
@@ -207,7 +217,7 @@ class CognitiveTurnRegistry internal constructor(
             }
             entry.lifecycle = CognitiveTurnLifecycle.FAILED
             current = null
-            CognitiveTurnTransitionResult.Rejected(reason)
+            CognitiveTurnTransitionResult.Failed(reason)
         }
     }
 
@@ -216,8 +226,6 @@ class CognitiveTurnRegistry internal constructor(
         return context.items.all { it.content.length <= limits.maxContextItemChars }
     }
 
-    private fun inferenceWithinLimits(result: CognitiveInferenceResult): Boolean = when (result) {
-        is CognitiveInferenceResult.Succeeded -> result.output.length <= limits.maxInferenceOutputChars
-        is CognitiveInferenceResult.Rejected -> true
-    }
+    private fun inferenceWithinLimits(result: CognitiveInferenceResult.Succeeded): Boolean =
+        result.output.length <= limits.maxInferenceOutputChars
 }
