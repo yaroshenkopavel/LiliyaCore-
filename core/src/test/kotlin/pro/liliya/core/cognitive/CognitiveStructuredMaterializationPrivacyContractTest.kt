@@ -84,7 +84,7 @@ class CognitiveStructuredMaterializationPrivacyContractTest {
         val rejected = assertIs<CognitiveGenerationResult.Rejected>(
             composition.generateCognition(turn.reference)
         )
-        assertEquals(CognitiveGenerationFailure.MATERIALIZATION_REJECTED, rejected.reason)
+        assertEquals(CognitiveGenerationFailure.MATERIALIZER_REJECTED, rejected.reason)
 
         logs.snapshot().forEach { event ->
             assertFalse(event.message.contains(secret))
