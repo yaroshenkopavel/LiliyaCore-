@@ -144,6 +144,54 @@ class CognitiveRuntimeCompositionContractTest {
     }
 
     @Test
+    fun over_limit_turn_id_is_rejected_without_raw_id_in_logs_or_digest_metadata() {
+        val f = fixture("over-limit")
+        val rawTurnId = "x".repeat(65)
+
+        val result = assertIs<CognitiveTurnRegistrationResult.Rejected>(
+            f.composition.beginTurn(CognitiveTurnId(rawTurnId), CognitiveInput("bounded"))
+        )
+
+        assertEquals(CognitiveTurnRegistrationFailure.TURN_ID_LIMIT_REJECTED, result.reason)
+        assertEquals(null, f.composition.currentReference())
+        val events = f.logs.snapshot()
+        assertTrue(events.isNotEmpty())
+        events.forEach { event ->
+            assertFalse(event.message.contains(rawTurnId))
+            assertFalse(event.metadata.values.any { it.contains(rawTurnId) })
+        }
+        assertTrue(
+            events.any { event ->
+                event.metadata["cognitiveTurnRequestFingerprint"] == "over-limit-turn-id"
+            }
+        )
+    }
+
+    @Test
+    fun forged_over_limit_turn_reference_uses_bounded_log_marker_and_stays_stale() {
+        val f = fixture("forged-over-limit")
+        val rawTurnId = "y".repeat(65)
+        val forged = CognitiveTurnReference(
+            CognitiveTurnId(rawTurnId),
+            CognitiveTurnGeneration(1)
+        )
+
+        assertEquals(CognitiveContextAssemblyResult.Stale, f.composition.assembleContext(forged))
+
+        val events = f.logs.snapshot()
+        assertTrue(events.isNotEmpty())
+        events.forEach { event ->
+            assertFalse(event.message.contains(rawTurnId))
+            assertFalse(event.metadata.values.any { it.contains(rawTurnId) })
+        }
+        assertTrue(
+            events.any { event ->
+                event.metadata["cognitiveTurnProvenance"] == "over-limit-turn-id"
+            }
+        )
+    }
+
+    @Test
     fun deterministic_fake_ports_preserve_exact_turn_reference_without_public_mutation_handle() {
         val f = fixture("ports")
         val input = CognitiveInput("hello")
