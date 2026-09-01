@@ -56,6 +56,8 @@ class CognitiveGenerationCoordinatorContractTest {
         inference: CognitiveInferencePort,
         materialization: CognitiveMaterializationPort,
         limits: CognitiveRuntimeLimits = CognitiveRuntimeLimits(
+            maxRuntimeScopeIdChars = 64,
+            maxTurnIdChars = 128,
             maxInputChars = 128,
             maxContextItems = 8,
             maxContextItemChars = 128,
@@ -89,10 +91,11 @@ class CognitiveGenerationCoordinatorContractTest {
             idCalls.incrementAndGet()
             val next = (perKind[kind] ?: 0) + 1
             perKind[kind] = next
-            "${kind.name.lowercase().replace('_', '-') }-$next"
+            "${kind.name.lowercase().replace('_', '-')}-$next"
         }
         val composition = CognitiveRuntimeComposition(
             foundation = foundation,
+            scope = CognitiveRuntimeScopeId("scope-$prefix"),
             memoryRetrieval = MemoryRetrievalPort { MemoryRetrievalResult(emptyList()) },
             knowledgeRetrieval = KnowledgeRetrievalPort { KnowledgeRetrievalResult(emptyList()) },
             selfSnapshots = SelfSnapshotPort { null },
@@ -163,7 +166,8 @@ class CognitiveGenerationCoordinatorContractTest {
     }
 
     @Test
-    fun generation_observability_never_contains_private_inference_or_materialization_payloads() {
+    fun generation_observability_never_contains_raw_turn_id_or_private_payloads_even_indirectly() {
+        val rawTurnId = "secret-raw-turn-id-never-log"
         val privateInput = "secret-user-input-never-log"
         val privateInference = "secret-inference-never-log"
         val privateCandidate = candidate()
@@ -174,13 +178,14 @@ class CognitiveGenerationCoordinatorContractTest {
             CognitiveMaterializationResult.Succeeded(privateCandidate)
         }
         val f = fixture("privacy", inference, materializer)
-        val turn = readyTurn(f.composition, input = privateInput)
+        val turn = readyTurn(f.composition, id = rawTurnId, input = privateInput)
 
         assertIs<CognitiveGenerationResult.Succeeded>(
             f.composition.generateCognition(turn.reference)
         )
 
         val forbidden = listOf(
+            rawTurnId,
             privateInput,
             privateInference,
             privateCandidate.planningGoal,
@@ -196,6 +201,7 @@ class CognitiveGenerationCoordinatorContractTest {
                 assertFalse(event.message.contains(secret))
                 assertFalse(event.metadata.values.any { it.contains(secret) })
             }
+            assertFalse(event.metadata.keys.any { it == "cognitiveTurnId" })
             assertFalse(event.metadata.keys.any { it.contains("authority", ignoreCase = true) })
             assertFalse(event.metadata.keys.any { it.contains("license", ignoreCase = true) })
         }
@@ -237,6 +243,8 @@ class CognitiveGenerationCoordinatorContractTest {
             )
         }
         limits = CognitiveRuntimeLimits(
+            maxRuntimeScopeIdChars = 64,
+            maxTurnIdChars = 128,
             maxInputChars = 128,
             maxContextItems = 8,
             maxContextItemChars = 128,
