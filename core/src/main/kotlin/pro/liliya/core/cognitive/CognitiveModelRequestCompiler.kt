@@ -3,7 +3,8 @@ package pro.liliya.core.cognitive
 class CognitiveModelRequestCompilerRequest(
     val inference: CognitiveInferenceRequest,
     val maxPromptChars: Int,
-    val responseBudgets: CognitiveStructuredResponseBudgets
+    val responseBudgets: CognitiveStructuredResponseBudgets =
+        CognitiveStructuredResponseBudgets.from(CognitiveRuntimeLimits())
 ) {
     init {
         require(maxPromptChars > 0) { "cognitive model prompt budget must be positive" }
