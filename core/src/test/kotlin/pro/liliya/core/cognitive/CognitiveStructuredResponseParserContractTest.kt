@@ -79,10 +79,35 @@ class CognitiveStructuredResponseParserContractTest {
     }
 
     @Test
-    fun list_count_integer_overflow_and_selected_index_are_strict() {
+    fun duplicate_and_unknown_fields_are_rejected_without_partial_success() {
+        assertEquals(
+            CognitiveStructuredResponseFailure.STRUCTURE_REJECTED,
+            rejected(validResponse().replace(
+                "PLANNING_GOAL=goal=private\nPLANNING_STEP_COUNT=2",
+                "PLANNING_GOAL=goal=private\nPLANNING_GOAL=duplicate-private\nPLANNING_STEP_COUNT=2"
+            ))
+        )
+        assertEquals(
+            CognitiveStructuredResponseFailure.STRUCTURE_REJECTED,
+            rejected(validResponse().replace(
+                "REASONING_ANALYSIS=analysis\\\\private",
+                "UNKNOWN_FIELD=private\nREASONING_ANALYSIS=analysis\\\\private"
+            ))
+        )
+    }
+
+    @Test
+    fun list_count_bounds_integer_overflow_and_selected_index_are_strict() {
         assertEquals(
             CognitiveStructuredResponseFailure.COUNT_REJECTED,
             rejected(validResponse().replace("PLANNING_STEP_COUNT=2", "PLANNING_STEP_COUNT=0"))
+        )
+        assertEquals(
+            CognitiveStructuredResponseFailure.COUNT_REJECTED,
+            rejected(
+                validResponse().replace("PLANNING_STEP_COUNT=2", "PLANNING_STEP_COUNT=3"),
+                CognitiveStructuredResponseParser(budgets.copy(maxPlanningSteps = 2))
+            )
         )
         assertEquals(
             CognitiveStructuredResponseFailure.COUNT_REJECTED,
