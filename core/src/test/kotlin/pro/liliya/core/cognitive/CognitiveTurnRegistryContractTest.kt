@@ -21,7 +21,7 @@ class CognitiveTurnRegistryContractTest {
         val registry = CognitiveTurnRegistry(limits)
         val first = assertIs<CognitiveTurnRegistrationResult.Registered>(
             registry.register(CognitiveTurnId("turn"), CognitiveInput("hello"))
-        ).ownership
+        ).turn
 
         assertEquals(1L, first.reference.generation.value)
         assertIs<CognitiveTurnRegistrationResult.Rejected>(
@@ -29,45 +29,63 @@ class CognitiveTurnRegistryContractTest {
         )
 
         val context = CognitiveContextSnapshot(first.reference, emptyList())
-        assertIs<CognitiveTurnPublicationResult.Published>(first.publishContextIfCurrent(context))
-        assertIs<CognitiveTurnTransitionResult.Transitioned>(first.beginGenerating())
         assertIs<CognitiveTurnPublicationResult.Published>(
-            first.publishInferenceIfCurrent(
+            registry.publishContextIfCurrent(first.reference, context)
+        )
+        assertIs<CognitiveTurnTransitionResult.Transitioned>(
+            registry.beginGeneratingIfCurrent(first.reference)
+        )
+        assertIs<CognitiveTurnPublicationResult.Published>(
+            registry.publishInferenceIfCurrent(
+                first.reference,
                 CognitiveInferenceResult.Succeeded(first.reference, "answer")
             )
         )
-        assertIs<CognitiveTurnTransitionResult.Transitioned>(first.complete())
-        assertIs<CognitiveTurnTransitionResult.Stale>(first.complete())
+        assertIs<CognitiveTurnTransitionResult.Transitioned>(
+            registry.completeIfCurrent(first.reference)
+        )
+        assertIs<CognitiveTurnTransitionResult.Stale>(
+            registry.completeIfCurrent(first.reference)
+        )
         assertFalse(first.isCurrent())
         assertNull(registry.currentReference())
 
         val second = assertIs<CognitiveTurnRegistrationResult.Registered>(
             registry.register(CognitiveTurnId("turn"), CognitiveInput("again"))
-        ).ownership
+        ).turn
         assertEquals(2L, second.reference.generation.value)
         assertTrue(second.isCurrent())
-        assertIs<CognitiveTurnTransitionResult.Stale>(first.fail())
+        assertIs<CognitiveTurnTransitionResult.Stale>(
+            registry.failIfCurrent(first.reference)
+        )
         assertEquals(second.reference, registry.currentReference())
     }
 
     @Test
-    fun stale_owner_cannot_publish_into_replacement_turn() {
+    fun stale_reference_cannot_publish_into_replacement_turn() {
         val registry = CognitiveTurnRegistry(limits)
         val first = assertIs<CognitiveTurnRegistrationResult.Registered>(
             registry.register(CognitiveTurnId("same"), CognitiveInput("first"))
-        ).ownership
-        val failure = assertIs<CognitiveTurnTransitionResult.Failed>(first.fail())
+        ).turn
+        val failure = assertIs<CognitiveTurnTransitionResult.Failed>(
+            registry.failIfCurrent(first.reference)
+        )
         assertEquals(CognitiveTurnFailure.TURN_FAILED, failure.reason)
         assertEquals(CognitiveTurnLifecycle.FAILED, first.lifecycle())
-        assertIs<CognitiveTurnTransitionResult.Stale>(first.fail())
+        assertIs<CognitiveTurnTransitionResult.Stale>(
+            registry.failIfCurrent(first.reference)
+        )
 
         val replacement = assertIs<CognitiveTurnRegistrationResult.Registered>(
             registry.register(CognitiveTurnId("same"), CognitiveInput("replacement"))
-        ).ownership
+        ).turn
 
         assertEquals(2L, replacement.reference.generation.value)
         assertIs<CognitiveTurnPublicationResult.Stale>(
-            first.publishContextIfCurrent(CognitiveContextSnapshot(first.reference, emptyList()))
+            registry.publishContextIfCurrent(
+                first.reference,
+                CognitiveContextSnapshot(first.reference, emptyList())
+            )
         )
         assertEquals(replacement.reference, registry.currentReference())
         assertEquals(CognitiveTurnLifecycle.CREATED, replacement.lifecycle())
@@ -91,12 +109,12 @@ class CognitiveTurnRegistryContractTest {
         )
         assertEquals(CognitiveTurnRegistrationFailure.INPUT_LIMIT_REJECTED, oversizedInput.reason)
 
-        val ownership = assertIs<CognitiveTurnRegistrationResult.Registered>(
+        val turn = assertIs<CognitiveTurnRegistrationResult.Registered>(
             registry.register(CognitiveTurnId("bounded"), CognitiveInput("hello"))
-        ).ownership
+        ).turn
 
         val oversizedContext = CognitiveContextSnapshot(
-            ownership.reference,
+            turn.reference,
             listOf(
                 CognitiveContextItem(
                     source = CognitiveContextSourceReference.Memory(
@@ -108,28 +126,34 @@ class CognitiveTurnRegistryContractTest {
             )
         )
         assertIs<CognitiveTurnPublicationResult.Rejected>(
-            ownership.publishContextIfCurrent(oversizedContext)
+            registry.publishContextIfCurrent(turn.reference, oversizedContext)
         )
-        assertEquals(CognitiveTurnLifecycle.CREATED, ownership.lifecycle())
+        assertEquals(CognitiveTurnLifecycle.CREATED, turn.lifecycle())
 
         assertIs<CognitiveTurnPublicationResult.Published>(
-            ownership.publishContextIfCurrent(CognitiveContextSnapshot(ownership.reference, emptyList()))
-        )
-        assertIs<CognitiveTurnTransitionResult.Transitioned>(ownership.beginGenerating())
-        assertIs<CognitiveTurnPublicationResult.Rejected>(
-            ownership.publishInferenceIfCurrent(
-                CognitiveInferenceResult.Succeeded(ownership.reference, "x".repeat(33))
+            registry.publishContextIfCurrent(
+                turn.reference,
+                CognitiveContextSnapshot(turn.reference, emptyList())
             )
         )
-        assertEquals(CognitiveTurnLifecycle.GENERATING, ownership.lifecycle())
+        assertIs<CognitiveTurnTransitionResult.Transitioned>(
+            registry.beginGeneratingIfCurrent(turn.reference)
+        )
+        assertIs<CognitiveTurnPublicationResult.Rejected>(
+            registry.publishInferenceIfCurrent(
+                turn.reference,
+                CognitiveInferenceResult.Succeeded(turn.reference, "x".repeat(33))
+            )
+        )
+        assertEquals(CognitiveTurnLifecycle.GENERATING, turn.lifecycle())
     }
 
     @Test
     fun context_snapshot_detaches_mutable_input_list() {
         val registry = CognitiveTurnRegistry(limits)
-        val ownership = assertIs<CognitiveTurnRegistrationResult.Registered>(
+        val turn = assertIs<CognitiveTurnRegistrationResult.Registered>(
             registry.register(CognitiveTurnId("context-copy"), CognitiveInput("hello"))
-        ).ownership
+        ).turn
         val item = CognitiveContextItem(
             source = CognitiveContextSourceReference.Memory(
                 pro.liliya.core.memory.MemoryRecordId("m-copy"),
@@ -138,84 +162,102 @@ class CognitiveTurnRegistryContractTest {
             content = "remember"
         )
         val mutableItems = mutableListOf(item)
-        val snapshot = CognitiveContextSnapshot(ownership.reference, mutableItems)
+        val snapshot = CognitiveContextSnapshot(turn.reference, mutableItems)
 
         mutableItems.clear()
 
         assertEquals(listOf(item), snapshot.items)
-        assertIs<CognitiveTurnPublicationResult.Published>(ownership.publishContextIfCurrent(snapshot))
-        assertEquals(listOf(item), ownership.context()?.items)
+        assertIs<CognitiveTurnPublicationResult.Published>(
+            registry.publishContextIfCurrent(turn.reference, snapshot)
+        )
+        assertEquals(listOf(item), registry.contextIfCurrent(turn.reference)?.items)
     }
 
     @Test
-    fun current_owner_rejects_context_and_inference_from_foreign_turn_reference() {
+    fun current_turn_rejects_context_and_inference_from_foreign_turn_reference() {
         val registry = CognitiveTurnRegistry(limits)
-        val ownership = assertIs<CognitiveTurnRegistrationResult.Registered>(
+        val turn = assertIs<CognitiveTurnRegistrationResult.Registered>(
             registry.register(CognitiveTurnId("exact"), CognitiveInput("hello"))
-        ).ownership
+        ).turn
         val foreign = CognitiveTurnReference(
             CognitiveTurnId("foreign"),
             CognitiveTurnGeneration(999)
         )
 
         assertIs<CognitiveTurnPublicationResult.Rejected>(
-            ownership.publishContextIfCurrent(CognitiveContextSnapshot(foreign, emptyList()))
+            registry.publishContextIfCurrent(
+                turn.reference,
+                CognitiveContextSnapshot(foreign, emptyList())
+            )
         )
-        assertEquals(CognitiveTurnLifecycle.CREATED, ownership.lifecycle())
-        assertNull(ownership.context())
+        assertEquals(CognitiveTurnLifecycle.CREATED, turn.lifecycle())
+        assertNull(registry.contextIfCurrent(turn.reference))
 
         assertIs<CognitiveTurnPublicationResult.Published>(
-            ownership.publishContextIfCurrent(CognitiveContextSnapshot(ownership.reference, emptyList()))
+            registry.publishContextIfCurrent(
+                turn.reference,
+                CognitiveContextSnapshot(turn.reference, emptyList())
+            )
         )
-        assertIs<CognitiveTurnTransitionResult.Transitioned>(ownership.beginGenerating())
+        assertIs<CognitiveTurnTransitionResult.Transitioned>(
+            registry.beginGeneratingIfCurrent(turn.reference)
+        )
         assertIs<CognitiveTurnPublicationResult.Rejected>(
-            ownership.publishInferenceIfCurrent(
+            registry.publishInferenceIfCurrent(
+                turn.reference,
                 CognitiveInferenceResult.Succeeded(foreign, "foreign-answer")
             )
         )
-        assertEquals(CognitiveTurnLifecycle.GENERATING, ownership.lifecycle())
-        assertNull(ownership.inference())
+        assertEquals(CognitiveTurnLifecycle.GENERATING, turn.lifecycle())
+        assertNull(registry.inferenceIfCurrent(turn.reference))
     }
 
     @Test
     fun rejected_inference_does_not_advance_turn() {
         val registry = CognitiveTurnRegistry(limits)
-        val ownership = assertIs<CognitiveTurnRegistrationResult.Registered>(
+        val turn = assertIs<CognitiveTurnRegistrationResult.Registered>(
             registry.register(CognitiveTurnId("rejected"), CognitiveInput("hello"))
-        ).ownership
+        ).turn
         assertIs<CognitiveTurnPublicationResult.Published>(
-            ownership.publishContextIfCurrent(CognitiveContextSnapshot(ownership.reference, emptyList()))
+            registry.publishContextIfCurrent(
+                turn.reference,
+                CognitiveContextSnapshot(turn.reference, emptyList())
+            )
         )
-        assertIs<CognitiveTurnTransitionResult.Transitioned>(ownership.beginGenerating())
+        assertIs<CognitiveTurnTransitionResult.Transitioned>(
+            registry.beginGeneratingIfCurrent(turn.reference)
+        )
 
         assertIs<CognitiveTurnPublicationResult.Rejected>(
-            ownership.publishInferenceIfCurrent(
+            registry.publishInferenceIfCurrent(
+                turn.reference,
                 CognitiveInferenceResult.Rejected(
-                    ownership.reference,
+                    turn.reference,
                     CognitiveInferenceFailure.PROVIDER_REJECTED
                 )
             )
         )
-        assertEquals(CognitiveTurnLifecycle.GENERATING, ownership.lifecycle())
-        assertNull(ownership.inference())
+        assertEquals(CognitiveTurnLifecycle.GENERATING, turn.lifecycle())
+        assertNull(registry.inferenceIfCurrent(turn.reference))
     }
 
     @Test
     fun reentrant_registration_during_publication_is_contained_and_does_not_advance_turn() {
         val registry = CognitiveTurnRegistry(limits)
-        val ownership = assertIs<CognitiveTurnRegistrationResult.Registered>(
+        val turn = assertIs<CognitiveTurnRegistrationResult.Registered>(
             registry.register(CognitiveTurnId("reentrant"), CognitiveInput("hello"))
-        ).ownership
+        ).turn
 
-        val result = ownership.publishContextIfCurrent(
-            CognitiveContextSnapshot(ownership.reference, emptyList())
+        val result = registry.publishContextIfCurrent(
+            turn.reference,
+            CognitiveContextSnapshot(turn.reference, emptyList())
         ) {
             registry.register(CognitiveTurnId("nested"), CognitiveInput("nested"))
         }
 
         assertIs<CognitiveTurnPublicationResult.Failed>(result)
-        assertTrue(ownership.isCurrent())
-        assertEquals(CognitiveTurnLifecycle.CREATED, ownership.lifecycle())
-        assertNull(ownership.context())
+        assertTrue(turn.isCurrent())
+        assertEquals(CognitiveTurnLifecycle.CREATED, turn.lifecycle())
+        assertNull(registry.contextIfCurrent(turn.reference))
     }
 }
