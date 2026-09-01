@@ -3,15 +3,25 @@ package pro.liliya.core.cognitive
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 
+internal const val COGNITIVE_RUNTIME_SOURCE_ID = "cognitive-runtime"
+internal const val COGNITIVE_RUNTIME_RESULT_SOURCE_ID = "cognitive-runtime-result"
+
 @JvmInline
 internal value class CognitiveTurnProvenanceToken(val value: String) {
     init { require(value.isNotBlank()) { "cognitive turn provenance token must not be blank" } }
     override fun toString(): String = "CognitiveTurnProvenanceToken([redacted])"
 }
 
+@JvmInline
+internal value class CognitiveResultProvenanceToken(val value: String) {
+    init { require(value.isNotBlank()) { "cognitive result provenance token must not be blank" } }
+    override fun toString(): String = "CognitiveResultProvenanceToken([redacted])"
+}
+
 internal object CognitiveProvenance {
     private const val TURN_ID_DOMAIN = "liliya-cognitive-turn-id-v1"
     private const val TURN_DOMAIN = "liliya-cognitive-turn-v1"
+    private const val RESULT_DOMAIN = "liliya-cognitive-result-v1"
 
     fun requestFingerprint(
         scope: CognitiveRuntimeScopeId,
@@ -31,6 +41,23 @@ internal object CognitiveProvenance {
                 scope.value,
                 reference.id.value,
                 reference.generation.value.toString()
+            )
+        )
+    )
+
+    fun resultToken(
+        scope: CognitiveRuntimeScopeId,
+        reference: CognitiveTurnReference,
+        decision: DecisionReference
+    ): CognitiveResultProvenanceToken = CognitiveResultProvenanceToken(
+        digest(
+            domain = RESULT_DOMAIN,
+            fields = listOf(
+                scope.value,
+                reference.id.value,
+                reference.generation.value.toString(),
+                decision.id.value,
+                decision.generation.value.toString()
             )
         )
     )
