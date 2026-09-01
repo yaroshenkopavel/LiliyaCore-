@@ -37,6 +37,7 @@ class CognitiveTurnRegistryContractTest {
             )
         )
         assertIs<CognitiveTurnTransitionResult.Transitioned>(first.complete())
+        assertIs<CognitiveTurnTransitionResult.Stale>(first.complete())
         assertFalse(first.isCurrent())
         assertNull(registry.currentReference())
 
@@ -45,6 +46,8 @@ class CognitiveTurnRegistryContractTest {
         ).ownership
         assertEquals(2L, second.reference.generation.value)
         assertTrue(second.isCurrent())
+        assertIs<CognitiveTurnTransitionResult.Stale>(first.fail())
+        assertEquals(second.reference, registry.currentReference())
     }
 
     @Test
@@ -56,6 +59,7 @@ class CognitiveTurnRegistryContractTest {
         val failure = assertIs<CognitiveTurnTransitionResult.Failed>(first.fail())
         assertEquals(CognitiveTurnFailure.TURN_FAILED, failure.reason)
         assertEquals(CognitiveTurnLifecycle.FAILED, first.lifecycle())
+        assertIs<CognitiveTurnTransitionResult.Stale>(first.fail())
 
         val replacement = assertIs<CognitiveTurnRegistrationResult.Registered>(
             registry.register(CognitiveTurnId("same"), CognitiveInput("replacement"))
