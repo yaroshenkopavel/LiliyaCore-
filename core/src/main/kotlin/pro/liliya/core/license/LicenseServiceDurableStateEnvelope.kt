@@ -121,10 +121,12 @@ class LicenseServiceDurableStateBinding(
     val storeId: LicenseServiceDurableStoreId,
     val generation: LicenseServiceDurableStateGeneration,
     val backendRevision: LicenseServiceDurableBackendRevision,
-    val protector: LicenseServiceDurableStateProtectorReference
+    val protector: LicenseServiceDurableStateProtectorReference,
+    val stateSchemaVersion: LicenseServiceDurableStateSchemaVersion = LicenseServiceDurableStateSchemaVersion(1)
 ) {
     init {
         require(version.value == 1) { "unsupported license service durable state envelope version" }
+        require(stateSchemaVersion.value == 1) { "unsupported license service durable state schema version" }
         require(purpose == LicenseServiceDurableStatePurpose.LICENSE_SERVICE_SECURITY_STATE) {
             "unsupported license service durable state purpose"
         }
@@ -133,6 +135,7 @@ class LicenseServiceDurableStateBinding(
     override fun equals(other: Any?): Boolean =
         other is LicenseServiceDurableStateBinding &&
             version == other.version &&
+            stateSchemaVersion == other.stateSchemaVersion &&
             purpose == other.purpose &&
             profile == other.profile &&
             storeId == other.storeId &&
@@ -142,6 +145,7 @@ class LicenseServiceDurableStateBinding(
 
     override fun hashCode(): Int {
         var result = version.hashCode()
+        result = 31 * result + stateSchemaVersion.hashCode()
         result = 31 * result + purpose.hashCode()
         result = 31 * result + profile.hashCode()
         result = 31 * result + storeId.hashCode()
@@ -152,9 +156,9 @@ class LicenseServiceDurableStateBinding(
     }
 
     override fun toString(): String =
-        "LicenseServiceDurableStateBinding(version=${version.value}, purpose=$purpose, profile=$profile, " +
-            "storeId=[redacted], generation=$generation, backendRevision=$backendRevision, " +
-            "protector=$protector)"
+        "LicenseServiceDurableStateBinding(version=${version.value}, schemaVersion=$stateSchemaVersion, " +
+            "purpose=$purpose, profile=$profile, storeId=[redacted], generation=$generation, " +
+            "backendRevision=$backendRevision, protector=$protector)"
 }
 
 class LicenseServiceDurableStateEnvelope(
@@ -213,7 +217,7 @@ class LicenseServiceDurableStateEnvelope(
         profile: LicenseServiceDurableStateEncryptionProfile,
         bytes: ByteArray
     ): ByteArray {
-        require(bytes.size * 8 == profile.authenticationTagSizeBits) {
+        require(bytes.size == profile.authenticationTagSizeBits / 8) {
             "invalid license service durable state authentication tag size"
         }
         return bytes.copyOf()
@@ -281,7 +285,7 @@ object LicenseServiceDurableStateEnvelopeCanonicalCodec {
         val tag = envelope.copyAuthenticationTag()
 
         val budget = EncodedBudget(MAX_ENVELOPE_BYTES)
-        if (!budget.add(Int.SIZE_BYTES * 13 + Long.SIZE_BYTES * 3)) {
+        if (!budget.add(Int.SIZE_BYTES * 14 + Long.SIZE_BYTES * 3)) {
             return rejectedEncode(LicenseServiceDurableStateCodecRejection.BOUNDS_EXCEEDED)
         }
         if (!budget.add(storeIdBytes.size + protectorIdBytes.size + nonce.size + ciphertext.size + tag.size)) {
@@ -293,6 +297,7 @@ object LicenseServiceDurableStateEnvelopeCanonicalCodec {
             data.writeInt(MAGIC)
             data.writeInt(CODEC_VERSION)
             data.writeInt(binding.version.value)
+            data.writeInt(binding.stateSchemaVersion.value)
             data.writeInt(PURPOSE_CODE)
             data.writeInt(ALGORITHM_CODE_AES_256_GCM)
             data.writeInt(binding.profile.keySizeBits)
@@ -337,6 +342,10 @@ object LicenseServiceDurableStateEnvelopeCanonicalCodec {
             if (envelopeVersion.value != 1) {
                 return rejectedDecode(LicenseServiceDurableStateCodecRejection.UNSUPPORTED_VERSION)
             }
+            val stateSchemaVersion = LicenseServiceDurableStateSchemaVersion(data.readInt())
+            if (stateSchemaVersion.value != 1) {
+                return rejectedDecode(LicenseServiceDurableStateCodecRejection.UNSUPPORTED_VERSION)
+            }
             if (data.readInt() != PURPOSE_CODE) {
                 return rejectedDecode(LicenseServiceDurableStateCodecRejection.MALFORMED)
             }
@@ -359,7 +368,8 @@ object LicenseServiceDurableStateEnvelopeCanonicalCodec {
                 protector = LicenseServiceDurableStateProtectorReference(
                     id = LicenseServiceDurableStateProtectorId(data.readBoundedId(input)),
                     generation = LicenseServiceDurableStateProtectorGeneration(data.readLong())
-                )
+                ),
+                stateSchemaVersion = stateSchemaVersion
             )
             val nonce = data.readBoundedBytes(input, profile.nonceSizeBytes, profile.nonceSizeBytes)
             val ciphertext = data.readBoundedBytes(input, 1, MAX_CIPHERTEXT_BYTES)
@@ -440,7 +450,7 @@ object LicenseServiceDurableStateEnvelopeCanonicalCodec {
 
 /**
  * Canonical AEAD associated data for the dedicated licensing security-state domain.
- * It is computed from pre-seal binding, so exact revision/generation/destination ownership are
+ * It is computed from pre-seal binding, so exact schema/revision/generation/destination ownership are
  * authenticated before ciphertext exists. Nonce/ciphertext/tag are deliberately excluded.
  */
 object LicenseServiceDurableStateAssociatedDataEncoder {
@@ -452,12 +462,13 @@ object LicenseServiceDurableStateAssociatedDataEncoder {
     fun encode(binding: LicenseServiceDurableStateBinding): ByteArray {
         val storeBytes = binding.storeId.value.toByteArray(StandardCharsets.UTF_8)
         val protectorBytes = binding.protector.id.value.toByteArray(StandardCharsets.UTF_8)
-        val outputSize = Int.SIZE_BYTES * 10 + Long.SIZE_BYTES * 3 + storeBytes.size + protectorBytes.size
+        val outputSize = Int.SIZE_BYTES * 11 + Long.SIZE_BYTES * 3 + storeBytes.size + protectorBytes.size
         return ByteArrayOutputStream(outputSize).use { output ->
             DataOutputStream(output).use { data ->
                 data.writeInt(MAGIC)
                 data.writeInt(VERSION)
                 data.writeInt(binding.version.value)
+                data.writeInt(binding.stateSchemaVersion.value)
                 data.writeInt(PURPOSE_CODE)
                 data.writeInt(ALGORITHM_CODE_AES_256_GCM)
                 data.writeInt(binding.profile.keySizeBits)
