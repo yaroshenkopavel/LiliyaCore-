@@ -78,16 +78,33 @@ class CognitiveRuntimeCompositionContractTest {
 
         val firstTurn = assertIs<CognitiveTurnRegistrationResult.Registered>(
             first.composition.beginTurn(CognitiveTurnId("same"), CognitiveInput("one"))
-        ).ownership
+        ).turn
         val secondTurn = assertIs<CognitiveTurnRegistrationResult.Registered>(
             second.composition.beginTurn(CognitiveTurnId("same"), CognitiveInput("two"))
-        ).ownership
+        ).turn
 
         assertNotSame(firstTurn, secondTurn)
         assertEquals(1L, firstTurn.reference.generation.value)
         assertEquals(1L, secondTurn.reference.generation.value)
         assertEquals(firstTurn.reference, first.composition.currentReference())
         assertEquals(secondTurn.reference, second.composition.currentReference())
+    }
+
+    @Test
+    fun public_turn_handle_is_read_only_and_cannot_publish_or_terminate() {
+        val methods = CognitiveTurnHandle::class.java.methods.map { it.name }.toSet()
+
+        assertTrue("getReference" in methods)
+        assertTrue("isCurrent" in methods)
+        assertTrue("lifecycle" in methods)
+        assertFalse("publishContextIfCurrent" in methods)
+        assertFalse("beginGenerating" in methods)
+        assertFalse("publishInferenceIfCurrent" in methods)
+        assertFalse("complete" in methods)
+        assertFalse("fail" in methods)
+        assertFalse("getInput" in methods)
+        assertFalse("context" in methods)
+        assertFalse("inference" in methods)
     }
 
     @Test
@@ -111,28 +128,29 @@ class CognitiveRuntimeCompositionContractTest {
     }
 
     @Test
-    fun deterministic_fake_ports_preserve_exact_turn_reference() {
+    fun deterministic_fake_ports_preserve_exact_turn_reference_without_public_mutation_handle() {
         val f = fixture("ports")
-        val ownership = assertIs<CognitiveTurnRegistrationResult.Registered>(
-            f.composition.beginTurn(CognitiveTurnId("turn-ports"), CognitiveInput("hello"))
-        ).ownership
+        val input = CognitiveInput("hello")
+        val turn = assertIs<CognitiveTurnRegistrationResult.Registered>(
+            f.composition.beginTurn(CognitiveTurnId("turn-ports"), input)
+        ).turn
 
         val memory = f.memory.retrieve(
-            MemoryRetrievalRequest(ownership.reference, ownership.input, 2)
+            MemoryRetrievalRequest(turn.reference, input, 2)
         )
         val knowledge = f.knowledge.retrieve(
-            KnowledgeRetrievalRequest(ownership.reference, ownership.input, 2)
+            KnowledgeRetrievalRequest(turn.reference, input, 2)
         )
         assertTrue(memory.items.isEmpty())
         assertTrue(knowledge.items.isEmpty())
 
-        val context = CognitiveContextSnapshot(ownership.reference, emptyList())
+        val context = CognitiveContextSnapshot(turn.reference, emptyList())
         val result = assertIs<CognitiveInferenceResult.Succeeded>(
             f.inference.infer(
-                CognitiveInferenceRequest(ownership.reference, ownership.input, context)
+                CognitiveInferenceRequest(turn.reference, input, context)
             )
         )
-        assertEquals(ownership.reference, result.turn)
+        assertEquals(turn.reference, result.turn)
         assertEquals("fake:0", result.output)
     }
 
