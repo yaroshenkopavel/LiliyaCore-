@@ -168,12 +168,15 @@ class CognitiveTurnRegistry internal constructor(
                     CognitiveTurnFailure.INFERENCE_REJECTED
                 )
             }
-            if (result is CognitiveInferenceResult.Rejected) {
-                return@synchronized CognitiveTurnPublicationResult.Rejected(
-                    CognitiveTurnFailure.INFERENCE_REJECTED
-                )
+            val succeeded = when (result) {
+                is CognitiveInferenceResult.Rejected -> {
+                    return@synchronized CognitiveTurnPublicationResult.Rejected(
+                        CognitiveTurnFailure.INFERENCE_REJECTED
+                    )
+                }
+                is CognitiveInferenceResult.Succeeded -> result
             }
-            if (!inferenceWithinLimits(result)) {
+            if (!inferenceWithinLimits(succeeded)) {
                 return@synchronized CognitiveTurnPublicationResult.Rejected(
                     CognitiveTurnFailure.INFERENCE_REJECTED
                 )
@@ -185,7 +188,7 @@ class CognitiveTurnRegistry internal constructor(
                 if (current !== entry || entry.lifecycle != CognitiveTurnLifecycle.GENERATING) {
                     CognitiveTurnPublicationResult.Stale
                 } else {
-                    entry.inference = result
+                    entry.inference = succeeded
                     entry.lifecycle = CognitiveTurnLifecycle.COGNITION_READY
                     CognitiveTurnPublicationResult.Published
                 }
