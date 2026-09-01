@@ -88,7 +88,8 @@ object LicenseServiceSecurityStateCanonicalCodec {
 
     fun decode(payload: LicenseServiceOpaquePayload): LicenseServiceSecurityStateDecodeResult {
         return try {
-            val input = ByteArrayInputStream(payload.copyBytes())
+            val originalBytes = payload.copyBytes()
+            val input = ByteArrayInputStream(originalBytes)
             val data = DataInputStream(input)
             if (data.readInt() != MAGIC) return LicenseServiceSecurityStateDecodeResult.Corrupt
 
@@ -111,6 +112,9 @@ object LicenseServiceSecurityStateCanonicalCodec {
             )
 
             if (input.available() != 0) return LicenseServiceSecurityStateDecodeResult.Corrupt
+            if (!encode(state).copyBytes().contentEquals(originalBytes)) {
+                return LicenseServiceSecurityStateDecodeResult.Corrupt
+            }
             LicenseServiceSecurityStateDecodeResult.Decoded(state)
         } catch (_: EOFException) {
             LicenseServiceSecurityStateDecodeResult.Corrupt
