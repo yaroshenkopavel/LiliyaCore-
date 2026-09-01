@@ -287,6 +287,26 @@ class LicenseServiceDeviceProofContractTest {
     }
 
     @Test
+    fun oversized_text_field_is_rejected_by_utf8_byte_bound_before_signing() {
+        val fixture = fixture(maxTranscriptBytes = 64)
+        val oversizedUtf8Subject = "€".repeat(32)
+        assertTrue(oversizedUtf8Subject.length <= 64)
+        assertTrue(oversizedUtf8Subject.encodeToByteArray().size > 64)
+
+        val result = fixture.service.prove(
+            challenge(fixture.key, subject = oversizedUtf8Subject),
+            now
+        )
+
+        assertEquals(
+            LicenseServiceDeviceProofRejection.TRANSCRIPT_TOO_LARGE,
+            assertIs<LicenseServiceDeviceProofResult.Rejected>(result).reason
+        )
+        assertEquals(0, fixture.signer.calls)
+        assertEquals(null, fixture.signer.lastChallengeBytes)
+    }
+
+    @Test
     fun nonce_is_defensively_copied_and_private_material_is_not_rendered() {
         val source = "PRIVATE-NONCE-CONTENT".encodeToByteArray()
         val nonce = LicenseServiceDeviceProofNonce.of(source)
