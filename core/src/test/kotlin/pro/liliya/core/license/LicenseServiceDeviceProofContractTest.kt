@@ -112,6 +112,7 @@ class LicenseServiceDeviceProofContractTest {
         subject: String = "PRIVATE-LICENSE-SUBJECT",
         enrollmentId: String? = "PRIVATE-ENROLLMENT-ID",
         nonce: ByteArray = byteArrayOf(1, 2, 3, 4),
+        validFrom: Instant = now.minusSeconds(1),
         validUntil: Instant = now.plusSeconds(60),
         protocolVersion: LicenseServiceProtocolVersion = protocol
     ) = LicenseServiceDeviceProofChallenge(
@@ -123,6 +124,7 @@ class LicenseServiceDeviceProofContractTest {
         enrollmentId = enrollmentId?.let(::LicenseServiceEnrollmentId),
         key = key,
         nonce = LicenseServiceDeviceProofNonce.of(nonce),
+        validFrom = validFrom,
         validUntil = validUntil
     )
 
@@ -166,6 +168,7 @@ class LicenseServiceDeviceProofContractTest {
                 DeviceKeyReference(DeviceKeyId("PRIVATE-OTHER-KEY-ID"), fixture.key.generation)
             ),
             challenge(fixture.key, nonce = byteArrayOf(9, 9, 9)),
+            challenge(fixture.key, validFrom = now.minusSeconds(30)),
             challenge(fixture.key, validUntil = now.plusSeconds(120)),
             challenge(
                 fixture.key,
@@ -182,18 +185,41 @@ class LicenseServiceDeviceProofContractTest {
     }
 
     @Test
-    fun expired_challenge_is_rejected_before_device_key_signing() {
+    fun malformed_or_outside_validity_window_challenge_is_rejected_before_device_key_signing() {
         val fixture = fixture()
-        val expired = challenge(
-            key = fixture.key,
-            validUntil = now
+
+        assertFailsWith<IllegalArgumentException> {
+            challenge(
+                key = fixture.key,
+                validFrom = now.plusSeconds(10),
+                validUntil = now.plusSeconds(10)
+            )
+        }
+
+        val notYetValid = fixture.service.prove(
+            challenge(
+                key = fixture.key,
+                validFrom = now.plusSeconds(1),
+                validUntil = now.plusSeconds(60)
+            ),
+            now
+        )
+        assertEquals(
+            LicenseServiceDeviceProofRejection.CHALLENGE_NOT_YET_VALID,
+            assertIs<LicenseServiceDeviceProofResult.Rejected>(notYetValid).reason
         )
 
-        val result = fixture.service.prove(expired, now)
-
+        val expired = fixture.service.prove(
+            challenge(
+                key = fixture.key,
+                validFrom = now.minusSeconds(60),
+                validUntil = now
+            ),
+            now
+        )
         assertEquals(
             LicenseServiceDeviceProofRejection.CHALLENGE_EXPIRED,
-            assertIs<LicenseServiceDeviceProofResult.Rejected>(result).reason
+            assertIs<LicenseServiceDeviceProofResult.Rejected>(expired).reason
         )
         assertEquals(0, fixture.signer.calls)
     }
