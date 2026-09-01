@@ -57,6 +57,7 @@ data class CognitiveRuntimeLimits(
     val maxContextItemChars: Int = 16_384,
     val maxRetrievalResults: Int = 32,
     val maxInferenceOutputChars: Int = 32_768,
+    val maxModelPromptChars: Int = 65_536,
     val maxPlanningGoalChars: Int = 4_096,
     val maxPlanningSteps: Int = 32,
     val maxPlanningStepChars: Int = 4_096,
@@ -85,6 +86,7 @@ data class CognitiveRuntimeLimits(
         require(maxContextItemChars > 0) { "maximum cognitive context item chars must be positive" }
         require(maxRetrievalResults > 0) { "maximum cognitive retrieval results must be positive" }
         require(maxInferenceOutputChars > 0) { "maximum cognitive inference output chars must be positive" }
+        require(maxModelPromptChars > 0) { "maximum cognitive model prompt chars must be positive" }
         require(maxPlanningGoalChars > 0) { "maximum planning goal chars must be positive" }
         require(maxPlanningSteps > 0) { "maximum planning steps must be positive" }
         require(maxPlanningStepChars > 0) { "maximum planning step chars must be positive" }
