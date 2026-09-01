@@ -5,6 +5,7 @@ import java.io.DataOutputStream
 import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
@@ -72,7 +73,7 @@ class LicenseServiceDurableStateCodecContractTest {
     }
 
     @Test
-    fun encode_rejects_text_and_scope_count_before_unbounded_output_growth() {
+    fun text_and_scope_count_bounds_fail_before_unbounded_codec_growth() {
         val oversized = "x".repeat(LicenseServiceDurableStateCanonicalCodec.MAX_TEXT_BYTES + 1)
         val oversizedTextResult = LicenseServiceDurableStateCanonicalCodec.encode(
             snapshot(listOf(state(oversized, "subject")))
@@ -85,11 +86,9 @@ class LicenseServiceDurableStateCodecContractTest {
         val manyStates = (0..LicenseServiceDurableStateCanonicalCodec.MAX_SCOPE_COUNT).map { index ->
             state("product-$index", "subject-$index", revocation = null, serverTime = null)
         }
-        val scopeCountResult = LicenseServiceDurableStateCanonicalCodec.encode(snapshot(manyStates))
-        assertEquals(
-            LicenseServiceDurableStateCodecRejection.BOUNDS_EXCEEDED,
-            assertIs<LicenseServiceDurableStateEncodeResult.Rejected>(scopeCountResult).reason
-        )
+        assertFailsWith<IllegalArgumentException> {
+            snapshot(manyStates)
+        }
     }
 
     @Test
