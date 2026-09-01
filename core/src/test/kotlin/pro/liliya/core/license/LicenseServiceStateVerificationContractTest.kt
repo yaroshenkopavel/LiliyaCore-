@@ -181,6 +181,38 @@ class LicenseServiceStateVerificationContractTest {
     }
 
     @Test
+    fun authenticated_noncanonical_payload_is_rejected_after_proof_verification() {
+        val canonical = LicenseServiceSecurityStateCanonicalCodec.encode(state()).copyBytes()
+        val productBytes = "liliya-pro".encodeToByteArray()
+        val subjectStart = Int.SIZE_BYTES + Int.SIZE_BYTES + productBytes.size + Int.SIZE_BYTES
+        canonical[subjectStart] = 0xC0.toByte()
+        val noncanonicalPayload = LicenseServiceOpaquePayload.of(canonical)
+        val unsigned = LicenseServiceStateEnvelope(
+            protocolVersion = protocol,
+            purpose = purpose,
+            profile = profile,
+            signingKeyId = key.keyId,
+            payload = noncanonicalPayload,
+            proof = LicenseServiceAuthenticationProof.of(byteArrayOf(1))
+        )
+        val signed = LicenseServiceStateEnvelope(
+            protocolVersion = unsigned.protocolVersion,
+            purpose = unsigned.purpose,
+            profile = unsigned.profile,
+            signingKeyId = unsigned.signingKeyId,
+            payload = unsigned.payload,
+            proof = LicenseServiceDigestTestProofVerifier.signForTest(key, unsigned)
+        )
+
+        val result = verifier().verify(signed)
+
+        assertEquals(
+            LicenseServiceStateVerificationRejection.INVALID_CANONICAL_PAYLOAD,
+            assertIs<LicenseServiceStateVerificationResult.Rejected>(result).reason
+        )
+    }
+
+    @Test
     fun malformed_payload_with_valid_proof_is_rejected_only_after_authentication() {
         var proofCalls = 0
         val malformedPayload = LicenseServiceOpaquePayload.of(
