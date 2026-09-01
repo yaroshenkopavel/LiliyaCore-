@@ -114,13 +114,25 @@ class CognitiveGovernedLearningComposition(
                 mapOf("terminalStatus" to result.status.name)
             )
 
-            is CognitiveGovernedLearningResult.Rejected -> foundation.observability.record(
-                DiagnosticSeverity.WARNING,
-                "COGNITIVE_GOVERNED_LEARNING_REJECTED",
-                "cognitive governed learning rejected",
-                context,
-                mapOf("rejectionReason" to result.reason.name)
-            )
+            is CognitiveGovernedLearningResult.Rejected -> {
+                val partial = result.reason ==
+                    CognitiveGovernedLearningFailure.COORDINATOR_PARTIAL_FAILURE
+                foundation.observability.record(
+                    if (partial) DiagnosticSeverity.ERROR else DiagnosticSeverity.WARNING,
+                    if (partial) {
+                        "COGNITIVE_GOVERNED_LEARNING_COORDINATOR_PARTIAL_FAILURE"
+                    } else {
+                        "COGNITIVE_GOVERNED_LEARNING_REJECTED"
+                    },
+                    if (partial) {
+                        "cognitive governed learning ended after an unexpected coordinator failure"
+                    } else {
+                        "cognitive governed learning rejected"
+                    },
+                    context,
+                    mapOf("rejectionReason" to result.reason.name)
+                )
+            }
         }
         return result
     }
