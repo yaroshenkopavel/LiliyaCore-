@@ -55,13 +55,20 @@ class LicenseServiceDeviceProofChallenge(
     val enrollmentId: LicenseServiceEnrollmentId?,
     val key: DeviceKeyReference,
     val nonce: LicenseServiceDeviceProofNonce,
+    val validFrom: Instant,
     val validUntil: Instant
 ) {
+    init {
+        require(validFrom.isBefore(validUntil)) {
+            "license service device proof validity window must be non-empty"
+        }
+    }
+
     override fun toString(): String =
         "LicenseServiceDeviceProofChallenge(protocolVersion=$protocolVersion, requestId=$requestId, " +
             "operation=$operation, productId=$productId, subject=<redacted>, " +
             "enrollmentPresent=${enrollmentId != null}, key=$key, nonce=$nonce, " +
-            "validUntil=$validUntil)"
+            "validFrom=$validFrom, validUntil=$validUntil)"
 }
 
 sealed interface LicenseServiceDeviceProofResult {
@@ -85,6 +92,7 @@ sealed interface LicenseServiceDeviceProofResult {
 }
 
 enum class LicenseServiceDeviceProofRejection {
+    CHALLENGE_NOT_YET_VALID,
     CHALLENGE_EXPIRED,
     TRANSCRIPT_TOO_LARGE
 }
@@ -107,6 +115,11 @@ class LicenseServiceDeviceProofComposition(
         challenge: LicenseServiceDeviceProofChallenge,
         now: Instant
     ): LicenseServiceDeviceProofResult {
+        if (now.isBefore(challenge.validFrom)) {
+            return LicenseServiceDeviceProofResult.Rejected(
+                LicenseServiceDeviceProofRejection.CHALLENGE_NOT_YET_VALID
+            )
+        }
         if (!now.isBefore(challenge.validUntil)) {
             return LicenseServiceDeviceProofResult.Rejected(
                 LicenseServiceDeviceProofRejection.CHALLENGE_EXPIRED
@@ -163,6 +176,8 @@ class LicenseServiceDeviceProofComposition(
                 val nonceBytes = challenge.nonce.copyBytes()
                 data.writeInt(nonceBytes.size)
                 data.write(nonceBytes)
+                data.writeLong(challenge.validFrom.epochSecond)
+                data.writeInt(challenge.validFrom.nano)
                 data.writeLong(challenge.validUntil.epochSecond)
                 data.writeInt(challenge.validUntil.nano)
             }
