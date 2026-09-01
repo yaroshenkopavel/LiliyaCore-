@@ -71,13 +71,13 @@ internal class CognitiveContextAssembler(
                 CognitiveContextAssemblyFailure.MEMORY_PROVIDER_FAILED
             )
         }
+        if (!turns.isCurrentAt(reference, CognitiveTurnLifecycle.CREATED)) {
+            return CognitiveContextAssemblyResult.Stale
+        }
         if (memory.items.size > memoryRequest.maxResults) {
             return CognitiveContextAssemblyResult.Rejected(
                 CognitiveContextAssemblyFailure.MEMORY_RESULT_LIMIT_REJECTED
             )
-        }
-        if (!turns.isCurrentAt(reference, CognitiveTurnLifecycle.CREATED)) {
-            return CognitiveContextAssemblyResult.Stale
         }
 
         val knowledgeRequest = KnowledgeRetrievalRequest(
@@ -92,13 +92,13 @@ internal class CognitiveContextAssembler(
                 CognitiveContextAssemblyFailure.KNOWLEDGE_PROVIDER_FAILED
             )
         }
+        if (!turns.isCurrentAt(reference, CognitiveTurnLifecycle.CREATED)) {
+            return CognitiveContextAssemblyResult.Stale
+        }
         if (knowledge.items.size > knowledgeRequest.maxResults) {
             return CognitiveContextAssemblyResult.Rejected(
                 CognitiveContextAssemblyFailure.KNOWLEDGE_RESULT_LIMIT_REJECTED
             )
-        }
-        if (!turns.isCurrentAt(reference, CognitiveTurnLifecycle.CREATED)) {
-            return CognitiveContextAssemblyResult.Stale
         }
 
         val items = mutableListOf<CognitiveContextItem>()
