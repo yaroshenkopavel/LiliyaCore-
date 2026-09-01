@@ -194,6 +194,7 @@ class LicenseServiceDurableStateCoordinator(
     )
     private val lock = Any()
     private var published: LicenseServiceDurableStateSnapshot? = null
+    private var initializationUncertain = false
 
     fun verifyAndAccept(
         envelope: LicenseServiceStateEnvelope
@@ -236,6 +237,10 @@ class LicenseServiceDurableStateCoordinator(
     private fun transact(
         verification: LicenseServiceStateVerificationResult.Verified
     ): LicenseServiceDurableStateAcceptanceResult {
+        if (initializationUncertain) {
+            return durableRejected(LicenseServiceDurableStateFailure.INITIALIZATION_UNCERTAIN)
+        }
+
         val current = when (val loaded = loadCurrent()) {
             is CurrentLoadResult.Present -> loaded
             CurrentLoadResult.Missing -> null
@@ -293,10 +298,16 @@ class LicenseServiceDurableStateCoordinator(
             }
         }
 
+        var freshInitialization = false
         val protectorReference = if (current == null) {
             when (val initialization = protector.prepareInitialization(storeId)) {
-                is LicenseServiceDurableProtectorInitializationResult.Fresh -> initialization.reference
+                is LicenseServiceDurableProtectorInitializationResult.Fresh -> {
+                    initializationUncertain = true
+                    freshInitialization = true
+                    initialization.reference
+                }
                 is LicenseServiceDurableProtectorInitializationResult.Existing -> {
+                    initializationUncertain = true
                     return durableRejected(LicenseServiceDurableStateFailure.INITIALIZATION_UNCERTAIN)
                 }
                 is LicenseServiceDurableProtectorInitializationResult.Rejected -> {
@@ -343,6 +354,9 @@ class LicenseServiceDurableStateCoordinator(
                 if (committed.revision != candidate.backendRevision) {
                     durableRejected(LicenseServiceDurableStateFailure.REVISION_MISMATCH)
                 } else {
+                    if (freshInitialization) {
+                        initializationUncertain = false
+                    }
                     published = candidate
                     observeAdvanced(candidate)
                     LicenseServiceDurableStateAcceptanceResult.Advanced(candidate)
