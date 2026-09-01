@@ -107,7 +107,7 @@ class CognitiveStructuredMaterializationE2EContractTest {
         val decisionSnapshot = decision.inspect(generated.decision.id)!!
         assertEquals("goal", planningSnapshot.proposal.goal)
         assertEquals(listOf("step one", "step two"), planningSnapshot.proposal.steps.map { it.description })
-        assertEquals(listOf("premise one", "premise two"), reasoningSnapshot.artifact.premises.map { it.content })
+        assertEquals(listOf("premise one", "premise two"), reasoningSnapshot.artifact.premises.map { it.statement })
         assertEquals("analysis", reasoningSnapshot.artifact.analysis)
         assertEquals("conclusion", reasoningSnapshot.artifact.conclusion)
         assertEquals(listOf("option one", "option two"), decisionSnapshot.decision.options.map { it.description })
