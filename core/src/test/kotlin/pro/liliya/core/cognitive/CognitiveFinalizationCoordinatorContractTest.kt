@@ -6,8 +6,12 @@ import pro.liliya.core.decision.DecisionComposition
 import pro.liliya.core.diagnostics.DiagnosticRecorder
 import pro.liliya.core.diagnostics.InMemoryDiagnosticSink
 import pro.liliya.core.foundation.FoundationComposition
+import pro.liliya.core.learning.LearningCandidate
+import pro.liliya.core.learning.LearningCandidateId
 import pro.liliya.core.learning.LearningComposition
+import pro.liliya.core.learning.LearningInstallResult
 import pro.liliya.core.learning.LearningOrigin
+import pro.liliya.core.learning.LearningSourceId
 import pro.liliya.core.logging.CorrelationIdGenerator
 import pro.liliya.core.logging.InMemoryLogWriter
 import pro.liliya.core.logging.StructuredLogger
@@ -215,6 +219,34 @@ class CognitiveFinalizationCoordinatorContractTest {
         assertEquals(CognitiveFinalizationFailure.ARTIFACT_ID_COLLISION, rejected.reason)
         assertEquals(listOf(preexisting), f.reflection.snapshot())
         assertTrue(f.learning.snapshot().isEmpty())
+        assertEquals(CognitiveTurnLifecycle.FAILED, turn.lifecycle())
+        assertNull(f.composition.currentReference())
+    }
+
+    @Test
+    fun preexisting_learning_id_collision_fails_closed_without_installing_reflection_or_touching_old_candidate() {
+        val f = fixture(
+            outcome = CognitiveOutcomeMaterializationPort {
+                CognitiveOutcomeMaterializationResult.Succeeded(outcomeCandidate())
+            }
+        )
+        val turn = readyTurn(f.composition)
+        assertIs<CognitiveGenerationResult.Succeeded>(f.composition.generateCognition(turn.reference))
+        val preexisting = LearningCandidate(
+            id = LearningCandidateId("learning-candidate-1"),
+            origin = LearningOrigin.Declared(LearningSourceId("preexisting")),
+            proposal = "preexisting private learning",
+            createdAt = Instant.parse("2026-09-01T17:00:00Z")
+        )
+        assertIs<LearningInstallResult.Installed>(f.learning.install(preexisting))
+
+        val rejected = assertIs<CognitiveFinalizationResult.Rejected>(
+            f.composition.finalizeCognition(turn.reference)
+        )
+
+        assertEquals(CognitiveFinalizationFailure.ARTIFACT_ID_COLLISION, rejected.reason)
+        assertTrue(f.reflection.snapshot().isEmpty())
+        assertEquals(listOf(preexisting), f.learning.snapshot())
         assertEquals(CognitiveTurnLifecycle.FAILED, turn.lifecycle())
         assertNull(f.composition.currentReference())
     }
