@@ -31,7 +31,12 @@ class LicenseServiceDurableStateSnapshot(
     val generation: LicenseServiceDurableStateGeneration,
     val backendRevision: LicenseServiceDurableBackendRevision
 ) {
-    val states: List<LicenseServiceSecurityState> = states.toList()
+    val states: List<LicenseServiceSecurityState> = states.sortedWith(
+        compareBy(
+            { it.scope.productId.value },
+            { it.scope.subject.value }
+        )
+    )
 
     init {
         require(this.states.isNotEmpty()) { "license service durable state must not be empty" }
@@ -127,19 +132,13 @@ object LicenseServiceDurableStateCanonicalCodec {
     private const val FLAG_SERVER_TIME = 1 shl 2
     private const val KNOWN_FLAGS = FLAG_REVOCATION or FLAG_REPLAY or FLAG_SERVER_TIME
 
-    private val scopeComparator = compareBy<LicenseServiceSecurityState>(
-        { it.scope.productId.value },
-        { it.scope.subject.value }
-    )
-
     fun encode(snapshot: LicenseServiceDurableStateSnapshot): LicenseServiceDurableStateEncodeResult {
         if (snapshot.states.size > MAX_SCOPE_COUNT) {
             return rejectedEncode(LicenseServiceDurableStateCodecRejection.BOUNDS_EXCEEDED)
         }
 
-        val ordered = snapshot.states.sortedWith(scopeComparator)
         val budget = EncodedBudget(MAX_PAYLOAD_BYTES)
-        if (!budget.add(Int.SIZE_BYTES * 3 + Long.SIZE_BYTES * 2 + Int.SIZE_BYTES)) {
+        if (!budget.add(Int.SIZE_BYTES * 3 + Long.SIZE_BYTES * 2)) {
             return rejectedEncode(LicenseServiceDurableStateCodecRejection.BOUNDS_EXCEEDED)
         }
         val purposeBytes = boundedUtf8Length(PURPOSE) ?: return rejectedEncode(
@@ -149,7 +148,7 @@ object LicenseServiceDurableStateCanonicalCodec {
             return rejectedEncode(LicenseServiceDurableStateCodecRejection.BOUNDS_EXCEEDED)
         }
 
-        for (state in ordered) {
+        for (state in snapshot.states) {
             val productBytes = boundedUtf8Length(state.scope.productId.value)
                 ?: return rejectedEncode(LicenseServiceDurableStateCodecRejection.BOUNDS_EXCEEDED)
             val subjectBytes = boundedUtf8Length(state.scope.subject.value)
@@ -170,8 +169,8 @@ object LicenseServiceDurableStateCanonicalCodec {
             data.writeBoundedString(PURPOSE)
             data.writeLong(snapshot.generation.value)
             data.writeLong(snapshot.backendRevision.value)
-            data.writeInt(ordered.size)
-            ordered.forEach { state ->
+            data.writeInt(snapshot.states.size)
+            snapshot.states.forEach { state ->
                 data.writeBoundedString(state.scope.productId.value)
                 data.writeBoundedString(state.scope.subject.value)
                 var flags = 0
