@@ -40,7 +40,9 @@ data class LargeProtectedModelResourceBudgets(
     val maxSegmentCount: Int,
     val minSegmentPlaintextBytes: Long,
     val maxSegmentPlaintextBytes: Long,
-    val maxSegmentCiphertextBytes: Long
+    val maxSegmentCiphertextBytes: Long,
+    val maxStructuralIdentifierChars: Int = DEFAULT_MAX_STRUCTURAL_IDENTIFIER_CHARS,
+    val maxCanonicalManifestBytes: Long = DEFAULT_MAX_CANONICAL_MANIFEST_BYTES
 ) {
     init {
         require(maxTotalPlaintextBytes > 0L) { "max total plaintext bytes must be positive" }
@@ -56,6 +58,12 @@ data class LargeProtectedModelResourceBudgets(
         }
         require(maxSegmentCiphertextBytes <= maxTotalCiphertextBytes) {
             "max segment ciphertext bytes exceeds total ciphertext budget"
+        }
+        require(maxStructuralIdentifierChars > 0) {
+            "max structural identifier chars must be positive"
+        }
+        require(maxCanonicalManifestBytes > 0L) {
+            "max canonical manifest bytes must be positive"
         }
     }
 
@@ -163,6 +171,8 @@ enum class LargeProtectedModelManifestFailure {
     TOTAL_CIPHERTEXT_SIZE_INVALID,
     SEGMENT_COUNT_INVALID,
     SEGMENT_COUNT_MISMATCH,
+    STRUCTURAL_IDENTIFIER_SIZE_INVALID,
+    CANONICAL_MANIFEST_SIZE_INVALID,
     SEGMENT_INDEX_INVALID,
     DUPLICATE_SEGMENT_INDEX,
     SEGMENT_ORDER_INVALID,
@@ -209,10 +219,20 @@ object LargeProtectedModelManifestFactory {
         ) {
             return rejected(LargeProtectedModelManifestFailure.SEGMENT_COUNT_INVALID)
         }
+        if (request.model.packageId.value.length > budgets.maxStructuralIdentifierChars ||
+            request.modelDek.id.value.length > budgets.maxStructuralIdentifierChars
+        ) {
+            return rejected(LargeProtectedModelManifestFailure.STRUCTURAL_IDENTIFIER_SIZE_INVALID)
+        }
 
         val drafts = request.segments()
         if (drafts.size != request.declaredSegmentCount) {
             return rejected(LargeProtectedModelManifestFailure.SEGMENT_COUNT_MISMATCH)
+        }
+        val canonicalUpperBound = canonicalManifestUpperBound(request, drafts.size)
+            ?: return rejected(LargeProtectedModelManifestFailure.CANONICAL_MANIFEST_SIZE_INVALID)
+        if (canonicalUpperBound > budgets.maxCanonicalManifestBytes) {
+            return rejected(LargeProtectedModelManifestFailure.CANONICAL_MANIFEST_SIZE_INVALID)
         }
 
         val seenIndices = HashSet<Int>(drafts.size)
@@ -303,6 +323,33 @@ object LargeProtectedModelManifestFactory {
         )
     }
 
+    private fun canonicalManifestUpperBound(
+        request: LargeProtectedModelManifestRequest,
+        segmentCount: Int
+    ): Long? = try {
+        var total = 0L
+        total = Math.addExact(total, 4L)
+        total = Math.addExact(total, stringUpperBound(request.profile.id.value))
+        total = Math.addExact(total, 4L)
+        total = Math.addExact(total, stringUpperBound(request.model.packageId.value))
+        total = Math.addExact(total, 8L)
+        total = Math.addExact(total, stringUpperBound(request.modelDek.id.value))
+        total = Math.addExact(total, 8L)
+        total = Math.addExact(total, 8L)
+        total = Math.addExact(total, 8L)
+        total = Math.addExact(total, 4L)
+        total = Math.addExact(
+            total,
+            Math.multiplyExact(segmentCount.toLong(), CANONICAL_SEGMENT_UPPER_BOUND_BYTES)
+        )
+        total
+    } catch (_: ArithmeticException) {
+        null
+    }
+
+    private fun stringUpperBound(value: String): Long =
+        Math.addExact(4L, Math.multiplyExact(value.length.toLong(), MAX_UTF8_BYTES_PER_CHAR))
+
     private fun rejected(reason: LargeProtectedModelManifestFailure) =
         LargeProtectedModelManifestResult.Rejected(reason)
 }
@@ -368,5 +415,9 @@ private class ByteArrayKey(value: ByteArray) {
 }
 
 private const val MAX_LARGE_PAYLOAD_PROFILE_ID_CHARS = 128
+private const val DEFAULT_MAX_STRUCTURAL_IDENTIFIER_CHARS = 512
+private const val DEFAULT_MAX_CANONICAL_MANIFEST_BYTES = 8L * 1024L * 1024L
+private const val MAX_UTF8_BYTES_PER_CHAR = 4L
+private const val CANONICAL_SEGMENT_UPPER_BOUND_BYTES = 72L
 const val SEGMENT_NONCE_SIZE_BYTES = 12
 const val SEGMENT_CIPHERTEXT_DIGEST_SIZE_BYTES = 32
