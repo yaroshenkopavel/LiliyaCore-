@@ -27,6 +27,15 @@ value class LicenseServiceEnrollmentId(val value: String) {
     override fun toString(): String = value
 }
 
+@JvmInline
+value class LicenseServiceEvidenceProfile(val value: String) {
+    init {
+        require(value.isNotBlank()) { "license service evidence profile must not be blank" }
+    }
+
+    override fun toString(): String = value
+}
+
 enum class LicenseServiceOperation {
     ISSUE,
     REFRESH
@@ -83,18 +92,19 @@ class LicenseServiceAuthenticationProof private constructor(
  *
  * Possession of this value does not mean that [payload] is authentic, current, replay-safe,
  * entitled, or authorized. A later verification boundary must authenticate the exact purpose,
- * signing key, payload and proof before any retained security state may advance.
+ * evidence profile, signing key, payload and proof before any retained security state may advance.
  */
 class LicenseServiceStateEnvelope(
     val protocolVersion: LicenseServiceProtocolVersion,
     val purpose: LicenseServiceEvidencePurpose,
+    val profile: LicenseServiceEvidenceProfile,
     val signingKeyId: LicenseKeyId,
     val payload: LicenseServiceOpaquePayload,
     val proof: LicenseServiceAuthenticationProof
 ) {
     override fun toString(): String =
         "LicenseServiceStateEnvelope(protocolVersion=$protocolVersion, purpose=$purpose, " +
-            "signingKeyId=$signingKeyId, payload=<redacted>, proof=<redacted>)"
+            "profile=$profile, signingKeyId=$signingKeyId, payload=<redacted>, proof=<redacted>)"
 }
 
 class LicenseServiceRequest(
