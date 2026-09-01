@@ -271,6 +271,28 @@ class LicenseServiceDurableStateCoordinator(
         val nextRevision = nextRevision(current?.snapshot?.backendRevision)
             ?: return durableRejected(LicenseServiceDurableStateFailure.REVISION_OVERFLOW)
 
+        val candidateStates = if (current == null) {
+            listOf(merged)
+        } else {
+            current.snapshot.states.filterNot { it.scope == merged.scope } + merged
+        }
+        val candidate = try {
+            LicenseServiceDurableStateSnapshot(
+                states = candidateStates,
+                generation = nextGeneration,
+                backendRevision = nextRevision,
+                schemaVersion = LicenseServiceDurableStateSchemaVersion(1)
+            )
+        } catch (_: IllegalArgumentException) {
+            return durableRejected(LicenseServiceDurableStateFailure.INCOMPATIBLE)
+        }
+        val plaintext = when (val encoded = LicenseServiceDurableStateCanonicalCodec.encode(candidate)) {
+            is LicenseServiceDurableStateEncodeResult.Encoded -> encoded.payload
+            is LicenseServiceDurableStateEncodeResult.Rejected -> {
+                return durableRejected(LicenseServiceDurableStateFailure.INCOMPATIBLE)
+            }
+        }
+
         val protectorReference = if (current == null) {
             when (val initialization = protector.prepareInitialization(storeId)) {
                 is LicenseServiceDurableProtectorInitializationResult.Fresh -> initialization.reference
@@ -285,29 +307,6 @@ class LicenseServiceDurableStateCoordinator(
             current.protector
         }
 
-        val candidateStates = if (current == null) {
-            listOf(merged)
-        } else {
-            current.snapshot.states
-                .filterNot { it.scope == merged.scope } + merged
-        }
-        val candidate = try {
-            LicenseServiceDurableStateSnapshot(
-                states = candidateStates,
-                generation = nextGeneration,
-                backendRevision = nextRevision,
-                schemaVersion = LicenseServiceDurableStateSchemaVersion(1)
-            )
-        } catch (_: IllegalArgumentException) {
-            return durableRejected(LicenseServiceDurableStateFailure.INCOMPATIBLE)
-        }
-
-        val plaintext = when (val encoded = LicenseServiceDurableStateCanonicalCodec.encode(candidate)) {
-            is LicenseServiceDurableStateEncodeResult.Encoded -> encoded.payload
-            is LicenseServiceDurableStateEncodeResult.Rejected -> {
-                return durableRejected(LicenseServiceDurableStateFailure.INCOMPATIBLE)
-            }
-        }
         val binding = LicenseServiceDurableStateBinding(
             version = LicenseServiceDurableStateEnvelopeVersion(1),
             stateSchemaVersion = candidate.schemaVersion,
@@ -415,11 +414,15 @@ class LicenseServiceDurableStateCoordinator(
         }
         if (
             snapshot.backendRevision != loaded.revision ||
-            snapshot.backendRevision != envelope.binding.backendRevision ||
+            snapshot.backendRevision != envelope.binding.backendRevision
+        ) {
+            return CurrentLoadResult.Rejected(LicenseServiceDurableStateFailure.REVISION_MISMATCH)
+        }
+        if (
             snapshot.generation != envelope.binding.generation ||
             snapshot.schemaVersion != envelope.binding.stateSchemaVersion
         ) {
-            return CurrentLoadResult.Rejected(LicenseServiceDurableStateFailure.REVISION_MISMATCH)
+            return CurrentLoadResult.Rejected(LicenseServiceDurableStateFailure.RECOVERY_REJECTED)
         }
         return CurrentLoadResult.Present(snapshot, envelope.binding.protector)
     }
