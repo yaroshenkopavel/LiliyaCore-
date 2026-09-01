@@ -9,6 +9,7 @@ sealed interface CognitiveTurnRegistrationResult {
 
 enum class CognitiveTurnRegistrationFailure {
     LIVE_TURN_EXISTS,
+    TURN_ID_LIMIT_REJECTED,
     INPUT_LIMIT_REJECTED,
     GENERATION_OVERFLOW
 }
@@ -35,6 +36,13 @@ interface CognitiveTurnHandle {
     fun lifecycle(): CognitiveTurnLifecycle
 }
 
+internal data class AcceptedCognitionReceipt(
+    val turn: CognitiveTurnReference,
+    val planning: PlanningReference,
+    val reasoning: ReasoningReference,
+    val decision: DecisionReference
+)
+
 class CognitiveTurnRegistry internal constructor(
     private val limits: CognitiveRuntimeLimits,
     initialGeneration: Long = 0L
@@ -44,7 +52,8 @@ class CognitiveTurnRegistry internal constructor(
         val input: CognitiveInput,
         var lifecycle: CognitiveTurnLifecycle = CognitiveTurnLifecycle.CREATED,
         var context: CognitiveContextSnapshot? = null,
-        var inference: CognitiveInferenceResult? = null,
+        var inference: CognitiveInferenceResult.Succeeded? = null,
+        var acceptedCognition: AcceptedCognitionReceipt? = null,
         var publicationInProgress: Boolean = false
     )
 
@@ -62,6 +71,11 @@ class CognitiveTurnRegistry internal constructor(
         if (current != null) {
             return@synchronized CognitiveTurnRegistrationResult.Rejected(
                 CognitiveTurnRegistrationFailure.LIVE_TURN_EXISTS
+            )
+        }
+        if (id.value.length > limits.maxTurnIdChars) {
+            return@synchronized CognitiveTurnRegistrationResult.Rejected(
+                CognitiveTurnRegistrationFailure.TURN_ID_LIMIT_REJECTED
             )
         }
         if (input.text.length > limits.maxInputChars) {
@@ -104,8 +118,12 @@ class CognitiveTurnRegistry internal constructor(
         current?.takeIf { it.reference == reference }?.context
     }
 
-    internal fun inferenceIfCurrent(reference: CognitiveTurnReference): CognitiveInferenceResult? = synchronized(lock) {
+    internal fun inferenceIfCurrent(reference: CognitiveTurnReference): CognitiveInferenceResult.Succeeded? = synchronized(lock) {
         current?.takeIf { it.reference == reference }?.inference
+    }
+
+    internal fun acceptedCognitionIfCurrent(reference: CognitiveTurnReference): AcceptedCognitionReceipt? = synchronized(lock) {
+        current?.takeIf { it.reference == reference }?.acceptedCognition
     }
 
     internal fun publishContextIfCurrent(
@@ -154,29 +172,22 @@ class CognitiveTurnRegistry internal constructor(
         CognitiveTurnTransitionResult.Transitioned
     }
 
-    internal fun publishInferenceIfCurrent(
+    internal fun publishAcceptedCognitionIfCurrent(
         reference: CognitiveTurnReference,
-        result: CognitiveInferenceResult,
+        inference: CognitiveInferenceResult.Succeeded,
+        receipt: AcceptedCognitionReceipt,
         publish: () -> Unit = {}
     ): CognitiveTurnPublicationResult = synchronized(lock) {
         val entry = current
         if (entry == null || entry.reference != reference || entry.lifecycle != CognitiveTurnLifecycle.GENERATING) {
             return@synchronized CognitiveTurnPublicationResult.Stale
         }
-        if (result.turn != entry.reference) {
+        if (inference.turn != entry.reference || receipt.turn != entry.reference) {
             return@synchronized CognitiveTurnPublicationResult.Rejected(
                 CognitiveTurnFailure.INFERENCE_REJECTED
             )
         }
-        val succeeded = when (result) {
-            is CognitiveInferenceResult.Rejected -> {
-                return@synchronized CognitiveTurnPublicationResult.Rejected(
-                    CognitiveTurnFailure.INFERENCE_REJECTED
-                )
-            }
-            is CognitiveInferenceResult.Succeeded -> result
-        }
-        if (!inferenceWithinLimits(succeeded)) {
+        if (!inferenceWithinLimits(inference)) {
             return@synchronized CognitiveTurnPublicationResult.Rejected(
                 CognitiveTurnFailure.INFERENCE_REJECTED
             )
@@ -188,7 +199,8 @@ class CognitiveTurnRegistry internal constructor(
             if (current !== entry || entry.lifecycle != CognitiveTurnLifecycle.GENERATING) {
                 CognitiveTurnPublicationResult.Stale
             } else {
-                entry.inference = succeeded
+                entry.inference = inference
+                entry.acceptedCognition = receipt
                 entry.lifecycle = CognitiveTurnLifecycle.COGNITION_READY
                 CognitiveTurnPublicationResult.Published
             }
@@ -203,7 +215,13 @@ class CognitiveTurnRegistry internal constructor(
         reference: CognitiveTurnReference
     ): CognitiveTurnTransitionResult = synchronized(lock) {
         val entry = current
-        if (entry == null || entry.reference != reference || entry.lifecycle != CognitiveTurnLifecycle.COGNITION_READY) {
+        if (
+            entry == null ||
+            entry.reference != reference ||
+            entry.lifecycle != CognitiveTurnLifecycle.COGNITION_READY ||
+            entry.inference == null ||
+            entry.acceptedCognition == null
+        ) {
             return@synchronized CognitiveTurnTransitionResult.Stale
         }
         check(!entry.publicationInProgress) {

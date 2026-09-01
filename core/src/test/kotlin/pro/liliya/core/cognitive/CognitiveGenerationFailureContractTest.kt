@@ -59,6 +59,7 @@ class CognitiveGenerationFailureContractTest {
         }
         val composition = CognitiveRuntimeComposition(
             foundation = foundation,
+            scope = CognitiveRuntimeScopeId("scope-failure"),
             memoryRetrieval = MemoryRetrievalPort { MemoryRetrievalResult(emptyList()) },
             knowledgeRetrieval = KnowledgeRetrievalPort { KnowledgeRetrievalResult(emptyList()) },
             selfSnapshots = SelfSnapshotPort { null },
@@ -78,9 +79,7 @@ class CognitiveGenerationFailureContractTest {
         val turn = assertIs<CognitiveTurnRegistrationResult.Registered>(
             composition.beginTurn(CognitiveTurnId("primary-turn"), CognitiveInput("private input"))
         ).turn
-        assertIs<CognitiveContextAssemblyResult.Published>(
-            composition.assembleContext(turn.reference)
-        )
+        assertIs<CognitiveContextAssemblyResult.Published>(composition.assembleContext(turn.reference))
         return turn
     }
 
@@ -103,9 +102,7 @@ class CognitiveGenerationFailureContractTest {
         val f = fixture(inference, materializer)
         val turn = readyTurn(f.composition)
 
-        val result = assertIs<CognitiveGenerationResult.Rejected>(
-            f.composition.generateCognition(turn.reference)
-        )
+        val result = assertIs<CognitiveGenerationResult.Rejected>(f.composition.generateCognition(turn.reference))
 
         assertEquals(CognitiveGenerationFailure.FOREIGN_INFERENCE_RESULT, result.reason)
         assertFalse(materializerCalled)
@@ -127,9 +124,7 @@ class CognitiveGenerationFailureContractTest {
         val f = fixture(inference, materializer)
         val turn = readyTurn(f.composition)
 
-        val result = assertIs<CognitiveGenerationResult.Rejected>(
-            f.composition.generateCognition(turn.reference)
-        )
+        val result = assertIs<CognitiveGenerationResult.Rejected>(f.composition.generateCognition(turn.reference))
 
         assertEquals(CognitiveGenerationFailure.MATERIALIZER_FAILED, result.reason)
         assertTrue(f.planning.snapshot().isEmpty())
@@ -157,9 +152,7 @@ class CognitiveGenerationFailureContractTest {
         )
         val turn = readyTurn(f.composition)
 
-        val result = assertIs<CognitiveGenerationResult.Rejected>(
-            f.composition.generateCognition(turn.reference)
-        )
+        val result = assertIs<CognitiveGenerationResult.Rejected>(f.composition.generateCognition(turn.reference))
 
         assertEquals(CognitiveGenerationFailure.ARTIFACT_ID_OR_TIME_FAILED, result.reason)
         assertTrue(f.planning.snapshot().isEmpty())

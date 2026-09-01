@@ -10,6 +10,12 @@ import pro.liliya.core.personality.PersonalityGeneration
 import pro.liliya.core.personality.PersonalityProfileId
 
 @JvmInline
+value class CognitiveRuntimeScopeId(val value: String) {
+    init { require(value.isNotBlank()) { "cognitive runtime scope id must not be blank" } }
+    override fun toString(): String = "CognitiveRuntimeScopeId([redacted])"
+}
+
+@JvmInline
 value class CognitiveTurnId(val value: String) {
     init { require(value.isNotBlank()) { "cognitive turn id must not be blank" } }
     override fun toString(): String = "CognitiveTurnId([redacted])"
@@ -44,6 +50,8 @@ enum class CognitiveTurnFailure {
 }
 
 data class CognitiveRuntimeLimits(
+    val maxRuntimeScopeIdChars: Int = 256,
+    val maxTurnIdChars: Int = 512,
     val maxInputChars: Int = 16_384,
     val maxContextItems: Int = 64,
     val maxContextItemChars: Int = 16_384,
@@ -58,9 +66,15 @@ data class CognitiveRuntimeLimits(
     val maxReasoningConclusionChars: Int = 4_096,
     val maxDecisionOptions: Int = 16,
     val maxDecisionOptionChars: Int = 4_096,
-    val maxDecisionRationaleChars: Int = 8_192
+    val maxDecisionRationaleChars: Int = 8_192,
+    val maxResultChars: Int = 16_384,
+    val maxReflectionChars: Int = 16_384,
+    val maxLearningProposalChars: Int = 16_384,
+    val maxProvenanceReferenceChars: Int = 1_024
 ) {
     init {
+        require(maxRuntimeScopeIdChars > 0) { "maximum cognitive runtime scope id chars must be positive" }
+        require(maxTurnIdChars > 0) { "maximum cognitive turn id chars must be positive" }
         require(maxInputChars > 0) { "maximum cognitive input chars must be positive" }
         require(maxContextItems > 0) { "maximum cognitive context items must be positive" }
         require(maxContextItemChars > 0) { "maximum cognitive context item chars must be positive" }
@@ -76,6 +90,10 @@ data class CognitiveRuntimeLimits(
         require(maxDecisionOptions > 0) { "maximum decision options must be positive" }
         require(maxDecisionOptionChars > 0) { "maximum decision option chars must be positive" }
         require(maxDecisionRationaleChars > 0) { "maximum decision rationale chars must be positive" }
+        require(maxResultChars > 0) { "maximum cognitive result chars must be positive" }
+        require(maxReflectionChars > 0) { "maximum cognitive reflection chars must be positive" }
+        require(maxLearningProposalChars > 0) { "maximum cognitive learning proposal chars must be positive" }
+        require(maxProvenanceReferenceChars > 0) { "maximum cognitive provenance reference chars must be positive" }
     }
 }
 

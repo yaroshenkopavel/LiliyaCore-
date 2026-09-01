@@ -78,6 +78,7 @@ class CognitiveContextAssemblerContractTest {
         val registry = CognitiveTurnRegistry(limits)
         val composition = CognitiveRuntimeComposition(
             foundation = foundation,
+            scope = CognitiveRuntimeScopeId("scope-context"),
             memoryRetrieval = memory,
             knowledgeRetrieval = knowledge,
             selfSnapshots = self,
@@ -288,6 +289,7 @@ class CognitiveContextAssemblerContractTest {
         )
         val composition = CognitiveRuntimeComposition(
             foundation = foundation,
+            scope = CognitiveRuntimeScopeId("scope-stale"),
             memoryRetrieval = memory,
             knowledgeRetrieval = KnowledgeRetrievalPort {
                 knowledgeCalls.incrementAndGet()

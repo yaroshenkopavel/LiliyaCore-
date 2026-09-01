@@ -3,11 +3,14 @@ package pro.liliya.core.cognitive
 import pro.liliya.core.decision.DecisionComposition
 import pro.liliya.core.diagnostics.DiagnosticSeverity
 import pro.liliya.core.foundation.FoundationComposition
+import pro.liliya.core.learning.LearningComposition
 import pro.liliya.core.planning.PlanningComposition
 import pro.liliya.core.reasoning.ReasoningComposition
+import pro.liliya.core.reflection.ReflectionComposition
 
 class CognitiveRuntimeComposition(
     private val foundation: FoundationComposition,
+    private val scope: CognitiveRuntimeScopeId,
     memoryRetrieval: MemoryRetrievalPort,
     knowledgeRetrieval: KnowledgeRetrievalPort,
     selfSnapshots: SelfSnapshotPort,
@@ -20,8 +23,17 @@ class CognitiveRuntimeComposition(
     reasoning: ReasoningComposition? = null,
     decision: DecisionComposition? = null,
     artifactIds: CognitiveArtifactIdSource? = null,
-    timestamps: CognitiveTimestampSource? = null
+    timestamps: CognitiveTimestampSource? = null,
+    outcomeMaterialization: CognitiveOutcomeMaterializationPort? = null,
+    reflection: ReflectionComposition? = null,
+    learning: LearningComposition? = null
 ) {
+    init {
+        require(scope.value.length <= limits.maxRuntimeScopeIdChars) {
+            "cognitive runtime scope id exceeds configured limit"
+        }
+    }
+
     private val turns = registry ?: CognitiveTurnRegistry(limits)
     private val contextAssembler = CognitiveContextAssembler(
         turns = turns,
@@ -41,6 +53,7 @@ class CognitiveRuntimeComposition(
     ) {
         CognitiveGenerationCoordinator(
             turns = turns,
+            scope = scope,
             inference = inference,
             materialization = materialization,
             planning = planning,
@@ -53,28 +66,58 @@ class CognitiveRuntimeComposition(
     } else {
         null
     }
+    private val finalizationCoordinator = if (
+        outcomeMaterialization != null &&
+        planning != null &&
+        reasoning != null &&
+        decision != null &&
+        reflection != null &&
+        learning != null &&
+        artifactIds != null &&
+        timestamps != null
+    ) {
+        CognitiveFinalizationCoordinator(
+            turns = turns,
+            scope = scope,
+            outcomeMaterialization = outcomeMaterialization,
+            planning = planning,
+            reasoning = reasoning,
+            decision = decision,
+            reflection = reflection,
+            learning = learning,
+            artifactIds = artifactIds,
+            timestamps = timestamps,
+            limits = limits
+        )
+    } else {
+        null
+    }
 
     fun beginTurn(
         id: CognitiveTurnId,
         input: CognitiveInput
     ): CognitiveTurnRegistrationResult {
+        val requestFingerprint = requestFingerprintMetadata(id)
         val context = foundation.rootContext(
             operation = "beginCognitiveTurn",
             component = "CognitiveRuntime",
-            metadata = mapOf("cognitiveTurnId" to id.value)
+            metadata = mapOf("cognitiveTurnRequestFingerprint" to requestFingerprint)
         )
         val result = turns.register(id, input)
         when (result) {
-            is CognitiveTurnRegistrationResult.Registered -> foundation.observability.record(
-                DiagnosticSeverity.INFO,
-                "COGNITIVE_TURN_REGISTERED",
-                "cognitive turn registered",
-                context,
-                mapOf(
-                    "cognitiveTurnId" to id.value,
-                    "cognitiveTurnGeneration" to result.turn.reference.generation.value.toString()
+            is CognitiveTurnRegistrationResult.Registered -> {
+                val token = CognitiveProvenance.turnToken(scope, result.turn.reference).value
+                foundation.observability.record(
+                    DiagnosticSeverity.INFO,
+                    "COGNITIVE_TURN_REGISTERED",
+                    "cognitive turn registered",
+                    context,
+                    mapOf(
+                        "cognitiveTurnProvenance" to token,
+                        "cognitiveTurnGeneration" to result.turn.reference.generation.value.toString()
+                    )
                 )
-            )
+            }
 
             is CognitiveTurnRegistrationResult.Rejected -> foundation.observability.record(
                 DiagnosticSeverity.WARNING,
@@ -82,7 +125,7 @@ class CognitiveRuntimeComposition(
                 "cognitive turn registration rejected",
                 context,
                 mapOf(
-                    "cognitiveTurnId" to id.value,
+                    "cognitiveTurnRequestFingerprint" to requestFingerprint,
                     "rejectionReason" to result.reason.name
                 )
             )
@@ -179,11 +222,79 @@ class CognitiveRuntimeComposition(
         return result
     }
 
+    fun finalizeCognition(reference: CognitiveTurnReference): CognitiveFinalizationResult {
+        val context = foundation.rootContext(
+            operation = "finalizeCognition",
+            component = "CognitiveRuntime",
+            metadata = turnMetadata(reference)
+        )
+        val coordinator = finalizationCoordinator
+        if (coordinator == null) {
+            foundation.observability.record(
+                DiagnosticSeverity.WARNING,
+                "COGNITIVE_FINALIZATION_REJECTED",
+                "cognitive finalization rejected",
+                context,
+                mapOf("rejectionReason" to CognitiveFinalizationFailure.DEPENDENCIES_UNAVAILABLE.name)
+            )
+            return CognitiveFinalizationResult.Rejected(
+                CognitiveFinalizationFailure.DEPENDENCIES_UNAVAILABLE
+            )
+        }
+
+        val result = coordinator.finalize(reference)
+        when (result) {
+            is CognitiveFinalizationResult.Completed -> foundation.observability.record(
+                DiagnosticSeverity.INFO,
+                "COGNITIVE_FINALIZATION_COMPLETED",
+                "cognitive finalization completed",
+                context,
+                mapOf(
+                    "reflectionRecordId" to result.reflection.id.value,
+                    "reflectionGeneration" to result.reflection.generation.value.toString(),
+                    "learningCandidateId" to result.learning.id.value,
+                    "learningGeneration" to result.learning.generation.value.toString()
+                )
+            )
+
+            CognitiveFinalizationResult.Stale -> foundation.observability.record(
+                DiagnosticSeverity.WARNING,
+                "COGNITIVE_FINALIZATION_STALE",
+                "cognitive finalization is no longer current",
+                context
+            )
+
+            is CognitiveFinalizationResult.Rejected -> foundation.observability.record(
+                DiagnosticSeverity.WARNING,
+                "COGNITIVE_FINALIZATION_REJECTED",
+                "cognitive finalization rejected",
+                context,
+                mapOf("rejectionReason" to result.reason.name)
+            )
+        }
+        return result
+    }
+
     fun currentReference(): CognitiveTurnReference? = turns.currentReference()
     fun currentLifecycle(): CognitiveTurnLifecycle? = turns.currentLifecycle()
 
+    private fun requestFingerprintMetadata(id: CognitiveTurnId): String =
+        if (id.value.length <= limits.maxTurnIdChars) {
+            CognitiveProvenance.requestFingerprint(scope, id)
+        } else {
+            OVER_LIMIT_TURN_ID_MARKER
+        }
+
     private fun turnMetadata(reference: CognitiveTurnReference): Map<String, String> = mapOf(
-        "cognitiveTurnId" to reference.id.value,
+        "cognitiveTurnProvenance" to if (reference.id.value.length <= limits.maxTurnIdChars) {
+            CognitiveProvenance.turnToken(scope, reference).value
+        } else {
+            OVER_LIMIT_TURN_ID_MARKER
+        },
         "cognitiveTurnGeneration" to reference.generation.value.toString()
     )
+
+    private companion object {
+        const val OVER_LIMIT_TURN_ID_MARKER = "over-limit-turn-id"
+    }
 }

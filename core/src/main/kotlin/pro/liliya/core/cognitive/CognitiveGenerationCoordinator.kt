@@ -79,6 +79,7 @@ enum class CognitiveGenerationFailure {
 
 internal class CognitiveGenerationCoordinator(
     private val turns: CognitiveTurnRegistry,
+    private val scope: CognitiveRuntimeScopeId,
     private val inference: CognitiveInferencePort,
     private val materialization: CognitiveMaterializationPort,
     private val planning: PlanningComposition,
@@ -97,8 +98,7 @@ internal class CognitiveGenerationCoordinator(
             is CognitiveTurnTransitionResult.Failed -> return CognitiveGenerationResult.Stale
         }
 
-        val input = turns.inputIfCurrent(reference)
-            ?: return CognitiveGenerationResult.Stale
+        val input = turns.inputIfCurrent(reference) ?: return CognitiveGenerationResult.Stale
         val context = turns.contextIfCurrent(reference)
             ?: return rejectCurrent(reference, CognitiveGenerationFailure.INFERENCE_PROVIDER_FAILED)
         if (!turns.isCurrentAt(reference, CognitiveTurnLifecycle.GENERATING)) {
@@ -245,12 +245,28 @@ internal class CognitiveGenerationCoordinator(
             )
         }
 
-        return when (turns.publishInferenceIfCurrent(reference, succeededInference)) {
+        val planningReference = PlanningReference(planningOwnership.proposal.id, planningOwnership.generation)
+        val reasoningReference = ReasoningReference(reasoningOwnership.artifact.id, reasoningOwnership.generation)
+        val decisionReference = DecisionReference(decisionOwnership.decision.id, decisionOwnership.generation)
+        val receipt = AcceptedCognitionReceipt(
+            turn = reference,
+            planning = planningReference,
+            reasoning = reasoningReference,
+            decision = decisionReference
+        )
+
+        return when (
+            turns.publishAcceptedCognitionIfCurrent(
+                reference = reference,
+                inference = succeededInference,
+                receipt = receipt
+            )
+        ) {
             CognitiveTurnPublicationResult.Published -> CognitiveGenerationResult.Succeeded(
                 turn = reference,
-                planning = PlanningReference(planningOwnership.proposal.id, planningOwnership.generation),
-                reasoning = ReasoningReference(reasoningOwnership.artifact.id, reasoningOwnership.generation),
-                decision = DecisionReference(decisionOwnership.decision.id, decisionOwnership.generation)
+                planning = planningReference,
+                reasoning = reasoningReference,
+                decision = decisionReference
             )
 
             CognitiveTurnPublicationResult.Stale -> compensateAndStale(
@@ -378,12 +394,10 @@ internal class CognitiveGenerationCoordinator(
     private fun rejectCurrent(
         reference: CognitiveTurnReference,
         failure: CognitiveGenerationFailure
-    ): CognitiveGenerationResult {
-        return when (turns.failIfCurrent(reference, CognitiveTurnFailure.TURN_FAILED)) {
-            CognitiveTurnTransitionResult.Stale -> CognitiveGenerationResult.Stale
-            is CognitiveTurnTransitionResult.Failed,
-            CognitiveTurnTransitionResult.Transitioned -> CognitiveGenerationResult.Rejected(failure)
-        }
+    ): CognitiveGenerationResult = when (turns.failIfCurrent(reference, CognitiveTurnFailure.TURN_FAILED)) {
+        CognitiveTurnTransitionResult.Stale -> CognitiveGenerationResult.Stale
+        is CognitiveTurnTransitionResult.Failed,
+        CognitiveTurnTransitionResult.Transitioned -> CognitiveGenerationResult.Rejected(failure)
     }
 
     private fun compensateAndReject(
@@ -440,8 +454,13 @@ internal class CognitiveGenerationCoordinator(
         false
     }
 
-    private fun turnSourceReference(reference: CognitiveTurnReference): String =
-        "turnIdLength=${reference.id.value.length};turnId=${reference.id.value};generation=${reference.generation.value}"
+    private fun turnSourceReference(reference: CognitiveTurnReference): String {
+        val token = CognitiveProvenance.turnToken(scope, reference).value
+        require(token.length <= limits.maxProvenanceReferenceChars) {
+            "cognitive provenance reference exceeds configured limit"
+        }
+        return token
+    }
 
     private companion object {
         const val COGNITIVE_RUNTIME_SOURCE_ID = "cognitive-runtime"
