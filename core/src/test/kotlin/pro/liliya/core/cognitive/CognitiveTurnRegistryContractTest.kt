@@ -121,6 +121,59 @@ class CognitiveTurnRegistryContractTest {
     }
 
     @Test
+    fun context_snapshot_detaches_mutable_input_list() {
+        val registry = CognitiveTurnRegistry(limits)
+        val ownership = assertIs<CognitiveTurnRegistrationResult.Registered>(
+            registry.register(CognitiveTurnId("context-copy"), CognitiveInput("hello"))
+        ).ownership
+        val item = CognitiveContextItem(
+            source = CognitiveContextSourceReference.Memory(
+                pro.liliya.core.memory.MemoryRecordId("m-copy"),
+                pro.liliya.core.memory.MemoryGeneration(1)
+            ),
+            content = "remember"
+        )
+        val mutableItems = mutableListOf(item)
+        val snapshot = CognitiveContextSnapshot(ownership.reference, mutableItems)
+
+        mutableItems.clear()
+
+        assertEquals(listOf(item), snapshot.items)
+        assertIs<CognitiveTurnPublicationResult.Published>(ownership.publishContextIfCurrent(snapshot))
+        assertEquals(listOf(item), ownership.context()?.items)
+    }
+
+    @Test
+    fun current_owner_rejects_context_and_inference_from_foreign_turn_reference() {
+        val registry = CognitiveTurnRegistry(limits)
+        val ownership = assertIs<CognitiveTurnRegistrationResult.Registered>(
+            registry.register(CognitiveTurnId("exact"), CognitiveInput("hello"))
+        ).ownership
+        val foreign = CognitiveTurnReference(
+            CognitiveTurnId("foreign"),
+            CognitiveTurnGeneration(999)
+        )
+
+        assertIs<CognitiveTurnPublicationResult.Rejected>(
+            ownership.publishContextIfCurrent(CognitiveContextSnapshot(foreign, emptyList()))
+        )
+        assertEquals(CognitiveTurnLifecycle.CREATED, ownership.lifecycle())
+        assertNull(ownership.context())
+
+        assertIs<CognitiveTurnPublicationResult.Published>(
+            ownership.publishContextIfCurrent(CognitiveContextSnapshot(ownership.reference, emptyList()))
+        )
+        assertIs<CognitiveTurnTransitionResult.Transitioned>(ownership.beginGenerating())
+        assertIs<CognitiveTurnPublicationResult.Rejected>(
+            ownership.publishInferenceIfCurrent(
+                CognitiveInferenceResult.Succeeded(foreign, "foreign-answer")
+            )
+        )
+        assertEquals(CognitiveTurnLifecycle.GENERATING, ownership.lifecycle())
+        assertNull(ownership.inference())
+    }
+
+    @Test
     fun rejected_inference_does_not_advance_turn() {
         val registry = CognitiveTurnRegistry(limits)
         val ownership = assertIs<CognitiveTurnRegistrationResult.Registered>(
