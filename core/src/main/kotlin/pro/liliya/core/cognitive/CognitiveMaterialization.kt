@@ -99,7 +99,9 @@ enum class CognitiveArtifactIdKind {
     REASONING_ARTIFACT,
     REASONING_PREMISE,
     DECISION,
-    DECISION_OPTION
+    DECISION_OPTION,
+    REFLECTION_RECORD,
+    LEARNING_CANDIDATE
 }
 
 fun interface CognitiveArtifactIdSource {
