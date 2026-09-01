@@ -44,7 +44,6 @@ enum class CognitiveGovernedLearningFailure {
     CANDIDATE_MISSING_OR_MISMATCH,
     POLICY_MISSING_OR_MISMATCH,
     GOVERNANCE_FAILED,
-    GOVERNANCE_RESULT_REJECTED,
     GOVERNANCE_LIMIT_REJECTED,
     GOVERNANCE_TARGET_REJECTED,
     MATERIALIZER_FAILED,
@@ -56,12 +55,14 @@ enum class CognitiveGovernedLearningFailure {
     APPLICATION_INSTALL_FAILED,
     MUTATION_PREPARE_FAILED,
     MUTATION_APPLY_REJECTED,
-    COMPENSATION_FAILED
+    COMPENSATION_FAILED,
+    COORDINATOR_FAILED
 }
 
 enum class CognitiveGovernedLearningTerminalStatus {
     GOVERNANCE_REJECTED,
     APPLIED,
+    COMPLETION_COMPENSATED,
     REJECTED,
     PARTIAL_FAILURE
 }
@@ -76,6 +77,13 @@ sealed interface CognitiveGovernedLearningResult {
         val application: LearningApplicationIntentReference,
         val mutation: LearningApplicationMutationReference,
         val receipt: pro.liliya.core.learning.LearningApplicationMutationApplicationReceipt
+    ) : CognitiveGovernedLearningResult
+
+    data class CompletionCompensated(
+        val decision: LearningDecisionReference,
+        val application: LearningApplicationIntentReference,
+        val mutation: LearningApplicationMutationReference,
+        val target: LearningApplicationTarget
     ) : CognitiveGovernedLearningResult
 
     data class PartialFailure(
@@ -129,30 +137,34 @@ internal class CognitiveGovernedLearningCoordinator(
     fun process(reference: CognitiveLearningReference): CognitiveGovernedLearningResult {
         val candidateReference = LearningCandidateReference(reference.id, reference.generation)
         synchronized(gate) {
-            terminal[candidateReference]?.let { return CognitiveGovernedLearningResult.AlreadyProcessed(it) }
+            terminal[candidateReference]?.let {
+                return CognitiveGovernedLearningResult.AlreadyProcessed(it)
+            }
             if (!inProgress.add(candidateReference)) {
-                return CognitiveGovernedLearningResult.Rejected(CognitiveGovernedLearningFailure.ATTEMPT_IN_PROGRESS)
+                return CognitiveGovernedLearningResult.Rejected(
+                    CognitiveGovernedLearningFailure.ATTEMPT_IN_PROGRESS
+                )
             }
         }
 
         val result = try {
             processInternal(candidateReference)
-        } finally {
-            synchronized(gate) { inProgress.remove(candidateReference) }
+        } catch (_: Exception) {
+            CognitiveGovernedLearningResult.Rejected(CognitiveGovernedLearningFailure.COORDINATOR_FAILED)
         }
-        synchronized(gate) { terminal[candidateReference] = terminalStatus(result) }
+
+        synchronized(gate) {
+            terminal[candidateReference] = terminalStatus(result)
+            inProgress.remove(candidateReference)
+        }
         return result
     }
 
     private fun processInternal(reference: LearningCandidateReference): CognitiveGovernedLearningResult {
         val candidate = exactCandidate(reference)
-            ?: return CognitiveGovernedLearningResult.Rejected(
-                CognitiveGovernedLearningFailure.CANDIDATE_MISSING_OR_MISMATCH
-            )
+            ?: return rejected(CognitiveGovernedLearningFailure.CANDIDATE_MISSING_OR_MISMATCH)
         val policy = exactPolicy()
-            ?: return CognitiveGovernedLearningResult.Rejected(
-                CognitiveGovernedLearningFailure.POLICY_MISSING_OR_MISMATCH
-            )
+            ?: return rejected(CognitiveGovernedLearningFailure.POLICY_MISSING_OR_MISMATCH)
 
         val governanceResult = try {
             governance.evaluate(
@@ -164,25 +176,23 @@ internal class CognitiveGovernedLearningCoordinator(
                 )
             )
         } catch (_: Exception) {
-            return CognitiveGovernedLearningResult.Rejected(CognitiveGovernedLearningFailure.GOVERNANCE_FAILED)
+            return rejected(CognitiveGovernedLearningFailure.GOVERNANCE_FAILED)
         }
 
-        if (!sameCandidate(candidate) || !samePolicy(policy)) {
-            return CognitiveGovernedLearningResult.Rejected(
-                if (!sameCandidate(candidate)) {
-                    CognitiveGovernedLearningFailure.CANDIDATE_MISSING_OR_MISMATCH
-                } else {
-                    CognitiveGovernedLearningFailure.POLICY_MISSING_OR_MISMATCH
-                }
-            )
-        }
+        exactStateFailure(candidate, policy)?.let { return rejected(it) }
 
         val rationale = when (governanceResult) {
             is CognitiveLearningGovernanceResult.Approved -> governanceResult.rationale
             is CognitiveLearningGovernanceResult.Rejected -> governanceResult.rationale
         }
         if (rationale.length > limits.maxLearningGovernanceRationaleChars) {
-            return CognitiveGovernedLearningResult.Rejected(CognitiveGovernedLearningFailure.GOVERNANCE_LIMIT_REJECTED)
+            return rejected(CognitiveGovernedLearningFailure.GOVERNANCE_LIMIT_REJECTED)
+        }
+
+        if (governanceResult is CognitiveLearningGovernanceResult.Approved &&
+            governanceResult.target !in allowedTargets
+        ) {
+            return rejected(CognitiveGovernedLearningFailure.GOVERNANCE_TARGET_REJECTED)
         }
 
         val decisionOwnership = installDecision(
@@ -193,7 +203,7 @@ internal class CognitiveGovernedLearningCoordinator(
                 LearningDecisionDisposition.REJECT
             },
             rationale = rationale
-        ) ?: return CognitiveGovernedLearningResult.Rejected(CognitiveGovernedLearningFailure.DECISION_INSTALL_FAILED)
+        ) ?: return rejected(CognitiveGovernedLearningFailure.DECISION_INSTALL_FAILED)
 
         val decisionReference = LearningDecisionReference(
             decisionOwnership.decision.id,
@@ -204,21 +214,8 @@ internal class CognitiveGovernedLearningCoordinator(
         }
 
         val target = governanceResult.target
-        if (target !in allowedTargets) {
-            return compensateDecision(
-                decisionOwnership,
-                CognitiveGovernedLearningFailure.GOVERNANCE_TARGET_REJECTED
-            )
-        }
-        if (!sameCandidate(candidate) || !samePolicy(policy)) {
-            return compensateDecision(
-                decisionOwnership,
-                if (!sameCandidate(candidate)) {
-                    CognitiveGovernedLearningFailure.CANDIDATE_MISSING_OR_MISMATCH
-                } else {
-                    CognitiveGovernedLearningFailure.POLICY_MISSING_OR_MISMATCH
-                }
-            )
+        exactStateFailure(candidate, policy)?.let {
+            return compensateDecision(decisionOwnership, it)
         }
 
         val materialized = try {
@@ -235,29 +232,32 @@ internal class CognitiveGovernedLearningCoordinator(
         }
         val content = when (materialized) {
             is CognitiveLearningApplicationMaterializationResult.Rejected -> {
-                return compensateDecision(decisionOwnership, CognitiveGovernedLearningFailure.MATERIALIZER_REJECTED)
+                return compensateDecision(
+                    decisionOwnership,
+                    CognitiveGovernedLearningFailure.MATERIALIZER_REJECTED
+                )
             }
             is CognitiveLearningApplicationMaterializationResult.Succeeded -> materialized.content
         }
         if (content.length > limits.maxLearningMutationContentChars) {
-            return compensateDecision(decisionOwnership, CognitiveGovernedLearningFailure.MATERIALIZER_LIMIT_REJECTED)
-        }
-        if (!sameCandidate(candidate) || !samePolicy(policy)) {
             return compensateDecision(
                 decisionOwnership,
-                if (!sameCandidate(candidate)) {
-                    CognitiveGovernedLearningFailure.CANDIDATE_MISSING_OR_MISMATCH
-                } else {
-                    CognitiveGovernedLearningFailure.POLICY_MISSING_OR_MISMATCH
-                }
+                CognitiveGovernedLearningFailure.MATERIALIZER_LIMIT_REJECTED
             )
+        }
+        exactStateFailure(candidate, policy)?.let {
+            return compensateDecision(decisionOwnership, it)
         }
 
         val allocated = mutableSetOf<String>()
         val prepared = try {
             Prepared(
-                applicationId = LearningApplicationId(nextId(CognitiveArtifactIdKind.LEARNING_APPLICATION, allocated)),
-                mutationId = LearningApplicationMutationId(nextId(CognitiveArtifactIdKind.LEARNING_MUTATION, allocated)),
+                applicationId = LearningApplicationId(
+                    nextId(CognitiveArtifactIdKind.LEARNING_APPLICATION, allocated)
+                ),
+                mutationId = LearningApplicationMutationId(
+                    nextId(CognitiveArtifactIdKind.LEARNING_MUTATION, allocated)
+                ),
                 downstreamId = nextId(
                     if (target == LearningApplicationTarget.MEMORY) {
                         CognitiveArtifactIdKind.MEMORY_RECORD
@@ -271,24 +271,36 @@ internal class CognitiveGovernedLearningCoordinator(
                 mutationCreatedAt = timestamps.now()
             )
         } catch (_: Exception) {
-            return compensateDecision(decisionOwnership, CognitiveGovernedLearningFailure.ARTIFACT_ID_OR_TIME_FAILED)
+            return compensateDecision(
+                decisionOwnership,
+                CognitiveGovernedLearningFailure.ARTIFACT_ID_OR_TIME_FAILED
+            )
         }
 
         if (applications.contains(prepared.applicationId)) {
-            return compensateDecision(decisionOwnership, CognitiveGovernedLearningFailure.ARTIFACT_ID_COLLISION)
+            return compensateDecision(
+                decisionOwnership,
+                CognitiveGovernedLearningFailure.ARTIFACT_ID_COLLISION
+            )
         }
 
-        val applicationIntent = LearningApplicationIntent(
-            id = prepared.applicationId,
-            decision = decisionReference,
-            policy = policyReference,
-            target = target,
-            createdAt = prepared.applicationCreatedAt
-        )
-        val applicationOwnership = when (val installed = applications.install(applicationIntent)) {
+        val applicationOwnership = when (
+            val installed = applications.install(
+                LearningApplicationIntent(
+                    id = prepared.applicationId,
+                    decision = decisionReference,
+                    policy = policyReference,
+                    target = target,
+                    createdAt = prepared.applicationCreatedAt
+                )
+            )
+        ) {
             is LearningApplicationInstallResult.Installed -> installed.ownership
             is LearningApplicationInstallResult.Rejected -> {
-                return compensateDecision(decisionOwnership, CognitiveGovernedLearningFailure.APPLICATION_INSTALL_FAILED)
+                return compensateDecision(
+                    decisionOwnership,
+                    CognitiveGovernedLearningFailure.APPLICATION_INSTALL_FAILED
+                )
             }
         }
         val applicationReference = LearningApplicationIntentReference(
@@ -296,16 +308,8 @@ internal class CognitiveGovernedLearningCoordinator(
             applicationOwnership.generation
         )
 
-        if (!sameCandidate(candidate) || !samePolicy(policy)) {
-            return compensateApplicationAndDecision(
-                applicationOwnership,
-                decisionOwnership,
-                if (!sameCandidate(candidate)) {
-                    CognitiveGovernedLearningFailure.CANDIDATE_MISSING_OR_MISMATCH
-                } else {
-                    CognitiveGovernedLearningFailure.POLICY_MISSING_OR_MISMATCH
-                }
-            )
+        exactStateFailure(candidate, policy)?.let {
+            return compensateApplicationAndDecision(applicationOwnership, decisionOwnership, it)
         }
 
         val candidateReference = LearningCandidateReference(candidate.candidate.id, candidate.generation)
@@ -346,16 +350,19 @@ internal class CognitiveGovernedLearningCoordinator(
             )
         }
 
-        val plan = LearningApplicationMutationPlan(
-            id = prepared.mutationId,
-            application = applicationReference,
-            principal = principal,
-            target = target,
-            idempotencyKey = LearningApplicationIdempotencyKey(idempotency),
-            payload = payload,
-            createdAt = prepared.mutationCreatedAt
-        )
-        val mutationOwnership = when (val preparedMutation = mutations.prepare(plan)) {
+        val mutationOwnership = when (
+            val preparedMutation = mutations.prepare(
+                LearningApplicationMutationPlan(
+                    id = prepared.mutationId,
+                    application = applicationReference,
+                    principal = principal,
+                    target = target,
+                    idempotencyKey = LearningApplicationIdempotencyKey(idempotency),
+                    payload = payload,
+                    createdAt = prepared.mutationCreatedAt
+                )
+            )
+        ) {
             is LearningApplicationMutationPrepareResult.Prepared -> preparedMutation.ownership
             is LearningApplicationMutationPrepareResult.AlreadyCompleted,
             is LearningApplicationMutationPrepareResult.Rejected -> {
@@ -366,42 +373,46 @@ internal class CognitiveGovernedLearningCoordinator(
                 )
             }
         }
+
         val mutationReference = LearningApplicationMutationReference(
             mutationOwnership.plan.id,
             mutationOwnership.generation
         )
 
         return when (val applied = mutationApplier.apply(mutationReference)) {
-            is LearningApplicationMutationApplicationResult.Applied -> CognitiveGovernedLearningResult.Applied(
-                decision = decisionReference,
-                application = applicationReference,
-                mutation = mutationReference,
-                receipt = applied.receipt
-            )
+            is LearningApplicationMutationApplicationResult.Applied ->
+                CognitiveGovernedLearningResult.Applied(
+                    decision = decisionReference,
+                    application = applicationReference,
+                    mutation = mutationReference,
+                    receipt = applied.receipt
+                )
 
-            is LearningApplicationMutationApplicationResult.PartialFailure -> CognitiveGovernedLearningResult.PartialFailure(
-                decision = decisionReference,
-                application = applicationReference,
-                mutation = mutationReference,
-                downstream = applied.downstream
-            )
+            is LearningApplicationMutationApplicationResult.CompletionFailedCompensated ->
+                CognitiveGovernedLearningResult.CompletionCompensated(
+                    decision = decisionReference,
+                    application = applicationReference,
+                    mutation = mutationReference,
+                    target = applied.target
+                )
 
-            is LearningApplicationMutationApplicationResult.CompletionFailedCompensated -> {
-                // Existing applier has already removed downstream state. Its claim may still own the
-                // mutation lifecycle, so do not fabricate a successful outer compensation claim.
-                CognitiveGovernedLearningResult.Rejected(CognitiveGovernedLearningFailure.MUTATION_APPLY_REJECTED)
-            }
+            is LearningApplicationMutationApplicationResult.PartialFailure ->
+                CognitiveGovernedLearningResult.PartialFailure(
+                    decision = decisionReference,
+                    application = applicationReference,
+                    mutation = mutationReference,
+                    downstream = applied.downstream
+                )
 
             is LearningApplicationMutationApplicationResult.AuthorizationRejected,
             is LearningApplicationMutationApplicationResult.DownstreamRejected,
-            is LearningApplicationMutationApplicationResult.ClaimRejected -> {
+            is LearningApplicationMutationApplicationResult.ClaimRejected ->
                 compensateMutationApplicationAndDecision(
                     mutationOwnership,
                     applicationOwnership,
                     decisionOwnership,
                     CognitiveGovernedLearningFailure.MUTATION_APPLY_REJECTED
                 )
-            }
         }
     }
 
@@ -430,6 +441,15 @@ internal class CognitiveGovernedLearningCoordinator(
             current.generation == snapshot.generation && current.policy == snapshot.policy
         } == true
 
+    private fun exactStateFailure(
+        candidate: LearningCandidateSnapshot,
+        policy: LearningPolicySnapshot
+    ): CognitiveGovernedLearningFailure? = when {
+        !sameCandidate(candidate) -> CognitiveGovernedLearningFailure.CANDIDATE_MISSING_OR_MISMATCH
+        !samePolicy(policy) -> CognitiveGovernedLearningFailure.POLICY_MISSING_OR_MISMATCH
+        else -> null
+    }
+
     private fun installDecision(
         candidate: LearningCandidateSnapshot,
         disposition: LearningDecisionDisposition,
@@ -441,7 +461,11 @@ internal class CognitiveGovernedLearningCoordinator(
             return null
         }
         if (decisions.contains(id)) return null
-        val createdAt = try { timestamps.now() } catch (_: Exception) { return null }
+        val createdAt = try {
+            timestamps.now()
+        } catch (_: Exception) {
+            return null
+        }
         return when (
             val result = decisions.install(
                 LearningDecision(
@@ -464,7 +488,9 @@ internal class CognitiveGovernedLearningCoordinator(
         require(value.length <= limits.maxGeneratedArtifactIdChars) {
             "cognitive governed learning artifact id exceeds configured limit"
         }
-        require(allocated.add(value)) { "duplicate cognitive governed learning artifact id in one attempt" }
+        require(allocated.add(value)) {
+            "duplicate cognitive governed learning artifact id in one attempt"
+        }
         return value
     }
 
@@ -472,11 +498,8 @@ internal class CognitiveGovernedLearningCoordinator(
         decision: pro.liliya.core.learning.LearningDecisionOwnership,
         failure: CognitiveGovernedLearningFailure
     ): CognitiveGovernedLearningResult =
-        if (safeRemove { decision.remove() }) {
-            CognitiveGovernedLearningResult.Rejected(failure)
-        } else {
-            CognitiveGovernedLearningResult.Rejected(CognitiveGovernedLearningFailure.COMPENSATION_FAILED)
-        }
+        if (safeRemove { decision.remove() }) rejected(failure)
+        else rejected(CognitiveGovernedLearningFailure.COMPENSATION_FAILED)
 
     private fun compensateApplicationAndDecision(
         application: pro.liliya.core.learning.LearningApplicationOwnership,
@@ -486,9 +509,7 @@ internal class CognitiveGovernedLearningCoordinator(
         var complete = true
         if (!safeRemove { application.remove() }) complete = false
         if (!safeRemove { decision.remove() }) complete = false
-        return CognitiveGovernedLearningResult.Rejected(
-            if (complete) failure else CognitiveGovernedLearningFailure.COMPENSATION_FAILED
-        )
+        return rejected(if (complete) failure else CognitiveGovernedLearningFailure.COMPENSATION_FAILED)
     }
 
     private fun compensateMutationApplicationAndDecision(
@@ -501,9 +522,7 @@ internal class CognitiveGovernedLearningCoordinator(
         if (!safeRemove { mutation.remove() }) complete = false
         if (!safeRemove { application.remove() }) complete = false
         if (!safeRemove { decision.remove() }) complete = false
-        return CognitiveGovernedLearningResult.Rejected(
-            if (complete) failure else CognitiveGovernedLearningFailure.COMPENSATION_FAILED
-        )
+        return rejected(if (complete) failure else CognitiveGovernedLearningFailure.COMPENSATION_FAILED)
     }
 
     private fun safeRemove(remove: () -> Boolean): Boolean = try {
@@ -512,11 +531,22 @@ internal class CognitiveGovernedLearningCoordinator(
         false
     }
 
-    private fun terminalStatus(result: CognitiveGovernedLearningResult): CognitiveGovernedLearningTerminalStatus = when (result) {
-        is CognitiveGovernedLearningResult.GovernanceRejected -> CognitiveGovernedLearningTerminalStatus.GOVERNANCE_REJECTED
-        is CognitiveGovernedLearningResult.Applied -> CognitiveGovernedLearningTerminalStatus.APPLIED
-        is CognitiveGovernedLearningResult.PartialFailure -> CognitiveGovernedLearningTerminalStatus.PARTIAL_FAILURE
+    private fun rejected(reason: CognitiveGovernedLearningFailure): CognitiveGovernedLearningResult =
+        CognitiveGovernedLearningResult.Rejected(reason)
+
+    private fun terminalStatus(
+        result: CognitiveGovernedLearningResult
+    ): CognitiveGovernedLearningTerminalStatus = when (result) {
+        is CognitiveGovernedLearningResult.GovernanceRejected ->
+            CognitiveGovernedLearningTerminalStatus.GOVERNANCE_REJECTED
+        is CognitiveGovernedLearningResult.Applied ->
+            CognitiveGovernedLearningTerminalStatus.APPLIED
+        is CognitiveGovernedLearningResult.CompletionCompensated ->
+            CognitiveGovernedLearningTerminalStatus.COMPLETION_COMPENSATED
+        is CognitiveGovernedLearningResult.PartialFailure ->
+            CognitiveGovernedLearningTerminalStatus.PARTIAL_FAILURE
         is CognitiveGovernedLearningResult.AlreadyProcessed -> result.status
-        is CognitiveGovernedLearningResult.Rejected -> CognitiveGovernedLearningTerminalStatus.REJECTED
+        is CognitiveGovernedLearningResult.Rejected ->
+            CognitiveGovernedLearningTerminalStatus.REJECTED
     }
 }
