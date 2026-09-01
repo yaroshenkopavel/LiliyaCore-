@@ -110,9 +110,7 @@ sealed interface CognitiveStructuredResponseParseResult {
 object CognitiveStructuredResponseProtocol {
     const val VERSION = "LILIYA_COGNITIVE_RESPONSE_V1"
 
-    val minimumEnvelopeChars: Int = minimumEnvelope().length
-
-    private fun minimumEnvelope(): String = buildString {
+    val minimumEnvelopeChars: Int = buildString {
         append(VERSION).append('\n')
         append("PLANNING_GOAL=x\n")
         append("PLANNING_STEP_COUNT=1\n")
@@ -129,23 +127,29 @@ object CognitiveStructuredResponseProtocol {
         append("REFLECTION_CONTENT=x\n")
         append("LEARNING_PROPOSAL=x\n")
         append("END")
-    }
+    }.length
 }
 
 class CognitiveStructuredResponseParser(
     private val budgets: CognitiveStructuredResponseBudgets
 ) {
-    fun parse(output: String): CognitiveStructuredResponseParseResult {
+    fun parse(output: String): CognitiveStructuredResponseParseResult = try {
+        parseExact(output)
+    } catch (failure: ParseRejected) {
+        CognitiveStructuredResponseParseResult.Rejected(failure.reason)
+    }
+
+    private fun parseExact(output: String): CognitiveStructuredResponseParseResult.Parsed {
         if (output.length > budgets.maxOutputChars) {
-            return rejected(CognitiveStructuredResponseFailure.OUTPUT_LIMIT_REJECTED)
+            fail(CognitiveStructuredResponseFailure.OUTPUT_LIMIT_REJECTED)
         }
         if (output.length < CognitiveStructuredResponseProtocol.minimumEnvelopeChars) {
-            return rejected(CognitiveStructuredResponseFailure.STRUCTURE_REJECTED)
+            fail(CognitiveStructuredResponseFailure.STRUCTURE_REJECTED)
         }
 
         val body = if (output.endsWith('\n')) output.dropLast(1) else output
         if (body.endsWith('\n')) {
-            return rejected(CognitiveStructuredResponseFailure.TRAILING_DATA_REJECTED)
+            fail(CognitiveStructuredResponseFailure.TRAILING_DATA_REJECTED)
         }
         val lines = body.split('\n')
         val maximumLines = FIXED_RECORD_COUNT +
@@ -153,109 +157,109 @@ class CognitiveStructuredResponseParser(
             budgets.maxReasoningPremises +
             budgets.maxDecisionOptions
         if (lines.size > maximumLines) {
-            return rejected(CognitiveStructuredResponseFailure.STRUCTURE_REJECTED)
+            fail(CognitiveStructuredResponseFailure.STRUCTURE_REJECTED)
         }
 
         var index = 0
         fun nextLine(): String? = lines.getOrNull(index++)
 
         if (nextLine() != CognitiveStructuredResponseProtocol.VERSION) {
-            return rejected(CognitiveStructuredResponseFailure.VERSION_REJECTED)
+            fail(CognitiveStructuredResponseFailure.VERSION_REJECTED)
         }
 
         val planningGoal = decodeField(
             nextLine(),
             "PLANNING_GOAL",
             budgets.maxPlanningGoalChars
-        ) ?: return lastFailure
+        )
 
         val planningStepCount = parseCount(
             nextLine(),
             "PLANNING_STEP_COUNT",
             budgets.maxPlanningSteps
-        ) ?: return lastFailure
+        )
         val planningSteps = ArrayList<String>(planningStepCount)
         repeat(planningStepCount) {
             planningSteps += decodeField(
                 nextLine(),
                 "PLANNING_STEP",
                 budgets.maxPlanningStepChars
-            ) ?: return lastFailure
+            )
         }
 
         val reasoningPremiseCount = parseCount(
             nextLine(),
             "REASONING_PREMISE_COUNT",
             budgets.maxReasoningPremises
-        ) ?: return lastFailure
+        )
         val reasoningPremises = ArrayList<String>(reasoningPremiseCount)
         repeat(reasoningPremiseCount) {
             reasoningPremises += decodeField(
                 nextLine(),
                 "REASONING_PREMISE",
                 budgets.maxReasoningPremiseChars
-            ) ?: return lastFailure
+            )
         }
 
         val reasoningAnalysis = decodeField(
             nextLine(),
             "REASONING_ANALYSIS",
             budgets.maxReasoningAnalysisChars
-        ) ?: return lastFailure
+        )
         val reasoningConclusion = decodeField(
             nextLine(),
             "REASONING_CONCLUSION",
             budgets.maxReasoningConclusionChars
-        ) ?: return lastFailure
+        )
 
         val decisionOptionCount = parseCount(
             nextLine(),
             "DECISION_OPTION_COUNT",
             budgets.maxDecisionOptions
-        ) ?: return lastFailure
+        )
         val decisionOptions = ArrayList<String>(decisionOptionCount)
         repeat(decisionOptionCount) {
             decisionOptions += decodeField(
                 nextLine(),
                 "DECISION_OPTION",
                 budgets.maxDecisionOptionChars
-            ) ?: return lastFailure
+            )
         }
 
-        val selectedIndex = parseNonNegativeInt(
+        val selectedIndex = parseUnsignedIntField(
             nextLine(),
             "DECISION_SELECTED_INDEX"
-        ) ?: return lastFailure
+        )
         if (selectedIndex !in decisionOptions.indices) {
-            return rejected(CognitiveStructuredResponseFailure.COUNT_REJECTED)
+            fail(CognitiveStructuredResponseFailure.COUNT_REJECTED)
         }
 
         val decisionRationale = decodeField(
             nextLine(),
             "DECISION_RATIONALE",
             budgets.maxDecisionRationaleChars
-        ) ?: return lastFailure
+        )
         val resultContent = decodeField(
             nextLine(),
             "RESULT_CONTENT",
             budgets.maxResultChars
-        ) ?: return lastFailure
+        )
         val reflectionContent = decodeField(
             nextLine(),
             "REFLECTION_CONTENT",
             budgets.maxReflectionChars
-        ) ?: return lastFailure
+        )
         val learningProposal = decodeField(
             nextLine(),
             "LEARNING_PROPOSAL",
             budgets.maxLearningProposalChars
-        ) ?: return lastFailure
+        )
 
         if (nextLine() != "END") {
-            return rejected(CognitiveStructuredResponseFailure.STRUCTURE_REJECTED)
+            fail(CognitiveStructuredResponseFailure.STRUCTURE_REJECTED)
         }
         if (index != lines.size) {
-            return rejected(CognitiveStructuredResponseFailure.TRAILING_DATA_REJECTED)
+            fail(CognitiveStructuredResponseFailure.TRAILING_DATA_REJECTED)
         }
 
         return CognitiveStructuredResponseParseResult.Parsed(
@@ -275,58 +279,42 @@ class CognitiveStructuredResponseParser(
         )
     }
 
-    private var lastFailure: CognitiveStructuredResponseParseResult.Rejected =
-        CognitiveStructuredResponseParseResult.Rejected(
-            CognitiveStructuredResponseFailure.STRUCTURE_REJECTED
-        )
-
-    private fun parseCount(line: String?, key: String, maximum: Int): Int? {
-        val value = parseUnsignedIntField(line, key) ?: return null
+    private fun parseCount(line: String?, key: String, maximum: Int): Int {
+        val value = parseUnsignedIntField(line, key)
         if (value !in 1..maximum) {
-            rejectInto(CognitiveStructuredResponseFailure.COUNT_REJECTED)
-            return null
+            fail(CognitiveStructuredResponseFailure.COUNT_REJECTED)
         }
         return value
     }
 
-    private fun parseNonNegativeInt(line: String?, key: String): Int? =
-        parseUnsignedIntField(line, key)
-
-    private fun parseUnsignedIntField(line: String?, key: String): Int? {
-        val raw = rawValue(line, key) ?: return null
+    private fun parseUnsignedIntField(line: String?, key: String): Int {
+        val raw = rawValue(line, key)
         if (raw.isEmpty() || raw.any { it !in '0'..'9' }) {
-            rejectInto(CognitiveStructuredResponseFailure.COUNT_REJECTED)
-            return null
+            fail(CognitiveStructuredResponseFailure.COUNT_REJECTED)
         }
-        return raw.toIntOrNull().also {
-            if (it == null) rejectInto(CognitiveStructuredResponseFailure.COUNT_REJECTED)
-        }
+        return raw.toIntOrNull()
+            ?: fail(CognitiveStructuredResponseFailure.COUNT_REJECTED)
     }
 
-    private fun decodeField(line: String?, key: String, maximum: Int): String? {
-        val raw = rawValue(line, key) ?: return null
+    private fun decodeField(line: String?, key: String, maximum: Int): String {
+        val raw = rawValue(line, key)
         val builder = StringBuilder(minOf(raw.length, maximum))
         var cursor = 0
         while (cursor < raw.length) {
             val current = raw[cursor]
             if (current == '\\') {
                 if (cursor + 1 >= raw.length) {
-                    rejectInto(CognitiveStructuredResponseFailure.ESCAPE_REJECTED)
-                    return null
+                    fail(CognitiveStructuredResponseFailure.ESCAPE_REJECTED)
                 }
                 val decoded = when (raw[cursor + 1]) {
                     '\\' -> '\\'
                     'n' -> '\n'
                     'r' -> '\r'
                     't' -> '\t'
-                    else -> {
-                        rejectInto(CognitiveStructuredResponseFailure.ESCAPE_REJECTED)
-                        return null
-                    }
+                    else -> fail(CognitiveStructuredResponseFailure.ESCAPE_REJECTED)
                 }
                 if (builder.length >= maximum) {
-                    rejectInto(CognitiveStructuredResponseFailure.FIELD_LIMIT_REJECTED)
-                    return null
+                    fail(CognitiveStructuredResponseFailure.FIELD_LIMIT_REJECTED)
                 }
                 builder.append(decoded)
                 cursor += 2
@@ -334,12 +322,10 @@ class CognitiveStructuredResponseParser(
             }
 
             if (current.code in 0..31 || current.code == 127) {
-                rejectInto(CognitiveStructuredResponseFailure.CONTROL_CHARACTER_REJECTED)
-                return null
+                fail(CognitiveStructuredResponseFailure.CONTROL_CHARACTER_REJECTED)
             }
             if (builder.length >= maximum) {
-                rejectInto(CognitiveStructuredResponseFailure.FIELD_LIMIT_REJECTED)
-                return null
+                fail(CognitiveStructuredResponseFailure.FIELD_LIMIT_REJECTED)
             }
             builder.append(current)
             cursor += 1
@@ -347,33 +333,28 @@ class CognitiveStructuredResponseParser(
 
         val value = builder.toString()
         if (value.isBlank()) {
-            rejectInto(CognitiveStructuredResponseFailure.STRUCTURE_REJECTED)
-            return null
+            fail(CognitiveStructuredResponseFailure.STRUCTURE_REJECTED)
         }
         return value
     }
 
-    private fun rawValue(line: String?, key: String): String? {
+    private fun rawValue(line: String?, key: String): String {
         if (line == null) {
-            rejectInto(CognitiveStructuredResponseFailure.STRUCTURE_REJECTED)
-            return null
+            fail(CognitiveStructuredResponseFailure.STRUCTURE_REJECTED)
         }
         val prefix = "$key="
         if (!line.startsWith(prefix)) {
-            rejectInto(CognitiveStructuredResponseFailure.STRUCTURE_REJECTED)
-            return null
+            fail(CognitiveStructuredResponseFailure.STRUCTURE_REJECTED)
         }
         return line.substring(prefix.length)
     }
 
-    private fun rejectInto(reason: CognitiveStructuredResponseFailure) {
-        lastFailure = CognitiveStructuredResponseParseResult.Rejected(reason)
-    }
+    private fun fail(reason: CognitiveStructuredResponseFailure): Nothing =
+        throw ParseRejected(reason)
 
-    private fun rejected(
-        reason: CognitiveStructuredResponseFailure
-    ): CognitiveStructuredResponseParseResult.Rejected =
-        CognitiveStructuredResponseParseResult.Rejected(reason)
+    private class ParseRejected(
+        val reason: CognitiveStructuredResponseFailure
+    ) : RuntimeException(null, null, false, false)
 
     private companion object {
         const val FIXED_RECORD_COUNT = 13
