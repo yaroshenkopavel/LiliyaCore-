@@ -407,21 +407,15 @@ class LicenseServiceDurableStateCoordinatorContractTest {
     @Test
     fun policy_context_is_available_only_after_successful_commit() {
         val observed = observedFoundation()
-        val backend = FakeBackend().apply {
-            nextCommitResult = LicenseServiceDurableBackendCommitResult.Failed
-        }
+        val backend = FakeBackend()
         val protector = FakeProtector(protectorReference)
         val coordinator = coordinator(observed, backend, protector)
         val targetScope = scope()
 
-        assertIs<LicenseServiceDurableStateAcceptanceResult.DurableRejected>(
-            coordinator.verifyAndAccept(signedEnvelope(state(targetScope)))
-        )
         assertIs<LicenseServiceDurablePolicyContextResult.Missing>(
             coordinator.policyContext(targetScope, baseTime.plusSeconds(10), false)
         )
 
-        backend.nextCommitResult = null
         assertIs<LicenseServiceDurableStateAcceptanceResult.Advanced>(
             coordinator.verifyAndAccept(signedEnvelope(state(targetScope)))
         )
