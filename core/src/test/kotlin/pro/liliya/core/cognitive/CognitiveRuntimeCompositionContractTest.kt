@@ -1,12 +1,25 @@
 package pro.liliya.core.cognitive
 
+import java.time.Instant
 import java.util.concurrent.atomic.AtomicInteger
 import pro.liliya.core.diagnostics.DiagnosticRecorder
 import pro.liliya.core.diagnostics.InMemoryDiagnosticSink
 import pro.liliya.core.foundation.FoundationComposition
+import pro.liliya.core.knowledge.KnowledgeGeneration
+import pro.liliya.core.knowledge.KnowledgeItem
+import pro.liliya.core.knowledge.KnowledgeItemId
+import pro.liliya.core.knowledge.KnowledgeItemSnapshot
+import pro.liliya.core.knowledge.KnowledgeOrigin
+import pro.liliya.core.knowledge.KnowledgeSourceId
 import pro.liliya.core.logging.CorrelationIdGenerator
 import pro.liliya.core.logging.InMemoryLogWriter
 import pro.liliya.core.logging.StructuredLogger
+import pro.liliya.core.memory.MemoryGeneration
+import pro.liliya.core.memory.MemoryProvenance
+import pro.liliya.core.memory.MemoryRecord
+import pro.liliya.core.memory.MemoryRecordId
+import pro.liliya.core.memory.MemoryRecordSnapshot
+import pro.liliya.core.memory.MemorySourceId
 import pro.liliya.core.observability.LoggerProvider
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -119,15 +132,33 @@ class CognitiveRuntimeCompositionContractTest {
 
     @Test
     fun retrieval_results_detach_mutable_input_lists() {
-        val mutableMemory = mutableListOf<pro.liliya.core.memory.MemoryRecordSnapshot>()
-        val mutableKnowledge = mutableListOf<pro.liliya.core.knowledge.KnowledgeItemSnapshot>()
+        val memorySnapshot = MemoryRecordSnapshot(
+            record = MemoryRecord(
+                id = MemoryRecordId("memory-1"),
+                provenance = MemoryProvenance(MemorySourceId("test")),
+                content = "private memory",
+                createdAt = Instant.parse("2026-09-01T12:00:00Z")
+            ),
+            generation = MemoryGeneration(1)
+        )
+        val knowledgeSnapshot = KnowledgeItemSnapshot(
+            item = KnowledgeItem(
+                id = KnowledgeItemId("knowledge-1"),
+                origin = KnowledgeOrigin.Declared(KnowledgeSourceId("test")),
+                content = "private knowledge",
+                createdAt = Instant.parse("2026-09-01T12:00:01Z")
+            ),
+            generation = KnowledgeGeneration(1)
+        )
+        val mutableMemory = mutableListOf(memorySnapshot)
+        val mutableKnowledge = mutableListOf(knowledgeSnapshot)
         val memoryResult = MemoryRetrievalResult(mutableMemory)
         val knowledgeResult = KnowledgeRetrievalResult(mutableKnowledge)
 
         mutableMemory.clear()
         mutableKnowledge.clear()
 
-        assertEquals(emptyList(), memoryResult.items)
-        assertEquals(emptyList(), knowledgeResult.items)
+        assertEquals(listOf(memorySnapshot), memoryResult.items)
+        assertEquals(listOf(knowledgeSnapshot), knowledgeResult.items)
     }
 }
