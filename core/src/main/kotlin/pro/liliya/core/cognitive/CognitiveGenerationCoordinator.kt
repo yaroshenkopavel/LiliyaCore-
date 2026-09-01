@@ -159,8 +159,9 @@ internal class CognitiveGenerationCoordinator(
             return rejectCurrent(reference, CognitiveGenerationFailure.CANDIDATE_REJECTED)
         }
 
+        val allocatedIds = mutableSetOf<String>()
         val planningProposal = try {
-            buildPlanning(reference, candidate)
+            buildPlanning(reference, candidate, allocatedIds)
         } catch (_: Exception) {
             return rejectCurrent(reference, CognitiveGenerationFailure.ARTIFACT_ID_OR_TIME_FAILED)
         }
@@ -179,7 +180,7 @@ internal class CognitiveGenerationCoordinator(
         }
 
         val reasoningArtifact = try {
-            buildReasoning(reference, candidate)
+            buildReasoning(reference, candidate, allocatedIds)
         } catch (_: Exception) {
             return compensateAndReject(
                 reference = reference,
@@ -215,7 +216,7 @@ internal class CognitiveGenerationCoordinator(
         }
 
         val decisionRecord = try {
-            buildDecision(candidate, planningOwnership, reasoningOwnership)
+            buildDecision(candidate, planningOwnership, reasoningOwnership, allocatedIds)
         } catch (_: Exception) {
             return compensateAndReject(
                 reference = reference,
@@ -271,9 +272,10 @@ internal class CognitiveGenerationCoordinator(
 
     private fun buildPlanning(
         reference: CognitiveTurnReference,
-        candidate: CognitiveMaterializationCandidate
+        candidate: CognitiveMaterializationCandidate,
+        allocatedIds: MutableSet<String>
     ): PlanningProposal = PlanningProposal(
-        id = PlanningProposalId(nextId(CognitiveArtifactIdKind.PLANNING_PROPOSAL)),
+        id = PlanningProposalId(nextId(CognitiveArtifactIdKind.PLANNING_PROPOSAL, allocatedIds)),
         origin = PlanningOrigin(
             sourceId = PlanningSourceId(COGNITIVE_RUNTIME_SOURCE_ID),
             sourceReference = PlanningSourceReference(turnSourceReference(reference))
@@ -281,7 +283,7 @@ internal class CognitiveGenerationCoordinator(
         goal = candidate.planningGoal,
         steps = candidate.planningSteps.map { description ->
             PlanningStep(
-                id = PlanningStepId(nextId(CognitiveArtifactIdKind.PLANNING_STEP)),
+                id = PlanningStepId(nextId(CognitiveArtifactIdKind.PLANNING_STEP, allocatedIds)),
                 description = description
             )
         },
@@ -290,16 +292,17 @@ internal class CognitiveGenerationCoordinator(
 
     private fun buildReasoning(
         reference: CognitiveTurnReference,
-        candidate: CognitiveMaterializationCandidate
+        candidate: CognitiveMaterializationCandidate,
+        allocatedIds: MutableSet<String>
     ): ReasoningArtifact = ReasoningArtifact(
-        id = ReasoningArtifactId(nextId(CognitiveArtifactIdKind.REASONING_ARTIFACT)),
+        id = ReasoningArtifactId(nextId(CognitiveArtifactIdKind.REASONING_ARTIFACT, allocatedIds)),
         origin = ReasoningOrigin(
             sourceId = ReasoningSourceId(COGNITIVE_RUNTIME_SOURCE_ID),
             sourceReference = ReasoningSourceReference(turnSourceReference(reference))
         ),
         premises = candidate.reasoningPremises.map { statement ->
             ReasoningPremise(
-                id = ReasoningPremiseId(nextId(CognitiveArtifactIdKind.REASONING_PREMISE)),
+                id = ReasoningPremiseId(nextId(CognitiveArtifactIdKind.REASONING_PREMISE, allocatedIds)),
                 statement = statement
             )
         },
@@ -311,13 +314,14 @@ internal class CognitiveGenerationCoordinator(
     private fun buildDecision(
         candidate: CognitiveMaterializationCandidate,
         planningOwnership: PlanningOwnership,
-        reasoningOwnership: ReasoningOwnership
+        reasoningOwnership: ReasoningOwnership,
+        allocatedIds: MutableSet<String>
     ): DecisionRecord {
         val optionIds = candidate.decisionOptions.map {
-            DecisionOptionId(nextId(CognitiveArtifactIdKind.DECISION_OPTION))
+            DecisionOptionId(nextId(CognitiveArtifactIdKind.DECISION_OPTION, allocatedIds))
         }
         return DecisionRecord(
-            id = DecisionId(nextId(CognitiveArtifactIdKind.DECISION)),
+            id = DecisionId(nextId(CognitiveArtifactIdKind.DECISION, allocatedIds)),
             inputs = listOf(
                 DecisionInputReference.Planning(
                     planningOwnership.proposal.id,
@@ -337,9 +341,10 @@ internal class CognitiveGenerationCoordinator(
         )
     }
 
-    private fun nextId(kind: CognitiveArtifactIdKind): String {
+    private fun nextId(kind: CognitiveArtifactIdKind, allocatedIds: MutableSet<String>): String {
         val value = artifactIds.next(kind)
         require(value.isNotBlank()) { "cognitive artifact id source returned blank id" }
+        require(allocatedIds.add(value)) { "cognitive artifact id source returned duplicate id in one attempt" }
         return value
     }
 
