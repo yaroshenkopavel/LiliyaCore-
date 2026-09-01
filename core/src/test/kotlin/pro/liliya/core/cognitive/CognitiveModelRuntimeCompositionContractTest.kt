@@ -130,14 +130,14 @@ class CognitiveModelRuntimeCompositionContractTest {
         assertEquals(activated.session, fixture.composition.currentSession())
         assertEquals(RuntimeModelSessionLifecycle.ACTIVE, fixture.composition.currentLifecycle())
 
-        val request = inferenceRequest(maxOutputChars = 321)
+        val request = inferenceRequest(maxOutputChars = 1024)
         val result = assertIs<CognitiveInferenceResult.Succeeded>(
             fixture.composition.inferencePort.infer(request)
         )
         assertEquals(request.turn, result.turn)
-        assertEquals("answer:321", result.output)
+        assertEquals("answer:1024", result.output)
         assertEquals(1, engine.inferCalls)
-        assertEquals(321, assertNotNull(engine.lastRequest).maxOutputChars)
+        assertEquals(1024, assertNotNull(engine.lastRequest).maxOutputChars)
         assertTrue(assertNotNull(engine.lastRequest).prompt.contains("private input"))
         assertFalse(assertNotNull(engine.lastRequest).toString().contains("private input"))
     }
@@ -462,7 +462,7 @@ class CognitiveModelRuntimeCompositionContractTest {
         ).session
 
     private fun inferenceRequest(
-        maxOutputChars: Int = 256
+        maxOutputChars: Int = 1024
     ): CognitiveInferenceRequest {
         val turn = CognitiveTurnReference(
             CognitiveTurnId("private-turn"),
