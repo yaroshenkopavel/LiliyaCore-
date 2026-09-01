@@ -57,12 +57,15 @@ class CognitiveRuntimeCompositionContractTest {
             inference = inference,
             composition = CognitiveRuntimeComposition(
                 foundation = foundation,
+                scope = CognitiveRuntimeScopeId("scope-$prefix"),
                 memoryRetrieval = memory,
                 knowledgeRetrieval = knowledge,
                 selfSnapshots = SelfSnapshotPort { null },
                 personalitySnapshots = PersonalitySnapshotPort { emptyList() },
                 inference = inference,
                 limits = CognitiveRuntimeLimits(
+                    maxRuntimeScopeIdChars = 64,
+                    maxTurnIdChars = 64,
                     maxInputChars = 64,
                     maxContextItems = 8,
                     maxContextItemChars = 64,
@@ -100,33 +103,44 @@ class CognitiveRuntimeCompositionContractTest {
         assertTrue("isCurrent" in methods)
         assertTrue("lifecycle" in methods)
         assertFalse("publishContextIfCurrent" in methods)
+        assertFalse("publishAcceptedCognitionIfCurrent" in methods)
         assertFalse("beginGenerating" in methods)
-        assertFalse("publishInferenceIfCurrent" in methods)
         assertFalse("complete" in methods)
         assertFalse("fail" in methods)
         assertFalse("getInput" in methods)
         assertFalse("context" in methods)
         assertFalse("inference" in methods)
+        assertFalse("acceptedCognition" in methods)
     }
 
     @Test
-    fun observability_contains_structural_identity_but_not_private_input() {
+    fun observability_uses_scoped_fingerprint_and_never_raw_turn_id_or_private_input() {
         val f = fixture("privacy")
         val privateInput = "never-log-this-private-input"
+        val rawTurnId = "never-log-this-raw-turn-id"
 
         assertIs<CognitiveTurnRegistrationResult.Registered>(
-            f.composition.beginTurn(CognitiveTurnId("turn-private"), CognitiveInput(privateInput))
+            f.composition.beginTurn(CognitiveTurnId(rawTurnId), CognitiveInput(privateInput))
         )
 
         val events = f.logs.snapshot()
         assertTrue(events.isNotEmpty())
         events.forEach { event ->
             assertFalse(event.message.contains(privateInput))
+            assertFalse(event.message.contains(rawTurnId))
+            assertFalse(event.metadata.keys.any { it == "cognitiveTurnId" })
             assertFalse(event.metadata.keys.any { it.contains("input", ignoreCase = true) })
             assertFalse(event.metadata.values.any { it.contains(privateInput) })
+            assertFalse(event.metadata.values.any { it.contains(rawTurnId) })
             assertFalse(event.metadata.keys.any { it.contains("authority", ignoreCase = true) })
             assertFalse(event.metadata.keys.any { it.contains("license", ignoreCase = true) })
         }
+        assertTrue(
+            events.any { event ->
+                event.metadata.containsKey("cognitiveTurnRequestFingerprint") ||
+                    event.metadata.containsKey("cognitiveTurnProvenance")
+            }
+        )
     }
 
     @Test
