@@ -31,6 +31,9 @@ import kotlin.test.assertTrue
 class CognitiveRuntimeCompositionContractTest {
     private data class Fixture(
         val logs: InMemoryLogWriter,
+        val memory: MemoryRetrievalPort,
+        val knowledge: KnowledgeRetrievalPort,
+        val inference: CognitiveInferencePort,
         val composition: CognitiveRuntimeComposition
     )
 
@@ -49,6 +52,9 @@ class CognitiveRuntimeCompositionContractTest {
         }
         return Fixture(
             logs = logs,
+            memory = memory,
+            knowledge = knowledge,
+            inference = inference,
             composition = CognitiveRuntimeComposition(
                 foundation = foundation,
                 memoryRetrieval = memory,
@@ -111,10 +117,10 @@ class CognitiveRuntimeCompositionContractTest {
             f.composition.beginTurn(CognitiveTurnId("turn-ports"), CognitiveInput("hello"))
         ).ownership
 
-        val memory = f.composition.memoryRetrieval.retrieve(
+        val memory = f.memory.retrieve(
             MemoryRetrievalRequest(ownership.reference, ownership.input, 2)
         )
-        val knowledge = f.composition.knowledgeRetrieval.retrieve(
+        val knowledge = f.knowledge.retrieve(
             KnowledgeRetrievalRequest(ownership.reference, ownership.input, 2)
         )
         assertTrue(memory.items.isEmpty())
@@ -122,7 +128,7 @@ class CognitiveRuntimeCompositionContractTest {
 
         val context = CognitiveContextSnapshot(ownership.reference, emptyList())
         val result = assertIs<CognitiveInferenceResult.Succeeded>(
-            f.composition.inference.infer(
+            f.inference.infer(
                 CognitiveInferenceRequest(ownership.reference, ownership.input, context)
             )
         )
