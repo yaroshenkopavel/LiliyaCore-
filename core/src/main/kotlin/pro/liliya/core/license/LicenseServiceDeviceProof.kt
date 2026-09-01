@@ -12,6 +12,8 @@ import pro.liliya.core.devicekey.DeviceKeyPossessionProof
 import pro.liliya.core.devicekey.DeviceKeyProofRequest
 import pro.liliya.core.devicekey.DeviceKeyProofService
 import pro.liliya.core.devicekey.DeviceKeyReference
+import pro.liliya.core.diagnostics.DiagnosticSeverity
+import pro.liliya.core.foundation.FoundationComposition
 
 /** Unpredictable service-issued nonce. Raw bytes are never rendered. */
 class LicenseServiceDeviceProofNonce private constructor(
@@ -71,12 +73,27 @@ class LicenseServiceDeviceProofChallenge(
             "validFrom=$validFrom, validUntil=$validUntil)"
 }
 
+/** Exact structural association between one service challenge and the proof produced for it. */
+class LicenseServiceDeviceProofEvidence internal constructor(
+    val challenge: LicenseServiceDeviceProofChallenge,
+    val proof: DeviceKeyPossessionProof
+) {
+    init {
+        require(proof.key == challenge.key) {
+            "license service device proof must reference the exact challenged device key"
+        }
+    }
+
+    override fun toString(): String =
+        "LicenseServiceDeviceProofEvidence(challenge=$challenge, proof=$proof)"
+}
+
 sealed interface LicenseServiceDeviceProofResult {
     class Produced internal constructor(
-        val proof: DeviceKeyPossessionProof
+        val evidence: LicenseServiceDeviceProofEvidence
     ) : LicenseServiceDeviceProofResult {
         override fun toString(): String =
-            "LicenseServiceDeviceProofResult.Produced(proof=$proof)"
+            "LicenseServiceDeviceProofResult.Produced(evidence=$evidence)"
     }
 
     data class Rejected(val reason: LicenseServiceDeviceProofRejection) :
@@ -102,6 +119,7 @@ enum class LicenseServiceDeviceProofRejection {
  * No raw signing-key material, platform key export, enrollment acceptance or License mutation occurs here.
  */
 class LicenseServiceDeviceProofComposition(
+    private val foundation: FoundationComposition,
     private val proofService: DeviceKeyProofService,
     private val maxTranscriptBytes: Int = 4096
 ) {
@@ -116,19 +134,22 @@ class LicenseServiceDeviceProofComposition(
         now: Instant
     ): LicenseServiceDeviceProofResult {
         if (now.isBefore(challenge.validFrom)) {
-            return LicenseServiceDeviceProofResult.Rejected(
+            return reject(
+                challenge,
                 LicenseServiceDeviceProofRejection.CHALLENGE_NOT_YET_VALID
             )
         }
         if (!now.isBefore(challenge.validUntil)) {
-            return LicenseServiceDeviceProofResult.Rejected(
+            return reject(
+                challenge,
                 LicenseServiceDeviceProofRejection.CHALLENGE_EXPIRED
             )
         }
 
         val transcript = encodeTranscript(challenge)
         if (transcript.size > maxTranscriptBytes) {
-            return LicenseServiceDeviceProofResult.Rejected(
+            return reject(
+                challenge,
                 LicenseServiceDeviceProofRejection.TRANSCRIPT_TOO_LARGE
             )
         }
@@ -141,23 +162,117 @@ class LicenseServiceDeviceProofComposition(
                 )
             )
         ) {
-            is DeviceKeyOperationResult.Success ->
-                LicenseServiceDeviceProofResult.Produced(result.value)
+            is DeviceKeyOperationResult.Success -> {
+                val evidence = LicenseServiceDeviceProofEvidence(
+                    challenge = challenge,
+                    proof = result.value
+                )
+                observeProduced(evidence)
+                LicenseServiceDeviceProofResult.Produced(evidence)
+            }
 
-            is DeviceKeyOperationResult.Rejected ->
+            is DeviceKeyOperationResult.Rejected -> {
+                observeDeviceKeyRejected(challenge, result.category)
                 LicenseServiceDeviceProofResult.DeviceKeyRejected(result.category)
+            }
 
-            is DeviceKeyOperationResult.Failed ->
+            is DeviceKeyOperationResult.Failed -> {
+                val throwableClass = result.throwable?.javaClass?.name
+                observeDeviceKeyFailed(challenge, result.category, throwableClass)
                 LicenseServiceDeviceProofResult.DeviceKeyFailed(
                     category = result.category,
-                    throwableClass = result.throwable?.javaClass?.name
+                    throwableClass = throwableClass
                 )
+            }
         }
     }
 
     internal fun transcriptForTest(
         challenge: LicenseServiceDeviceProofChallenge
     ): DeviceKeyChallenge = DeviceKeyChallenge(encodeTranscript(challenge))
+
+    private fun reject(
+        challenge: LicenseServiceDeviceProofChallenge,
+        reason: LicenseServiceDeviceProofRejection
+    ): LicenseServiceDeviceProofResult.Rejected {
+        foundation.observability.record(
+            severity = DiagnosticSeverity.WARNING,
+            code = "LICENSE_SERVICE_DEVICE_PROOF_REJECTED",
+            message = "license service device proof rejected",
+            context = foundation.rootContext(
+                operation = "proveLicenseServiceDevicePossession",
+                component = "LicenseService",
+                metadata = metadata(challenge)
+            ),
+            metadata = metadata(challenge) +
+                ("licenseServiceDeviceProofRejection" to reason.name.lowercase())
+        )
+        return LicenseServiceDeviceProofResult.Rejected(reason)
+    }
+
+    private fun observeProduced(evidence: LicenseServiceDeviceProofEvidence) {
+        foundation.observability.record(
+            severity = DiagnosticSeverity.INFO,
+            code = "LICENSE_SERVICE_DEVICE_PROOF_PRODUCED",
+            message = "license service device proof produced",
+            context = foundation.rootContext(
+                operation = "proveLicenseServiceDevicePossession",
+                component = "LicenseService",
+                metadata = metadata(evidence.challenge)
+            ),
+            metadata = metadata(evidence.challenge) + mapOf(
+                "deviceKeyAlgorithm" to evidence.proof.algorithm.value,
+                "deviceKeySecurityLevel" to evidence.proof.securityLevel.name.lowercase()
+            )
+        )
+    }
+
+    private fun observeDeviceKeyRejected(
+        challenge: LicenseServiceDeviceProofChallenge,
+        category: DeviceKeyFailureCategory
+    ) {
+        foundation.observability.record(
+            severity = DiagnosticSeverity.WARNING,
+            code = "LICENSE_SERVICE_DEVICE_KEY_PROOF_REJECTED",
+            message = "license service device key proof rejected",
+            context = foundation.rootContext(
+                operation = "proveLicenseServiceDevicePossession",
+                component = "LicenseService",
+                metadata = metadata(challenge)
+            ),
+            metadata = metadata(challenge) +
+                ("deviceKeyFailureCategory" to category.name.lowercase())
+        )
+    }
+
+    private fun observeDeviceKeyFailed(
+        challenge: LicenseServiceDeviceProofChallenge,
+        category: DeviceKeyFailureCategory,
+        throwableClass: String?
+    ) {
+        foundation.observability.record(
+            severity = DiagnosticSeverity.ERROR,
+            code = "LICENSE_SERVICE_DEVICE_KEY_PROOF_FAILED",
+            message = "license service device key proof failed",
+            context = foundation.rootContext(
+                operation = "proveLicenseServiceDevicePossession",
+                component = "LicenseService",
+                metadata = metadata(challenge)
+            ),
+            metadata = metadata(challenge) + buildMap {
+                put("deviceKeyFailureCategory", category.name.lowercase())
+                throwableClass?.let { put("throwableClass", it) }
+            }
+        )
+    }
+
+    private fun metadata(challenge: LicenseServiceDeviceProofChallenge): Map<String, String> = mapOf(
+        "licenseServiceProtocolVersion" to challenge.protocolVersion.value.toString(),
+        "licenseServiceOperation" to challenge.operation.name.lowercase(),
+        "licenseProductId" to challenge.productId.value,
+        "licenseServiceEnrollmentPresent" to (challenge.enrollmentId != null).toString(),
+        "deviceKeyGeneration" to challenge.key.generation.value.toString()
+    )
 
     private fun encodeTranscript(challenge: LicenseServiceDeviceProofChallenge): ByteArray =
         ByteArrayOutputStream().use { output ->
