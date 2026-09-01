@@ -16,8 +16,9 @@ class LargeProtectedModelProfileContractTest {
         val result = LargeProtectedModelManifestFactory.create(
             request(
                 totalPlaintext = 100,
-                totalCiphertext = 116,
-                drafts = listOf(segment(0, 100, 116, nonceSeed = 1))
+                totalCiphertextBody = 100,
+                totalProtectedPayload = 116,
+                drafts = listOf(segment(0, 100, 100, nonceSeed = 1))
             ),
             budgets(maxSegments = 2, maxTotal = 200, maxSegment = 120)
         )
@@ -25,20 +26,23 @@ class LargeProtectedModelProfileContractTest {
         val manifest = assertIs<LargeProtectedModelManifestResult.Accepted>(result).manifest
         assertEquals(1, manifest.segmentCount)
         assertEquals(100, manifest.totalPlaintextSizeBytes)
-        assertEquals(116, manifest.totalCiphertextSizeBytes)
+        assertEquals(100, manifest.totalCiphertextBodySizeBytes)
+        assertEquals(116, manifest.totalProtectedPayloadSizeBytes)
+        assertEquals(116, manifest.segments().single().protectedPayloadSizeBytes)
         assertEquals(0, manifest.segments().single().index)
     }
 
     @Test
-    fun valid_multi_segment_manifest_preserves_exact_order() {
+    fun valid_multi_segment_manifest_preserves_exact_order_and_tag_overhead() {
         val result = LargeProtectedModelManifestFactory.create(
             request(
                 totalPlaintext = 250,
-                totalCiphertext = 298,
+                totalCiphertextBody = 250,
+                totalProtectedPayload = 298,
                 drafts = listOf(
-                    segment(0, 100, 116, nonceSeed = 1),
-                    segment(1, 100, 116, nonceSeed = 2),
-                    segment(2, 50, 66, nonceSeed = 3)
+                    segment(0, 100, 100, nonceSeed = 1),
+                    segment(1, 100, 100, nonceSeed = 2),
+                    segment(2, 50, 50, nonceSeed = 3)
                 )
             ),
             budgets(maxSegments = 3, maxTotal = 400, maxSegment = 120)
@@ -46,6 +50,7 @@ class LargeProtectedModelProfileContractTest {
 
         val manifest = assertIs<LargeProtectedModelManifestResult.Accepted>(result).manifest
         assertEquals(listOf(0, 1, 2), manifest.segments().map { it.index })
+        assertEquals(listOf(116L, 116L, 66L), manifest.segments().map { it.protectedPayloadSizeBytes })
     }
 
     @Test
@@ -55,12 +60,7 @@ class LargeProtectedModelProfileContractTest {
             LargeProtectedModelPayloadProfileVersion(1)
         )
         val rejected = assertRejected(
-            request(
-                totalPlaintext = 100,
-                totalCiphertext = 116,
-                drafts = listOf(segment(0, 100, 116, 1)),
-                profile = unsupported
-            ),
+            request(100, 100, 116, listOf(segment(0, 100, 100, 1)), profile = unsupported),
             budgets()
         )
 
@@ -69,19 +69,25 @@ class LargeProtectedModelProfileContractTest {
 
     @Test
     fun declared_segment_count_must_be_positive_bounded_and_match_list() {
-        val draft = segment(0, 100, 116, 1)
+        val draft = segment(0, 100, 100, 1)
 
         assertEquals(
             LargeProtectedModelManifestFailure.SEGMENT_COUNT_INVALID,
-            assertRejected(request(100, 116, listOf(draft), declaredCount = 0), budgets()).reason
+            assertRejected(request(100, 100, 116, listOf(draft), declaredCount = 0), budgets()).reason
         )
         assertEquals(
             LargeProtectedModelManifestFailure.SEGMENT_COUNT_INVALID,
-            assertRejected(request(100, 116, listOf(draft), declaredCount = 3), budgets(maxSegments = 2)).reason
+            assertRejected(
+                request(100, 100, 116, listOf(draft), declaredCount = 3),
+                budgets(maxSegments = 2)
+            ).reason
         )
         assertEquals(
             LargeProtectedModelManifestFailure.SEGMENT_COUNT_MISMATCH,
-            assertRejected(request(100, 116, listOf(draft), declaredCount = 2), budgets(maxSegments = 2)).reason
+            assertRejected(
+                request(100, 100, 116, listOf(draft), declaredCount = 2),
+                budgets(maxSegments = 2)
+            ).reason
         )
     }
 
@@ -89,8 +95,9 @@ class LargeProtectedModelProfileContractTest {
     fun duplicate_out_of_range_and_reordered_indices_fail_closed() {
         val duplicate = request(
             200,
+            200,
             232,
-            listOf(segment(0, 100, 116, 1), segment(0, 100, 116, 2)),
+            listOf(segment(0, 100, 100, 1), segment(0, 100, 100, 2)),
             declaredCount = 2
         )
         assertEquals(
@@ -100,8 +107,9 @@ class LargeProtectedModelProfileContractTest {
 
         val outOfRange = request(
             200,
+            200,
             232,
-            listOf(segment(0, 100, 116, 1), segment(2, 100, 116, 2)),
+            listOf(segment(0, 100, 100, 1), segment(2, 100, 100, 2)),
             declaredCount = 2
         )
         assertEquals(
@@ -111,8 +119,9 @@ class LargeProtectedModelProfileContractTest {
 
         val reordered = request(
             200,
+            200,
             232,
-            listOf(segment(1, 100, 116, 1), segment(0, 100, 116, 2)),
+            listOf(segment(1, 100, 100, 1), segment(0, 100, 100, 2)),
             declaredCount = 2
         )
         assertEquals(
@@ -122,32 +131,35 @@ class LargeProtectedModelProfileContractTest {
     }
 
     @Test
-    fun deliberately_non_default_budgets_are_enforced() {
+    fun non_default_budget_enforces_non_final_minimum_but_allows_short_final_segment() {
         val custom = LargeProtectedModelResourceBudgets(
             maxTotalPlaintextBytes = 250,
-            maxTotalCiphertextBytes = 300,
+            maxTotalCiphertextBodyBytes = 250,
+            maxTotalProtectedPayloadBytes = 300,
             maxSegmentCount = 2,
-            minSegmentPlaintextBytes = 40,
+            minNonFinalSegmentPlaintextBytes = 40,
             maxSegmentPlaintextBytes = 110,
-            maxSegmentCiphertextBytes = 130
+            maxSegmentCiphertextBodyBytes = 110
         )
 
-        val tooSmall = request(
+        val shortNonFinal = request(
+            139,
             139,
             171,
-            listOf(segment(0, 100, 116, 1), segment(1, 39, 55, 2)),
+            listOf(segment(0, 39, 39, 1), segment(1, 100, 100, 2)),
             declaredCount = 2
         )
         assertEquals(
             LargeProtectedModelManifestFailure.SEGMENT_PLAINTEXT_SIZE_INVALID,
-            assertRejected(tooSmall, custom).reason
+            assertRejected(shortNonFinal, custom).reason
         )
 
         val accepted = LargeProtectedModelManifestFactory.create(
             request(
-                140,
-                172,
-                listOf(segment(0, 100, 116, 1), segment(1, 40, 56, 2)),
+                120,
+                120,
+                152,
+                listOf(segment(0, 100, 100, 1), segment(1, 20, 20, 2)),
                 declaredCount = 2
             ),
             custom
@@ -156,22 +168,69 @@ class LargeProtectedModelProfileContractTest {
     }
 
     @Test
-    fun total_and_aggregate_sizes_must_match_exactly() {
+    fun ciphertext_body_must_equal_plaintext_for_uncompressed_first_profile() {
+        val rejected = assertRejected(
+            request(
+                100,
+                99,
+                115,
+                listOf(segment(0, 100, 99, 1))
+            ),
+            budgets()
+        )
+
+        assertEquals(
+            LargeProtectedModelManifestFailure.CIPHERTEXT_PLAINTEXT_SIZE_MISMATCH,
+            rejected.reason
+        )
+    }
+
+    @Test
+    fun all_three_aggregate_sizes_must_match_exactly() {
         val custom = budgets(maxSegments = 2, maxTotal = 400, maxSegment = 160)
-        val drafts = listOf(segment(0, 100, 116, 1), segment(1, 100, 116, 2))
+        val drafts = listOf(segment(0, 100, 100, 1), segment(1, 100, 100, 2))
 
         assertEquals(
             LargeProtectedModelManifestFailure.AGGREGATE_PLAINTEXT_SIZE_MISMATCH,
-            assertRejected(request(201, 232, drafts, 2), custom).reason
+            assertRejected(request(201, 200, 232, drafts, 2), custom).reason
         )
         assertEquals(
-            LargeProtectedModelManifestFailure.AGGREGATE_CIPHERTEXT_SIZE_MISMATCH,
-            assertRejected(request(200, 233, drafts, 2), custom).reason
+            LargeProtectedModelManifestFailure.AGGREGATE_CIPHERTEXT_BODY_SIZE_MISMATCH,
+            assertRejected(request(200, 201, 232, drafts, 2), custom).reason
+        )
+        assertEquals(
+            LargeProtectedModelManifestFailure.AGGREGATE_PROTECTED_PAYLOAD_SIZE_MISMATCH,
+            assertRejected(request(200, 200, 233, drafts, 2), custom).reason
         )
         assertEquals(
             LargeProtectedModelManifestFailure.TOTAL_PLAINTEXT_SIZE_INVALID,
-            assertRejected(request(401, 232, drafts, 2), custom).reason
+            assertRejected(request(401, 200, 232, drafts, 2), custom).reason
         )
+    }
+
+    @Test
+    fun protected_payload_tag_addition_overflow_is_typed_without_large_allocations() {
+        val huge = Long.MAX_VALUE
+        val overflowBudgets = LargeProtectedModelResourceBudgets(
+            maxTotalPlaintextBytes = Long.MAX_VALUE,
+            maxTotalCiphertextBodyBytes = Long.MAX_VALUE,
+            maxTotalProtectedPayloadBytes = Long.MAX_VALUE,
+            maxSegmentCount = 1,
+            minNonFinalSegmentPlaintextBytes = 1,
+            maxSegmentPlaintextBytes = Long.MAX_VALUE,
+            maxSegmentCiphertextBodyBytes = Long.MAX_VALUE
+        )
+        val rejected = assertRejected(
+            request(
+                totalPlaintext = huge,
+                totalCiphertextBody = huge,
+                totalProtectedPayload = huge,
+                drafts = listOf(segment(0, huge, huge, 1))
+            ),
+            overflowBudgets
+        )
+
+        assertEquals(LargeProtectedModelManifestFailure.AGGREGATE_SIZE_OVERFLOW, rejected.reason)
     }
 
     @Test
@@ -179,16 +238,18 @@ class LargeProtectedModelProfileContractTest {
         val huge = Long.MAX_VALUE / 2 + 1
         val overflowBudgets = LargeProtectedModelResourceBudgets(
             maxTotalPlaintextBytes = Long.MAX_VALUE,
-            maxTotalCiphertextBytes = Long.MAX_VALUE,
+            maxTotalCiphertextBodyBytes = Long.MAX_VALUE,
+            maxTotalProtectedPayloadBytes = Long.MAX_VALUE,
             maxSegmentCount = 2,
-            minSegmentPlaintextBytes = 1,
+            minNonFinalSegmentPlaintextBytes = 1,
             maxSegmentPlaintextBytes = Long.MAX_VALUE,
-            maxSegmentCiphertextBytes = Long.MAX_VALUE
+            maxSegmentCiphertextBodyBytes = Long.MAX_VALUE
         )
         val rejected = assertRejected(
             request(
                 totalPlaintext = Long.MAX_VALUE,
-                totalCiphertext = Long.MAX_VALUE,
+                totalCiphertextBody = Long.MAX_VALUE,
+                totalProtectedPayload = Long.MAX_VALUE,
                 drafts = listOf(
                     segment(0, huge, huge, 1),
                     segment(1, huge, huge, 2)
@@ -202,37 +263,37 @@ class LargeProtectedModelProfileContractTest {
     }
 
     @Test
-    fun nonce_and_digest_shape_and_nonce_uniqueness_are_exact() {
+    fun nonce_and_protected_payload_digest_shape_and_nonce_uniqueness_are_exact() {
         val invalidNonce = LargeProtectedModelSegmentDraft(
             0,
             100,
-            116,
+            100,
             ByteArray(11),
-            ByteArray(SEGMENT_CIPHERTEXT_DIGEST_SIZE_BYTES)
+            ByteArray(SEGMENT_PROTECTED_PAYLOAD_DIGEST_SIZE_BYTES)
         )
         assertEquals(
             LargeProtectedModelManifestFailure.INVALID_NONCE_SIZE,
-            assertRejected(request(100, 116, listOf(invalidNonce)), budgets()).reason
+            assertRejected(request(100, 100, 116, listOf(invalidNonce)), budgets()).reason
         )
 
         val invalidDigest = LargeProtectedModelSegmentDraft(
             0,
             100,
-            116,
+            100,
             ByteArray(SEGMENT_NONCE_SIZE_BYTES),
             ByteArray(31)
         )
         assertEquals(
-            LargeProtectedModelManifestFailure.INVALID_CIPHERTEXT_DIGEST_SIZE,
-            assertRejected(request(100, 116, listOf(invalidDigest)), budgets()).reason
+            LargeProtectedModelManifestFailure.INVALID_PROTECTED_PAYLOAD_DIGEST_SIZE,
+            assertRejected(request(100, 100, 116, listOf(invalidDigest)), budgets()).reason
         )
 
-        val sameNonceA = segment(0, 100, 116, 7)
-        val sameNonceB = segment(1, 100, 116, 7)
+        val sameNonceA = segment(0, 100, 100, 7)
+        val sameNonceB = segment(1, 100, 100, 7)
         assertEquals(
             LargeProtectedModelManifestFailure.DUPLICATE_NONCE,
             assertRejected(
-                request(200, 232, listOf(sameNonceA, sameNonceB), declaredCount = 2),
+                request(200, 200, 232, listOf(sameNonceA, sameNonceB), declaredCount = 2),
                 budgets(maxSegments = 2, maxTotal = 300, maxSegment = 120)
             ).reason
         )
@@ -241,37 +302,37 @@ class LargeProtectedModelProfileContractTest {
     @Test
     fun mutable_nonce_and_digest_inputs_are_detached_and_outputs_are_defensive() {
         val nonce = ByteArray(SEGMENT_NONCE_SIZE_BYTES) { (it + 1).toByte() }
-        val digest = ByteArray(SEGMENT_CIPHERTEXT_DIGEST_SIZE_BYTES) { (it + 20).toByte() }
+        val digest = ByteArray(SEGMENT_PROTECTED_PAYLOAD_DIGEST_SIZE_BYTES) { (it + 20).toByte() }
         val originalNonce = nonce.copyOf()
         val originalDigest = digest.copyOf()
-        val draft = LargeProtectedModelSegmentDraft(0, 100, 116, nonce, digest)
+        val draft = LargeProtectedModelSegmentDraft(0, 100, 100, nonce, digest)
 
         nonce.fill(99)
         digest.fill(99)
 
         val manifest = assertIs<LargeProtectedModelManifestResult.Accepted>(
             LargeProtectedModelManifestFactory.create(
-                request(100, 116, listOf(draft)),
+                request(100, 100, 116, listOf(draft)),
                 budgets()
             )
         ).manifest
         val segment = manifest.segments().single()
         assertContentEquals(originalNonce, segment.copyNonce())
-        assertContentEquals(originalDigest, segment.copyCiphertextDigest())
+        assertContentEquals(originalDigest, segment.copyProtectedPayloadDigest())
 
         val nonceCopy = segment.copyNonce()
-        val digestCopy = segment.copyCiphertextDigest()
+        val digestCopy = segment.copyProtectedPayloadDigest()
         nonceCopy.fill(0)
         digestCopy.fill(0)
         assertContentEquals(originalNonce, segment.copyNonce())
-        assertContentEquals(originalDigest, segment.copyCiphertextDigest())
+        assertContentEquals(originalDigest, segment.copyProtectedPayloadDigest())
     }
 
     @Test
     fun rendering_redacts_cryptographic_bytes_and_existing_sensitive_ids() {
         val result = assertIs<LargeProtectedModelManifestResult.Accepted>(
             LargeProtectedModelManifestFactory.create(
-                request(100, 116, listOf(segment(0, 100, 116, 1))),
+                request(100, 100, 116, listOf(segment(0, 100, 100, 1))),
                 budgets()
             )
         )
@@ -286,17 +347,20 @@ class LargeProtectedModelProfileContractTest {
     @Test
     fun canonical_encoding_is_deterministic_and_changes_with_security_critical_structure() {
         val first = acceptedManifest(
-            listOf(segment(0, 100, 116, 1), segment(1, 50, 66, 2)),
+            listOf(segment(0, 100, 100, 1), segment(1, 50, 50, 2)),
+            150,
             150,
             182
         )
         val same = acceptedManifest(
-            listOf(segment(0, 100, 116, 1), segment(1, 50, 66, 2)),
+            listOf(segment(0, 100, 100, 1), segment(1, 50, 50, 2)),
+            150,
             150,
             182
         )
         val changed = acceptedManifest(
-            listOf(segment(0, 100, 116, 1), segment(1, 50, 66, 3)),
+            listOf(segment(0, 100, 100, 1), segment(1, 50, 50, 3)),
+            150,
             150,
             182
         )
@@ -312,8 +376,9 @@ class LargeProtectedModelProfileContractTest {
     fun reusable_factory_is_stateless_under_concurrent_validation() {
         val request = request(
             150,
+            150,
             182,
-            listOf(segment(0, 100, 116, 1), segment(1, 50, 66, 2)),
+            listOf(segment(0, 100, 100, 1), segment(1, 50, 50, 2)),
             declaredCount = 2
         )
         val custom = budgets(maxSegments = 2, maxTotal = 300, maxSegment = 120)
@@ -341,6 +406,7 @@ class LargeProtectedModelProfileContractTest {
         assertEquals(ProtectedModelEncryptionAlgorithm.AES_256_GCM, oldProfile.algorithm)
         assertEquals(12, oldProfile.nonceSizeBytes)
         assertEquals(128, oldProfile.authenticationTagSizeBits)
+        assertEquals(16, SEGMENT_AUTHENTICATION_TAG_SIZE_BYTES)
         assertNotEquals(
             LargeProtectedModelPayloadProfile.SEGMENTED_AES_256_GCM_SHA256_V1.id.value,
             ProtectedModelProfileId("direct-v0.1").toString()
@@ -350,10 +416,17 @@ class LargeProtectedModelProfileContractTest {
     private fun acceptedManifest(
         drafts: List<LargeProtectedModelSegmentDraft>,
         totalPlaintext: Long,
-        totalCiphertext: Long
+        totalCiphertextBody: Long,
+        totalProtectedPayload: Long
     ): LargeProtectedModelManifest = assertIs<LargeProtectedModelManifestResult.Accepted>(
         LargeProtectedModelManifestFactory.create(
-            request(totalPlaintext, totalCiphertext, drafts, drafts.size),
+            request(
+                totalPlaintext,
+                totalCiphertextBody,
+                totalProtectedPayload,
+                drafts,
+                drafts.size
+            ),
             budgets(maxSegments = drafts.size, maxTotal = 400, maxSegment = 160)
         )
     ).manifest
@@ -366,7 +439,8 @@ class LargeProtectedModelProfileContractTest {
 
     private fun request(
         totalPlaintext: Long,
-        totalCiphertext: Long,
+        totalCiphertextBody: Long,
+        totalProtectedPayload: Long,
         drafts: List<LargeProtectedModelSegmentDraft>,
         declaredCount: Int = drafts.size,
         profile: LargeProtectedModelPayloadProfile =
@@ -382,7 +456,8 @@ class LargeProtectedModelProfileContractTest {
             ModelDekGeneration(9)
         ),
         totalPlaintextSizeBytes = totalPlaintext,
-        totalCiphertextSizeBytes = totalCiphertext,
+        totalCiphertextBodySizeBytes = totalCiphertextBody,
+        totalProtectedPayloadSizeBytes = totalProtectedPayload,
         declaredSegmentCount = declaredCount,
         segments = drafts
     )
@@ -390,14 +465,14 @@ class LargeProtectedModelProfileContractTest {
     private fun segment(
         index: Int,
         plaintext: Long,
-        ciphertext: Long,
+        ciphertextBody: Long,
         nonceSeed: Int
     ) = LargeProtectedModelSegmentDraft(
         index = index,
         plaintextSizeBytes = plaintext,
-        ciphertextSizeBytes = ciphertext,
+        ciphertextBodySizeBytes = ciphertextBody,
         nonce = ByteArray(SEGMENT_NONCE_SIZE_BYTES) { (nonceSeed + it).toByte() },
-        ciphertextDigest = ByteArray(SEGMENT_CIPHERTEXT_DIGEST_SIZE_BYTES) {
+        protectedPayloadDigest = ByteArray(SEGMENT_PROTECTED_PAYLOAD_DIGEST_SIZE_BYTES) {
             (nonceSeed * 3 + it).toByte()
         }
     )
@@ -408,10 +483,11 @@ class LargeProtectedModelProfileContractTest {
         maxSegment: Long = 120
     ) = LargeProtectedModelResourceBudgets(
         maxTotalPlaintextBytes = maxTotal,
-        maxTotalCiphertextBytes = maxTotal + 100,
+        maxTotalCiphertextBodyBytes = maxTotal,
+        maxTotalProtectedPayloadBytes = maxTotal + maxSegments * SEGMENT_AUTHENTICATION_TAG_SIZE_BYTES,
         maxSegmentCount = maxSegments,
-        minSegmentPlaintextBytes = 1,
+        minNonFinalSegmentPlaintextBytes = 1,
         maxSegmentPlaintextBytes = maxSegment,
-        maxSegmentCiphertextBytes = maxSegment + 20
+        maxSegmentCiphertextBodyBytes = maxSegment
     )
 }

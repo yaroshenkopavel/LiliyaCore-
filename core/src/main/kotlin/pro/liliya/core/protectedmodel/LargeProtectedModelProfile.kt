@@ -36,28 +36,37 @@ data class LargeProtectedModelPayloadProfile(
 
 data class LargeProtectedModelResourceBudgets(
     val maxTotalPlaintextBytes: Long,
-    val maxTotalCiphertextBytes: Long,
+    val maxTotalCiphertextBodyBytes: Long,
+    val maxTotalProtectedPayloadBytes: Long,
     val maxSegmentCount: Int,
-    val minSegmentPlaintextBytes: Long,
+    val minNonFinalSegmentPlaintextBytes: Long,
     val maxSegmentPlaintextBytes: Long,
-    val maxSegmentCiphertextBytes: Long,
+    val maxSegmentCiphertextBodyBytes: Long,
     val maxStructuralIdentifierChars: Int = DEFAULT_MAX_STRUCTURAL_IDENTIFIER_CHARS,
     val maxCanonicalManifestBytes: Long = DEFAULT_MAX_CANONICAL_MANIFEST_BYTES
 ) {
     init {
         require(maxTotalPlaintextBytes > 0L) { "max total plaintext bytes must be positive" }
-        require(maxTotalCiphertextBytes > 0L) { "max total ciphertext bytes must be positive" }
+        require(maxTotalCiphertextBodyBytes > 0L) { "max total ciphertext-body bytes must be positive" }
+        require(maxTotalProtectedPayloadBytes > 0L) { "max total protected-payload bytes must be positive" }
         require(maxSegmentCount > 0) { "max segment count must be positive" }
-        require(minSegmentPlaintextBytes > 0L) { "min segment plaintext bytes must be positive" }
-        require(maxSegmentPlaintextBytes >= minSegmentPlaintextBytes) {
-            "max segment plaintext bytes must be >= minimum"
+        require(minNonFinalSegmentPlaintextBytes > 0L) {
+            "min non-final segment plaintext bytes must be positive"
         }
-        require(maxSegmentCiphertextBytes > 0L) { "max segment ciphertext bytes must be positive" }
+        require(maxSegmentPlaintextBytes >= minNonFinalSegmentPlaintextBytes) {
+            "max segment plaintext bytes must be >= non-final minimum"
+        }
+        require(maxSegmentCiphertextBodyBytes > 0L) {
+            "max segment ciphertext-body bytes must be positive"
+        }
         require(maxSegmentPlaintextBytes <= maxTotalPlaintextBytes) {
             "max segment plaintext bytes exceeds total plaintext budget"
         }
-        require(maxSegmentCiphertextBytes <= maxTotalCiphertextBytes) {
-            "max segment ciphertext bytes exceeds total ciphertext budget"
+        require(maxSegmentCiphertextBodyBytes <= maxTotalCiphertextBodyBytes) {
+            "max segment ciphertext-body bytes exceeds total ciphertext-body budget"
+        }
+        require(maxTotalProtectedPayloadBytes >= maxTotalCiphertextBodyBytes) {
+            "protected-payload budget must not be smaller than ciphertext-body budget"
         }
         require(maxStructuralIdentifierChars > 0) {
             "max structural identifier chars must be positive"
@@ -66,61 +75,54 @@ data class LargeProtectedModelResourceBudgets(
             "max canonical manifest bytes must be positive"
         }
     }
-
-    companion object {
-        val DEFAULT = LargeProtectedModelResourceBudgets(
-            maxTotalPlaintextBytes = 16L * 1024L * 1024L * 1024L,
-            maxTotalCiphertextBytes = 16L * 1024L * 1024L * 1024L,
-            maxSegmentCount = 65_536,
-            minSegmentPlaintextBytes = 1L,
-            maxSegmentPlaintextBytes = 16L * 1024L * 1024L,
-            maxSegmentCiphertextBytes = 16L * 1024L * 1024L
-        )
-    }
 }
 
 /**
  * Untrusted structural input for one future large-model payload segment.
  *
- * The constructor only detaches mutable byte inputs. Exact profile sizes, ordering and resource
- * constraints are validated by [LargeProtectedModelManifestFactory].
+ * ciphertextBodySizeBytes excludes the fixed GCM authentication tag. Slice 1 carries only
+ * structural metadata and a digest commitment; raw ciphertext/tag payload bytes arrive in Slice 2.
  */
 class LargeProtectedModelSegmentDraft(
     val index: Int,
     val plaintextSizeBytes: Long,
-    val ciphertextSizeBytes: Long,
+    val ciphertextBodySizeBytes: Long,
     nonce: ByteArray,
-    ciphertextDigest: ByteArray
+    protectedPayloadDigest: ByteArray
 ) {
     private val nonceBytes = nonce.copyOf()
-    private val ciphertextDigestBytes = ciphertextDigest.copyOf()
+    private val protectedPayloadDigestBytes = protectedPayloadDigest.copyOf()
 
     fun copyNonce(): ByteArray = nonceBytes.copyOf()
-    fun copyCiphertextDigest(): ByteArray = ciphertextDigestBytes.copyOf()
+    fun copyProtectedPayloadDigest(): ByteArray = protectedPayloadDigestBytes.copyOf()
 
     override fun toString(): String =
         "LargeProtectedModelSegmentDraft(index=$index, plaintextSizeBytes=$plaintextSizeBytes, " +
-            "ciphertextSizeBytes=$ciphertextSizeBytes, nonce=<redacted:${nonceBytes.size} bytes>, " +
-            "ciphertextDigest=<redacted:${ciphertextDigestBytes.size} bytes>)"
+            "ciphertextBodySizeBytes=$ciphertextBodySizeBytes, " +
+            "nonce=<redacted:${nonceBytes.size} bytes>, " +
+            "protectedPayloadDigest=<redacted:${protectedPayloadDigestBytes.size} bytes>)"
 }
 
 class LargeProtectedModelSegment internal constructor(
     val index: Int,
     val plaintextSizeBytes: Long,
-    val ciphertextSizeBytes: Long,
+    val ciphertextBodySizeBytes: Long,
+    val protectedPayloadSizeBytes: Long,
     nonce: ByteArray,
-    ciphertextDigest: ByteArray
+    protectedPayloadDigest: ByteArray
 ) {
     private val nonceBytes = nonce.copyOf()
-    private val ciphertextDigestBytes = ciphertextDigest.copyOf()
+    private val protectedPayloadDigestBytes = protectedPayloadDigest.copyOf()
 
     fun copyNonce(): ByteArray = nonceBytes.copyOf()
-    fun copyCiphertextDigest(): ByteArray = ciphertextDigestBytes.copyOf()
+    fun copyProtectedPayloadDigest(): ByteArray = protectedPayloadDigestBytes.copyOf()
 
     override fun toString(): String =
         "LargeProtectedModelSegment(index=$index, plaintextSizeBytes=$plaintextSizeBytes, " +
-            "ciphertextSizeBytes=$ciphertextSizeBytes, nonce=<redacted:${nonceBytes.size} bytes>, " +
-            "ciphertextDigest=<redacted:${ciphertextDigestBytes.size} bytes>)"
+            "ciphertextBodySizeBytes=$ciphertextBodySizeBytes, " +
+            "protectedPayloadSizeBytes=$protectedPayloadSizeBytes, " +
+            "nonce=<redacted:${nonceBytes.size} bytes>, " +
+            "protectedPayloadDigest=<redacted:${protectedPayloadDigestBytes.size} bytes>)"
 }
 
 class LargeProtectedModelManifestRequest(
@@ -128,7 +130,8 @@ class LargeProtectedModelManifestRequest(
     val model: ProtectedModelReference,
     val modelDek: ModelDekReference,
     val totalPlaintextSizeBytes: Long,
-    val totalCiphertextSizeBytes: Long,
+    val totalCiphertextBodySizeBytes: Long,
+    val totalProtectedPayloadSizeBytes: Long,
     val declaredSegmentCount: Int,
     segments: List<LargeProtectedModelSegmentDraft>
 ) {
@@ -139,7 +142,8 @@ class LargeProtectedModelManifestRequest(
     override fun toString(): String =
         "LargeProtectedModelManifestRequest(profile=$profile, model=$model, modelDek=$modelDek, " +
             "totalPlaintextSizeBytes=$totalPlaintextSizeBytes, " +
-            "totalCiphertextSizeBytes=$totalCiphertextSizeBytes, " +
+            "totalCiphertextBodySizeBytes=$totalCiphertextBodySizeBytes, " +
+            "totalProtectedPayloadSizeBytes=$totalProtectedPayloadSizeBytes, " +
             "declaredSegmentCount=$declaredSegmentCount, segments=<redacted:${segmentDrafts.size}>)"
 }
 
@@ -148,7 +152,8 @@ class LargeProtectedModelManifest internal constructor(
     val model: ProtectedModelReference,
     val modelDek: ModelDekReference,
     val totalPlaintextSizeBytes: Long,
-    val totalCiphertextSizeBytes: Long,
+    val totalCiphertextBodySizeBytes: Long,
+    val totalProtectedPayloadSizeBytes: Long,
     segments: List<LargeProtectedModelSegment>
 ) {
     private val orderedSegments = segments.toList()
@@ -161,14 +166,16 @@ class LargeProtectedModelManifest internal constructor(
     override fun toString(): String =
         "LargeProtectedModelManifest(profile=$profile, model=$model, modelDek=$modelDek, " +
             "totalPlaintextSizeBytes=$totalPlaintextSizeBytes, " +
-            "totalCiphertextSizeBytes=$totalCiphertextSizeBytes, segmentCount=$segmentCount, " +
-            "segments=<redacted:$segmentCount>)"
+            "totalCiphertextBodySizeBytes=$totalCiphertextBodySizeBytes, " +
+            "totalProtectedPayloadSizeBytes=$totalProtectedPayloadSizeBytes, " +
+            "segmentCount=$segmentCount, segments=<redacted:$segmentCount>)"
 }
 
 enum class LargeProtectedModelManifestFailure {
     UNSUPPORTED_PROFILE,
     TOTAL_PLAINTEXT_SIZE_INVALID,
-    TOTAL_CIPHERTEXT_SIZE_INVALID,
+    TOTAL_CIPHERTEXT_BODY_SIZE_INVALID,
+    TOTAL_PROTECTED_PAYLOAD_SIZE_INVALID,
     SEGMENT_COUNT_INVALID,
     SEGMENT_COUNT_MISMATCH,
     STRUCTURAL_IDENTIFIER_SIZE_INVALID,
@@ -177,13 +184,15 @@ enum class LargeProtectedModelManifestFailure {
     DUPLICATE_SEGMENT_INDEX,
     SEGMENT_ORDER_INVALID,
     SEGMENT_PLAINTEXT_SIZE_INVALID,
-    SEGMENT_CIPHERTEXT_SIZE_INVALID,
+    SEGMENT_CIPHERTEXT_BODY_SIZE_INVALID,
+    CIPHERTEXT_PLAINTEXT_SIZE_MISMATCH,
     INVALID_NONCE_SIZE,
     DUPLICATE_NONCE,
-    INVALID_CIPHERTEXT_DIGEST_SIZE,
+    INVALID_PROTECTED_PAYLOAD_DIGEST_SIZE,
     AGGREGATE_SIZE_OVERFLOW,
     AGGREGATE_PLAINTEXT_SIZE_MISMATCH,
-    AGGREGATE_CIPHERTEXT_SIZE_MISMATCH
+    AGGREGATE_CIPHERTEXT_BODY_SIZE_MISMATCH,
+    AGGREGATE_PROTECTED_PAYLOAD_SIZE_MISMATCH
 }
 
 sealed interface LargeProtectedModelManifestResult {
@@ -199,7 +208,7 @@ sealed interface LargeProtectedModelManifestResult {
 object LargeProtectedModelManifestFactory {
     fun create(
         request: LargeProtectedModelManifestRequest,
-        budgets: LargeProtectedModelResourceBudgets = LargeProtectedModelResourceBudgets.DEFAULT
+        budgets: LargeProtectedModelResourceBudgets
     ): LargeProtectedModelManifestResult {
         if (request.profile != LargeProtectedModelPayloadProfile.SEGMENTED_AES_256_GCM_SHA256_V1) {
             return rejected(LargeProtectedModelManifestFailure.UNSUPPORTED_PROFILE)
@@ -209,10 +218,15 @@ object LargeProtectedModelManifestFactory {
         ) {
             return rejected(LargeProtectedModelManifestFailure.TOTAL_PLAINTEXT_SIZE_INVALID)
         }
-        if (request.totalCiphertextSizeBytes <= 0L ||
-            request.totalCiphertextSizeBytes > budgets.maxTotalCiphertextBytes
+        if (request.totalCiphertextBodySizeBytes <= 0L ||
+            request.totalCiphertextBodySizeBytes > budgets.maxTotalCiphertextBodyBytes
         ) {
-            return rejected(LargeProtectedModelManifestFailure.TOTAL_CIPHERTEXT_SIZE_INVALID)
+            return rejected(LargeProtectedModelManifestFailure.TOTAL_CIPHERTEXT_BODY_SIZE_INVALID)
+        }
+        if (request.totalProtectedPayloadSizeBytes <= 0L ||
+            request.totalProtectedPayloadSizeBytes > budgets.maxTotalProtectedPayloadBytes
+        ) {
+            return rejected(LargeProtectedModelManifestFailure.TOTAL_PROTECTED_PAYLOAD_SIZE_INVALID)
         }
         if (request.declaredSegmentCount <= 0 ||
             request.declaredSegmentCount > budgets.maxSegmentCount
@@ -253,22 +267,37 @@ object LargeProtectedModelManifestFactory {
         val nonceKeys = HashSet<ByteArrayKey>(drafts.size)
         val acceptedSegments = ArrayList<LargeProtectedModelSegment>(drafts.size)
         var aggregatePlaintext = 0L
-        var aggregateCiphertext = 0L
+        var aggregateCiphertextBody = 0L
+        var aggregateProtectedPayload = 0L
 
-        for (draft in drafts) {
-            if (draft.plaintextSizeBytes < budgets.minSegmentPlaintextBytes ||
-                draft.plaintextSizeBytes > budgets.maxSegmentPlaintextBytes
-            ) {
+        for ((position, draft) in drafts.withIndex()) {
+            val isFinal = position == drafts.lastIndex
+            val plaintextInvalid = draft.plaintextSizeBytes <= 0L ||
+                draft.plaintextSizeBytes > budgets.maxSegmentPlaintextBytes ||
+                (!isFinal && draft.plaintextSizeBytes < budgets.minNonFinalSegmentPlaintextBytes)
+            if (plaintextInvalid) {
                 return rejected(LargeProtectedModelManifestFailure.SEGMENT_PLAINTEXT_SIZE_INVALID)
             }
-            if (draft.ciphertextSizeBytes <= 0L ||
-                draft.ciphertextSizeBytes > budgets.maxSegmentCiphertextBytes
+            if (draft.ciphertextBodySizeBytes <= 0L ||
+                draft.ciphertextBodySizeBytes > budgets.maxSegmentCiphertextBodyBytes
             ) {
-                return rejected(LargeProtectedModelManifestFailure.SEGMENT_CIPHERTEXT_SIZE_INVALID)
+                return rejected(LargeProtectedModelManifestFailure.SEGMENT_CIPHERTEXT_BODY_SIZE_INVALID)
+            }
+            if (draft.ciphertextBodySizeBytes != draft.plaintextSizeBytes) {
+                return rejected(LargeProtectedModelManifestFailure.CIPHERTEXT_PLAINTEXT_SIZE_MISMATCH)
+            }
+
+            val protectedPayloadSize = try {
+                Math.addExact(
+                    draft.ciphertextBodySizeBytes,
+                    SEGMENT_AUTHENTICATION_TAG_SIZE_BYTES.toLong()
+                )
+            } catch (_: ArithmeticException) {
+                return rejected(LargeProtectedModelManifestFailure.AGGREGATE_SIZE_OVERFLOW)
             }
 
             val nonce = draft.copyNonce()
-            val digest = draft.copyCiphertextDigest()
+            val digest = draft.copyProtectedPayloadDigest()
             try {
                 if (nonce.size != SEGMENT_NONCE_SIZE_BYTES) {
                     return rejected(LargeProtectedModelManifestFailure.INVALID_NONCE_SIZE)
@@ -276,27 +305,32 @@ object LargeProtectedModelManifestFactory {
                 if (!nonceKeys.add(ByteArrayKey(nonce))) {
                     return rejected(LargeProtectedModelManifestFailure.DUPLICATE_NONCE)
                 }
-                if (digest.size != SEGMENT_CIPHERTEXT_DIGEST_SIZE_BYTES) {
-                    return rejected(LargeProtectedModelManifestFailure.INVALID_CIPHERTEXT_DIGEST_SIZE)
+                if (digest.size != SEGMENT_PROTECTED_PAYLOAD_DIGEST_SIZE_BYTES) {
+                    return rejected(
+                        LargeProtectedModelManifestFailure.INVALID_PROTECTED_PAYLOAD_DIGEST_SIZE
+                    )
                 }
 
-                aggregatePlaintext = try {
-                    Math.addExact(aggregatePlaintext, draft.plaintextSizeBytes)
-                } catch (_: ArithmeticException) {
-                    return rejected(LargeProtectedModelManifestFailure.AGGREGATE_SIZE_OVERFLOW)
-                }
-                aggregateCiphertext = try {
-                    Math.addExact(aggregateCiphertext, draft.ciphertextSizeBytes)
-                } catch (_: ArithmeticException) {
-                    return rejected(LargeProtectedModelManifestFailure.AGGREGATE_SIZE_OVERFLOW)
-                }
+                aggregatePlaintext = addExactOrReject(
+                    aggregatePlaintext,
+                    draft.plaintextSizeBytes
+                ) ?: return rejected(LargeProtectedModelManifestFailure.AGGREGATE_SIZE_OVERFLOW)
+                aggregateCiphertextBody = addExactOrReject(
+                    aggregateCiphertextBody,
+                    draft.ciphertextBodySizeBytes
+                ) ?: return rejected(LargeProtectedModelManifestFailure.AGGREGATE_SIZE_OVERFLOW)
+                aggregateProtectedPayload = addExactOrReject(
+                    aggregateProtectedPayload,
+                    protectedPayloadSize
+                ) ?: return rejected(LargeProtectedModelManifestFailure.AGGREGATE_SIZE_OVERFLOW)
 
                 acceptedSegments += LargeProtectedModelSegment(
                     index = draft.index,
                     plaintextSizeBytes = draft.plaintextSizeBytes,
-                    ciphertextSizeBytes = draft.ciphertextSizeBytes,
+                    ciphertextBodySizeBytes = draft.ciphertextBodySizeBytes,
+                    protectedPayloadSizeBytes = protectedPayloadSize,
                     nonce = nonce,
-                    ciphertextDigest = digest
+                    protectedPayloadDigest = digest
                 )
             } finally {
                 nonce.fill(0)
@@ -307,8 +341,15 @@ object LargeProtectedModelManifestFactory {
         if (aggregatePlaintext != request.totalPlaintextSizeBytes) {
             return rejected(LargeProtectedModelManifestFailure.AGGREGATE_PLAINTEXT_SIZE_MISMATCH)
         }
-        if (aggregateCiphertext != request.totalCiphertextSizeBytes) {
-            return rejected(LargeProtectedModelManifestFailure.AGGREGATE_CIPHERTEXT_SIZE_MISMATCH)
+        if (aggregateCiphertextBody != request.totalCiphertextBodySizeBytes) {
+            return rejected(
+                LargeProtectedModelManifestFailure.AGGREGATE_CIPHERTEXT_BODY_SIZE_MISMATCH
+            )
+        }
+        if (aggregateProtectedPayload != request.totalProtectedPayloadSizeBytes) {
+            return rejected(
+                LargeProtectedModelManifestFailure.AGGREGATE_PROTECTED_PAYLOAD_SIZE_MISMATCH
+            )
         }
 
         return LargeProtectedModelManifestResult.Accepted(
@@ -317,7 +358,8 @@ object LargeProtectedModelManifestFactory {
                 model = request.model,
                 modelDek = request.modelDek,
                 totalPlaintextSizeBytes = aggregatePlaintext,
-                totalCiphertextSizeBytes = aggregateCiphertext,
+                totalCiphertextBodySizeBytes = aggregateCiphertextBody,
+                totalProtectedPayloadSizeBytes = aggregateProtectedPayload,
                 segments = acceptedSegments
             )
         )
@@ -337,6 +379,7 @@ object LargeProtectedModelManifestFactory {
         total = Math.addExact(total, 8L)
         total = Math.addExact(total, 8L)
         total = Math.addExact(total, 8L)
+        total = Math.addExact(total, 8L)
         total = Math.addExact(total, 4L)
         total = Math.addExact(
             total,
@@ -349,6 +392,12 @@ object LargeProtectedModelManifestFactory {
 
     private fun stringUpperBound(value: String): Long =
         Math.addExact(4L, Math.multiplyExact(value.length.toLong(), MAX_UTF8_BYTES_PER_CHAR))
+
+    private fun addExactOrReject(left: Long, right: Long): Long? = try {
+        Math.addExact(left, right)
+    } catch (_: ArithmeticException) {
+        null
+    }
 
     private fun rejected(reason: LargeProtectedModelManifestFailure) =
         LargeProtectedModelManifestResult.Rejected(reason)
@@ -367,14 +416,15 @@ object LargeProtectedModelManifestCanonicalCodec {
             writeString(out, manifest.modelDek.id.value)
             out.writeLong(manifest.modelDek.generation.value)
             out.writeLong(manifest.totalPlaintextSizeBytes)
-            out.writeLong(manifest.totalCiphertextSizeBytes)
+            out.writeLong(manifest.totalCiphertextBodySizeBytes)
+            out.writeLong(manifest.totalProtectedPayloadSizeBytes)
             out.writeInt(manifest.segmentCount)
             manifest.segments().forEach { segment ->
                 out.writeInt(segment.index)
                 out.writeLong(segment.plaintextSizeBytes)
-                out.writeLong(segment.ciphertextSizeBytes)
+                out.writeLong(segment.ciphertextBodySizeBytes)
                 val nonce = segment.copyNonce()
-                val digest = segment.copyCiphertextDigest()
+                val digest = segment.copyProtectedPayloadDigest()
                 try {
                     writeBytes(out, nonce)
                     writeBytes(out, digest)
@@ -420,4 +470,5 @@ private const val DEFAULT_MAX_CANONICAL_MANIFEST_BYTES = 8L * 1024L * 1024L
 private const val MAX_UTF8_BYTES_PER_CHAR = 4L
 private const val CANONICAL_SEGMENT_UPPER_BOUND_BYTES = 72L
 const val SEGMENT_NONCE_SIZE_BYTES = 12
-const val SEGMENT_CIPHERTEXT_DIGEST_SIZE_BYTES = 32
+const val SEGMENT_AUTHENTICATION_TAG_SIZE_BYTES = 16
+const val SEGMENT_PROTECTED_PAYLOAD_DIGEST_SIZE_BYTES = 32

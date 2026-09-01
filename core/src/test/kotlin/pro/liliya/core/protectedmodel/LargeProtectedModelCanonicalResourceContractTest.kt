@@ -78,15 +78,16 @@ class LargeProtectedModelCanonicalResourceContractTest {
             ModelDekGeneration(1)
         ),
         totalPlaintextSizeBytes = 100,
-        totalCiphertextSizeBytes = 116,
+        totalCiphertextBodySizeBytes = 100,
+        totalProtectedPayloadSizeBytes = 116,
         declaredSegmentCount = 1,
         segments = listOf(
             LargeProtectedModelSegmentDraft(
                 index = 0,
                 plaintextSizeBytes = 100,
-                ciphertextSizeBytes = 116,
+                ciphertextBodySizeBytes = 100,
                 nonce = ByteArray(SEGMENT_NONCE_SIZE_BYTES) { (it + 1).toByte() },
-                ciphertextDigest = ByteArray(SEGMENT_CIPHERTEXT_DIGEST_SIZE_BYTES) {
+                protectedPayloadDigest = ByteArray(SEGMENT_PROTECTED_PAYLOAD_DIGEST_SIZE_BYTES) {
                     (it + 7).toByte()
                 }
             )
@@ -98,11 +99,12 @@ class LargeProtectedModelCanonicalResourceContractTest {
         maxCanonicalBytes: Long
     ) = LargeProtectedModelResourceBudgets(
         maxTotalPlaintextBytes = 200,
-        maxTotalCiphertextBytes = 300,
+        maxTotalCiphertextBodyBytes = 200,
+        maxTotalProtectedPayloadBytes = 300,
         maxSegmentCount = 2,
-        minSegmentPlaintextBytes = 1,
+        minNonFinalSegmentPlaintextBytes = 1,
         maxSegmentPlaintextBytes = 120,
-        maxSegmentCiphertextBytes = 140,
+        maxSegmentCiphertextBodyBytes = 120,
         maxStructuralIdentifierChars = maxIdentifierChars,
         maxCanonicalManifestBytes = maxCanonicalBytes
     )
