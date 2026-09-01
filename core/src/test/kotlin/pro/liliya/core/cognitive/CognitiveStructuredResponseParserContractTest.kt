@@ -114,7 +114,7 @@ class CognitiveStructuredResponseParserContractTest {
     }
 
     @Test
-    fun decoded_field_and_total_output_limits_are independently_enforced() {
+    fun decoded_field_and_total_output_limits_are_independently_enforced() {
         val smallFieldBudgets = budgets.copy(maxResultChars = 3)
         assertEquals(
             CognitiveStructuredResponseFailure.FIELD_LIMIT_REJECTED,
