@@ -31,7 +31,7 @@ class CognitiveRuntimeComposition(
                 context,
                 mapOf(
                     "cognitiveTurnId" to id.value,
-                    "cognitiveTurnGeneration" to result.ownership.reference.generation.value.toString()
+                    "cognitiveTurnGeneration" to result.turn.reference.generation.value.toString()
                 )
             )
 
