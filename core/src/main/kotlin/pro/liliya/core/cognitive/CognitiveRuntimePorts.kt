@@ -1,7 +1,9 @@
 package pro.liliya.core.cognitive
 
+import pro.liliya.core.identity.SelfIdentitySnapshot
 import pro.liliya.core.knowledge.KnowledgeItemSnapshot
 import pro.liliya.core.memory.MemoryRecordSnapshot
+import pro.liliya.core.personality.PersonalityProfileSnapshot
 
 class MemoryRetrievalRequest(
     val turn: CognitiveTurnReference,
@@ -43,6 +45,16 @@ class KnowledgeRetrievalResult(
 
 fun interface KnowledgeRetrievalPort {
     fun retrieve(request: KnowledgeRetrievalRequest): KnowledgeRetrievalResult
+}
+
+/** Read-only view of the authoritative Self owner for one assembly attempt. */
+fun interface SelfSnapshotPort {
+    fun current(): SelfIdentitySnapshot?
+}
+
+/** Read-only view of authoritative Personality snapshots in their provider-defined deterministic order. */
+fun interface PersonalitySnapshotPort {
+    fun snapshot(): List<PersonalityProfileSnapshot>
 }
 
 class CognitiveInferenceRequest(
