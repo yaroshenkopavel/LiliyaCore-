@@ -70,7 +70,12 @@ data class CognitiveRuntimeLimits(
     val maxResultChars: Int = 16_384,
     val maxReflectionChars: Int = 16_384,
     val maxLearningProposalChars: Int = 16_384,
-    val maxProvenanceReferenceChars: Int = 1_024
+    val maxProvenanceReferenceChars: Int = 1_024,
+    val maxLearningGovernanceRationaleChars: Int = 4_096,
+    val maxLearningMutationContentChars: Int = 16_384,
+    val maxLearningSystemPrincipalChars: Int = 256,
+    val maxLearningIdempotencyKeyChars: Int = 256,
+    val maxGeneratedArtifactIdChars: Int = 512
 ) {
     init {
         require(maxRuntimeScopeIdChars > 0) { "maximum cognitive runtime scope id chars must be positive" }
@@ -94,6 +99,11 @@ data class CognitiveRuntimeLimits(
         require(maxReflectionChars > 0) { "maximum cognitive reflection chars must be positive" }
         require(maxLearningProposalChars > 0) { "maximum cognitive learning proposal chars must be positive" }
         require(maxProvenanceReferenceChars > 0) { "maximum cognitive provenance reference chars must be positive" }
+        require(maxLearningGovernanceRationaleChars > 0) { "maximum learning governance rationale chars must be positive" }
+        require(maxLearningMutationContentChars > 0) { "maximum learning mutation content chars must be positive" }
+        require(maxLearningSystemPrincipalChars > 0) { "maximum learning system principal chars must be positive" }
+        require(maxLearningIdempotencyKeyChars > 0) { "maximum learning idempotency key chars must be positive" }
+        require(maxGeneratedArtifactIdChars > 0) { "maximum generated artifact id chars must be positive" }
     }
 }
 
