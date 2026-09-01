@@ -3,8 +3,10 @@ package pro.liliya.core.cognitive
 import pro.liliya.core.decision.DecisionComposition
 import pro.liliya.core.diagnostics.DiagnosticSeverity
 import pro.liliya.core.foundation.FoundationComposition
+import pro.liliya.core.learning.LearningComposition
 import pro.liliya.core.planning.PlanningComposition
 import pro.liliya.core.reasoning.ReasoningComposition
+import pro.liliya.core.reflection.ReflectionComposition
 
 class CognitiveRuntimeComposition(
     private val foundation: FoundationComposition,
@@ -21,7 +23,10 @@ class CognitiveRuntimeComposition(
     reasoning: ReasoningComposition? = null,
     decision: DecisionComposition? = null,
     artifactIds: CognitiveArtifactIdSource? = null,
-    timestamps: CognitiveTimestampSource? = null
+    timestamps: CognitiveTimestampSource? = null,
+    outcomeMaterialization: CognitiveOutcomeMaterializationPort? = null,
+    reflection: ReflectionComposition? = null,
+    learning: LearningComposition? = null
 ) {
     init {
         require(scope.value.length <= limits.maxRuntimeScopeIdChars) {
@@ -54,6 +59,32 @@ class CognitiveRuntimeComposition(
             planning = planning,
             reasoning = reasoning,
             decision = decision,
+            artifactIds = artifactIds,
+            timestamps = timestamps,
+            limits = limits
+        )
+    } else {
+        null
+    }
+    private val finalizationCoordinator = if (
+        outcomeMaterialization != null &&
+        planning != null &&
+        reasoning != null &&
+        decision != null &&
+        reflection != null &&
+        learning != null &&
+        artifactIds != null &&
+        timestamps != null
+    ) {
+        CognitiveFinalizationCoordinator(
+            turns = turns,
+            scope = scope,
+            outcomeMaterialization = outcomeMaterialization,
+            planning = planning,
+            reasoning = reasoning,
+            decision = decision,
+            reflection = reflection,
+            learning = learning,
             artifactIds = artifactIds,
             timestamps = timestamps,
             limits = limits
@@ -184,6 +215,59 @@ class CognitiveRuntimeComposition(
                 DiagnosticSeverity.WARNING,
                 "COGNITIVE_GENERATION_REJECTED",
                 "cognitive generation rejected",
+                context,
+                mapOf("rejectionReason" to result.reason.name)
+            )
+        }
+        return result
+    }
+
+    fun finalizeCognition(reference: CognitiveTurnReference): CognitiveFinalizationResult {
+        val context = foundation.rootContext(
+            operation = "finalizeCognition",
+            component = "CognitiveRuntime",
+            metadata = turnMetadata(reference)
+        )
+        val coordinator = finalizationCoordinator
+        if (coordinator == null) {
+            foundation.observability.record(
+                DiagnosticSeverity.WARNING,
+                "COGNITIVE_FINALIZATION_REJECTED",
+                "cognitive finalization rejected",
+                context,
+                mapOf("rejectionReason" to CognitiveFinalizationFailure.DEPENDENCIES_UNAVAILABLE.name)
+            )
+            return CognitiveFinalizationResult.Rejected(
+                CognitiveFinalizationFailure.DEPENDENCIES_UNAVAILABLE
+            )
+        }
+
+        val result = coordinator.finalize(reference)
+        when (result) {
+            is CognitiveFinalizationResult.Completed -> foundation.observability.record(
+                DiagnosticSeverity.INFO,
+                "COGNITIVE_FINALIZATION_COMPLETED",
+                "cognitive finalization completed",
+                context,
+                mapOf(
+                    "reflectionRecordId" to result.reflection.id.value,
+                    "reflectionGeneration" to result.reflection.generation.value.toString(),
+                    "learningCandidateId" to result.learning.id.value,
+                    "learningGeneration" to result.learning.generation.value.toString()
+                )
+            )
+
+            CognitiveFinalizationResult.Stale -> foundation.observability.record(
+                DiagnosticSeverity.WARNING,
+                "COGNITIVE_FINALIZATION_STALE",
+                "cognitive finalization is no longer current",
+                context
+            )
+
+            is CognitiveFinalizationResult.Rejected -> foundation.observability.record(
+                DiagnosticSeverity.WARNING,
+                "COGNITIVE_FINALIZATION_REJECTED",
+                "cognitive finalization rejected",
                 context,
                 mapOf("rejectionReason" to result.reason.name)
             )
