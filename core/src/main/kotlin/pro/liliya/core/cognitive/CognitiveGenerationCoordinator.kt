@@ -121,14 +121,14 @@ internal class CognitiveGenerationCoordinator(
         if (!turns.isCurrentAt(reference, CognitiveTurnLifecycle.GENERATING)) {
             return CognitiveGenerationResult.Stale
         }
+        if (inferenceResult.turn != reference) {
+            return rejectCurrent(reference, CognitiveGenerationFailure.FOREIGN_INFERENCE_RESULT)
+        }
 
         val succeededInference = when (inferenceResult) {
             is CognitiveInferenceResult.Rejected ->
                 return rejectCurrent(reference, CognitiveGenerationFailure.INFERENCE_PROVIDER_REJECTED)
             is CognitiveInferenceResult.Succeeded -> inferenceResult
-        }
-        if (succeededInference.turn != reference) {
-            return rejectCurrent(reference, CognitiveGenerationFailure.FOREIGN_INFERENCE_RESULT)
         }
         if (succeededInference.output.length > limits.maxInferenceOutputChars) {
             return rejectCurrent(reference, CognitiveGenerationFailure.INFERENCE_OUTPUT_LIMIT_REJECTED)
