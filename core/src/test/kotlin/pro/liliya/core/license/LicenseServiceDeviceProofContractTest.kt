@@ -322,12 +322,16 @@ class LicenseServiceDeviceProofContractTest {
 
     @Test
     fun normal_observability_and_failure_rendering_do_not_expose_private_proof_material() {
+        val secretRequest = "PRIVATE-REQUEST-ID-DO-NOT-LOG"
+        val secretProduct = "PRIVATE-PRODUCT-ID-DO-NOT-LOG"
         val secretSubject = "PRIVATE-SUBJECT-DO-NOT-LOG"
         val secretEnrollment = "PRIVATE-ENROLLMENT-DO-NOT-LOG"
         val secretNonce = "PRIVATE-NONCE-DO-NOT-LOG"
         val fixture = fixture()
         val challenge = challenge(
             key = fixture.key,
+            requestId = secretRequest,
+            productId = secretProduct,
             subject = secretSubject,
             enrollmentId = secretEnrollment,
             nonce = secretNonce.encodeToByteArray()
@@ -342,6 +346,8 @@ class LicenseServiceDeviceProofContractTest {
             fixture.observed.diagnostics.snapshot().forEach { append(it) }
             append(produced)
         }
+        assertFalse(secretRequest in rendered)
+        assertFalse(secretProduct in rendered)
         assertFalse(secretSubject in rendered)
         assertFalse(secretEnrollment in rendered)
         assertFalse(secretNonce in rendered)
