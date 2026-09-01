@@ -145,6 +145,12 @@ class LicenseServiceDeviceProofComposition(
                 LicenseServiceDeviceProofRejection.CHALLENGE_EXPIRED
             )
         }
+        if (hasOversizedTextField(challenge)) {
+            return reject(
+                challenge,
+                LicenseServiceDeviceProofRejection.TRANSCRIPT_TOO_LARGE
+            )
+        }
 
         val transcript = encodeTranscript(challenge)
         if (transcript.size > maxTranscriptBytes) {
@@ -190,6 +196,49 @@ class LicenseServiceDeviceProofComposition(
     internal fun transcriptForTest(
         challenge: LicenseServiceDeviceProofChallenge
     ): DeviceKeyChallenge = DeviceKeyChallenge(encodeTranscript(challenge))
+
+    private fun hasOversizedTextField(challenge: LicenseServiceDeviceProofChallenge): Boolean {
+        val values = buildList {
+            add(DOMAIN)
+            add(challenge.requestId.value)
+            add(challenge.operation.name)
+            add(challenge.productId.value)
+            add(challenge.subject.value)
+            challenge.enrollmentId?.let { add(it.value) }
+            add(challenge.key.id.value)
+        }
+        return values.any { !utf8LengthAtMost(it, maxTranscriptBytes) }
+    }
+
+    /**
+     * Computes a conservative UTF-8 byte bound without allocating the encoded byte array.
+     * Malformed surrogate code units count as three bytes, which may reject early but never
+     * understates the memory needed by a normal UTF-8 encoding.
+     */
+    private fun utf8LengthAtMost(value: String, limit: Int): Boolean {
+        var used = 0
+        var index = 0
+        while (index < value.length) {
+            val current = value[index]
+            val bytes = when {
+                current.code <= 0x7F -> 1
+                current.code <= 0x7FF -> 2
+                Character.isHighSurrogate(current) &&
+                    index + 1 < value.length &&
+                    Character.isLowSurrogate(value[index + 1]) -> {
+                    index += 1
+                    4
+                }
+                else -> 3
+            }
+            if (used > limit - bytes) {
+                return false
+            }
+            used += bytes
+            index += 1
+        }
+        return true
+    }
 
     private fun reject(
         challenge: LicenseServiceDeviceProofChallenge,
