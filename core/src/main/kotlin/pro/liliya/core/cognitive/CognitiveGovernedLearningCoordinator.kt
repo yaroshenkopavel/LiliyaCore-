@@ -56,7 +56,7 @@ enum class CognitiveGovernedLearningFailure {
     MUTATION_PREPARE_FAILED,
     MUTATION_APPLY_REJECTED,
     COMPENSATION_FAILED,
-    COORDINATOR_FAILED
+    COORDINATOR_PARTIAL_FAILURE
 }
 
 enum class CognitiveGovernedLearningTerminalStatus {
@@ -150,7 +150,9 @@ internal class CognitiveGovernedLearningCoordinator(
         val result = try {
             processInternal(candidateReference)
         } catch (_: Exception) {
-            CognitiveGovernedLearningResult.Rejected(CognitiveGovernedLearningFailure.COORDINATOR_FAILED)
+            CognitiveGovernedLearningResult.Rejected(
+                CognitiveGovernedLearningFailure.COORDINATOR_PARTIAL_FAILURE
+            )
         }
 
         synchronized(gate) {
@@ -560,6 +562,10 @@ internal class CognitiveGovernedLearningCoordinator(
             CognitiveGovernedLearningTerminalStatus.PARTIAL_FAILURE
         is CognitiveGovernedLearningResult.AlreadyProcessed -> result.status
         is CognitiveGovernedLearningResult.Rejected ->
-            CognitiveGovernedLearningTerminalStatus.REJECTED
+            if (result.reason == CognitiveGovernedLearningFailure.COORDINATOR_PARTIAL_FAILURE) {
+                CognitiveGovernedLearningTerminalStatus.PARTIAL_FAILURE
+            } else {
+                CognitiveGovernedLearningTerminalStatus.REJECTED
+            }
     }
 }
