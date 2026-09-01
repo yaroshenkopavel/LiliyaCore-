@@ -67,8 +67,8 @@ class LicenseServiceDeviceProofChallenge(
     }
 
     override fun toString(): String =
-        "LicenseServiceDeviceProofChallenge(protocolVersion=$protocolVersion, requestId=$requestId, " +
-            "operation=$operation, productId=$productId, subject=<redacted>, " +
+        "LicenseServiceDeviceProofChallenge(protocolVersion=$protocolVersion, requestId=<redacted>, " +
+            "operation=$operation, productId=<redacted>, subject=<redacted>, " +
             "enrollmentPresent=${enrollmentId != null}, key=$key, nonce=$nonce, " +
             "validFrom=$validFrom, validUntil=$validUntil)"
 }
@@ -318,7 +318,6 @@ class LicenseServiceDeviceProofComposition(
     private fun metadata(challenge: LicenseServiceDeviceProofChallenge): Map<String, String> = mapOf(
         "licenseServiceProtocolVersion" to challenge.protocolVersion.value.toString(),
         "licenseServiceOperation" to challenge.operation.name.lowercase(),
-        "licenseProductId" to challenge.productId.value,
         "licenseServiceEnrollmentPresent" to (challenge.enrollmentId != null).toString(),
         "deviceKeyGeneration" to challenge.key.generation.value.toString()
     )
