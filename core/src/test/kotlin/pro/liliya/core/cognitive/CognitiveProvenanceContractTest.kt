@@ -2,6 +2,10 @@ package pro.liliya.core.cognitive
 
 import pro.liliya.core.decision.DecisionGeneration
 import pro.liliya.core.decision.DecisionId
+import pro.liliya.core.learning.LearningApplicationTarget
+import pro.liliya.core.learning.LearningCandidateId
+import pro.liliya.core.learning.LearningCandidateReference
+import pro.liliya.core.learning.LearningGeneration
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -16,6 +20,10 @@ class CognitiveProvenanceContractTest {
     private val decision = DecisionReference(
         id = DecisionId("decision-fixed"),
         generation = DecisionGeneration(3)
+    )
+    private val learning = LearningCandidateReference(
+        candidateId = LearningCandidateId("candidate-fixed"),
+        generation = LearningGeneration(5)
     )
 
     @Test
@@ -32,6 +40,64 @@ class CognitiveProvenanceContractTest {
             "308140bd355f5eed5743106109886e7a70ff0e21edf2a271e6a2b2fa426be2b9",
             CognitiveProvenance.resultToken(scope, turn, decision).value
         )
+    }
+
+    @Test
+    fun learning_idempotency_and_mutation_provenance_have_stable_domain_separated_fixed_vectors() {
+        assertEquals(
+            "fe582390229943a270b247e9083e51776e1857f8a11b9666a99588f14db527d5",
+            CognitiveProvenance.learningIdempotencyToken(
+                scope,
+                learning,
+                LearningApplicationTarget.MEMORY
+            ).value
+        )
+        assertEquals(
+            "f349733eb27678c0bbd67eecb07eb58e8ba9bf3f22965536d512a0f9e890b08c",
+            CognitiveProvenance.learningMutationToken(
+                scope,
+                learning,
+                LearningApplicationTarget.MEMORY
+            ).value
+        )
+        assertEquals(
+            "acdff176494588224beac99c2e9003abcbe3750a01f4f51dafd363fde09aaeea",
+            CognitiveProvenance.learningIdempotencyToken(
+                scope,
+                learning,
+                LearningApplicationTarget.KNOWLEDGE
+            ).value
+        )
+        assertEquals(
+            "7b4c82f7337a2c3c3c82da91909889626c80437affa26010bcb8c41fc32a2938",
+            CognitiveProvenance.learningMutationToken(
+                scope,
+                learning,
+                LearningApplicationTarget.KNOWLEDGE
+            ).value
+        )
+    }
+
+    @Test
+    fun learning_idempotency_and_mutation_tokens_are_distinct_and_redacted() {
+        val idempotency = CognitiveProvenance.learningIdempotencyToken(
+            scope,
+            learning,
+            LearningApplicationTarget.MEMORY
+        )
+        val provenance = CognitiveProvenance.learningMutationToken(
+            scope,
+            learning,
+            LearningApplicationTarget.MEMORY
+        )
+
+        assertNotEquals(idempotency.value, provenance.value)
+        assertEquals(64, idempotency.value.length)
+        assertEquals(64, provenance.value.length)
+        assertFalse(idempotency.toString().contains(scope.value))
+        assertFalse(idempotency.toString().contains(learning.candidateId.value))
+        assertFalse(provenance.toString().contains(scope.value))
+        assertFalse(provenance.toString().contains(learning.candidateId.value))
     }
 
     @Test
