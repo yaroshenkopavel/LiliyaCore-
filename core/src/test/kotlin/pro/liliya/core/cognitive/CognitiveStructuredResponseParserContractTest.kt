@@ -31,12 +31,12 @@ class CognitiveStructuredResponseParserContractTest {
         assertEquals("rationale", response.decisionRationale)
         assertEquals("result", response.resultContent)
         assertEquals("reflection", response.reflectionContent)
-        assertEquals("learning", response.learningProposal)
+        assertEquals("private-learning-payload", response.learningProposal)
 
         val rendered = response.toString()
         assertFalse(rendered.contains("goal=private"))
         assertFalse(rendered.contains("analysis\\private"))
-        assertFalse(rendered.contains("learning"))
+        assertFalse(rendered.contains("private-learning-payload"))
         assertTrue(rendered.contains("redacted"))
     }
 
@@ -186,7 +186,7 @@ class CognitiveStructuredResponseParserContractTest {
         "DECISION_RATIONALE=rationale",
         "RESULT_CONTENT=result",
         "REFLECTION_CONTENT=reflection",
-        "LEARNING_PROPOSAL=learning",
+        "LEARNING_PROPOSAL=private-learning-payload",
         "END"
     ).joinToString("\n")
 }
