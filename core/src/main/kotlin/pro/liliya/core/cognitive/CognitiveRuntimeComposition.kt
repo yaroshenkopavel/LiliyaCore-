@@ -8,6 +8,7 @@ import pro.liliya.core.reasoning.ReasoningComposition
 
 class CognitiveRuntimeComposition(
     private val foundation: FoundationComposition,
+    private val scope: CognitiveRuntimeScopeId,
     memoryRetrieval: MemoryRetrievalPort,
     knowledgeRetrieval: KnowledgeRetrievalPort,
     selfSnapshots: SelfSnapshotPort,
@@ -22,6 +23,12 @@ class CognitiveRuntimeComposition(
     artifactIds: CognitiveArtifactIdSource? = null,
     timestamps: CognitiveTimestampSource? = null
 ) {
+    init {
+        require(scope.value.length <= limits.maxRuntimeScopeIdChars) {
+            "cognitive runtime scope id exceeds configured limit"
+        }
+    }
+
     private val turns = registry ?: CognitiveTurnRegistry(limits)
     private val contextAssembler = CognitiveContextAssembler(
         turns = turns,
@@ -41,6 +48,7 @@ class CognitiveRuntimeComposition(
     ) {
         CognitiveGenerationCoordinator(
             turns = turns,
+            scope = scope,
             inference = inference,
             materialization = materialization,
             planning = planning,
@@ -58,23 +66,27 @@ class CognitiveRuntimeComposition(
         id: CognitiveTurnId,
         input: CognitiveInput
     ): CognitiveTurnRegistrationResult {
+        val requestFingerprint = CognitiveProvenance.requestFingerprint(scope, id)
         val context = foundation.rootContext(
             operation = "beginCognitiveTurn",
             component = "CognitiveRuntime",
-            metadata = mapOf("cognitiveTurnId" to id.value)
+            metadata = mapOf("cognitiveTurnRequestFingerprint" to requestFingerprint)
         )
         val result = turns.register(id, input)
         when (result) {
-            is CognitiveTurnRegistrationResult.Registered -> foundation.observability.record(
-                DiagnosticSeverity.INFO,
-                "COGNITIVE_TURN_REGISTERED",
-                "cognitive turn registered",
-                context,
-                mapOf(
-                    "cognitiveTurnId" to id.value,
-                    "cognitiveTurnGeneration" to result.turn.reference.generation.value.toString()
+            is CognitiveTurnRegistrationResult.Registered -> {
+                val token = CognitiveProvenance.turnToken(scope, result.turn.reference).value
+                foundation.observability.record(
+                    DiagnosticSeverity.INFO,
+                    "COGNITIVE_TURN_REGISTERED",
+                    "cognitive turn registered",
+                    context,
+                    mapOf(
+                        "cognitiveTurnProvenance" to token,
+                        "cognitiveTurnGeneration" to result.turn.reference.generation.value.toString()
+                    )
                 )
-            )
+            }
 
             is CognitiveTurnRegistrationResult.Rejected -> foundation.observability.record(
                 DiagnosticSeverity.WARNING,
@@ -82,7 +94,7 @@ class CognitiveRuntimeComposition(
                 "cognitive turn registration rejected",
                 context,
                 mapOf(
-                    "cognitiveTurnId" to id.value,
+                    "cognitiveTurnRequestFingerprint" to requestFingerprint,
                     "rejectionReason" to result.reason.name
                 )
             )
@@ -183,7 +195,7 @@ class CognitiveRuntimeComposition(
     fun currentLifecycle(): CognitiveTurnLifecycle? = turns.currentLifecycle()
 
     private fun turnMetadata(reference: CognitiveTurnReference): Map<String, String> = mapOf(
-        "cognitiveTurnId" to reference.id.value,
+        "cognitiveTurnProvenance" to CognitiveProvenance.turnToken(scope, reference).value,
         "cognitiveTurnGeneration" to reference.generation.value.toString()
     )
 }
