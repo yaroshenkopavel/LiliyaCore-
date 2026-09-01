@@ -53,7 +53,9 @@ class CognitiveTurnRegistryContractTest {
         val first = assertIs<CognitiveTurnRegistrationResult.Registered>(
             registry.register(CognitiveTurnId("same"), CognitiveInput("first"))
         ).ownership
-        assertIs<CognitiveTurnTransitionResult.Rejected>(first.fail())
+        val failure = assertIs<CognitiveTurnTransitionResult.Failed>(first.fail())
+        assertEquals(CognitiveTurnFailure.TURN_FAILED, failure.reason)
+        assertEquals(CognitiveTurnLifecycle.FAILED, first.lifecycle())
 
         val replacement = assertIs<CognitiveTurnRegistrationResult.Registered>(
             registry.register(CognitiveTurnId("same"), CognitiveInput("replacement"))
@@ -116,6 +118,29 @@ class CognitiveTurnRegistryContractTest {
             )
         )
         assertEquals(CognitiveTurnLifecycle.GENERATING, ownership.lifecycle())
+    }
+
+    @Test
+    fun rejected_inference_does_not_advance_turn() {
+        val registry = CognitiveTurnRegistry(limits)
+        val ownership = assertIs<CognitiveTurnRegistrationResult.Registered>(
+            registry.register(CognitiveTurnId("rejected"), CognitiveInput("hello"))
+        ).ownership
+        assertIs<CognitiveTurnPublicationResult.Published>(
+            ownership.publishContextIfCurrent(CognitiveContextSnapshot(ownership.reference, emptyList()))
+        )
+        assertIs<CognitiveTurnTransitionResult.Transitioned>(ownership.beginGenerating())
+
+        assertIs<CognitiveTurnPublicationResult.Rejected>(
+            ownership.publishInferenceIfCurrent(
+                CognitiveInferenceResult.Rejected(
+                    ownership.reference,
+                    CognitiveInferenceFailure.PROVIDER_REJECTED
+                )
+            )
+        )
+        assertEquals(CognitiveTurnLifecycle.GENERATING, ownership.lifecycle())
+        assertNull(ownership.inference())
     }
 
     @Test
