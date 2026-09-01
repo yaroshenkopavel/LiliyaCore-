@@ -53,6 +53,7 @@ import pro.liliya.core.protectedmodel.ProtectedModelSignerResolver
 import pro.liliya.core.runtime.hardening.RuntimeHardeningFailure
 import pro.liliya.core.runtime.hardening.RuntimeModelSessionId
 import pro.liliya.core.runtime.hardening.RuntimeModelSessionLifecycle
+import pro.liliya.core.runtime.hardening.RuntimeModelSessionReference
 import pro.liliya.core.runtime.hardening.RuntimeOperationAdmissionResult
 import pro.liliya.core.runtime.hardening.RuntimeOperationTerminal
 import kotlin.concurrent.thread
@@ -110,9 +111,11 @@ class CognitiveModelRuntimeCompositionContractTest {
 
     @Test
     fun activation_and_successful_inference_use_exact_runtime_binding_and_budget() {
-        val engine = FakeEngine { request ->
-            ModelEngineInferenceResult.Succeeded("answer:${request.maxOutputChars}")
-        }
+        val engine = FakeEngine(
+            inferBlock = { request ->
+                ModelEngineInferenceResult.Succeeded("answer:${request.maxOutputChars}")
+            }
+        )
         val fixture = runtimeFixture(engineLoader = ModelEngineLoaderPort { _, plaintext ->
             assertTrue(plaintext.contentEquals("model-v1".encodeToByteArray()))
             ModelEngineLoadResult.Loaded(engine)
@@ -181,9 +184,11 @@ class CognitiveModelRuntimeCompositionContractTest {
 
     @Test
     fun ordinary_engine_operation_failure_does_not_poison_reusable_session() {
-        val engine = FakeEngine {
-            ModelEngineInferenceResult.Rejected(ModelEngineInferenceFailure.OPERATION_FAILED)
-        }
+        val engine = FakeEngine(
+            inferBlock = {
+                ModelEngineInferenceResult.Rejected(ModelEngineInferenceFailure.OPERATION_FAILED)
+            }
+        )
         val fixture = runtimeFixture(
             engineLoader = ModelEngineLoaderPort { _, _ -> ModelEngineLoadResult.Loaded(engine) }
         )
@@ -200,9 +205,11 @@ class CognitiveModelRuntimeCompositionContractTest {
 
     @Test
     fun fatal_engine_session_failure_fails_exact_session_and_cleanup_retires_after_release() {
-        val engine = FakeEngine {
-            ModelEngineInferenceResult.Rejected(ModelEngineInferenceFailure.SESSION_FAILED)
-        }
+        val engine = FakeEngine(
+            inferBlock = {
+                ModelEngineInferenceResult.Rejected(ModelEngineInferenceFailure.SESSION_FAILED)
+            }
+        )
         val fixture = runtimeFixture(
             engineLoader = ModelEngineLoaderPort { _, _ -> ModelEngineLoadResult.Loaded(engine) }
         )
@@ -225,11 +232,13 @@ class CognitiveModelRuntimeCompositionContractTest {
     fun quiescing_during_engine_call_discards_local_success_as_stale() {
         val entered = CountDownLatch(1)
         val releaseEngine = CountDownLatch(1)
-        val engine = FakeEngine {
-            entered.countDown()
-            assertTrue(releaseEngine.await(5, TimeUnit.SECONDS))
-            ModelEngineInferenceResult.Succeeded("must-not-publish")
-        }
+        val engine = FakeEngine(
+            inferBlock = {
+                entered.countDown()
+                assertTrue(releaseEngine.await(5, TimeUnit.SECONDS))
+                ModelEngineInferenceResult.Succeeded("must-not-publish")
+            }
+        )
         val fixture = runtimeFixture(
             engineLoader = ModelEngineLoaderPort { _, _ -> ModelEngineLoadResult.Loaded(engine) }
         )
@@ -255,11 +264,13 @@ class CognitiveModelRuntimeCompositionContractTest {
     fun concurrent_direct_inference_respects_one_in_flight_bound() {
         val entered = CountDownLatch(1)
         val releaseEngine = CountDownLatch(1)
-        val engine = FakeEngine {
-            entered.countDown()
-            assertTrue(releaseEngine.await(5, TimeUnit.SECONDS))
-            ModelEngineInferenceResult.Succeeded("first")
-        }
+        val engine = FakeEngine(
+            inferBlock = {
+                entered.countDown()
+                assertTrue(releaseEngine.await(5, TimeUnit.SECONDS))
+                ModelEngineInferenceResult.Succeeded("first")
+            }
+        )
         val fixture = runtimeFixture(
             engineLoader = ModelEngineLoaderPort { _, _ -> ModelEngineLoadResult.Loaded(engine) }
         )
@@ -419,9 +430,11 @@ class CognitiveModelRuntimeCompositionContractTest {
 
     @Test
     fun structural_observability_excludes_private_prompt_output_and_handle() {
-        val engine = FakeEngine {
-            throw IllegalStateException("private-engine-exception")
-        }
+        val engine = FakeEngine(
+            inferBlock = {
+                throw IllegalStateException("private-engine-exception")
+            }
+        )
         val fixture = runtimeFixture(
             compiler = CognitiveModelRequestCompilerPort {
                 CognitiveModelRequestCompilerResult.Compiled(
@@ -440,7 +453,7 @@ class CognitiveModelRuntimeCompositionContractTest {
         assertFalse(rendered.contains("private-engine-handle"))
     }
 
-    private fun activate(fixture: RuntimeFixture): pro.liliya.core.runtime.hardening.RuntimeModelSessionReference =
+    private fun activate(fixture: RuntimeFixture): RuntimeModelSessionReference =
         assertIs<CognitiveModelActivationResult.Activated>(
             fixture.composition.activateModel(
                 fixture.protectedFixture.envelope,
