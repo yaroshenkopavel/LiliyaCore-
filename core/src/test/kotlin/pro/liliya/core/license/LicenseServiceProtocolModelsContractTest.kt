@@ -15,6 +15,7 @@ class LicenseServiceProtocolModelsContractTest {
         assertFailsWith<IllegalArgumentException> { LicenseServiceProtocolVersion(-1) }
         assertFailsWith<IllegalArgumentException> { LicenseServiceRequestId("   ") }
         assertFailsWith<IllegalArgumentException> { LicenseServiceEnrollmentId("") }
+        assertFailsWith<IllegalArgumentException> { LicenseServiceEvidenceProfile("   ") }
     }
 
     @Test
@@ -55,6 +56,7 @@ class LicenseServiceProtocolModelsContractTest {
         val state = LicenseServiceStateEnvelope(
             protocolVersion = LicenseServiceProtocolVersion(1),
             purpose = LicenseServiceEvidencePurpose.SECURITY_STATE,
+            profile = LicenseServiceEvidenceProfile("TEST-SERVICE-SIGNATURE"),
             signingKeyId = LicenseKeyId("service-state-key"),
             payload = LicenseServiceOpaquePayload.of(byteArrayOf(1)),
             proof = LicenseServiceAuthenticationProof.of(byteArrayOf(2))
@@ -79,6 +81,10 @@ class LicenseServiceProtocolModelsContractTest {
 
         assertEquals(LicenseKeyId("license-key"), response.entitlementEnvelope.signingKeyId)
         assertEquals(LicenseKeyId("service-state-key"), response.serviceStateEnvelope?.signingKeyId)
+        assertEquals(
+            LicenseServiceEvidenceProfile("TEST-SERVICE-SIGNATURE"),
+            response.serviceStateEnvelope?.profile
+        )
         assertNotEquals(
             response.entitlementEnvelope.signingKeyId,
             response.serviceStateEnvelope?.signingKeyId
@@ -95,6 +101,7 @@ class LicenseServiceProtocolModelsContractTest {
         val state = LicenseServiceStateEnvelope(
             protocolVersion = LicenseServiceProtocolVersion(1),
             purpose = LicenseServiceEvidencePurpose.SECURITY_STATE,
+            profile = LicenseServiceEvidenceProfile("TEST-SERVICE-SIGNATURE"),
             signingKeyId = LicenseKeyId("service-state-key"),
             payload = LicenseServiceOpaquePayload.of(secretPayload),
             proof = LicenseServiceAuthenticationProof.of(secretProof)
