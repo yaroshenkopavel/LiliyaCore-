@@ -26,10 +26,20 @@ value class LicenseServiceDurableBackendRevision(val value: Long) {
     override fun toString(): String = value.toString()
 }
 
+@JvmInline
+value class LicenseServiceDurableStateSchemaVersion(val value: Int) {
+    init {
+        require(value > 0) { "license service durable state schema version must be positive" }
+    }
+
+    override fun toString(): String = value.toString()
+}
+
 class LicenseServiceDurableStateSnapshot(
     states: List<LicenseServiceSecurityState>,
     val generation: LicenseServiceDurableStateGeneration,
-    val backendRevision: LicenseServiceDurableBackendRevision
+    val backendRevision: LicenseServiceDurableBackendRevision,
+    val schemaVersion: LicenseServiceDurableStateSchemaVersion = LicenseServiceDurableStateSchemaVersion(1)
 ) {
     val states: List<LicenseServiceSecurityState> = states.sortedWith(
         compareBy(
@@ -49,18 +59,20 @@ class LicenseServiceDurableStateSnapshot(
         other is LicenseServiceDurableStateSnapshot &&
             states == other.states &&
             generation == other.generation &&
-            backendRevision == other.backendRevision
+            backendRevision == other.backendRevision &&
+            schemaVersion == other.schemaVersion
 
     override fun hashCode(): Int {
         var result = states.hashCode()
         result = 31 * result + generation.hashCode()
         result = 31 * result + backendRevision.hashCode()
+        result = 31 * result + schemaVersion.hashCode()
         return result
     }
 
     override fun toString(): String =
-        "LicenseServiceDurableStateSnapshot(scopeCount=${states.size}, generation=$generation, " +
-            "backendRevision=$backendRevision, scopes=<redacted>)"
+        "LicenseServiceDurableStateSnapshot(scopeCount=${states.size}, schemaVersion=$schemaVersion, " +
+            "generation=$generation, backendRevision=$backendRevision, scopes=<redacted>)"
 }
 
 class LicenseServiceDurableStatePayload private constructor(
@@ -115,7 +127,7 @@ sealed interface LicenseServiceDurableStateDecodeResult {
  *
  * The bytes produced here are plaintext canonical state. They are not durable, authentic, encrypted,
  * entitled or authorized merely because this codec accepted them. Slice 4B/4C must bind these bytes,
- * the exact durable generation and exact backend revision into the dedicated licensing-state
+ * the exact schema version, durable generation and backend revision into the dedicated licensing-state
  * authenticated-encryption domain before a durable commit may be published in memory.
  */
 object LicenseServiceDurableStateCanonicalCodec {
@@ -133,6 +145,9 @@ object LicenseServiceDurableStateCanonicalCodec {
     private const val KNOWN_FLAGS = FLAG_REVOCATION or FLAG_REPLAY or FLAG_SERVER_TIME
 
     fun encode(snapshot: LicenseServiceDurableStateSnapshot): LicenseServiceDurableStateEncodeResult {
+        if (snapshot.schemaVersion.value != VERSION) {
+            return rejectedEncode(LicenseServiceDurableStateCodecRejection.UNSUPPORTED_VERSION)
+        }
         if (snapshot.states.size > MAX_SCOPE_COUNT) {
             return rejectedEncode(LicenseServiceDurableStateCodecRejection.BOUNDS_EXCEEDED)
         }
@@ -165,7 +180,7 @@ object LicenseServiceDurableStateCanonicalCodec {
         val output = ByteArrayOutputStream(budget.used)
         DataOutputStream(output).use { data ->
             data.writeInt(MAGIC)
-            data.writeInt(VERSION)
+            data.writeInt(snapshot.schemaVersion.value)
             data.writeBoundedString(PURPOSE)
             data.writeLong(snapshot.generation.value)
             data.writeLong(snapshot.backendRevision.value)
@@ -207,7 +222,8 @@ object LicenseServiceDurableStateCanonicalCodec {
             if (data.readInt() != MAGIC) {
                 return rejectedDecode(LicenseServiceDurableStateCodecRejection.MALFORMED)
             }
-            if (data.readInt() != VERSION) {
+            val schemaVersion = LicenseServiceDurableStateSchemaVersion(data.readInt())
+            if (schemaVersion.value != VERSION) {
                 return rejectedDecode(LicenseServiceDurableStateCodecRejection.UNSUPPORTED_VERSION)
             }
             if (data.readBoundedString(input) != PURPOSE) {
@@ -262,7 +278,12 @@ object LicenseServiceDurableStateCanonicalCodec {
                 return rejectedDecode(LicenseServiceDurableStateCodecRejection.NON_CANONICAL)
             }
 
-            val snapshot = LicenseServiceDurableStateSnapshot(states, generation, backendRevision)
+            val snapshot = LicenseServiceDurableStateSnapshot(
+                states = states,
+                generation = generation,
+                backendRevision = backendRevision,
+                schemaVersion = schemaVersion
+            )
             val reencoded = when (val encoded = encode(snapshot)) {
                 is LicenseServiceDurableStateEncodeResult.Encoded -> encoded.payload.copyBytes()
                 is LicenseServiceDurableStateEncodeResult.Rejected -> {
