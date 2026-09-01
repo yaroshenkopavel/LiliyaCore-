@@ -101,72 +101,68 @@ internal class CognitiveContextAssembler(
             return CognitiveContextAssemblyResult.Stale
         }
 
-        val items = buildList {
-            if (self != null) {
-                add(
-                    CognitiveContextItem(
-                        source = CognitiveContextSourceReference.Self(
-                            identityId = self.identity.id,
-                            generation = self.generation
-                        ),
-                        content = self.identity.name.value
-                    )
-                )
+        val items = mutableListOf<CognitiveContextItem>()
 
-                personalities.forEach { snapshot ->
-                    val target = snapshot.profile.target
-                    if (
-                        target is PersonalityTarget.Self &&
-                        target.identityId == self.identity.id &&
-                        target.generation == self.generation
-                    ) {
-                        add(
-                            CognitiveContextItem(
-                                source = CognitiveContextSourceReference.Personality(
-                                    profileId = snapshot.profile.id,
-                                    generation = snapshot.generation
-                                ),
-                                content = snapshot.profile.attributes.joinToString("\n") { attribute ->
-                                    "${attribute.key.value}=${attribute.value.value}"
-                                }
-                            )
+        if (self != null) {
+            if (!items.addBounded(
+                    source = CognitiveContextSourceReference.Self(
+                        identityId = self.identity.id,
+                        generation = self.generation
+                    ),
+                    content = self.identity.name.value
+                )
+            ) {
+                return contextLimitRejected()
+            }
+
+            for (snapshot in personalities) {
+                val target = snapshot.profile.target
+                if (
+                    target is PersonalityTarget.Self &&
+                    target.identityId == self.identity.id &&
+                    target.generation == self.generation
+                ) {
+                    val content = snapshot.profile.attributes.joinToString("\n") { attribute ->
+                        "${attribute.key.value}=${attribute.value.value}"
+                    }
+                    if (!items.addBounded(
+                            source = CognitiveContextSourceReference.Personality(
+                                profileId = snapshot.profile.id,
+                                generation = snapshot.generation
+                            ),
+                            content = content
                         )
+                    ) {
+                        return contextLimitRejected()
                     }
                 }
             }
+        }
 
-            memory.items.forEach { snapshot ->
-                add(
-                    CognitiveContextItem(
-                        source = CognitiveContextSourceReference.Memory(
-                            recordId = snapshot.record.id,
-                            generation = snapshot.generation
-                        ),
-                        content = snapshot.record.content
-                    )
+        for (snapshot in memory.items) {
+            if (!items.addBounded(
+                    source = CognitiveContextSourceReference.Memory(
+                        recordId = snapshot.record.id,
+                        generation = snapshot.generation
+                    ),
+                    content = snapshot.record.content
                 )
-            }
-
-            knowledge.items.forEach { snapshot ->
-                add(
-                    CognitiveContextItem(
-                        source = CognitiveContextSourceReference.Knowledge(
-                            itemId = snapshot.item.id,
-                            generation = snapshot.generation
-                        ),
-                        content = snapshot.item.content
-                    )
-                )
+            ) {
+                return contextLimitRejected()
             }
         }
 
-        if (
-            items.size > limits.maxContextItems ||
-            items.any { it.content.length > limits.maxContextItemChars }
-        ) {
-            return CognitiveContextAssemblyResult.Rejected(
-                CognitiveContextAssemblyFailure.CONTEXT_LIMIT_REJECTED
-            )
+        for (snapshot in knowledge.items) {
+            if (!items.addBounded(
+                    source = CognitiveContextSourceReference.Knowledge(
+                        itemId = snapshot.item.id,
+                        generation = snapshot.generation
+                    ),
+                    content = snapshot.item.content
+                )
+            ) {
+                return contextLimitRejected()
+            }
         }
 
         val context = CognitiveContextSnapshot(reference, items)
@@ -174,14 +170,27 @@ internal class CognitiveContextAssembler(
             CognitiveTurnPublicationResult.Published ->
                 CognitiveContextAssemblyResult.Published(items.size)
             CognitiveTurnPublicationResult.Stale -> CognitiveContextAssemblyResult.Stale
-            is CognitiveTurnPublicationResult.Rejected ->
-                CognitiveContextAssemblyResult.Rejected(
-                    CognitiveContextAssemblyFailure.CONTEXT_LIMIT_REJECTED
-                )
+            is CognitiveTurnPublicationResult.Rejected -> contextLimitRejected()
             is CognitiveTurnPublicationResult.Failed ->
                 CognitiveContextAssemblyResult.Rejected(
                     CognitiveContextAssemblyFailure.PUBLICATION_FAILED
                 )
         }
     }
+
+    private fun MutableList<CognitiveContextItem>.addBounded(
+        source: CognitiveContextSourceReference,
+        content: String
+    ): Boolean {
+        if (size >= limits.maxContextItems || content.length > limits.maxContextItemChars) {
+            return false
+        }
+        add(CognitiveContextItem(source = source, content = content))
+        return true
+    }
+
+    private fun contextLimitRejected(): CognitiveContextAssemblyResult.Rejected =
+        CognitiveContextAssemblyResult.Rejected(
+            CognitiveContextAssemblyFailure.CONTEXT_LIMIT_REJECTED
+        )
 }
