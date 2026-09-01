@@ -97,7 +97,7 @@ class CognitiveRuntimeComposition(
         id: CognitiveTurnId,
         input: CognitiveInput
     ): CognitiveTurnRegistrationResult {
-        val requestFingerprint = CognitiveProvenance.requestFingerprint(scope, id)
+        val requestFingerprint = requestFingerprintMetadata(id)
         val context = foundation.rootContext(
             operation = "beginCognitiveTurn",
             component = "CognitiveRuntime",
@@ -278,8 +278,23 @@ class CognitiveRuntimeComposition(
     fun currentReference(): CognitiveTurnReference? = turns.currentReference()
     fun currentLifecycle(): CognitiveTurnLifecycle? = turns.currentLifecycle()
 
+    private fun requestFingerprintMetadata(id: CognitiveTurnId): String =
+        if (id.value.length <= limits.maxTurnIdChars) {
+            CognitiveProvenance.requestFingerprint(scope, id)
+        } else {
+            OVER_LIMIT_TURN_ID_MARKER
+        }
+
     private fun turnMetadata(reference: CognitiveTurnReference): Map<String, String> = mapOf(
-        "cognitiveTurnProvenance" to CognitiveProvenance.turnToken(scope, reference).value,
+        "cognitiveTurnProvenance" to if (reference.id.value.length <= limits.maxTurnIdChars) {
+            CognitiveProvenance.turnToken(scope, reference).value
+        } else {
+            OVER_LIMIT_TURN_ID_MARKER
+        },
         "cognitiveTurnGeneration" to reference.generation.value.toString()
     )
+
+    private companion object {
+        const val OVER_LIMIT_TURN_ID_MARKER = "over-limit-turn-id"
+    }
 }
