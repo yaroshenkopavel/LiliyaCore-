@@ -59,6 +59,8 @@ class CognitiveRuntimeCompositionContractTest {
                 foundation = foundation,
                 memoryRetrieval = memory,
                 knowledgeRetrieval = knowledge,
+                selfSnapshots = SelfSnapshotPort { null },
+                personalitySnapshots = PersonalitySnapshotPort { emptyList() },
                 inference = inference,
                 limits = CognitiveRuntimeLimits(
                     maxInputChars = 64,
