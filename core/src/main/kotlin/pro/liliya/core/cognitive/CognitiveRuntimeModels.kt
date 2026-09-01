@@ -48,7 +48,17 @@ data class CognitiveRuntimeLimits(
     val maxContextItems: Int = 64,
     val maxContextItemChars: Int = 16_384,
     val maxRetrievalResults: Int = 32,
-    val maxInferenceOutputChars: Int = 32_768
+    val maxInferenceOutputChars: Int = 32_768,
+    val maxPlanningGoalChars: Int = 4_096,
+    val maxPlanningSteps: Int = 32,
+    val maxPlanningStepChars: Int = 4_096,
+    val maxReasoningPremises: Int = 32,
+    val maxReasoningPremiseChars: Int = 4_096,
+    val maxReasoningAnalysisChars: Int = 16_384,
+    val maxReasoningConclusionChars: Int = 4_096,
+    val maxDecisionOptions: Int = 16,
+    val maxDecisionOptionChars: Int = 4_096,
+    val maxDecisionRationaleChars: Int = 8_192
 ) {
     init {
         require(maxInputChars > 0) { "maximum cognitive input chars must be positive" }
@@ -56,6 +66,16 @@ data class CognitiveRuntimeLimits(
         require(maxContextItemChars > 0) { "maximum cognitive context item chars must be positive" }
         require(maxRetrievalResults > 0) { "maximum cognitive retrieval results must be positive" }
         require(maxInferenceOutputChars > 0) { "maximum cognitive inference output chars must be positive" }
+        require(maxPlanningGoalChars > 0) { "maximum planning goal chars must be positive" }
+        require(maxPlanningSteps > 0) { "maximum planning steps must be positive" }
+        require(maxPlanningStepChars > 0) { "maximum planning step chars must be positive" }
+        require(maxReasoningPremises > 0) { "maximum reasoning premises must be positive" }
+        require(maxReasoningPremiseChars > 0) { "maximum reasoning premise chars must be positive" }
+        require(maxReasoningAnalysisChars > 0) { "maximum reasoning analysis chars must be positive" }
+        require(maxReasoningConclusionChars > 0) { "maximum reasoning conclusion chars must be positive" }
+        require(maxDecisionOptions > 0) { "maximum decision options must be positive" }
+        require(maxDecisionOptionChars > 0) { "maximum decision option chars must be positive" }
+        require(maxDecisionRationaleChars > 0) { "maximum decision rationale chars must be positive" }
     }
 }
 
