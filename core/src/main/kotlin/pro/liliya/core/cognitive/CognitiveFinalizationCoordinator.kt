@@ -303,13 +303,12 @@ internal class CognitiveFinalizationCoordinator(
     private fun rejectCurrent(
         reference: CognitiveTurnReference,
         failure: CognitiveFinalizationFailure
-    ): CognitiveFinalizationResult {
-        return if (turns.isCurrentAt(reference, CognitiveTurnLifecycle.COGNITION_READY)) {
-            turns.failIfCurrent(reference, CognitiveTurnFailure.TURN_FAILED)
-            CognitiveFinalizationResult.Rejected(failure)
-        } else {
-            CognitiveFinalizationResult.Stale
-        }
+    ): CognitiveFinalizationResult = when (
+        turns.failIfCurrent(reference, CognitiveTurnFailure.TURN_FAILED)
+    ) {
+        CognitiveTurnTransitionResult.Stale -> CognitiveFinalizationResult.Stale
+        is CognitiveTurnTransitionResult.Failed,
+        CognitiveTurnTransitionResult.Transitioned -> CognitiveFinalizationResult.Rejected(failure)
     }
 
     private fun compensateAndReject(
