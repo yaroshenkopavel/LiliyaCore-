@@ -7,6 +7,34 @@ import java.io.DataOutputStream
 import java.io.EOFException
 import java.nio.charset.StandardCharsets
 
+private const val DURABLE_MAX_ID_BYTES = 4_096
+private const val DURABLE_MAX_CIPHERTEXT_BYTES = 1_048_576
+private const val DURABLE_MAX_ENVELOPE_BYTES = DURABLE_MAX_CIPHERTEXT_BYTES + 16_384
+
+private fun durableUtf8Length(value: String, maximum: Int): Int? {
+    if (value.isEmpty()) return null
+    var size = 0
+    var index = 0
+    while (index < value.length) {
+        val ch = value[index]
+        val added = when {
+            ch.code <= 0x7F -> 1
+            ch.code <= 0x7FF -> 2
+            Character.isHighSurrogate(ch) -> {
+                if (index + 1 >= value.length || !Character.isLowSurrogate(value[index + 1])) return null
+                index += 1
+                4
+            }
+            Character.isLowSurrogate(ch) -> return null
+            else -> 3
+        }
+        if (size > maximum - added) return null
+        size += added
+        index += 1
+    }
+    return size
+}
+
 @JvmInline
 value class LicenseServiceDurableStateEnvelopeVersion(val value: Int) {
     init {
@@ -51,6 +79,9 @@ data class LicenseServiceDurableStateEncryptionProfile(
 value class LicenseServiceDurableStoreId(val value: String) {
     init {
         require(value.isNotBlank()) { "license service durable store id must not be blank" }
+        require(durableUtf8Length(value, DURABLE_MAX_ID_BYTES) != null) {
+            "license service durable store id exceeds bounds"
+        }
     }
 
     override fun toString(): String = "LicenseServiceDurableStoreId([redacted])"
@@ -60,6 +91,9 @@ value class LicenseServiceDurableStoreId(val value: String) {
 value class LicenseServiceDurableStateProtectorId(val value: String) {
     init {
         require(value.isNotBlank()) { "license service durable state protector id must not be blank" }
+        require(durableUtf8Length(value, DURABLE_MAX_ID_BYTES) != null) {
+            "license service durable state protector id exceeds bounds"
+        }
     }
 
     override fun toString(): String = "LicenseServiceDurableStateProtectorId([redacted])"
@@ -79,57 +113,32 @@ data class LicenseServiceDurableStateProtectorReference(
     val generation: LicenseServiceDurableStateProtectorGeneration
 )
 
-class LicenseServiceDurableStateEnvelope(
+/** Exact pre-seal binding. This exists before nonce/ciphertext/tag and is the AEAD AAD source. */
+class LicenseServiceDurableStateBinding(
     val version: LicenseServiceDurableStateEnvelopeVersion,
     val purpose: LicenseServiceDurableStatePurpose,
     val profile: LicenseServiceDurableStateEncryptionProfile,
     val storeId: LicenseServiceDurableStoreId,
     val generation: LicenseServiceDurableStateGeneration,
     val backendRevision: LicenseServiceDurableBackendRevision,
-    val protector: LicenseServiceDurableStateProtectorReference,
-    nonce: ByteArray,
-    ciphertext: ByteArray,
-    authenticationTag: ByteArray
+    val protector: LicenseServiceDurableStateProtectorReference
 ) {
-    private val nonceBytes = nonce.copyOf()
-    private val ciphertextBytes = ciphertext.copyOf()
-    private val authenticationTagBytes = authenticationTag.copyOf()
-
     init {
         require(version.value == 1) { "unsupported license service durable state envelope version" }
         require(purpose == LicenseServiceDurableStatePurpose.LICENSE_SERVICE_SECURITY_STATE) {
             "unsupported license service durable state purpose"
         }
-        require(nonceBytes.size == profile.nonceSizeBytes) {
-            "invalid license service durable state nonce size"
-        }
-        require(ciphertextBytes.isNotEmpty()) {
-            "license service durable state ciphertext must not be empty"
-        }
-        require(ciphertextBytes.size <= LicenseServiceDurableStateEnvelopeCanonicalCodec.MAX_CIPHERTEXT_BYTES) {
-            "license service durable state ciphertext exceeds bounds"
-        }
-        require(authenticationTagBytes.size * 8 == profile.authenticationTagSizeBits) {
-            "invalid license service durable state authentication tag size"
-        }
     }
 
-    fun copyNonce(): ByteArray = nonceBytes.copyOf()
-    fun copyCiphertext(): ByteArray = ciphertextBytes.copyOf()
-    fun copyAuthenticationTag(): ByteArray = authenticationTagBytes.copyOf()
-
     override fun equals(other: Any?): Boolean =
-        other is LicenseServiceDurableStateEnvelope &&
+        other is LicenseServiceDurableStateBinding &&
             version == other.version &&
             purpose == other.purpose &&
             profile == other.profile &&
             storeId == other.storeId &&
             generation == other.generation &&
             backendRevision == other.backendRevision &&
-            protector == other.protector &&
-            nonceBytes.contentEquals(other.nonceBytes) &&
-            ciphertextBytes.contentEquals(other.ciphertextBytes) &&
-            authenticationTagBytes.contentEquals(other.authenticationTagBytes)
+            protector == other.protector
 
     override fun hashCode(): Int {
         var result = version.hashCode()
@@ -139,6 +148,38 @@ class LicenseServiceDurableStateEnvelope(
         result = 31 * result + generation.hashCode()
         result = 31 * result + backendRevision.hashCode()
         result = 31 * result + protector.hashCode()
+        return result
+    }
+
+    override fun toString(): String =
+        "LicenseServiceDurableStateBinding(version=${version.value}, purpose=$purpose, profile=$profile, " +
+            "storeId=[redacted], generation=$generation, backendRevision=$backendRevision, " +
+            "protector=$protector)"
+}
+
+class LicenseServiceDurableStateEnvelope(
+    val binding: LicenseServiceDurableStateBinding,
+    nonce: ByteArray,
+    ciphertext: ByteArray,
+    authenticationTag: ByteArray
+) {
+    private val nonceBytes = checkedNonce(binding.profile, nonce)
+    private val ciphertextBytes = checkedCiphertext(ciphertext)
+    private val authenticationTagBytes = checkedAuthenticationTag(binding.profile, authenticationTag)
+
+    fun copyNonce(): ByteArray = nonceBytes.copyOf()
+    fun copyCiphertext(): ByteArray = ciphertextBytes.copyOf()
+    fun copyAuthenticationTag(): ByteArray = authenticationTagBytes.copyOf()
+
+    override fun equals(other: Any?): Boolean =
+        other is LicenseServiceDurableStateEnvelope &&
+            binding == other.binding &&
+            nonceBytes.contentEquals(other.nonceBytes) &&
+            ciphertextBytes.contentEquals(other.ciphertextBytes) &&
+            authenticationTagBytes.contentEquals(other.authenticationTagBytes)
+
+    override fun hashCode(): Int {
+        var result = binding.hashCode()
         result = 31 * result + nonceBytes.contentHashCode()
         result = 31 * result + ciphertextBytes.contentHashCode()
         result = 31 * result + authenticationTagBytes.contentHashCode()
@@ -146,11 +187,37 @@ class LicenseServiceDurableStateEnvelope(
     }
 
     override fun toString(): String =
-        "LicenseServiceDurableStateEnvelope(version=${version.value}, purpose=$purpose, profile=$profile, " +
-            "storeId=[redacted], generation=$generation, backendRevision=$backendRevision, " +
-            "protector=$protector, nonce=<redacted:${nonceBytes.size} bytes>, " +
-            "ciphertext=<redacted:${ciphertextBytes.size} bytes>, " +
+        "LicenseServiceDurableStateEnvelope(binding=$binding, " +
+            "nonce=<redacted:${nonceBytes.size} bytes>, ciphertext=<redacted:${ciphertextBytes.size} bytes>, " +
             "authenticationTag=<redacted:${authenticationTagBytes.size} bytes>)"
+
+    private fun checkedNonce(
+        profile: LicenseServiceDurableStateEncryptionProfile,
+        bytes: ByteArray
+    ): ByteArray {
+        require(bytes.size == profile.nonceSizeBytes) {
+            "invalid license service durable state nonce size"
+        }
+        return bytes.copyOf()
+    }
+
+    private fun checkedCiphertext(bytes: ByteArray): ByteArray {
+        require(bytes.isNotEmpty()) { "license service durable state ciphertext must not be empty" }
+        require(bytes.size <= DURABLE_MAX_CIPHERTEXT_BYTES) {
+            "license service durable state ciphertext exceeds bounds"
+        }
+        return bytes.copyOf()
+    }
+
+    private fun checkedAuthenticationTag(
+        profile: LicenseServiceDurableStateEncryptionProfile,
+        bytes: ByteArray
+    ): ByteArray {
+        require(bytes.size * 8 == profile.authenticationTagSizeBits) {
+            "invalid license service durable state authentication tag size"
+        }
+        return bytes.copyOf()
+    }
 }
 
 class LicenseServiceDurableStateEnvelopePayload private constructor(
@@ -199,30 +266,25 @@ object LicenseServiceDurableStateEnvelopeCanonicalCodec {
     private const val PURPOSE_CODE = 1
     private const val ALGORITHM_CODE_AES_256_GCM = 1
 
-    internal const val MAX_ID_BYTES = 4_096
-    internal const val MAX_CIPHERTEXT_BYTES = LicenseServiceDurableStateCanonicalCodec.MAX_PAYLOAD_BYTES
-    internal const val MAX_ENVELOPE_BYTES = MAX_CIPHERTEXT_BYTES + 16_384
+    internal const val MAX_ID_BYTES = DURABLE_MAX_ID_BYTES
+    internal const val MAX_CIPHERTEXT_BYTES = DURABLE_MAX_CIPHERTEXT_BYTES
+    internal const val MAX_ENVELOPE_BYTES = DURABLE_MAX_ENVELOPE_BYTES
 
     fun encode(
         envelope: LicenseServiceDurableStateEnvelope
     ): LicenseServiceDurableStateEnvelopeEncodeResult {
-        val storeIdSize = boundedUtf8Length(envelope.storeId.value)
-            ?: return rejectedEncode(LicenseServiceDurableStateCodecRejection.BOUNDS_EXCEEDED)
-        val protectorIdSize = boundedUtf8Length(envelope.protector.id.value)
-            ?: return rejectedEncode(LicenseServiceDurableStateCodecRejection.BOUNDS_EXCEEDED)
+        val binding = envelope.binding
+        val storeIdBytes = binding.storeId.value.toByteArray(StandardCharsets.UTF_8)
+        val protectorIdBytes = binding.protector.id.value.toByteArray(StandardCharsets.UTF_8)
+        val nonce = envelope.copyNonce()
         val ciphertext = envelope.copyCiphertext()
-        if (ciphertext.size > MAX_CIPHERTEXT_BYTES) {
-            return rejectedEncode(LicenseServiceDurableStateCodecRejection.BOUNDS_EXCEEDED)
-        }
+        val tag = envelope.copyAuthenticationTag()
 
         val budget = EncodedBudget(MAX_ENVELOPE_BYTES)
-        if (!budget.add(Int.SIZE_BYTES * 9 + Long.SIZE_BYTES * 3)) {
+        if (!budget.add(Int.SIZE_BYTES * 13 + Long.SIZE_BYTES * 3)) {
             return rejectedEncode(LicenseServiceDurableStateCodecRejection.BOUNDS_EXCEEDED)
         }
-        if (!budget.add(storeIdSize + protectorIdSize)) {
-            return rejectedEncode(LicenseServiceDurableStateCodecRejection.BOUNDS_EXCEEDED)
-        }
-        if (!budget.add(envelope.copyNonce().size + ciphertext.size + envelope.copyAuthenticationTag().size)) {
+        if (!budget.add(storeIdBytes.size + protectorIdBytes.size + nonce.size + ciphertext.size + tag.size)) {
             return rejectedEncode(LicenseServiceDurableStateCodecRejection.BOUNDS_EXCEEDED)
         }
 
@@ -230,20 +292,20 @@ object LicenseServiceDurableStateEnvelopeCanonicalCodec {
         DataOutputStream(output).use { data ->
             data.writeInt(MAGIC)
             data.writeInt(CODEC_VERSION)
-            data.writeInt(envelope.version.value)
+            data.writeInt(binding.version.value)
             data.writeInt(PURPOSE_CODE)
             data.writeInt(ALGORITHM_CODE_AES_256_GCM)
-            data.writeInt(envelope.profile.keySizeBits)
-            data.writeInt(envelope.profile.nonceSizeBytes)
-            data.writeInt(envelope.profile.authenticationTagSizeBits)
-            data.writeBoundedId(envelope.storeId.value)
-            data.writeLong(envelope.generation.value)
-            data.writeLong(envelope.backendRevision.value)
-            data.writeBoundedId(envelope.protector.id.value)
-            data.writeLong(envelope.protector.generation.value)
-            data.writeBoundedBytes(envelope.copyNonce())
+            data.writeInt(binding.profile.keySizeBits)
+            data.writeInt(binding.profile.nonceSizeBytes)
+            data.writeInt(binding.profile.authenticationTagSizeBits)
+            data.writeBoundedId(storeIdBytes)
+            data.writeLong(binding.generation.value)
+            data.writeLong(binding.backendRevision.value)
+            data.writeBoundedId(protectorIdBytes)
+            data.writeLong(binding.protector.generation.value)
+            data.writeBoundedBytes(nonce)
             data.writeBoundedBytes(ciphertext)
-            data.writeBoundedBytes(envelope.copyAuthenticationTag())
+            data.writeBoundedBytes(tag)
         }
         val bytes = output.toByteArray()
         if (bytes.size != budget.used || bytes.size > MAX_ENVELOPE_BYTES) {
@@ -287,12 +349,17 @@ object LicenseServiceDurableStateEnvelopeCanonicalCodec {
                 nonceSizeBytes = data.readInt(),
                 authenticationTagSizeBits = data.readInt()
             )
-            val storeId = LicenseServiceDurableStoreId(data.readBoundedId(input))
-            val generation = LicenseServiceDurableStateGeneration(data.readLong())
-            val backendRevision = LicenseServiceDurableBackendRevision(data.readLong())
-            val protector = LicenseServiceDurableStateProtectorReference(
-                id = LicenseServiceDurableStateProtectorId(data.readBoundedId(input)),
-                generation = LicenseServiceDurableStateProtectorGeneration(data.readLong())
+            val binding = LicenseServiceDurableStateBinding(
+                version = envelopeVersion,
+                purpose = LicenseServiceDurableStatePurpose.LICENSE_SERVICE_SECURITY_STATE,
+                profile = profile,
+                storeId = LicenseServiceDurableStoreId(data.readBoundedId(input)),
+                generation = LicenseServiceDurableStateGeneration(data.readLong()),
+                backendRevision = LicenseServiceDurableBackendRevision(data.readLong()),
+                protector = LicenseServiceDurableStateProtectorReference(
+                    id = LicenseServiceDurableStateProtectorId(data.readBoundedId(input)),
+                    generation = LicenseServiceDurableStateProtectorGeneration(data.readLong())
+                )
             )
             val nonce = data.readBoundedBytes(input, profile.nonceSizeBytes, profile.nonceSizeBytes)
             val ciphertext = data.readBoundedBytes(input, 1, MAX_CIPHERTEXT_BYTES)
@@ -302,18 +369,7 @@ object LicenseServiceDurableStateEnvelopeCanonicalCodec {
                 return rejectedDecode(LicenseServiceDurableStateCodecRejection.NON_CANONICAL)
             }
 
-            val envelope = LicenseServiceDurableStateEnvelope(
-                version = envelopeVersion,
-                purpose = LicenseServiceDurableStatePurpose.LICENSE_SERVICE_SECURITY_STATE,
-                profile = profile,
-                storeId = storeId,
-                generation = generation,
-                backendRevision = backendRevision,
-                protector = protector,
-                nonce = nonce,
-                ciphertext = ciphertext,
-                authenticationTag = tag
-            )
+            val envelope = LicenseServiceDurableStateEnvelope(binding, nonce, ciphertext, tag)
             val reencoded = when (val encoded = encode(envelope)) {
                 is LicenseServiceDurableStateEnvelopeEncodeResult.Encoded -> encoded.payload.copyBytes()
                 is LicenseServiceDurableStateEnvelopeEncodeResult.Rejected -> return rejectedDecode(encoded.reason)
@@ -331,11 +387,8 @@ object LicenseServiceDurableStateEnvelopeCanonicalCodec {
         }
     }
 
-    private fun DataOutputStream.writeBoundedId(value: String) {
-        val expected = boundedUtf8Length(value)
-            ?: throw IllegalArgumentException("license service durable state id exceeds bounds")
-        val bytes = value.toByteArray(StandardCharsets.UTF_8)
-        require(bytes.size == expected) { "license service durable state id encoding mismatch" }
+    private fun DataOutputStream.writeBoundedId(bytes: ByteArray) {
+        require(bytes.size in 1..MAX_ID_BYTES)
         writeInt(bytes.size)
         write(bytes)
     }
@@ -363,30 +416,6 @@ object LicenseServiceDurableStateEnvelopeCanonicalCodec {
         return ByteArray(length).also(::readFully)
     }
 
-    private fun boundedUtf8Length(value: String): Int? {
-        if (value.isEmpty()) return null
-        var size = 0
-        var index = 0
-        while (index < value.length) {
-            val ch = value[index]
-            val added = when {
-                ch.code <= 0x7F -> 1
-                ch.code <= 0x7FF -> 2
-                Character.isHighSurrogate(ch) -> {
-                    if (index + 1 >= value.length || !Character.isLowSurrogate(value[index + 1])) return null
-                    index += 1
-                    4
-                }
-                Character.isLowSurrogate(ch) -> return null
-                else -> 3
-            }
-            if (size > MAX_ID_BYTES - added) return null
-            size += added
-            index += 1
-        }
-        return size
-    }
-
     private fun rejectedEncode(
         reason: LicenseServiceDurableStateCodecRejection
     ): LicenseServiceDurableStateEnvelopeEncodeResult =
@@ -410,35 +439,37 @@ object LicenseServiceDurableStateEnvelopeCanonicalCodec {
 }
 
 /**
- * Canonical associated data for the dedicated licensing security-state AEAD domain.
- * Ciphertext/nonce/tag are deliberately excluded; exact ownership and destination binding are not.
+ * Canonical AEAD associated data for the dedicated licensing security-state domain.
+ * It is computed from pre-seal binding, so exact revision/generation/destination ownership are
+ * authenticated before ciphertext exists. Nonce/ciphertext/tag are deliberately excluded.
  */
 object LicenseServiceDurableStateAssociatedDataEncoder {
     private const val MAGIC = 0x4C534134 // LSA4
     private const val VERSION = 1
+    private const val PURPOSE_CODE = 1
+    private const val ALGORITHM_CODE_AES_256_GCM = 1
 
-    fun encode(envelope: LicenseServiceDurableStateEnvelope): ByteArray {
-        val storeBytes = envelope.storeId.value.toByteArray(StandardCharsets.UTF_8)
-        val protectorBytes = envelope.protector.id.value.toByteArray(StandardCharsets.UTF_8)
-        require(storeBytes.size in 1..LicenseServiceDurableStateEnvelopeCanonicalCodec.MAX_ID_BYTES)
-        require(protectorBytes.size in 1..LicenseServiceDurableStateEnvelopeCanonicalCodec.MAX_ID_BYTES)
-        return ByteArrayOutputStream().use { output ->
+    fun encode(binding: LicenseServiceDurableStateBinding): ByteArray {
+        val storeBytes = binding.storeId.value.toByteArray(StandardCharsets.UTF_8)
+        val protectorBytes = binding.protector.id.value.toByteArray(StandardCharsets.UTF_8)
+        val outputSize = Int.SIZE_BYTES * 10 + Long.SIZE_BYTES * 3 + storeBytes.size + protectorBytes.size
+        return ByteArrayOutputStream(outputSize).use { output ->
             DataOutputStream(output).use { data ->
                 data.writeInt(MAGIC)
                 data.writeInt(VERSION)
-                data.writeInt(envelope.version.value)
-                data.writeInt(1)
-                data.writeInt(1)
-                data.writeInt(envelope.profile.keySizeBits)
-                data.writeInt(envelope.profile.nonceSizeBytes)
-                data.writeInt(envelope.profile.authenticationTagSizeBits)
+                data.writeInt(binding.version.value)
+                data.writeInt(PURPOSE_CODE)
+                data.writeInt(ALGORITHM_CODE_AES_256_GCM)
+                data.writeInt(binding.profile.keySizeBits)
+                data.writeInt(binding.profile.nonceSizeBytes)
+                data.writeInt(binding.profile.authenticationTagSizeBits)
                 data.writeInt(storeBytes.size)
                 data.write(storeBytes)
-                data.writeLong(envelope.generation.value)
-                data.writeLong(envelope.backendRevision.value)
+                data.writeLong(binding.generation.value)
+                data.writeLong(binding.backendRevision.value)
                 data.writeInt(protectorBytes.size)
                 data.write(protectorBytes)
-                data.writeLong(envelope.protector.generation.value)
+                data.writeLong(binding.protector.generation.value)
             }
             output.toByteArray()
         }
