@@ -38,16 +38,28 @@ class LicenseServiceDeviceProofContractTest {
     private val protocol = LicenseServiceProtocolVersion(1)
     private val algorithm = DeviceKeyAlgorithm("EC-P256-SHA256")
 
-    private fun foundation(): FoundationComposition {
+    private data class ObservedFoundation(
+        val foundation: FoundationComposition,
+        val diagnostics: InMemoryDiagnosticSink,
+        val logs: InMemoryLogWriter
+    )
+
+    private fun observedFoundation(): ObservedFoundation {
+        val diagnostics = InMemoryDiagnosticSink()
+        val logs = InMemoryLogWriter()
         val sequence = AtomicInteger(0)
-        return FoundationComposition(
-            diagnostics = DiagnosticRecorder(InMemoryDiagnosticSink()),
-            loggerProvider = LoggerProvider { context ->
-                StructuredLogger(context, InMemoryLogWriter())
-            },
-            correlationIds = CorrelationIdGenerator {
-                "license-service-device-proof-${sequence.incrementAndGet()}"
-            }
+        return ObservedFoundation(
+            foundation = FoundationComposition(
+                diagnostics = DiagnosticRecorder(diagnostics),
+                loggerProvider = LoggerProvider { context ->
+                    StructuredLogger(context, logs)
+                },
+                correlationIds = CorrelationIdGenerator {
+                    "license-service-device-proof-${sequence.incrementAndGet()}"
+                }
+            ),
+            diagnostics = diagnostics,
+            logs = logs
         )
     }
 
@@ -63,7 +75,12 @@ class LicenseServiceDeviceProofContractTest {
         platformReference = DeviceKeyPlatformReference(platformReference)
     )
 
-    private class RecordingSigner : DeviceKeyProofSigner {
+    private class RecordingSigner(
+        private val result: DeviceKeyOperationResult<DeviceKeyProofSignature> =
+            DeviceKeyOperationResult.Success(
+                DeviceKeyProofSignature("PRIVATE-DEVICE-SIGNATURE".encodeToByteArray())
+            )
+    ) : DeviceKeyProofSigner {
         var calls = 0
         var lastChallengeBytes: ByteArray? = null
 
@@ -73,30 +90,34 @@ class LicenseServiceDeviceProofContractTest {
         ): DeviceKeyOperationResult<DeviceKeyProofSignature> {
             calls += 1
             lastChallengeBytes = challenge.copyBytes()
-            return DeviceKeyOperationResult.Success(
-                DeviceKeyProofSignature("PRIVATE-DEVICE-SIGNATURE".encodeToByteArray())
-            )
+            return result
         }
     }
 
     private data class Fixture(
+        val observed: ObservedFoundation,
         val keyComposition: DeviceKeyComposition,
         val signer: RecordingSigner,
         val service: LicenseServiceDeviceProofComposition,
         val key: DeviceKeyReference
     )
 
-    private fun fixture(maxTranscriptBytes: Int = 4096): Fixture {
-        val keyComposition = DeviceKeyComposition(foundation())
+    private fun fixture(
+        maxTranscriptBytes: Int = 4096,
+        signer: RecordingSigner = RecordingSigner()
+    ): Fixture {
+        val observed = observedFoundation()
+        val keyComposition = DeviceKeyComposition(observed.foundation)
         val ownership = assertIs<DeviceKeyRegisterResult.Registered>(
             keyComposition.register(state())
         ).ownership
-        val signer = RecordingSigner()
         val proofService = DeviceKeyProofService(keyComposition, signer)
         return Fixture(
+            observed = observed,
             keyComposition = keyComposition,
             signer = signer,
             service = LicenseServiceDeviceProofComposition(
+                foundation = observed.foundation,
                 proofService = proofService,
                 maxTranscriptBytes = maxTranscriptBytes
             ),
@@ -138,9 +159,10 @@ class LicenseServiceDeviceProofContractTest {
             fixture.service.prove(challenge, now)
         )
 
-        assertEquals(fixture.key, produced.proof.key)
-        assertEquals(algorithm, produced.proof.algorithm)
-        assertEquals(DeviceKeySecurityLevel.STRONGBOX, produced.proof.securityLevel)
+        assertTrue(produced.evidence.challenge === challenge)
+        assertEquals(fixture.key, produced.evidence.proof.key)
+        assertEquals(algorithm, produced.evidence.proof.algorithm)
+        assertEquals(DeviceKeySecurityLevel.STRONGBOX, produced.evidence.proof.securityLevel)
         assertEquals(1, fixture.signer.calls)
         assertContentEquals(expectedTranscript, fixture.signer.lastChallengeBytes)
         assertFalse("PRIVATE-LICENSE-SUBJECT" in challenge.toString())
@@ -276,5 +298,59 @@ class LicenseServiceDeviceProofContractTest {
         assertContentEquals("PRIVATE-NONCE-CONTENT".encodeToByteArray(), nonce.copyBytes())
         assertFalse("PRIVATE-NONCE-CONTENT" in nonce.toString())
         assertNotEquals("PRIVATE-NONCE-CONTENT", nonce.toString())
+    }
+
+    @Test
+    fun normal_observability_and_failure_rendering_do_not_expose_private_proof_material() {
+        val secretSubject = "PRIVATE-SUBJECT-DO-NOT-LOG"
+        val secretEnrollment = "PRIVATE-ENROLLMENT-DO-NOT-LOG"
+        val secretNonce = "PRIVATE-NONCE-DO-NOT-LOG"
+        val fixture = fixture()
+        val challenge = challenge(
+            key = fixture.key,
+            subject = secretSubject,
+            enrollmentId = secretEnrollment,
+            nonce = secretNonce.encodeToByteArray()
+        )
+
+        val produced = assertIs<LicenseServiceDeviceProofResult.Produced>(
+            fixture.service.prove(challenge, now)
+        )
+
+        val rendered = buildString {
+            fixture.observed.logs.snapshot().forEach { append(it) }
+            fixture.observed.diagnostics.snapshot().forEach { append(it) }
+            append(produced)
+        }
+        assertFalse(secretSubject in rendered)
+        assertFalse(secretEnrollment in rendered)
+        assertFalse(secretNonce in rendered)
+        assertFalse("PRIVATE-DEVICE-SIGNATURE" in rendered)
+        assertTrue("LICENSE_SERVICE_DEVICE_PROOF_PRODUCED" in rendered)
+    }
+
+    @Test
+    fun device_key_failure_exposes_only_structural_throwable_class() {
+        val secretMessage = "PRIVATE-DEVICE-FAILURE-MESSAGE"
+        val signer = RecordingSigner(
+            DeviceKeyOperationResult.Failed(
+                category = DeviceKeyFailureCategory.PLATFORM_REJECTED,
+                throwable = IllegalStateException(secretMessage)
+            )
+        )
+        val fixture = fixture(signer = signer)
+
+        val failed = assertIs<LicenseServiceDeviceProofResult.DeviceKeyFailed>(
+            fixture.service.prove(challenge(fixture.key), now)
+        )
+
+        assertEquals(DeviceKeyFailureCategory.PLATFORM_REJECTED, failed.category)
+        assertEquals(IllegalStateException::class.java.name, failed.throwableClass)
+        val rendered = buildString {
+            append(failed)
+            fixture.observed.logs.snapshot().forEach { append(it) }
+            fixture.observed.diagnostics.snapshot().forEach { append(it) }
+        }
+        assertFalse(secretMessage in rendered)
     }
 }
