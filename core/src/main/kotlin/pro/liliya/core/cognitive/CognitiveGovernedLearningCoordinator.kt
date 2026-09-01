@@ -197,6 +197,7 @@ internal class CognitiveGovernedLearningCoordinator(
             return rejected(CognitiveGovernedLearningFailure.GOVERNANCE_TARGET_REJECTED)
         }
 
+        val allocated = mutableSetOf<String>()
         val decisionOwnership = installDecision(
             candidate = candidate,
             disposition = if (governanceResult is CognitiveLearningGovernanceResult.Approved) {
@@ -204,7 +205,8 @@ internal class CognitiveGovernedLearningCoordinator(
             } else {
                 LearningDecisionDisposition.REJECT
             },
-            rationale = rationale
+            rationale = rationale,
+            allocated = allocated
         ) ?: return rejected(CognitiveGovernedLearningFailure.DECISION_INSTALL_FAILED)
 
         val decisionReference = LearningDecisionReference(
@@ -255,7 +257,6 @@ internal class CognitiveGovernedLearningCoordinator(
             return compensateDecision(decisionOwnership, it)
         }
 
-        val allocated = mutableSetOf<String>()
         val prepared = try {
             Prepared(
                 applicationId = LearningApplicationId(
@@ -464,10 +465,11 @@ internal class CognitiveGovernedLearningCoordinator(
     private fun installDecision(
         candidate: LearningCandidateSnapshot,
         disposition: LearningDecisionDisposition,
-        rationale: String
+        rationale: String,
+        allocated: MutableSet<String>
     ): pro.liliya.core.learning.LearningDecisionOwnership? {
         val id = try {
-            LearningDecisionId(nextId(CognitiveArtifactIdKind.LEARNING_DECISION, mutableSetOf()))
+            LearningDecisionId(nextId(CognitiveArtifactIdKind.LEARNING_DECISION, allocated))
         } catch (_: Exception) {
             return null
         }
