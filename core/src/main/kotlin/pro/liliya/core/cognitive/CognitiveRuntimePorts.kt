@@ -60,11 +60,16 @@ fun interface PersonalitySnapshotPort {
 class CognitiveInferenceRequest(
     val turn: CognitiveTurnReference,
     val input: CognitiveInput,
-    val context: CognitiveContextSnapshot
+    val context: CognitiveContextSnapshot,
+    val maxOutputChars: Int = CognitiveRuntimeLimits().maxInferenceOutputChars
 ) {
-    init { require(context.turn == turn) { "cognitive inference context must belong to the same turn" } }
+    init {
+        require(context.turn == turn) { "cognitive inference context must belong to the same turn" }
+        require(maxOutputChars > 0) { "cognitive inference output budget must be positive" }
+    }
+
     override fun toString(): String =
-        "CognitiveInferenceRequest(turn=$turn, input=<redacted>, context=$context)"
+        "CognitiveInferenceRequest(turn=$turn, input=<redacted>, context=$context, maxOutputChars=$maxOutputChars)"
 }
 
 enum class CognitiveInferenceFailure {

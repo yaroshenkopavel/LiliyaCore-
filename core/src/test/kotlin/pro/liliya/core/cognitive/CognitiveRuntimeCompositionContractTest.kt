@@ -149,7 +149,12 @@ class CognitiveRuntimeCompositionContractTest {
         val context = CognitiveContextSnapshot(turn.reference, emptyList())
         val result = assertIs<CognitiveInferenceResult.Succeeded>(
             f.inference.infer(
-                CognitiveInferenceRequest(turn.reference, input, context)
+                CognitiveInferenceRequest(
+                    turn = turn.reference,
+                    input = input,
+                    context = context,
+                    maxOutputChars = 64
+                )
             )
         )
         assertEquals(turn.reference, result.turn)
