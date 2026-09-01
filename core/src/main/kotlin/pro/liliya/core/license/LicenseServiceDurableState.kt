@@ -8,6 +8,8 @@ import java.io.EOFException
 import java.nio.charset.StandardCharsets
 import java.time.Instant
 
+private const val LICENSE_SERVICE_DURABLE_MAX_SCOPE_COUNT = 1_024
+
 @JvmInline
 value class LicenseServiceDurableStateGeneration(val value: Long) {
     init {
@@ -41,6 +43,12 @@ class LicenseServiceDurableStateSnapshot(
     val backendRevision: LicenseServiceDurableBackendRevision,
     val schemaVersion: LicenseServiceDurableStateSchemaVersion = LicenseServiceDurableStateSchemaVersion(1)
 ) {
+    private val boundedStateCount = states.size.also { count ->
+        require(count in 1..LICENSE_SERVICE_DURABLE_MAX_SCOPE_COUNT) {
+            "license service durable state scope count exceeds bounds"
+        }
+    }
+
     val states: List<LicenseServiceSecurityState> = states.sortedWith(
         compareBy(
             { it.scope.productId.value },
@@ -49,7 +57,7 @@ class LicenseServiceDurableStateSnapshot(
     )
 
     init {
-        require(this.states.isNotEmpty()) { "license service durable state must not be empty" }
+        require(this.states.size == boundedStateCount)
         require(this.states.map { it.scope }.toSet().size == this.states.size) {
             "license service durable state scopes must be unique"
         }
@@ -135,7 +143,7 @@ object LicenseServiceDurableStateCanonicalCodec {
     private const val VERSION = 1
     private const val PURPOSE = "LICENSE_SERVICE_SECURITY_STATE"
 
-    internal const val MAX_SCOPE_COUNT = 1_024
+    internal const val MAX_SCOPE_COUNT = LICENSE_SERVICE_DURABLE_MAX_SCOPE_COUNT
     internal const val MAX_TEXT_BYTES = 4_096
     internal const val MAX_PAYLOAD_BYTES = 1_048_576
 
@@ -147,9 +155,6 @@ object LicenseServiceDurableStateCanonicalCodec {
     fun encode(snapshot: LicenseServiceDurableStateSnapshot): LicenseServiceDurableStateEncodeResult {
         if (snapshot.schemaVersion.value != VERSION) {
             return rejectedEncode(LicenseServiceDurableStateCodecRejection.UNSUPPORTED_VERSION)
-        }
-        if (snapshot.states.size > MAX_SCOPE_COUNT) {
-            return rejectedEncode(LicenseServiceDurableStateCodecRejection.BOUNDS_EXCEEDED)
         }
 
         val budget = EncodedBudget(MAX_PAYLOAD_BYTES)
