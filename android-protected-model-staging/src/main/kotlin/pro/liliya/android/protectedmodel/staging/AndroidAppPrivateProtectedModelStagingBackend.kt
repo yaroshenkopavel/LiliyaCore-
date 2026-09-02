@@ -385,7 +385,7 @@ class AndroidAppPrivateProtectedModelStagingBackend private constructor(
         }
 
         val realSealedRoot = sealedRoot.toRealPath()
-        val realPath = path.toRealPath(LinkOption.NOFOLLOW_LINKS)
+        val realPath = path.toRealPath()
         if (realPath.parent != realSealedRoot || !realPath.startsWith(realSealedRoot)) {
             return null
         }
