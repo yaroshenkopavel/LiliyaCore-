@@ -304,6 +304,7 @@ class LargeProtectedModelStagingContractTest {
 
         override fun seal(handle: LargeProtectedModelWorkingArtifactHandle): LargeProtectedModelStagingSealResult {
             sealCalls += 1
+            val sealedBytes = bytes[handle.artifactId.value] ?: 1L
             sealEntered?.countDown()
             releaseSeal?.await(2, TimeUnit.SECONDS)
             if (rejectSeal) return LargeProtectedModelStagingSealResult.Rejected()
@@ -317,7 +318,7 @@ class LargeProtectedModelStagingContractTest {
                         )
                     } else handle.attempt,
                     sourceId = sourceId,
-                    plaintextBytes = bytes[handle.artifactId.value] ?: 1L,
+                    plaintextBytes = sealedBytes,
                     durabilityLevel = LargeProtectedModelStagingDurabilityLevel.FILE_DATA_SYNCED
                 )
             )
