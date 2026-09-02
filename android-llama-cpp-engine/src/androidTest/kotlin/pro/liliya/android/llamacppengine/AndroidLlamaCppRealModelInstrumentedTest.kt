@@ -49,17 +49,7 @@ class AndroidLlamaCppRealModelInstrumentedTest {
                 )
             }
 
-            val physicalLoader = AndroidLlamaCppPhysicalEngineLoader(
-                LlamaCppEnginePolicy(
-                    contextTokens = 128,
-                    maxPromptTokens = 32,
-                    maxGeneratedTokens = 8,
-                    batchTokens = 32,
-                    microBatchTokens = 16,
-                    threadCount = 1,
-                    useMmap = true
-                )
-            )
+            val physicalLoader = AndroidLlamaCppPhysicalEngineLoader(enginePolicy())
             val stagedLoader = AndroidAppPrivateStagedModelEngineLoader(backend, physicalLoader)
             val loadCoordinator = StagedModelEngineLoadCoordinator(staging, stagedLoader)
 
@@ -91,23 +81,27 @@ class AndroidLlamaCppRealModelInstrumentedTest {
                 packageId = "slice7-invalid-gguf"
             )
 
-            val physicalLoader = AndroidLlamaCppPhysicalEngineLoader(
-                LlamaCppEnginePolicy(
-                    contextTokens = 128,
-                    maxPromptTokens = 32,
-                    maxGeneratedTokens = 8,
-                    batchTokens = 32,
-                    microBatchTokens = 16,
-                    threadCount = 1,
-                    useMmap = true
-                )
-            )
+            val physicalLoader = AndroidLlamaCppPhysicalEngineLoader(enginePolicy())
             val stagedLoader = AndroidAppPrivateStagedModelEngineLoader(backend, physicalLoader)
             val loadCoordinator = StagedModelEngineLoadCoordinator(staging, stagedLoader)
 
             assertIs<ModelEngineLoadResult.Rejected>(loadCoordinator.load(ownership))
             assertIs<LargeProtectedModelStagingRetireResult.Retired>(ownership.retire())
         }
+
+    private fun enginePolicy() = LlamaCppEnginePolicy(
+        contextTokens = 128,
+        maxPromptTokens = 32,
+        maxGeneratedTokens = 8,
+        batchTokens = 32,
+        microBatchTokens = 16,
+        threadCount = 1,
+        maxPromptChars = 128,
+        maxPromptUtf8Bytes = 256,
+        maxOutputChars = 64,
+        maxOutputUtf8Bytes = 256,
+        useMmap = true
+    )
 
     private fun backend(context: Context) = AndroidAppPrivateProtectedModelStagingBackend(
         context,
@@ -175,9 +169,7 @@ class AndroidLlamaCppRealModelInstrumentedTest {
         var offset = 0
         while (offset < wanted) {
             val read = input.read(buffer, offset, wanted - offset)
-            if (read < 0) {
-                break
-            }
+            if (read < 0) break
             offset += read
         }
         return if (offset == buffer.size) buffer else buffer.copyOf(offset)
