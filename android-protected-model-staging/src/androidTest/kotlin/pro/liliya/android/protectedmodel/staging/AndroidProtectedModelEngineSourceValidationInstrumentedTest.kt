@@ -6,9 +6,9 @@ import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
 import java.nio.file.Files
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import pro.liliya.core.modelengine.ModelEngineLoadFailure
@@ -39,6 +39,7 @@ class AndroidProtectedModelEngineSourceValidationInstrumentedTest {
     @Test
     fun matching_id_but_working_record_is_not_engine_eligible() = withCleanRoot { context ->
         val fixture = capabilityFixture(context, token('a'))
+        removeFixturePhysical(fixture)
         val conflicting = backend(context, token('a'))
         assertIs<LargeProtectedModelStagingPrepareResult.Prepared>(
             conflicting.prepare(
@@ -56,6 +57,7 @@ class AndroidProtectedModelEngineSourceValidationInstrumentedTest {
     @Test
     fun matching_id_but_wrong_model_is_rejected() = withCleanRoot { context ->
         val fixture = capabilityFixture(context, token('b'))
+        removeFixturePhysical(fixture)
         val conflicting = backend(context, token('b'))
         sealDirect(
             conflicting,
@@ -75,6 +77,7 @@ class AndroidProtectedModelEngineSourceValidationInstrumentedTest {
     @Test
     fun matching_id_but_wrong_staging_generation_is_rejected() = withCleanRoot { context ->
         val fixture = capabilityFixture(context, token('c'))
+        removeFixturePhysical(fixture)
         val conflicting = backend(context, token('c'))
         sealDirect(
             conflicting,
@@ -91,6 +94,7 @@ class AndroidProtectedModelEngineSourceValidationInstrumentedTest {
     @Test
     fun matching_id_but_wrong_plaintext_size_is_rejected() = withCleanRoot { context ->
         val fixture = capabilityFixture(context, token('d'))
+        removeFixturePhysical(fixture)
         val conflicting = backend(context, token('d'))
         sealDirect(
             conflicting,
@@ -112,7 +116,7 @@ class AndroidProtectedModelEngineSourceValidationInstrumentedTest {
         )
         val target = File(context.filesDir, "engine-source-symlink-target")
         target.writeBytes("alpha".encodeToByteArray())
-        assertFalse(physical.delete().not())
+        assertTrue(physical.delete())
         Files.createSymbolicLink(physical.toPath(), target.toPath())
 
         try {
@@ -121,6 +125,13 @@ class AndroidProtectedModelEngineSourceValidationInstrumentedTest {
             Files.deleteIfExists(physical.toPath())
             target.delete()
         }
+    }
+
+    private fun removeFixturePhysical(fixture: CapabilityFixture) {
+        val physical = assertNotNull(
+            fixture.backend.physicalFileForTesting(fixture.ownership.source.sourceId)
+        )
+        assertTrue(physical.delete())
     }
 
     private fun assertRejectedBeforeProvider(
