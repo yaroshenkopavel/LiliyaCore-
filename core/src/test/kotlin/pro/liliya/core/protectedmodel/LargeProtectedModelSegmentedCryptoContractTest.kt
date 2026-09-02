@@ -12,6 +12,7 @@ import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 class LargeProtectedModelSegmentedCryptoContractTest {
@@ -102,6 +103,62 @@ class LargeProtectedModelSegmentedCryptoContractTest {
     }
 
     @Test
+    fun source_rejection_failure_and_transport_size_mismatches_are_typed() {
+        val fixture = fixture(listOf("alpha".encodeToByteArray()))
+        val rejectedSource = object : LargeProtectedModelEncryptedSegmentSource {
+            override val segmentCount: Int = 1
+            override fun read(index: Int) = LargeProtectedModelSegmentReadResult.Rejected()
+        }
+        assertReason(
+            fixture,
+            rejectedSource,
+            LargeProtectedModelSegmentedOpenFailure.SEGMENT_SOURCE_REJECTED
+        )
+
+        val failedSource = object : LargeProtectedModelEncryptedSegmentSource {
+            override val segmentCount: Int = 1
+            override fun read(index: Int) = LargeProtectedModelSegmentReadResult.Failed(
+                throwable = IllegalStateException("private-source-detail")
+            )
+        }
+        val failed = loader(fixture).open(fixture.envelope, failedSource, noopConsumer())
+        val failedResult = assertIs<LargeProtectedModelSegmentedOpenResult.Failed>(failed)
+        assertEquals(LargeProtectedModelSegmentedOpenFailure.SEGMENT_SOURCE_FAILED, failedResult.reason)
+        assertFalse(failedResult.toString().contains("private-source-detail"))
+
+        val original = fixture.encryptedSegments.single()
+        val shortBody = original.copyCiphertextBody().copyOf(original.ciphertextBodySizeBytes - 1)
+        assertReason(
+            fixture,
+            source(
+                listOf(
+                    LargeProtectedModelEncryptedSegment(
+                        0,
+                        shortBody,
+                        original.copyAuthenticationTag()
+                    )
+                )
+            ),
+            LargeProtectedModelSegmentedOpenFailure.CIPHERTEXT_BODY_SIZE_MISMATCH
+        )
+
+        val shortTag = original.copyAuthenticationTag().copyOf(SEGMENT_AUTHENTICATION_TAG_SIZE_BYTES - 1)
+        assertReason(
+            fixture,
+            source(
+                listOf(
+                    LargeProtectedModelEncryptedSegment(
+                        0,
+                        original.copyCiphertextBody(),
+                        shortTag
+                    )
+                )
+            ),
+            LargeProtectedModelSegmentedOpenFailure.AUTHENTICATION_TAG_SIZE_MISMATCH
+        )
+    }
+
+    @Test
     fun digest_mismatch_rejects_before_plaintext_consumer() {
         val fixture = fixture(listOf("alpha".encodeToByteArray()))
         val original = fixture.encryptedSegments.single()
@@ -153,7 +210,19 @@ class LargeProtectedModelSegmentedCryptoContractTest {
         )
         val resigned = signFixture(fixture, rebuiltPayload, fixture.encryptedSegments)
 
-        val result = loader(resigned).open(resigned.envelope, source(resigned.encryptedSegments), noopConsumer())
+        val verifier = LargeProtectedModelPackageVerifier(
+            ProtectedModelSignerResolver { _, _ -> fixture.keyPair.public },
+            packageBudgets()
+        )
+        val aadFocusedLoader = LargeProtectedModelSegmentedPayloadLoader(
+            verifier,
+            ProtectedModelDekResolver { _, _ -> fixture.secretKey }
+        )
+        val result = aadFocusedLoader.open(
+            resigned.envelope,
+            source(resigned.encryptedSegments),
+            noopConsumer()
+        )
         assertEquals(
             LargeProtectedModelSegmentedOpenFailure.AUTHENTICATED_DECRYPTION_FAILED,
             assertIs<LargeProtectedModelSegmentedOpenResult.Rejected>(result).reason
@@ -189,7 +258,7 @@ class LargeProtectedModelSegmentedCryptoContractTest {
     }
 
     @Test
-    fun consumer_runs_only_after_authentication_and_plaintext_array_is_cleared_after_return() {
+    fun consumer_runs_only_after_authentication_plaintext_is_cleared_and_failure_is_redacted() {
         val fixture = fixture(listOf("secret-alpha".encodeToByteArray()))
         var handed: ByteArray? = null
         val result = loader(fixture).open(
@@ -202,6 +271,17 @@ class LargeProtectedModelSegmentedCryptoContractTest {
         )
         assertIs<LargeProtectedModelSegmentedOpenResult.Completed>(result)
         assertTrue(handed!!.all { it == 0.toByte() })
+
+        val failed = loader(fixture).open(
+            fixture.envelope,
+            source(fixture.encryptedSegments),
+            LargeProtectedModelPlaintextSegmentConsumer { _, _, _ ->
+                throw IllegalStateException("private-consumer-detail")
+            }
+        )
+        val failure = assertIs<LargeProtectedModelSegmentedOpenResult.Failed>(failed)
+        assertEquals(LargeProtectedModelSegmentedOpenFailure.CONSUMER_FAILED, failure.reason)
+        assertFalse(failure.toString().contains("private-consumer-detail"))
     }
 
     @Test
@@ -239,6 +319,10 @@ class LargeProtectedModelSegmentedCryptoContractTest {
         assertFalse(detached.copyAuthenticationTag().all { it == 0.toByte() })
         assertTrue(detached.toString().contains("<redacted:"))
         assertTrue(fixture.envelope.toString().contains("signature=<redacted:"))
+
+        val signatureCopy = fixture.envelope.copySignature()
+        signatureCopy.fill(0)
+        assertNotEquals(0, fixture.envelope.copySignature().first().toInt())
     }
 
     @Test
