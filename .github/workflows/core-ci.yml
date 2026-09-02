@@ -208,7 +208,20 @@ jobs:
       - name: Run llama.cpp engine ownership contracts
         run: gradle :android-llama-cpp-engine:testDebugUnitTest --console=plain
 
-      - name: Compile llama.cpp real-model instrumentation contract
+      - name: Prepare verified real-model instrumentation fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          asset_dir="android-llama-cpp-engine/src/androidTest/assets"
+          asset="$asset_dir/stories15M-q4_0.gguf"
+          mkdir -p "$asset_dir"
+          curl --fail --location --retry 3 \
+            "https://huggingface.co/ggml-org/tiny-llamas/resolve/def3e2dd70df35ecbf6403ea347de4c5977220c1/stories15M-q4_0.gguf?download=true" \
+            --output "$asset"
+          echo "6151b1929d7f5aa3385d9ddef3393e55587c0a55de661562322bc51dfda93a04  $asset" | sha256sum --check --strict
+          test "$(stat --format=%s "$asset")" -eq 19077344
+
+      - name: Compile verified real-model instrumentation contract
         run: gradle :android-llama-cpp-engine:assembleDebugAndroidTest --console=plain
 
       - name: Build pinned llama.cpp JNI for arm64
