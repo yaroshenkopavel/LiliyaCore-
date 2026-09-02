@@ -56,3 +56,8 @@ interface LargeProtectedModelEngineUseLease {
 
     fun release(): LargeProtectedModelEngineUseReleaseResult
 }
+
+/** Internal proof carried only by ownership objects minted by the exact staging coordinator. */
+internal interface LargeProtectedModelEngineUseOwnershipToken : LargeProtectedModelStagedSourceOwnership {
+    val engineUseOwnerToken: Any
+}
