@@ -431,7 +431,7 @@ class LargeProtectedModelStagingCoordinator(
         published.values.map { it.source }.sortedBy { it.stagingGeneration.value }
     }
 
-    fun acquireEngineUse(
+    internal fun acquireEngineUse(
         ownership: LargeProtectedModelStagedSourceOwnership
     ): LargeProtectedModelEngineUseAcquireResult = synchronized(lock) {
         val exactOwnership = ownership as? LargeProtectedModelEngineUseOwnershipToken
