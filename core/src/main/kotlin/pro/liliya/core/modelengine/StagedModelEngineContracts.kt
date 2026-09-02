@@ -38,14 +38,8 @@ class StagedModelEngineLoadCoordinator(
         val providerResult = try {
             loader.load(lease.source)
         } catch (_: Throwable) {
-            val released = lease.release()
-            return ModelEngineLoadResult.Rejected(
-                if (released is LargeProtectedModelEngineUseReleaseResult.Released) {
-                    ModelEngineLoadFailure.PROVIDER_FAILED
-                } else {
-                    ModelEngineLoadFailure.PROVIDER_FAILED
-                }
-            )
+            lease.release()
+            return ModelEngineLoadResult.Rejected(ModelEngineLoadFailure.PROVIDER_FAILED)
         }
 
         return when (providerResult) {
@@ -83,11 +77,7 @@ class StagedModelEngineLoadCoordinator(
                     )
                 }
             }
-            return try {
-                delegate.infer(request)
-            } catch (_: Throwable) {
-                ModelEngineInferenceResult.Rejected(ModelEngineInferenceFailure.PROVIDER_FAILED)
-            }
+            return delegate.infer(request)
         }
 
         override fun close(): ModelEngineCloseResult = synchronized(closeLock) {
