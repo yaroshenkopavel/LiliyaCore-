@@ -2,22 +2,13 @@ package pro.liliya.android.llamacppengine
 
 import java.io.File
 import java.util.concurrent.atomic.AtomicLong
-import java.util.concurrent.locks.ReentrantLock
-import kotlin.concurrent.withLock
 import pro.liliya.android.protectedmodel.staging.AndroidProtectedModelPhysicalEngineLoaderPort
-import pro.liliya.core.modelengine.ModelEngineBackendId
 import pro.liliya.core.modelengine.ModelEngineCloseFailure
-import pro.liliya.core.modelengine.ModelEngineCloseResult
 import pro.liliya.core.modelengine.ModelEngineHandleId
 import pro.liliya.core.modelengine.ModelEngineInferenceFailure
-import pro.liliya.core.modelengine.ModelEngineInferenceRequest
-import pro.liliya.core.modelengine.ModelEngineInferenceResult
 import pro.liliya.core.modelengine.ModelEngineLoadFailure
 import pro.liliya.core.modelengine.ModelEngineLoadResult
-import pro.liliya.core.modelengine.ModelEngineSessionOwnership
 import pro.liliya.core.protectedmodel.LargeProtectedModelEngineSourceCapability
-
-private val LLAMA_CPP_BACKEND_ID = ModelEngineBackendId("llama.cpp-v0.1")
 
 internal sealed interface LlamaCppNativeLoadResult {
     data class Loaded(val nativeSessionId: Long) : LlamaCppNativeLoadResult
@@ -46,13 +37,7 @@ internal interface LlamaCppNativeSessionPort {
     fun close(nativeSessionId: Long): LlamaCppNativeCloseResult
 }
 
-/**
- * Concrete llama.cpp insertion point behind the frozen Slice 6 physical-source handoff.
- *
- * This class deliberately exposes no alternate model path/file resolver. Production protected
- * staged-model loading reaches this method only after the Core engine-use capability and the
- * Android staging backend have already revalidated the exact SEALED source.
- */
+/** Concrete llama.cpp insertion point behind the frozen Slice 6 physical-source handoff. */
 class AndroidLlamaCppPhysicalEngineLoader internal constructor(
     private val policy: LlamaCppEnginePolicy,
     private val nativePort: LlamaCppNativeSessionPort
@@ -95,79 +80,6 @@ class AndroidLlamaCppPhysicalEngineLoader internal constructor(
                 }
             }
         }
-    }
-}
-
-private class LlamaCppSessionOwnership(
-    override val handleId: ModelEngineHandleId,
-    private val nativeSessionId: Long,
-    private val nativePort: LlamaCppNativeSessionPort
-) : ModelEngineSessionOwnership {
-
-    override val backendId: ModelEngineBackendId = LLAMA_CPP_BACKEND_ID
-
-    // Fair serialization prevents a newly arriving infer from barging ahead of a queued close.
-    // This is an engine-local lock; no Core/staging ownership lock is held during native work.
-    private val executionLock = ReentrantLock(true)
-    private var state = State.LIVE
-
-    override fun infer(request: ModelEngineInferenceRequest): ModelEngineInferenceResult =
-        executionLock.withLock {
-            if (state != State.LIVE) {
-                return@withLock ModelEngineInferenceResult.Rejected(
-                    ModelEngineInferenceFailure.SESSION_FAILED
-                )
-            }
-
-            val result = try {
-                nativePort.infer(
-                    nativeSessionId = nativeSessionId,
-                    prompt = request.prompt,
-                    maxOutputChars = request.maxOutputChars
-                )
-            } catch (_: Throwable) {
-                LlamaCppNativeInferenceResult.Rejected(ModelEngineInferenceFailure.PROVIDER_FAILED)
-            }
-
-            when (result) {
-                is LlamaCppNativeInferenceResult.Rejected ->
-                    ModelEngineInferenceResult.Rejected(result.reason)
-
-                is LlamaCppNativeInferenceResult.Succeeded ->
-                    ModelEngineInferenceResult.Succeeded(
-                        result.output.take(request.maxOutputChars)
-                    )
-            }
-        }
-
-    override fun close(): ModelEngineCloseResult = executionLock.withLock {
-        if (state == State.CLOSED) {
-            return@withLock ModelEngineCloseResult.Closed
-        }
-
-        // Once close has begun, this session never becomes inferable again, even if cleanup fails.
-        state = State.CLOSING_OR_FAILED
-
-        val result = try {
-            nativePort.close(nativeSessionId)
-        } catch (_: Throwable) {
-            LlamaCppNativeCloseResult.Failed(ModelEngineCloseFailure.PROVIDER_FAILED)
-        }
-
-        when (result) {
-            LlamaCppNativeCloseResult.Closed -> {
-                state = State.CLOSED
-                ModelEngineCloseResult.Closed
-            }
-
-            is LlamaCppNativeCloseResult.Failed -> ModelEngineCloseResult.Failed(result.reason)
-        }
-    }
-
-    private enum class State {
-        LIVE,
-        CLOSING_OR_FAILED,
-        CLOSED
     }
 }
 
