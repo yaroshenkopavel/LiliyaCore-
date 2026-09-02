@@ -28,10 +28,10 @@ class LargeProtectedModelEngineUseContractTest {
         val ownership = publish(coordinator)
 
         val acquired = assertIs<LargeProtectedModelEngineUseAcquireResult.Acquired>(
-            coordinator.acquireEngineUse(ownership.source)
+            coordinator.acquireEngineUse(ownership)
         )
         val duplicateAcquire = assertIs<LargeProtectedModelEngineUseAcquireResult.Rejected>(
-            coordinator.acquireEngineUse(ownership.source)
+            coordinator.acquireEngineUse(ownership)
         )
         assertEquals(
             LargeProtectedModelEngineUseFailure.SOURCE_ALREADY_IN_USE,
@@ -65,7 +65,7 @@ class LargeProtectedModelEngineUseContractTest {
         assertTrue(deleteEntered.await(2, TimeUnit.SECONDS))
 
         val acquire = assertIs<LargeProtectedModelEngineUseAcquireResult.Rejected>(
-            coordinator.acquireEngineUse(ownership.source)
+            coordinator.acquireEngineUse(ownership)
         )
         assertEquals(LargeProtectedModelEngineUseFailure.SOURCE_RETIRING, acquire.reason)
 
@@ -74,16 +74,29 @@ class LargeProtectedModelEngineUseContractTest {
         executor.shutdownNow()
 
         val stale = assertIs<LargeProtectedModelEngineUseAcquireResult.Rejected>(
-            coordinator.acquireEngineUse(ownership.source)
+            coordinator.acquireEngineUse(ownership)
         )
         assertEquals(LargeProtectedModelEngineUseFailure.SOURCE_STALE, stale.reason)
     }
 
     @Test
-    fun copied_or_foreign_source_cannot_acquire_lease_and_coordinators_are_isolated() {
+    fun forged_or_foreign_ownership_cannot_acquire_lease_and_coordinators_are_isolated() {
         val first = coordinator(FakeBackend("first-backend"))
         val firstOwnership = publish(first)
         val source = firstOwnership.source
+
+        val forgedExactSourceOwnership = object : LargeProtectedModelStagedSourceOwnership {
+            override val source: LargeProtectedModelStagedSource = firstOwnership.source
+            override fun retire(): LargeProtectedModelStagingRetireResult =
+                LargeProtectedModelStagingRetireResult.Rejected(
+                    LargeProtectedModelStagingFailure.RETIRE_STALE
+                )
+        }
+        val forgedExact = assertIs<LargeProtectedModelEngineUseAcquireResult.Rejected>(
+            first.acquireEngineUse(forgedExactSourceOwnership)
+        )
+        assertEquals(LargeProtectedModelEngineUseFailure.SOURCE_STALE, forgedExact.reason)
+
         val copied = LargeProtectedModelStagedSource(
             backendId = source.backendId,
             sourceId = source.sourceId,
@@ -93,20 +106,26 @@ class LargeProtectedModelEngineUseContractTest {
             profile = source.profile,
             durabilityLevel = source.durabilityLevel
         )
-
+        val copiedOwnership = object : LargeProtectedModelStagedSourceOwnership {
+            override val source: LargeProtectedModelStagedSource = copied
+            override fun retire(): LargeProtectedModelStagingRetireResult =
+                LargeProtectedModelStagingRetireResult.Rejected(
+                    LargeProtectedModelStagingFailure.RETIRE_STALE
+                )
+        }
         val copiedResult = assertIs<LargeProtectedModelEngineUseAcquireResult.Rejected>(
-            first.acquireEngineUse(copied)
+            first.acquireEngineUse(copiedOwnership)
         )
         assertEquals(LargeProtectedModelEngineUseFailure.SOURCE_STALE, copiedResult.reason)
 
         val second = coordinator(FakeBackend("second-backend"))
         val foreign = assertIs<LargeProtectedModelEngineUseAcquireResult.Rejected>(
-            second.acquireEngineUse(firstOwnership.source)
+            second.acquireEngineUse(firstOwnership)
         )
         assertEquals(LargeProtectedModelEngineUseFailure.SOURCE_STALE, foreign.reason)
 
         assertIs<LargeProtectedModelEngineUseAcquireResult.Acquired>(
-            first.acquireEngineUse(firstOwnership.source)
+            first.acquireEngineUse(firstOwnership)
         )
     }
 
@@ -204,7 +223,7 @@ class LargeProtectedModelEngineUseContractTest {
         val staging = coordinator(backend)
         val ownership = publish(staging)
         val lease = assertIs<LargeProtectedModelEngineUseAcquireResult.Acquired>(
-            staging.acquireEngineUse(ownership.source)
+            staging.acquireEngineUse(ownership)
         ).lease
 
         val rendered = lease.source.toString()
