@@ -18,12 +18,10 @@ sealed interface ProtectedModelPolicyDecision {
     data class Failed(
         val reason: ProtectedModelPolicyFailure,
         val throwable: Throwable? = null
-    ) : ProtectedModelPolicyDecision.FailedMarker {
+    ) : ProtectedModelPolicyDecision {
         override fun toString(): String =
             "Failed(reason=$reason, throwable=${throwable?.javaClass?.name ?: "null"})"
     }
-
-    private interface FailedMarker : ProtectedModelPolicyDecision
 }
 
 enum class ProtectedModelPolicyFailure {
@@ -108,7 +106,6 @@ internal sealed interface ProtectedModelAuthorizationResult {
 
 internal sealed interface ProtectedModelAuthorizedPublicationResult {
     data object Published : ProtectedModelAuthorizedPublicationResult
-
     data object Stale : ProtectedModelAuthorizedPublicationResult
 
     data class Failed(
@@ -204,11 +201,6 @@ class ProtectedModelAccessCoordinator(
     private val ownership: ProtectedModelRuntimeOwnership,
     private val loader: ProtectedModelPayloadLoader
 ) {
-    /**
-     * Authorizes later publication for an already-authenticated/staged exact model reference without
-     * reopening/decrypting the payload. The returned capability is process-local and epoch-bound.
-     * Expensive staged/native work is expected to run after this call and outside ownership monitors.
-     */
     internal fun authorizeExistingReference(
         reference: ProtectedModelReference
     ): ProtectedModelAuthorizationResult {
@@ -255,10 +247,6 @@ class ProtectedModelAccessCoordinator(
         )
     }
 
-    /**
-     * Commits later publication only if the exact epoch authorized above is still current.
-     * The callback runs behind the same final publication barrier as openAndPublish.
-     */
     internal fun publishAuthorized(
         authorization: ProtectedModelPublicationAuthorization,
         publish: (ProtectedModelReference) -> Unit
