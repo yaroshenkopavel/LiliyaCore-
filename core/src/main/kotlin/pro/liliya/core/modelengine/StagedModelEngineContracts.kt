@@ -28,7 +28,7 @@ class StagedModelEngineLoadCoordinator(
     private val loader: StagedModelEngineLoaderPort
 ) {
     fun load(ownership: LargeProtectedModelStagedSourceOwnership): ModelEngineLoadResult {
-        val acquired = stagingCoordinator.acquireEngineUse(ownership.source)
+        val acquired = stagingCoordinator.acquireEngineUse(ownership)
         val lease = when (acquired) {
             is LargeProtectedModelEngineUseAcquireResult.Acquired -> acquired.lease
             is LargeProtectedModelEngineUseAcquireResult.Rejected ->
