@@ -208,5 +208,8 @@ jobs:
       - name: Run llama.cpp engine ownership contracts
         run: gradle :android-llama-cpp-engine:testDebugUnitTest --console=plain
 
+      - name: Compile llama.cpp real-model instrumentation contract
+        run: gradle :android-llama-cpp-engine:assembleDebugAndroidTest --console=plain
+
       - name: Build pinned llama.cpp JNI for arm64
         run: gradle :android-llama-cpp-engine:assembleRelease --console=plain
