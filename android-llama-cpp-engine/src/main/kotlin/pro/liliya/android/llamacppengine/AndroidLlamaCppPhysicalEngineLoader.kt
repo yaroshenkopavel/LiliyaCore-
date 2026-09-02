@@ -52,9 +52,19 @@ class AndroidLlamaCppPhysicalEngineLoader internal constructor(
         source: File,
         capability: LargeProtectedModelEngineSourceCapability
     ): ModelEngineLoadResult {
-        // Keep the exact capability in this purpose-specific boundary; no path-only production API.
+        // The capability is intentionally consumed only at this purpose-specific physical boundary.
+        // Exact capability/source ownership was already revalidated by the staging backend before
+        // this callback; this adapter never resolves an opaque id or accepts a path-only public API.
         capability.model
+        return loadValidatedPhysicalSource(source)
+    }
 
+    /**
+     * Maps an already capability-validated physical source into the concrete native provider.
+     * Internal visibility exists so loader/result semantics can be contract-tested without adding
+     * a forgeable Core capability constructor or weakening the public physical-loader boundary.
+     */
+    internal fun loadValidatedPhysicalSource(source: File): ModelEngineLoadResult {
         val publicHandleId = PublicHandleIds.allocate()
             ?: return ModelEngineLoadResult.Rejected(ModelEngineLoadFailure.PROVIDER_FAILED)
 
