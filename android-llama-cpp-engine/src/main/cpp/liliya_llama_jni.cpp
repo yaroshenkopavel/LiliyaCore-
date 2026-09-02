@@ -40,6 +40,8 @@ struct NativeSession {
     int32_t max_prompt_tokens = 0;
     int32_t max_generated_tokens = 0;
     int32_t batch_tokens = 0;
+    int32_t max_prompt_utf8_bytes = 0;
+    int32_t max_output_utf8_bytes = 0;
     std::mutex execution_mutex;
 
     void release() noexcept {
@@ -102,6 +104,14 @@ bool copy_bytes(JNIEnv * env, jbyteArray input, std::vector<uint8_t> & output) {
     return true;
 }
 
+struct ByteScrubber {
+    explicit ByteScrubber(std::vector<uint8_t> & bytes) : bytes(bytes) {}
+    ~ByteScrubber() {
+        std::fill(bytes.begin(), bytes.end(), static_cast<uint8_t>(0));
+    }
+    std::vector<uint8_t> & bytes;
+};
+
 jbyteArray make_infer_packet(
     JNIEnv * env,
     jbyte status,
@@ -148,9 +158,16 @@ int64_t allocate_native_session_id() {
     }
 }
 
-bool token_to_piece(
+enum class PieceResult {
+    OK,
+    TOO_LARGE,
+    FAILED
+};
+
+PieceResult token_to_piece(
     const llama_vocab * vocab,
     llama_token token,
+    size_t byte_budget,
     std::string & piece
 ) {
     char stack_buffer[256];
@@ -163,24 +180,33 @@ bool token_to_piece(
         true
     );
     if (count >= 0) {
+        if (static_cast<size_t>(count) > byte_budget) {
+            return PieceResult::TOO_LARGE;
+        }
         piece.assign(stack_buffer, static_cast<size_t>(count));
-        return true;
+        return PieceResult::OK;
     }
 
     if (count == std::numeric_limits<int32_t>::min()) {
-        return false;
+        return PieceResult::FAILED;
     }
     const int32_t required = -count;
-    if (required <= 0 || required > 1024 * 1024) {
-        return false;
+    if (required <= 0) {
+        return PieceResult::FAILED;
+    }
+    if (static_cast<size_t>(required) > byte_budget) {
+        return PieceResult::TOO_LARGE;
     }
     std::vector<char> buffer(static_cast<size_t>(required));
     count = llama_token_to_piece(vocab, token, buffer.data(), required, 0, true);
     if (count < 0) {
-        return false;
+        return PieceResult::FAILED;
+    }
+    if (static_cast<size_t>(count) > byte_budget) {
+        return PieceResult::TOO_LARGE;
     }
     piece.assign(buffer.data(), static_cast<size_t>(count));
-    return true;
+    return PieceResult::OK;
 }
 
 }  // namespace
@@ -206,6 +232,8 @@ Java_pro_liliya_android_llamacppengine_LlamaCppNativeBridge_nativeLoad(
     jint batch_tokens,
     jint micro_batch_tokens,
     jint thread_count,
+    jint max_prompt_utf8_bytes,
+    jint max_output_utf8_bytes,
     jboolean use_mmap
 ) {
     if (
@@ -215,6 +243,8 @@ Java_pro_liliya_android_llamacppengine_LlamaCppNativeBridge_nativeLoad(
         batch_tokens <= 0 ||
         micro_batch_tokens <= 0 ||
         thread_count <= 0 ||
+        max_prompt_utf8_bytes <= 0 ||
+        max_output_utf8_bytes <= 0 ||
         max_prompt_tokens > context_tokens ||
         max_generated_tokens > context_tokens ||
         static_cast<int64_t>(max_prompt_tokens) + max_generated_tokens > context_tokens ||
@@ -228,6 +258,7 @@ Java_pro_liliya_android_llamacppengine_LlamaCppNativeBridge_nativeLoad(
     if (!copy_bytes(env, source_path_utf8, path_bytes) || path_bytes.empty()) {
         return LOAD_REJECTED;
     }
+    ByteScrubber path_scrubber(path_bytes);
     if (std::find(path_bytes.begin(), path_bytes.end(), static_cast<uint8_t>(0)) != path_bytes.end()) {
         return LOAD_REJECTED;
     }
@@ -282,6 +313,8 @@ Java_pro_liliya_android_llamacppengine_LlamaCppNativeBridge_nativeLoad(
         session->max_prompt_tokens = max_prompt_tokens;
         session->max_generated_tokens = max_generated_tokens;
         session->batch_tokens = batch_tokens;
+        session->max_prompt_utf8_bytes = max_prompt_utf8_bytes;
+        session->max_output_utf8_bytes = max_output_utf8_bytes;
 
         const int64_t session_id = allocate_native_session_id();
         if (session_id <= 0) {
@@ -313,13 +346,8 @@ Java_pro_liliya_android_llamacppengine_LlamaCppNativeBridge_nativeInfer(
     if (native_session_id <= 0) {
         return make_infer_packet(env, INFER_STALE_SESSION);
     }
-    if (max_output_chars <= 0) {
+    if (max_output_chars <= 0 || prompt_utf8 == nullptr) {
         return make_infer_packet(env, INFER_REQUEST_REJECTED);
-    }
-
-    std::vector<uint8_t> prompt;
-    if (!copy_bytes(env, prompt_utf8, prompt)) {
-        return make_infer_packet(env, INFER_PROVIDER_FAILED);
     }
 
     NativeSession * session = nullptr;
@@ -333,6 +361,20 @@ Java_pro_liliya_android_llamacppengine_LlamaCppNativeBridge_nativeInfer(
         session = it->second.get();
         session_guard = std::unique_lock<std::mutex>(session->execution_mutex);
     }
+
+    const jsize prompt_size = env->GetArrayLength(prompt_utf8);
+    if (prompt_size < 0) {
+        return make_infer_packet(env, INFER_PROVIDER_FAILED);
+    }
+    if (prompt_size > session->max_prompt_utf8_bytes) {
+        return make_infer_packet(env, INFER_RESOURCE_REJECTED);
+    }
+
+    std::vector<uint8_t> prompt;
+    if (!copy_bytes(env, prompt_utf8, prompt)) {
+        return make_infer_packet(env, INFER_PROVIDER_FAILED);
+    }
+    ByteScrubber prompt_scrubber(prompt);
 
     try {
         int32_t token_count = llama_tokenize(
@@ -391,28 +433,40 @@ Java_pro_liliya_android_llamacppengine_LlamaCppNativeBridge_nativeInfer(
         }
 
         std::string output;
-        const size_t max_output_bytes = static_cast<size_t>(max_output_chars) * 4U;
+        const size_t char_byte_ceiling = static_cast<size_t>(max_output_chars) * 4U;
+        const size_t max_output_bytes = std::min(
+            char_byte_ceiling,
+            static_cast<size_t>(session->max_output_utf8_bytes)
+        );
         for (int32_t generated = 0; generated < session->max_generated_tokens; ++generated) {
             const llama_token token = llama_sampler_sample(sampler, session->context, -1);
             if (llama_vocab_is_eog(session->vocab, token)) {
                 break;
             }
 
+            const size_t remaining = max_output_bytes - std::min(max_output_bytes, output.size());
             std::string piece;
-            if (!token_to_piece(session->vocab, token, piece)) {
+            const PieceResult piece_result = token_to_piece(
+                session->vocab,
+                token,
+                remaining,
+                piece
+            );
+            if (piece_result == PieceResult::TOO_LARGE) {
+                break;
+            }
+            if (piece_result == PieceResult::FAILED) {
                 llama_sampler_free(sampler);
                 llama_memory_clear(llama_get_memory(session->context), true);
                 return make_infer_packet(env, INFER_OPERATION_FAILED);
-            }
-            if (piece.size() > max_output_bytes - std::min(max_output_bytes, output.size())) {
-                break;
             }
             output.append(piece);
             if (output.size() >= max_output_bytes) {
                 break;
             }
 
-            llama_batch next = llama_batch_get_one(const_cast<llama_token *>(&token), 1);
+            llama_token next_token = token;
+            llama_batch next = llama_batch_get_one(&next_token, 1);
             if (llama_decode(session->context, next) != 0) {
                 llama_sampler_free(sampler);
                 llama_memory_clear(llama_get_memory(session->context), true);
