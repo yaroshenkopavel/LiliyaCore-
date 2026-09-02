@@ -32,6 +32,8 @@ internal object LlamaCppNativeBridge {
         batchTokens: Int,
         microBatchTokens: Int,
         threadCount: Int,
+        maxPromptUtf8Bytes: Int,
+        maxOutputUtf8Bytes: Int,
         useMmap: Boolean
     ): Long
 
