@@ -67,7 +67,7 @@ class AndroidLlamaCppPhysicalEngineLoader internal constructor(
         source: File,
         capability: LargeProtectedModelEngineSourceCapability
     ): ModelEngineLoadResult {
-        // Touch the exact capability so this boundary cannot silently evolve into a path-only API.
+        // Keep the exact capability in this purpose-specific boundary; no path-only production API.
         capability.model
 
         val publicHandleId = PublicHandleIds.allocate()
@@ -106,6 +106,8 @@ private class LlamaCppSessionOwnership(
 
     override val backendId: ModelEngineBackendId = LLAMA_CPP_BACKEND_ID
 
+    // Fair serialization prevents a newly arriving infer from barging ahead of a queued close.
+    // This is an engine-local lock; no Core/staging ownership lock is held during native work.
     private val executionLock = ReentrantLock(true)
     private var state = State.LIVE
 
@@ -158,9 +160,7 @@ private class LlamaCppSessionOwnership(
                 ModelEngineCloseResult.Closed
             }
 
-            is LlamaCppNativeCloseResult.Failed -> result.let {
-                ModelEngineCloseResult.Failed(it.reason)
-            }
+            is LlamaCppNativeCloseResult.Failed -> ModelEngineCloseResult.Failed(result.reason)
         }
     }
 
@@ -193,7 +193,7 @@ private object JniLlamaCppNativeSessionPort : LlamaCppNativeSessionPort {
         policy: LlamaCppEnginePolicy
     ): LlamaCppNativeLoadResult {
         val code = LlamaCppNativeBridge.nativeLoad(
-            sourcePath = sourcePath,
+            sourcePathUtf8 = sourcePath.toByteArray(Charsets.UTF_8),
             contextTokens = policy.contextTokens,
             maxPromptTokens = policy.maxPromptTokens,
             maxGeneratedTokens = policy.maxGeneratedTokens,
@@ -219,11 +219,19 @@ private object JniLlamaCppNativeSessionPort : LlamaCppNativeSessionPort {
         prompt: String,
         maxOutputChars: Int
     ): LlamaCppNativeInferenceResult {
-        val result = LlamaCppNativeBridge.nativeInfer(nativeSessionId, prompt, maxOutputChars)
-        val status = result.getOrNull(0)
-        return when (status) {
-            LlamaCppNativeBridge.INFER_OK ->
-                LlamaCppNativeInferenceResult.Succeeded(result.getOrNull(1).orEmpty())
+        val packet = LlamaCppNativeBridge.nativeInfer(
+            nativeSessionId = nativeSessionId,
+            promptUtf8 = prompt.toByteArray(Charsets.UTF_8),
+            maxOutputChars = maxOutputChars
+        )
+        if (packet.isEmpty()) {
+            return LlamaCppNativeInferenceResult.Rejected(ModelEngineInferenceFailure.PROVIDER_FAILED)
+        }
+
+        return when (packet[0]) {
+            LlamaCppNativeBridge.INFER_OK -> LlamaCppNativeInferenceResult.Succeeded(
+                packet.copyOfRange(1, packet.size).toString(Charsets.UTF_8)
+            )
             LlamaCppNativeBridge.INFER_RESOURCE_REJECTED ->
                 LlamaCppNativeInferenceResult.Rejected(
                     ModelEngineInferenceFailure.RESOURCE_LIMIT_REJECTED
