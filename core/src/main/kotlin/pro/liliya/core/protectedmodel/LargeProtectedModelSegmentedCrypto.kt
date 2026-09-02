@@ -5,6 +5,7 @@ import java.io.DataOutputStream
 import java.security.GeneralSecurityException
 import java.security.MessageDigest
 import java.security.Signature
+import java.security.SignatureException
 import javax.crypto.AEADBadTagException
 import javax.crypto.Cipher
 import javax.crypto.SecretKey
@@ -206,7 +207,12 @@ class LargeProtectedModelPackageVerifier(
             val verifier = Signature.getInstance(signatureName(manifest.signatureAlgorithm))
             verifier.initVerify(signerKey)
             verifier.update(signatureInput)
-            if (!verifier.verify(signatureBytes)) {
+            val valid = try {
+                verifier.verify(signatureBytes)
+            } catch (_: SignatureException) {
+                false
+            }
+            if (!valid) {
                 rejected(LargeProtectedModelPackageVerificationFailure.SIGNATURE_INVALID)
             } else {
                 LargeProtectedModelPackageVerificationResult.Verified(
