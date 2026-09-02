@@ -49,22 +49,52 @@ class AndroidLlamaCppRealModelInstrumentedTest {
                 )
             }
 
-            val physicalLoader = AndroidLlamaCppPhysicalEngineLoader(enginePolicy())
-            val stagedLoader = AndroidAppPrivateStagedModelEngineLoader(backend, physicalLoader)
-            val loadCoordinator = StagedModelEngineLoadCoordinator(staging, stagedLoader)
-
-            val loaded = assertIs<ModelEngineLoadResult.Loaded>(loadCoordinator.load(ownership))
-            val inferred = assertIs<ModelEngineInferenceResult.Succeeded>(
-                loaded.ownership.infer(
+            val prompt = "Once upon a time"
+            val broadLoader = AndroidLlamaCppPhysicalEngineLoader(
+                enginePolicy(maxGeneratedTokens = 8)
+            )
+            val broadCoordinator = StagedModelEngineLoadCoordinator(
+                staging,
+                AndroidAppPrivateStagedModelEngineLoader(backend, broadLoader)
+            )
+            val broadLoaded = assertIs<ModelEngineLoadResult.Loaded>(
+                broadCoordinator.load(ownership)
+            )
+            val broadInference = assertIs<ModelEngineInferenceResult.Succeeded>(
+                broadLoaded.ownership.infer(
                     ModelEngineInferenceRequest(
-                        prompt = "Hello",
-                        maxOutputChars = 32
+                        prompt = prompt,
+                        maxOutputChars = 64
                     )
                 )
             )
-            assertTrue(inferred.output.length <= 32)
+            assertTrue(broadInference.output.length <= 64)
+            assertIs<ModelEngineCloseResult.Closed>(broadLoaded.ownership.close())
 
-            assertIs<ModelEngineCloseResult.Closed>(loaded.ownership.close())
+            val oneTokenLoader = AndroidLlamaCppPhysicalEngineLoader(
+                enginePolicy(maxGeneratedTokens = 1)
+            )
+            val oneTokenCoordinator = StagedModelEngineLoadCoordinator(
+                staging,
+                AndroidAppPrivateStagedModelEngineLoader(backend, oneTokenLoader)
+            )
+            val oneTokenLoaded = assertIs<ModelEngineLoadResult.Loaded>(
+                oneTokenCoordinator.load(ownership)
+            )
+            val oneTokenInference = assertIs<ModelEngineInferenceResult.Succeeded>(
+                oneTokenLoaded.ownership.infer(
+                    ModelEngineInferenceRequest(
+                        prompt = prompt,
+                        maxOutputChars = 64
+                    )
+                )
+            )
+            assertTrue(oneTokenInference.output.isNotEmpty())
+            assertTrue(oneTokenInference.output.length < 64)
+            assertTrue(broadInference.output.startsWith(oneTokenInference.output))
+            assertTrue(broadInference.output.length > oneTokenInference.output.length)
+            assertIs<ModelEngineCloseResult.Closed>(oneTokenLoaded.ownership.close())
+
             assertIs<LargeProtectedModelStagingRetireResult.Retired>(ownership.retire())
         }
 
@@ -74,12 +104,16 @@ class AndroidLlamaCppRealModelInstrumentedTest {
             val invalidBytes = "not-a-gguf-model".encodeToByteArray()
             val backend = backend(targetContext)
             val staging = coordinator(backend, invalidBytes.size.toLong())
-            val ownership = publishSegmented(
-                coordinator = staging,
-                input = ByteArrayInputStream(invalidBytes),
-                totalBytes = invalidBytes.size.toLong(),
-                packageId = "slice7-invalid-gguf"
-            )
+            val ownership = try {
+                publishSegmented(
+                    coordinator = staging,
+                    input = ByteArrayInputStream(invalidBytes),
+                    totalBytes = invalidBytes.size.toLong(),
+                    packageId = "slice7-invalid-gguf"
+                )
+            } finally {
+                invalidBytes.fill(0)
+            }
 
             val physicalLoader = AndroidLlamaCppPhysicalEngineLoader(enginePolicy())
             val stagedLoader = AndroidAppPrivateStagedModelEngineLoader(backend, physicalLoader)
@@ -89,10 +123,60 @@ class AndroidLlamaCppRealModelInstrumentedTest {
             assertIs<LargeProtectedModelStagingRetireResult.Retired>(ownership.retire())
         }
 
-    private fun enginePolicy() = LlamaCppEnginePolicy(
+    @Test
+    fun truncated_gguf_source_fails_closed_and_releases_engine_use_lease() =
+        withCleanRoot { targetContext, testContext ->
+            val truncatedBytes = testContext.assets.open(STORIES_15M_ASSET).use { input ->
+                readExactSegment(input, TRUNCATED_GGUF_BYTES)
+            }
+            assertEquals(TRUNCATED_GGUF_BYTES, truncatedBytes.size)
+
+            val backend = backend(targetContext)
+            val staging = coordinator(backend, truncatedBytes.size.toLong())
+            val ownership = try {
+                publishSegmented(
+                    coordinator = staging,
+                    input = ByteArrayInputStream(truncatedBytes),
+                    totalBytes = truncatedBytes.size.toLong(),
+                    packageId = "slice7-truncated-gguf"
+                )
+            } finally {
+                truncatedBytes.fill(0)
+            }
+
+            val physicalLoader = AndroidLlamaCppPhysicalEngineLoader(enginePolicy())
+            val stagedLoader = AndroidAppPrivateStagedModelEngineLoader(backend, physicalLoader)
+            val loadCoordinator = StagedModelEngineLoadCoordinator(staging, stagedLoader)
+
+            assertIs<ModelEngineLoadResult.Rejected>(loadCoordinator.load(ownership))
+            assertIs<LargeProtectedModelStagingRetireResult.Retired>(ownership.retire())
+        }
+
+    @Test
+    fun unknown_native_session_id_fails_closed_structurally() {
+        val promptUtf8 = "probe".encodeToByteArray()
+        val packet = try {
+            LlamaCppNativeBridge.nativeInfer(
+                nativeSessionId = Long.MAX_VALUE,
+                promptUtf8 = promptUtf8,
+                maxOutputChars = 8
+            )
+        } finally {
+            promptUtf8.fill(0)
+        }
+
+        assertEquals(1, packet.size)
+        assertEquals(LlamaCppNativeBridge.INFER_STALE_SESSION, packet[0])
+        assertEquals(
+            LlamaCppNativeBridge.CLOSE_FAILED,
+            LlamaCppNativeBridge.nativeClose(Long.MAX_VALUE)
+        )
+    }
+
+    private fun enginePolicy(maxGeneratedTokens: Int = 8) = LlamaCppEnginePolicy(
         contextTokens = 128,
         maxPromptTokens = 32,
-        maxGeneratedTokens = 8,
+        maxGeneratedTokens = maxGeneratedTokens,
         batchTokens = 32,
         microBatchTokens = 16,
         threadCount = 1,
@@ -153,6 +237,7 @@ class AndroidLlamaCppRealModelInstrumentedTest {
             assertIs<LargeProtectedModelStagingAppendResult.Appended>(
                 started.session.append(segmentIndex, segment)
             )
+            segment.fill(0)
             appendedBytes += segment.size.toLong()
             segmentIndex += 1
         }
@@ -194,6 +279,7 @@ class AndroidLlamaCppRealModelInstrumentedTest {
     private companion object {
         const val STORIES_15M_ASSET = "stories15M-q4_0.gguf"
         const val STORIES_15M_BYTES = 19_077_344L
+        const val TRUNCATED_GGUF_BYTES = 4 * 1024
         const val SEGMENT_BYTES = 256 * 1024
     }
 }
