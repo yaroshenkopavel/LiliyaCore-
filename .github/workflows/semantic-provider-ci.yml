@@ -83,7 +83,5 @@ jobs:
           profile: pixel_6
           disable-animations: true
           script: |
-            gradle :android-offline-semantic-provider:connectedDebugAndroidTest \
-              '-Pandroid.testInstrumentationRunnerArguments.class=pro.liliya.android.semanticprovider.OfflineSemanticProviderRealModelInstrumentedTest#pinned_multilingual_e5_q8_loads_and_closes_without_embedding' \
-              --console=plain
+            gradle :android-offline-semantic-provider:connectedDebugAndroidTest '-Pandroid.testInstrumentationRunnerArguments.class=pro.liliya.android.semanticprovider.OfflineSemanticProviderRealModelInstrumentedTest#pinned_multilingual_e5_q8_loads_and_closes_without_embedding' --console=plain
             gradle :android-offline-semantic-provider:connectedDebugAndroidTest --console=plain
