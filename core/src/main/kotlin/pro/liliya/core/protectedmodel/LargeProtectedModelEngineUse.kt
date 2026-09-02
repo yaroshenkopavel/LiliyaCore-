@@ -26,14 +26,14 @@ class LargeProtectedModelEngineSourceCapability internal constructor(
             "profile=$profile, durabilityLevel=$durabilityLevel)"
 }
 
-enum class LargeProtectedModelEngineUseFailure {
+internal enum class LargeProtectedModelEngineUseFailure {
     SOURCE_STALE,
     SOURCE_RETIRING,
     SOURCE_ALREADY_IN_USE,
     LEASE_STALE
 }
 
-sealed interface LargeProtectedModelEngineUseAcquireResult {
+internal sealed interface LargeProtectedModelEngineUseAcquireResult {
     data class Acquired(
         val lease: LargeProtectedModelEngineUseLease
     ) : LargeProtectedModelEngineUseAcquireResult
@@ -43,7 +43,7 @@ sealed interface LargeProtectedModelEngineUseAcquireResult {
     ) : LargeProtectedModelEngineUseAcquireResult
 }
 
-sealed interface LargeProtectedModelEngineUseReleaseResult {
+internal sealed interface LargeProtectedModelEngineUseReleaseResult {
     data object Released : LargeProtectedModelEngineUseReleaseResult
 
     data class Rejected(
@@ -51,7 +51,7 @@ sealed interface LargeProtectedModelEngineUseReleaseResult {
     ) : LargeProtectedModelEngineUseReleaseResult
 }
 
-interface LargeProtectedModelEngineUseLease {
+internal interface LargeProtectedModelEngineUseLease {
     val source: LargeProtectedModelEngineSourceCapability
 
     fun release(): LargeProtectedModelEngineUseReleaseResult
