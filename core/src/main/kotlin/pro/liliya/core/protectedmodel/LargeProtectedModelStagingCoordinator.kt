@@ -33,6 +33,7 @@ class LargeProtectedModelStagingCoordinator(
 
     private data class PublishedEntry(
         val source: LargeProtectedModelStagedSource,
+        val ownershipToken: Any = Any(),
         var state: PublishedState = PublishedState.LIVE,
         var engineUseLease: EngineUseLeaseEntry? = null
     )
@@ -431,13 +432,21 @@ class LargeProtectedModelStagingCoordinator(
     }
 
     fun acquireEngineUse(
-        source: LargeProtectedModelStagedSource
+        ownership: LargeProtectedModelStagedSourceOwnership
     ): LargeProtectedModelEngineUseAcquireResult = synchronized(lock) {
+        val exactOwnership = ownership as? LargeProtectedModelEngineUseOwnershipToken
+            ?: return@synchronized LargeProtectedModelEngineUseAcquireResult.Rejected(
+                LargeProtectedModelEngineUseFailure.SOURCE_STALE
+            )
+        val source = ownership.source
         val current = published[source.sourceId]
             ?: return@synchronized LargeProtectedModelEngineUseAcquireResult.Rejected(
                 LargeProtectedModelEngineUseFailure.SOURCE_STALE
             )
-        if (current.source !== source) {
+        if (
+            current.source !== source ||
+            exactOwnership.engineUseOwnerToken !== current.ownershipToken
+        ) {
             return@synchronized LargeProtectedModelEngineUseAcquireResult.Rejected(
                 LargeProtectedModelEngineUseFailure.SOURCE_STALE
             )
@@ -459,8 +468,9 @@ class LargeProtectedModelStagingCoordinator(
     }
 
     private fun ownership(entry: PublishedEntry): LargeProtectedModelStagedSourceOwnership =
-        object : LargeProtectedModelStagedSourceOwnership {
+        object : LargeProtectedModelStagedSourceOwnership, LargeProtectedModelEngineUseOwnershipToken {
             override val source: LargeProtectedModelStagedSource = entry.source
+            override val engineUseOwnerToken: Any = entry.ownershipToken
             override fun retire(): LargeProtectedModelStagingRetireResult = retireExact(entry)
         }
 
