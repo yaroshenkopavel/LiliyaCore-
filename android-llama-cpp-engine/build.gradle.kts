@@ -46,6 +46,11 @@ android {
     }
 }
 
+repositories {
+    google()
+    mavenCentral()
+}
+
 dependencies {
     implementation(project(":core"))
     implementation(project(":android-protected-model-staging"))
