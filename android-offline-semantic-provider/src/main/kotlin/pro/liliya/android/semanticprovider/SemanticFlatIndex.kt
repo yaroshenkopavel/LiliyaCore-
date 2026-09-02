@@ -110,6 +110,7 @@ internal sealed interface SemanticIndexReplaceResult {
     data object Replaced : SemanticIndexReplaceResult
     data object StaleExpected : SemanticIndexReplaceResult
     data object IdentityMismatch : SemanticIndexReplaceResult
+    data object NonForwardGeneration : SemanticIndexReplaceResult
 }
 
 internal sealed interface SemanticIndexRemoveResult {
@@ -164,6 +165,9 @@ internal class SemanticFlatIndex(
     ): SemanticIndexReplaceResult {
         if (!sameEntity(expected, replacement)) {
             return SemanticIndexReplaceResult.IdentityMismatch
+        }
+        if (replacement.generationValue <= expected.generationValue) {
+            return SemanticIndexReplaceResult.NonForwardGeneration
         }
         val key = entityKey(expected)
         val current = entries[key] ?: return SemanticIndexReplaceResult.StaleExpected
