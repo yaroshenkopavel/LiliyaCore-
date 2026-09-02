@@ -254,17 +254,20 @@ Java_pro_liliya_android_llamacppengine_LlamaCppNativeBridge_nativeLoad(
         return LOAD_RESOURCE_REJECTED;
     }
 
-    std::vector<uint8_t> path_bytes;
-    if (!copy_bytes(env, source_path_utf8, path_bytes) || path_bytes.empty()) {
-        return LOAD_REJECTED;
-    }
-    ByteScrubber path_scrubber(path_bytes);
-    if (std::find(path_bytes.begin(), path_bytes.end(), static_cast<uint8_t>(0)) != path_bytes.end()) {
-        return LOAD_REJECTED;
-    }
-    path_bytes.push_back(0);
-
     try {
+        std::vector<uint8_t> path_bytes;
+        if (!copy_bytes(env, source_path_utf8, path_bytes) || path_bytes.empty()) {
+            return LOAD_REJECTED;
+        }
+        ByteScrubber path_scrubber(path_bytes);
+        if (
+            std::find(path_bytes.begin(), path_bytes.end(), static_cast<uint8_t>(0)) !=
+            path_bytes.end()
+        ) {
+            return LOAD_REJECTED;
+        }
+        path_bytes.push_back(0);
+
         ensure_backend_initialized();
 
         llama_model_params model_params = llama_model_default_params();
@@ -350,135 +353,139 @@ Java_pro_liliya_android_llamacppengine_LlamaCppNativeBridge_nativeInfer(
         return make_infer_packet(env, INFER_REQUEST_REJECTED);
     }
 
-    NativeSession * session = nullptr;
-    std::unique_lock<std::mutex> session_guard;
-    {
-        std::unique_lock<std::mutex> registry_guard(g_registry_mutex);
-        auto it = g_sessions.find(static_cast<int64_t>(native_session_id));
-        if (it == g_sessions.end() || it->second == nullptr) {
-            return make_infer_packet(env, INFER_STALE_SESSION);
-        }
-        session = it->second.get();
-        session_guard = std::unique_lock<std::mutex>(session->execution_mutex);
-    }
-
-    const jsize prompt_size = env->GetArrayLength(prompt_utf8);
-    if (prompt_size < 0) {
-        return make_infer_packet(env, INFER_PROVIDER_FAILED);
-    }
-    if (prompt_size > session->max_prompt_utf8_bytes) {
-        return make_infer_packet(env, INFER_RESOURCE_REJECTED);
-    }
-
-    std::vector<uint8_t> prompt;
-    if (!copy_bytes(env, prompt_utf8, prompt)) {
-        return make_infer_packet(env, INFER_PROVIDER_FAILED);
-    }
-    ByteScrubber prompt_scrubber(prompt);
-
     try {
-        int32_t token_count = llama_tokenize(
-            session->vocab,
-            reinterpret_cast<const char *>(prompt.data()),
-            static_cast<int32_t>(prompt.size()),
-            nullptr,
-            0,
-            true,
-            true
-        );
-        if (token_count == std::numeric_limits<int32_t>::min()) {
+        NativeSession * session = nullptr;
+        std::unique_lock<std::mutex> session_guard;
+        {
+            std::unique_lock<std::mutex> registry_guard(g_registry_mutex);
+            auto it = g_sessions.find(static_cast<int64_t>(native_session_id));
+            if (it == g_sessions.end() || it->second == nullptr) {
+                return make_infer_packet(env, INFER_STALE_SESSION);
+            }
+            session = it->second.get();
+            session_guard = std::unique_lock<std::mutex>(session->execution_mutex);
+        }
+
+        const jsize prompt_size = env->GetArrayLength(prompt_utf8);
+        if (prompt_size < 0) {
+            return make_infer_packet(env, INFER_PROVIDER_FAILED);
+        }
+        if (prompt_size > session->max_prompt_utf8_bytes) {
             return make_infer_packet(env, INFER_RESOURCE_REJECTED);
         }
-        if (token_count < 0) {
-            token_count = -token_count;
-        }
-        if (token_count <= 0) {
-            return make_infer_packet(env, INFER_REQUEST_REJECTED);
-        }
-        if (token_count > session->max_prompt_tokens) {
-            return make_infer_packet(env, INFER_RESOURCE_REJECTED);
-        }
 
-        std::vector<llama_token> tokens(static_cast<size_t>(token_count));
-        const int32_t actual = llama_tokenize(
-            session->vocab,
-            reinterpret_cast<const char *>(prompt.data()),
-            static_cast<int32_t>(prompt.size()),
-            tokens.data(),
-            token_count,
-            true,
-            true
-        );
-        if (actual < 0 || actual != token_count) {
-            return make_infer_packet(env, INFER_OPERATION_FAILED);
+        std::vector<uint8_t> prompt;
+        if (!copy_bytes(env, prompt_utf8, prompt)) {
+            return make_infer_packet(env, INFER_PROVIDER_FAILED);
         }
+        ByteScrubber prompt_scrubber(prompt);
 
-        llama_memory_clear(llama_get_memory(session->context), true);
+        try {
+            int32_t token_count = llama_tokenize(
+                session->vocab,
+                reinterpret_cast<const char *>(prompt.data()),
+                static_cast<int32_t>(prompt.size()),
+                nullptr,
+                0,
+                true,
+                true
+            );
+            if (token_count == std::numeric_limits<int32_t>::min()) {
+                return make_infer_packet(env, INFER_RESOURCE_REJECTED);
+            }
+            if (token_count < 0) {
+                token_count = -token_count;
+            }
+            if (token_count <= 0) {
+                return make_infer_packet(env, INFER_REQUEST_REJECTED);
+            }
+            if (token_count > session->max_prompt_tokens) {
+                return make_infer_packet(env, INFER_RESOURCE_REJECTED);
+            }
 
-        int32_t offset = 0;
-        while (offset < token_count) {
-            const int32_t chunk = std::min(session->batch_tokens, token_count - offset);
-            llama_batch batch = llama_batch_get_one(tokens.data() + offset, chunk);
-            if (llama_decode(session->context, batch) != 0) {
-                llama_memory_clear(llama_get_memory(session->context), true);
+            std::vector<llama_token> tokens(static_cast<size_t>(token_count));
+            const int32_t actual = llama_tokenize(
+                session->vocab,
+                reinterpret_cast<const char *>(prompt.data()),
+                static_cast<int32_t>(prompt.size()),
+                tokens.data(),
+                token_count,
+                true,
+                true
+            );
+            if (actual < 0 || actual != token_count) {
                 return make_infer_packet(env, INFER_OPERATION_FAILED);
             }
-            offset += chunk;
-        }
 
-        llama_sampler * sampler = llama_sampler_init_greedy();
-        if (sampler == nullptr) {
+            llama_memory_clear(llama_get_memory(session->context), true);
+
+            int32_t offset = 0;
+            while (offset < token_count) {
+                const int32_t chunk = std::min(session->batch_tokens, token_count - offset);
+                llama_batch batch = llama_batch_get_one(tokens.data() + offset, chunk);
+                if (llama_decode(session->context, batch) != 0) {
+                    llama_memory_clear(llama_get_memory(session->context), true);
+                    return make_infer_packet(env, INFER_OPERATION_FAILED);
+                }
+                offset += chunk;
+            }
+
+            llama_sampler * sampler = llama_sampler_init_greedy();
+            if (sampler == nullptr) {
+                llama_memory_clear(llama_get_memory(session->context), true);
+                return make_infer_packet(env, INFER_PROVIDER_FAILED);
+            }
+
+            std::string output;
+            const size_t char_byte_ceiling = static_cast<size_t>(max_output_chars) * 4U;
+            const size_t max_output_bytes = std::min(
+                char_byte_ceiling,
+                static_cast<size_t>(session->max_output_utf8_bytes)
+            );
+            for (int32_t generated = 0; generated < session->max_generated_tokens; ++generated) {
+                const llama_token token = llama_sampler_sample(sampler, session->context, -1);
+                if (llama_vocab_is_eog(session->vocab, token)) {
+                    break;
+                }
+
+                const size_t remaining = max_output_bytes - std::min(max_output_bytes, output.size());
+                std::string piece;
+                const PieceResult piece_result = token_to_piece(
+                    session->vocab,
+                    token,
+                    remaining,
+                    piece
+                );
+                if (piece_result == PieceResult::TOO_LARGE) {
+                    break;
+                }
+                if (piece_result == PieceResult::FAILED) {
+                    llama_sampler_free(sampler);
+                    llama_memory_clear(llama_get_memory(session->context), true);
+                    return make_infer_packet(env, INFER_OPERATION_FAILED);
+                }
+                output.append(piece);
+                if (output.size() >= max_output_bytes) {
+                    break;
+                }
+
+                llama_token next_token = token;
+                llama_batch next = llama_batch_get_one(&next_token, 1);
+                if (llama_decode(session->context, next) != 0) {
+                    llama_sampler_free(sampler);
+                    llama_memory_clear(llama_get_memory(session->context), true);
+                    return make_infer_packet(env, INFER_OPERATION_FAILED);
+                }
+            }
+
+            llama_sampler_free(sampler);
+            llama_memory_clear(llama_get_memory(session->context), true);
+            return make_infer_packet(env, INFER_OK, output);
+        } catch (...) {
             llama_memory_clear(llama_get_memory(session->context), true);
             return make_infer_packet(env, INFER_PROVIDER_FAILED);
         }
-
-        std::string output;
-        const size_t char_byte_ceiling = static_cast<size_t>(max_output_chars) * 4U;
-        const size_t max_output_bytes = std::min(
-            char_byte_ceiling,
-            static_cast<size_t>(session->max_output_utf8_bytes)
-        );
-        for (int32_t generated = 0; generated < session->max_generated_tokens; ++generated) {
-            const llama_token token = llama_sampler_sample(sampler, session->context, -1);
-            if (llama_vocab_is_eog(session->vocab, token)) {
-                break;
-            }
-
-            const size_t remaining = max_output_bytes - std::min(max_output_bytes, output.size());
-            std::string piece;
-            const PieceResult piece_result = token_to_piece(
-                session->vocab,
-                token,
-                remaining,
-                piece
-            );
-            if (piece_result == PieceResult::TOO_LARGE) {
-                break;
-            }
-            if (piece_result == PieceResult::FAILED) {
-                llama_sampler_free(sampler);
-                llama_memory_clear(llama_get_memory(session->context), true);
-                return make_infer_packet(env, INFER_OPERATION_FAILED);
-            }
-            output.append(piece);
-            if (output.size() >= max_output_bytes) {
-                break;
-            }
-
-            llama_token next_token = token;
-            llama_batch next = llama_batch_get_one(&next_token, 1);
-            if (llama_decode(session->context, next) != 0) {
-                llama_sampler_free(sampler);
-                llama_memory_clear(llama_get_memory(session->context), true);
-                return make_infer_packet(env, INFER_OPERATION_FAILED);
-            }
-        }
-
-        llama_sampler_free(sampler);
-        llama_memory_clear(llama_get_memory(session->context), true);
-        return make_infer_packet(env, INFER_OK, output);
     } catch (...) {
-        llama_memory_clear(llama_get_memory(session->context), true);
         return make_infer_packet(env, INFER_PROVIDER_FAILED);
     }
 }
