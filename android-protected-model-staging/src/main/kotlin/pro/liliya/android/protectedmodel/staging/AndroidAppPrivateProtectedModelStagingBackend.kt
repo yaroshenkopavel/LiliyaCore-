@@ -8,6 +8,9 @@ import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.StandardCopyOption
 import java.security.SecureRandom
+import pro.liliya.core.modelengine.ModelEngineLoadFailure
+import pro.liliya.core.modelengine.ModelEngineLoadResult
+import pro.liliya.core.protectedmodel.LargeProtectedModelEngineSourceCapability
 import pro.liliya.core.protectedmodel.LargeProtectedModelOpaqueArtifactId
 import pro.liliya.core.protectedmodel.LargeProtectedModelSealedArtifactCandidate
 import pro.liliya.core.protectedmodel.LargeProtectedModelStagingAppendBackendResult
@@ -29,6 +32,18 @@ data class AndroidProtectedModelStagingPolicy(
             "free-space reserve must not be negative"
         }
     }
+}
+
+/**
+ * Purpose-specific Android-only engine handoff. The physical File never crosses into Core and
+ * is supplied only after the exact active Core capability has been revalidated by the staging
+ * backend that owns the sealed artifact.
+ */
+fun interface AndroidProtectedModelPhysicalEngineLoaderPort {
+    fun load(
+        source: File,
+        capability: LargeProtectedModelEngineSourceCapability
+    ): ModelEngineLoadResult
 }
 
 /**
@@ -271,6 +286,30 @@ class AndroidAppPrivateProtectedModelStagingBackend private constructor(
         }
     }
 
+    /**
+     * Resolves one active Core engine-source capability against this exact backend instance and
+     * invokes the dedicated physical engine loader outside the backend lock. The File is never
+     * returned as a generic lookup result.
+     */
+    fun loadEngineSource(
+        capability: LargeProtectedModelEngineSourceCapability,
+        loader: AndroidProtectedModelPhysicalEngineLoaderPort
+    ): ModelEngineLoadResult {
+        val source = try {
+            synchronized(lock) {
+                validatedSealedEngineFile(capability)
+            }
+        } catch (_: Throwable) {
+            return ModelEngineLoadResult.Rejected(ModelEngineLoadFailure.PROVIDER_FAILED)
+        } ?: return ModelEngineLoadResult.Rejected(ModelEngineLoadFailure.LOAD_REJECTED)
+
+        return try {
+            loader.load(source, capability)
+        } catch (_: Throwable) {
+            ModelEngineLoadResult.Rejected(ModelEngineLoadFailure.PROVIDER_FAILED)
+        }
+    }
+
     override fun delete(
         artifactId: LargeProtectedModelOpaqueArtifactId
     ): LargeProtectedModelStagingDeleteResult = synchronized(lock) {
@@ -319,6 +358,39 @@ class AndroidAppPrivateProtectedModelStagingBackend private constructor(
     }
 
     internal fun adapterRootForTesting(): File = adapterRoot.toFile()
+
+    private fun validatedSealedEngineFile(
+        capability: LargeProtectedModelEngineSourceCapability
+    ): File? {
+        if (capability.backendId != backendId) return null
+        val record = records[capability.sourceId] ?: return null
+        if (
+            record.state != PhysicalState.SEALED ||
+            record.handle.attempt.model != capability.model ||
+            record.handle.attempt.generation != capability.stagingGeneration ||
+            record.appendedBytes != capability.plaintextBytes
+        ) {
+            return null
+        }
+
+        ensurePrivateRoots()
+        val path = record.path.toPath().toAbsolutePath().normalize()
+        if (
+            path.parent != sealedRoot ||
+            !path.startsWith(adapterRoot) ||
+            !Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS) ||
+            Files.size(path) != capability.plaintextBytes
+        ) {
+            return null
+        }
+
+        val realSealedRoot = sealedRoot.toRealPath()
+        val realPath = path.toRealPath(LinkOption.NOFOLLOW_LINKS)
+        if (realPath.parent != realSealedRoot || !realPath.startsWith(realSealedRoot)) {
+            return null
+        }
+        return realPath.toFile()
+    }
 
     private fun cleanupOwnedReservationAfterMoveFailure(
         source: java.nio.file.Path,
