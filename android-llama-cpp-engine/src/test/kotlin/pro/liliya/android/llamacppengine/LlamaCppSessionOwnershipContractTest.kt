@@ -27,11 +27,39 @@ class LlamaCppSessionOwnershipContractTest {
         assertFailsPolicy(batch = 0)
         assertFailsPolicy(microBatch = 0)
         assertFailsPolicy(threads = 0)
+        assertFailsPolicy(promptChars = 0)
+        assertFailsPolicy(promptBytes = 0)
+        assertFailsPolicy(outputChars = 0)
+        assertFailsPolicy(outputBytes = 0)
         assertFailsPolicy(context = 8, prompt = 9)
         assertFailsPolicy(context = 8, generated = 9)
         assertFailsPolicy(context = 8, prompt = 5, generated = 4)
         assertFailsPolicy(context = 8, batch = 9)
         assertFailsPolicy(context = 8, batch = 4, microBatch = 5)
+        assertFailsPolicy(promptChars = 2, promptBytes = 9)
+        assertFailsPolicy(outputChars = 2, outputBytes = 9)
+    }
+
+    @Test
+    fun representation_budgets_reject_before_native_infer() {
+        val native = FakeNativePort()
+        val session = session(native)
+
+        val promptChars = assertIs<ModelEngineInferenceResult.Rejected>(
+            session.infer(ModelEngineInferenceRequest("123456789", maxOutputChars = 4))
+        )
+        assertEquals(ModelEngineInferenceFailure.RESOURCE_LIMIT_REJECTED, promptChars.reason)
+
+        val promptBytes = assertIs<ModelEngineInferenceResult.Rejected>(
+            session.infer(ModelEngineInferenceRequest("яяяяя", maxOutputChars = 4))
+        )
+        assertEquals(ModelEngineInferenceFailure.RESOURCE_LIMIT_REJECTED, promptBytes.reason)
+
+        val outputChars = assertIs<ModelEngineInferenceResult.Rejected>(
+            session.infer(ModelEngineInferenceRequest("ok", maxOutputChars = 9))
+        )
+        assertEquals(ModelEngineInferenceFailure.RESOURCE_LIMIT_REJECTED, outputChars.reason)
+        assertEquals(0, native.inferCalls.get())
     }
 
     @Test
@@ -42,7 +70,7 @@ class LlamaCppSessionOwnershipContractTest {
         val session = session(native)
 
         val inferred = assertIs<ModelEngineInferenceResult.Succeeded>(
-            session.infer(ModelEngineInferenceRequest("private prompt", maxOutputChars = 4))
+            session.infer(ModelEngineInferenceRequest("private", maxOutputChars = 4))
         )
         assertEquals("abcd", inferred.output)
         assertEquals(1, native.inferCalls.get())
@@ -52,7 +80,7 @@ class LlamaCppSessionOwnershipContractTest {
         assertEquals(1, native.closeCalls.get())
 
         val afterClose = assertIs<ModelEngineInferenceResult.Rejected>(
-            session.infer(ModelEngineInferenceRequest("another private prompt", maxOutputChars = 4))
+            session.infer(ModelEngineInferenceRequest("another", maxOutputChars = 4))
         )
         assertEquals(ModelEngineInferenceFailure.SESSION_FAILED, afterClose.reason)
         assertEquals(1, native.inferCalls.get())
@@ -74,7 +102,7 @@ class LlamaCppSessionOwnershipContractTest {
         assertEquals(ModelEngineCloseFailure.CLOSE_FAILED, first.reason)
 
         val rejected = assertIs<ModelEngineInferenceResult.Rejected>(
-            session.infer(ModelEngineInferenceRequest("private", maxOutputChars = 8))
+            session.infer(ModelEngineInferenceRequest("private", maxOutputChars = 4))
         )
         assertEquals(ModelEngineInferenceFailure.SESSION_FAILED, rejected.reason)
         assertEquals(0, native.inferCalls.get())
@@ -95,7 +123,7 @@ class LlamaCppSessionOwnershipContractTest {
         val session = session(native)
 
         val inferred = assertIs<ModelEngineInferenceResult.Rejected>(
-            session.infer(ModelEngineInferenceRequest("private prompt", maxOutputChars = 8))
+            session.infer(ModelEngineInferenceRequest("private", maxOutputChars = 4))
         )
         assertEquals(ModelEngineInferenceFailure.PROVIDER_FAILED, inferred.reason)
         assertFalse(inferred.toString().contains(privateMessage))
@@ -121,7 +149,7 @@ class LlamaCppSessionOwnershipContractTest {
         val executor = Executors.newFixedThreadPool(2)
         try {
             val inferFuture = executor.submit<ModelEngineInferenceResult> {
-                session.infer(ModelEngineInferenceRequest("private", maxOutputChars = 8))
+                session.infer(ModelEngineInferenceRequest("private", maxOutputChars = 4))
             }
             assertTrue(inferEntered.await(5, TimeUnit.SECONDS))
 
@@ -134,7 +162,7 @@ class LlamaCppSessionOwnershipContractTest {
             assertTrue(closeEntered.await(1, TimeUnit.SECONDS))
 
             val rejected = assertIs<ModelEngineInferenceResult.Rejected>(
-                session.infer(ModelEngineInferenceRequest("later", maxOutputChars = 8))
+                session.infer(ModelEngineInferenceRequest("later", maxOutputChars = 4))
             )
             assertEquals(ModelEngineInferenceFailure.SESSION_FAILED, rejected.reason)
             assertEquals(1, native.inferCalls.get())
@@ -149,8 +177,23 @@ class LlamaCppSessionOwnershipContractTest {
         LlamaCppSessionOwnership(
             handleId = ModelEngineHandleId("test-session-id"),
             nativeSessionId = 73L,
-            nativePort = native
+            nativePort = native,
+            policy = policy()
         )
+
+    private fun policy() = LlamaCppEnginePolicy(
+        contextTokens = 16,
+        maxPromptTokens = 8,
+        maxGeneratedTokens = 8,
+        batchTokens = 8,
+        microBatchTokens = 4,
+        threadCount = 2,
+        maxPromptChars = 8,
+        maxPromptUtf8Bytes = 8,
+        maxOutputChars = 8,
+        maxOutputUtf8Bytes = 16,
+        useMmap = true
+    )
 
     private fun assertFailsPolicy(
         context: Int = 16,
@@ -158,7 +201,11 @@ class LlamaCppSessionOwnershipContractTest {
         generated: Int = 8,
         batch: Int = 8,
         microBatch: Int = 4,
-        threads: Int = 2
+        threads: Int = 2,
+        promptChars: Int = 8,
+        promptBytes: Int = 8,
+        outputChars: Int = 8,
+        outputBytes: Int = 16
     ) {
         var failed = false
         try {
@@ -169,6 +216,10 @@ class LlamaCppSessionOwnershipContractTest {
                 batchTokens = batch,
                 microBatchTokens = microBatch,
                 threadCount = threads,
+                maxPromptChars = promptChars,
+                maxPromptUtf8Bytes = promptBytes,
+                maxOutputChars = outputChars,
+                maxOutputUtf8Bytes = outputBytes,
                 useMmap = true
             )
         } catch (_: IllegalArgumentException) {
@@ -196,7 +247,7 @@ class LlamaCppSessionOwnershipContractTest {
 
         override fun infer(
             nativeSessionId: Long,
-            prompt: String,
+            promptUtf8: ByteArray,
             maxOutputChars: Int
         ): LlamaCppNativeInferenceResult {
             inferCalls.incrementAndGet()
