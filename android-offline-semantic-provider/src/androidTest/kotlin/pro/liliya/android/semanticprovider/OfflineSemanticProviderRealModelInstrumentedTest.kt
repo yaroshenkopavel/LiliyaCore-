@@ -14,6 +14,22 @@ import org.junit.runner.RunWith
 class OfflineSemanticProviderRealModelInstrumentedTest {
 
     @Test
+    fun pinned_multilingual_e5_q8_loads_and_closes_without_embedding() {
+        withFixture { fixture, root ->
+            val validated = assertIs<SemanticModelArtifactValidationResult.Validated>(
+                SemanticModelArtifactValidator(root).validate(fixture, fixtureSpec())
+            ).artifact
+
+            val session = assertIs<SemanticEmbeddingSessionLoadResult.Loaded>(
+                SemanticEmbeddingSessionLoader(testPolicy()).load(validated)
+            ).session
+
+            assertIs<SemanticEmbeddingCloseResult.Closed>(session.close())
+            assertIs<SemanticEmbeddingCloseResult.StaleOrAlreadyClosed>(session.close())
+        }
+    }
+
+    @Test
     fun pinned_multilingual_e5_q8_runs_through_validator_native_session_and_close() {
         withFixture { fixture, root ->
             val validator = SemanticModelArtifactValidator(root)
