@@ -18,10 +18,12 @@ sealed interface ProtectedModelPolicyDecision {
     data class Failed(
         val reason: ProtectedModelPolicyFailure,
         val throwable: Throwable? = null
-    ) : ProtectedModelPolicyDecision {
+    ) : ProtectedModelPolicyDecision.FailedMarker {
         override fun toString(): String =
             "Failed(reason=$reason, throwable=${throwable?.javaClass?.name ?: "null"})"
     }
+
+    private interface FailedMarker : ProtectedModelPolicyDecision
 }
 
 enum class ProtectedModelPolicyFailure {
@@ -65,6 +67,54 @@ sealed interface ProtectedModelAccessResult<out T> {
         val reason: ProtectedModelAccessFailure,
         val throwable: Throwable? = null
     ) : ProtectedModelAccessResult<Nothing> {
+        override fun toString(): String =
+            "Failed(reason=$reason, throwable=${throwable?.javaClass?.name ?: "null"})"
+    }
+}
+
+/**
+ * Exact process-local authorization for final protected-model runtime publication.
+ *
+ * Construction is restricted to the access coordinator. The ticket binds this capability to the exact
+ * ownership epoch that was current when a fresh policy decision was accepted. Structural reference
+ * equality alone is therefore insufficient to reuse authorization after replacement/retirement.
+ */
+internal class ProtectedModelPublicationAuthorization internal constructor(
+    internal val ticket: ProtectedModelOpenTicket
+) {
+    val reference: ProtectedModelReference = ticket.reference
+
+    override fun toString(): String =
+        "ProtectedModelPublicationAuthorization(reference=$reference, epoch=<redacted>)"
+}
+
+internal sealed interface ProtectedModelAuthorizationResult {
+    data class Authorized(
+        val authorization: ProtectedModelPublicationAuthorization
+    ) : ProtectedModelAuthorizationResult
+
+    data class Rejected(
+        val reason: ProtectedModelAccessFailure
+    ) : ProtectedModelAuthorizationResult
+
+    data class Failed(
+        val reason: ProtectedModelAccessFailure,
+        val throwable: Throwable? = null
+    ) : ProtectedModelAuthorizationResult {
+        override fun toString(): String =
+            "Failed(reason=$reason, throwable=${throwable?.javaClass?.name ?: "null"})"
+    }
+}
+
+internal sealed interface ProtectedModelAuthorizedPublicationResult {
+    data object Published : ProtectedModelAuthorizedPublicationResult
+
+    data object Stale : ProtectedModelAuthorizedPublicationResult
+
+    data class Failed(
+        val reason: ProtectedModelAccessFailure,
+        val throwable: Throwable? = null
+    ) : ProtectedModelAuthorizedPublicationResult {
         override fun toString(): String =
             "Failed(reason=$reason, throwable=${throwable?.javaClass?.name ?: "null"})"
     }
@@ -154,6 +204,80 @@ class ProtectedModelAccessCoordinator(
     private val ownership: ProtectedModelRuntimeOwnership,
     private val loader: ProtectedModelPayloadLoader
 ) {
+    /**
+     * Authorizes later publication for an already-authenticated/staged exact model reference without
+     * reopening/decrypting the payload. The returned capability is process-local and epoch-bound.
+     * Expensive staged/native work is expected to run after this call and outside ownership monitors.
+     */
+    internal fun authorizeExistingReference(
+        reference: ProtectedModelReference
+    ): ProtectedModelAuthorizationResult {
+        val ticket = ownership.ticketFor(reference)
+            ?: return if (ownership.currentReference() == null) {
+                ProtectedModelAuthorizationResult.Rejected(
+                    ProtectedModelAccessFailure.NO_ACTIVE_TARGET
+                )
+            } else {
+                ProtectedModelAuthorizationResult.Rejected(
+                    ProtectedModelAccessFailure.TARGET_MISMATCH
+                )
+            }
+
+        val decision = try {
+            policy.decide(reference)
+        } catch (throwable: Throwable) {
+            return ProtectedModelAuthorizationResult.Failed(
+                ProtectedModelAccessFailure.PROVIDER_FAILED,
+                throwable
+            )
+        }
+        when (decision) {
+            ProtectedModelPolicyDecision.Allowed -> Unit
+            is ProtectedModelPolicyDecision.Rejected ->
+                return ProtectedModelAuthorizationResult.Rejected(
+                    ProtectedModelAccessFailure.POLICY_REJECTED
+                )
+            is ProtectedModelPolicyDecision.Failed ->
+                return ProtectedModelAuthorizationResult.Failed(
+                    ProtectedModelAccessFailure.POLICY_FAILED,
+                    decision.throwable
+                )
+        }
+
+        if (!ownership.isCurrent(ticket)) {
+            return ProtectedModelAuthorizationResult.Rejected(
+                ProtectedModelAccessFailure.STALE_OWNERSHIP
+            )
+        }
+
+        return ProtectedModelAuthorizationResult.Authorized(
+            ProtectedModelPublicationAuthorization(ticket)
+        )
+    }
+
+    /**
+     * Commits later publication only if the exact epoch authorized above is still current.
+     * The callback runs behind the same final publication barrier as openAndPublish.
+     */
+    internal fun publishAuthorized(
+        authorization: ProtectedModelPublicationAuthorization,
+        publish: (ProtectedModelReference) -> Unit
+    ): ProtectedModelAuthorizedPublicationResult = try {
+        if (!ownership.publishIfCurrent(authorization.ticket) {
+                publish(authorization.reference)
+            }
+        ) {
+            ProtectedModelAuthorizedPublicationResult.Stale
+        } else {
+            ProtectedModelAuthorizedPublicationResult.Published
+        }
+    } catch (throwable: Throwable) {
+        ProtectedModelAuthorizedPublicationResult.Failed(
+            ProtectedModelAccessFailure.PUBLISH_FAILED,
+            throwable
+        )
+    }
+
     fun <T> openAndPublish(
         envelope: ProtectedModelPackageEnvelope,
         ciphertext: ByteArray,
