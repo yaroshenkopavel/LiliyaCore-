@@ -30,7 +30,7 @@ internal interface LlamaCppNativeSessionPort {
 
     fun infer(
         nativeSessionId: Long,
-        prompt: String,
+        promptUtf8: ByteArray,
         maxOutputChars: Int
     ): LlamaCppNativeInferenceResult
 
@@ -84,7 +84,8 @@ class AndroidLlamaCppPhysicalEngineLoader internal constructor(
                         LlamaCppSessionOwnership(
                             handleId = publicHandleId,
                             nativeSessionId = nativeResult.nativeSessionId,
-                            nativePort = nativePort
+                            nativePort = nativePort,
+                            policy = policy
                         )
                     )
                 }
@@ -122,6 +123,8 @@ private object JniLlamaCppNativeSessionPort : LlamaCppNativeSessionPort {
             batchTokens = policy.batchTokens,
             microBatchTokens = policy.microBatchTokens,
             threadCount = policy.threadCount,
+            maxPromptUtf8Bytes = policy.maxPromptUtf8Bytes,
+            maxOutputUtf8Bytes = policy.maxOutputUtf8Bytes,
             useMmap = policy.useMmap
         )
         return when {
@@ -138,12 +141,12 @@ private object JniLlamaCppNativeSessionPort : LlamaCppNativeSessionPort {
 
     override fun infer(
         nativeSessionId: Long,
-        prompt: String,
+        promptUtf8: ByteArray,
         maxOutputChars: Int
     ): LlamaCppNativeInferenceResult {
         val packet = LlamaCppNativeBridge.nativeInfer(
             nativeSessionId = nativeSessionId,
-            promptUtf8 = prompt.toByteArray(Charsets.UTF_8),
+            promptUtf8 = promptUtf8,
             maxOutputChars = maxOutputChars
         )
         if (packet.isEmpty()) {
