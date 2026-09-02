@@ -181,7 +181,7 @@ jobs:
   android-llama-cpp-arm64-build:
     name: Android llama.cpp arm64 Build
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 50
     needs: core-test
 
     steps:
@@ -205,6 +205,12 @@ jobs:
       - name: Install Android API 35, NDK and CMake
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools" "ndk;29.0.13113456" "cmake;3.31.6"
 
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
       - name: Run llama.cpp engine ownership contracts
         run: gradle :android-llama-cpp-engine:testDebugUnitTest --console=plain
 
@@ -226,3 +232,12 @@ jobs:
 
       - name: Build pinned llama.cpp JNI for arm64
         run: gradle :android-llama-cpp-engine:assembleRelease --console=plain
+
+      - name: Run arm64 real-model instrumentation through API 35 translation
+        uses: ReactiveCircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          script: gradle :android-llama-cpp-engine:connectedDebugAndroidTest --console=plain
