@@ -67,7 +67,7 @@ class SemanticFlatIndexContractTest {
     }
 
     @Test
-    fun exact_replace_requires_same_entity_and_exact_expected_generation() {
+    fun exact_replace_requires_same_entity_exact_expected_and_forward_generation() {
         val index = SemanticFlatIndex(SemanticProfileGeneration(1))
         val v1 = SemanticEmbeddingVector(basis(0))
         val v2 = SemanticEmbeddingVector(basis(1))
@@ -79,6 +79,12 @@ class SemanticFlatIndexContractTest {
         assertIs<SemanticIndexReplaceResult.StaleExpected>(index.replaceExact(old, future, v2))
         assertIs<SemanticIndexReplaceResult.IdentityMismatch>(
             index.replaceExact(current, memory("other", 3), v2)
+        )
+        assertIs<SemanticIndexReplaceResult.NonForwardGeneration>(
+            index.replaceExact(current, old, v2)
+        )
+        assertIs<SemanticIndexReplaceResult.NonForwardGeneration>(
+            index.replaceExact(current, current, v2)
         )
         assertIs<SemanticIndexReplaceResult.Replaced>(index.replaceExact(current, future, v2))
         assertEquals(listOf(future), index.rank(SemanticIndexDomain.MEMORY, v2, 1).map { it.source })
