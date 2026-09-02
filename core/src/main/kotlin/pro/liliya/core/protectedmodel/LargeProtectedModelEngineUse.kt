@@ -7,16 +7,19 @@ package pro.liliya.core.protectedmodel
  */
 class LargeProtectedModelEngineSourceCapability internal constructor(
     val backendId: LargeProtectedModelStagingBackendId,
-    val sourceId: LargeProtectedModelOpaqueArtifactId,
     val model: ProtectedModelReference,
     val stagingGeneration: LargeProtectedModelStagingGeneration,
     val plaintextBytes: Long,
     val profile: LargeProtectedModelPayloadProfile,
     val durabilityLevel: LargeProtectedModelStagingDurabilityLevel,
-    internal val sourceIdentity: LargeProtectedModelStagedSource
+    internal val sourceIdentity: LargeProtectedModelStagedSource,
+    val sourceId: LargeProtectedModelOpaqueArtifactId = sourceIdentity.sourceId
 ) {
     init {
         require(plaintextBytes > 0L) { "engine source plaintext bytes must be positive" }
+        require(sourceId === sourceIdentity.sourceId || sourceId == sourceIdentity.sourceId) {
+            "engine source identity mismatch"
+        }
     }
 
     override fun toString(): String =
