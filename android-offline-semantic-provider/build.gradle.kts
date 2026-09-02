@@ -5,9 +5,27 @@ plugins {
 android {
     namespace = "pro.liliya.android.semanticprovider"
     compileSdk = 35
+    ndkVersion = "29.0.13113456"
 
     defaultConfig {
         minSdk = 29
+
+        ndk {
+            abiFilters += listOf("arm64-v8a")
+        }
+
+        externalNativeBuild {
+            cmake {
+                cppFlags += listOf("-std=c++17")
+            }
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.31.6"
+        }
     }
 
     compileOptions {
