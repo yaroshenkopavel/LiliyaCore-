@@ -217,7 +217,11 @@ Java_pro_liliya_android_llamacppengine_LlamaCppNativeBridge_nativeLinkProbe(
     JNIEnv *,
     jobject
 ) {
-    return llama_max_devices() > 0 ? LINK_PROBE_OK : LINK_PROBE_FAILED;
+    try {
+        return llama_max_devices() > 0 ? LINK_PROBE_OK : LINK_PROBE_FAILED;
+    } catch (...) {
+        return LINK_PROBE_FAILED;
+    }
 }
 
 extern "C"
@@ -277,22 +281,24 @@ Java_pro_liliya_android_llamacppengine_LlamaCppNativeBridge_nativeLoad(
             : LLAMA_LOAD_MODE_NONE;
         model_params.check_tensors = true;
 
-        llama_model * model = llama_model_load_from_file(
+        llama_model * raw_model = llama_model_load_from_file(
             reinterpret_cast<const char *>(path_bytes.data()),
             model_params
         );
-        if (model == nullptr) {
+        if (raw_model == nullptr) {
             return LOAD_REJECTED;
         }
+        std::unique_ptr<llama_model, decltype(&llama_model_free)> model(
+            raw_model,
+            llama_model_free
+        );
 
-        if (llama_model_has_encoder(model)) {
-            llama_model_free(model);
+        if (llama_model_has_encoder(model.get())) {
             return LOAD_UNSUPPORTED;
         }
 
-        const llama_vocab * vocab = llama_model_get_vocab(model);
+        const llama_vocab * vocab = llama_model_get_vocab(model.get());
         if (vocab == nullptr) {
-            llama_model_free(model);
             return LOAD_UNSUPPORTED;
         }
 
@@ -302,16 +308,19 @@ Java_pro_liliya_android_llamacppengine_LlamaCppNativeBridge_nativeLoad(
         context_params.n_ubatch = static_cast<uint32_t>(micro_batch_tokens);
         context_params.no_perf = true;
 
-        llama_context * context = llama_init_from_model(model, context_params);
-        if (context == nullptr) {
-            llama_model_free(model);
+        llama_context * raw_context = llama_init_from_model(model.get(), context_params);
+        if (raw_context == nullptr) {
             return LOAD_REJECTED;
         }
-        llama_set_n_threads(context, thread_count, thread_count);
+        std::unique_ptr<llama_context, decltype(&llama_free)> context(
+            raw_context,
+            llama_free
+        );
+        llama_set_n_threads(context.get(), thread_count, thread_count);
 
         auto session = std::make_unique<NativeSession>();
-        session->model = model;
-        session->context = context;
+        session->model = model.release();
+        session->context = context.release();
         session->vocab = vocab;
         session->max_prompt_tokens = max_prompt_tokens;
         session->max_generated_tokens = max_generated_tokens;
@@ -430,7 +439,10 @@ Java_pro_liliya_android_llamacppengine_LlamaCppNativeBridge_nativeInfer(
                 offset += chunk;
             }
 
-            llama_sampler * sampler = llama_sampler_init_greedy();
+            std::unique_ptr<llama_sampler, decltype(&llama_sampler_free)> sampler(
+                llama_sampler_init_greedy(),
+                llama_sampler_free
+            );
             if (sampler == nullptr) {
                 llama_memory_clear(llama_get_memory(session->context), true);
                 return make_infer_packet(env, INFER_PROVIDER_FAILED);
@@ -443,7 +455,7 @@ Java_pro_liliya_android_llamacppengine_LlamaCppNativeBridge_nativeInfer(
                 static_cast<size_t>(session->max_output_utf8_bytes)
             );
             for (int32_t generated = 0; generated < session->max_generated_tokens; ++generated) {
-                const llama_token token = llama_sampler_sample(sampler, session->context, -1);
+                const llama_token token = llama_sampler_sample(sampler.get(), session->context, -1);
                 if (llama_vocab_is_eog(session->vocab, token)) {
                     break;
                 }
@@ -460,7 +472,6 @@ Java_pro_liliya_android_llamacppengine_LlamaCppNativeBridge_nativeInfer(
                     break;
                 }
                 if (piece_result == PieceResult::FAILED) {
-                    llama_sampler_free(sampler);
                     llama_memory_clear(llama_get_memory(session->context), true);
                     return make_infer_packet(env, INFER_OPERATION_FAILED);
                 }
@@ -472,13 +483,11 @@ Java_pro_liliya_android_llamacppengine_LlamaCppNativeBridge_nativeInfer(
                 llama_token next_token = token;
                 llama_batch next = llama_batch_get_one(&next_token, 1);
                 if (llama_decode(session->context, next) != 0) {
-                    llama_sampler_free(sampler);
                     llama_memory_clear(llama_get_memory(session->context), true);
                     return make_infer_packet(env, INFER_OPERATION_FAILED);
                 }
             }
 
-            llama_sampler_free(sampler);
             llama_memory_clear(llama_get_memory(session->context), true);
             return make_infer_packet(env, INFER_OK, output);
         } catch (...) {
@@ -526,13 +535,17 @@ Java_pro_liliya_android_llamacppengine_LlamaCppNativeBridge_nativeClose(
 extern "C"
 JNIEXPORT void JNICALL
 JNI_OnUnload(JavaVM *, void *) {
-    std::unordered_map<int64_t, std::unique_ptr<NativeSession>> retired;
-    {
-        std::lock_guard<std::mutex> registry_guard(g_registry_mutex);
-        retired.swap(g_sessions);
-    }
-    retired.clear();
-    if (g_backend_initialized.exchange(false, std::memory_order_acq_rel)) {
-        llama_backend_free();
+    try {
+        std::unordered_map<int64_t, std::unique_ptr<NativeSession>> retired;
+        {
+            std::lock_guard<std::mutex> registry_guard(g_registry_mutex);
+            retired.swap(g_sessions);
+        }
+        retired.clear();
+        if (g_backend_initialized.exchange(false, std::memory_order_acq_rel)) {
+            llama_backend_free();
+        }
+    } catch (...) {
+        // JNI unload cannot report a structural result; never allow a C++ exception to escape.
     }
 }
