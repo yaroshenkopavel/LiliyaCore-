@@ -7,12 +7,12 @@ internal object LlamaCppNativeBridge {
     const val LOAD_REJECTED = -3L
     const val LOAD_PROVIDER_FAILED = -4L
 
-    const val INFER_OK = "ok"
-    const val INFER_RESOURCE_REJECTED = "resource_rejected"
-    const val INFER_REQUEST_REJECTED = "request_rejected"
-    const val INFER_STALE_SESSION = "stale_session"
-    const val INFER_OPERATION_FAILED = "operation_failed"
-    const val INFER_PROVIDER_FAILED = "provider_failed"
+    const val INFER_OK: Byte = 0
+    const val INFER_RESOURCE_REJECTED: Byte = 1
+    const val INFER_REQUEST_REJECTED: Byte = 2
+    const val INFER_STALE_SESSION: Byte = 3
+    const val INFER_OPERATION_FAILED: Byte = 4
+    const val INFER_PROVIDER_FAILED: Byte = 5
 
     const val CLOSE_OK = 0
     const val CLOSE_FAILED = 1
@@ -25,7 +25,7 @@ internal object LlamaCppNativeBridge {
     external fun nativeLinkProbe(): Int
 
     external fun nativeLoad(
-        sourcePath: String,
+        sourcePathUtf8: ByteArray,
         contextTokens: Int,
         maxPromptTokens: Int,
         maxGeneratedTokens: Int,
@@ -35,12 +35,12 @@ internal object LlamaCppNativeBridge {
         useMmap: Boolean
     ): Long
 
-    /** Returns [structural-status, private-output-or-null]. */
+    /** First byte is a structural status; remaining bytes are private UTF-8 output on success. */
     external fun nativeInfer(
         nativeSessionId: Long,
-        prompt: String,
+        promptUtf8: ByteArray,
         maxOutputChars: Int
-    ): Array<String?>
+    ): ByteArray
 
     external fun nativeClose(nativeSessionId: Long): Int
 }
