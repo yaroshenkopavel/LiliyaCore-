@@ -10,19 +10,36 @@ import pro.liliya.core.memory.MemoryRecordSnapshot
  * advisory candidate set from being materialized into authoritative Cognitive context.
  */
 enum class CognitiveRelevanceRetrievalFailure {
+    MEMORY_CANDIDATE_BOUND_INSUFFICIENT,
+    KNOWLEDGE_CANDIDATE_BOUND_INSUFFICIENT,
+    MEMORY_DISCOVERY_PROVIDER_FAILED,
+    KNOWLEDGE_DISCOVERY_PROVIDER_FAILED,
     MEMORY_CANDIDATE_LIMIT_EXCEEDED,
     KNOWLEDGE_CANDIDATE_LIMIT_EXCEEDED,
     MEMORY_DUPLICATE_ENTITY_CANDIDATE,
     KNOWLEDGE_DUPLICATE_ENTITY_CANDIDATE,
+    MEMORY_RESOLVER_PROVIDER_FAILED,
+    KNOWLEDGE_RESOLVER_PROVIDER_FAILED,
     MEMORY_RESOLVER_CONTRACT_VIOLATION,
     KNOWLEDGE_RESOLVER_CONTRACT_VIOLATION
 }
 
 class CognitiveRelevanceRetrievalException(
-    val failure: CognitiveRelevanceRetrievalFailure
+    val failure: CognitiveRelevanceRetrievalFailure,
+    private val providerExceptionType: String? = null
 ) : IllegalStateException(failure.name) {
     override fun toString(): String =
-        "CognitiveRelevanceRetrievalException(failure=$failure)"
+        "CognitiveRelevanceRetrievalException(failure=$failure, providerExceptionType=${providerExceptionType ?: "null"})"
+
+    companion object {
+        internal fun providerFailure(
+            failure: CognitiveRelevanceRetrievalFailure,
+            throwable: Exception
+        ): CognitiveRelevanceRetrievalException = CognitiveRelevanceRetrievalException(
+            failure = failure,
+            providerExceptionType = throwable.javaClass.name
+        )
+    }
 }
 
 /**
@@ -37,19 +54,40 @@ class RelevanceMemoryRetrievalPort(
     private val limits: CognitiveRelevanceRetrievalLimits
 ) : MemoryRetrievalPort {
     override fun retrieve(request: MemoryRetrievalRequest): MemoryRetrievalResult {
-        val candidates = discovery.discover(
-            MemoryRelevanceDiscoveryRequest(
-                turn = request.turn,
-                input = request.input,
-                maxCandidates = limits.maxCandidatesPerSource
+        if (limits.maxCandidatesPerSource < request.maxResults) {
+            throw CognitiveRelevanceRetrievalException(
+                CognitiveRelevanceRetrievalFailure.MEMORY_CANDIDATE_BOUND_INSUFFICIENT
             )
-        ).candidates
+        }
+
+        val candidates = try {
+            discovery.discover(
+                MemoryRelevanceDiscoveryRequest(
+                    turn = request.turn,
+                    input = request.input,
+                    maxCandidates = limits.maxCandidatesPerSource
+                )
+            ).candidates
+        } catch (throwable: Exception) {
+            throw CognitiveRelevanceRetrievalException.providerFailure(
+                CognitiveRelevanceRetrievalFailure.MEMORY_DISCOVERY_PROVIDER_FAILED,
+                throwable
+            )
+        }
 
         validateMemoryCandidates(candidates)
 
         val resolved = ArrayList<MemoryRecordSnapshot>(minOf(request.maxResults, candidates.size))
         for (candidate in candidates) {
-            when (val result = resolver.resolveExact(candidate)) {
+            val result = try {
+                resolver.resolveExact(candidate)
+            } catch (throwable: Exception) {
+                throw CognitiveRelevanceRetrievalException.providerFailure(
+                    CognitiveRelevanceRetrievalFailure.MEMORY_RESOLVER_PROVIDER_FAILED,
+                    throwable
+                )
+            }
+            when (result) {
                 is MemoryAuthoritativeResolutionResult.Resolved -> {
                     val snapshot = result.snapshot
                     if (
@@ -101,19 +139,40 @@ class RelevanceKnowledgeRetrievalPort(
     private val limits: CognitiveRelevanceRetrievalLimits
 ) : KnowledgeRetrievalPort {
     override fun retrieve(request: KnowledgeRetrievalRequest): KnowledgeRetrievalResult {
-        val candidates = discovery.discover(
-            KnowledgeRelevanceDiscoveryRequest(
-                turn = request.turn,
-                input = request.input,
-                maxCandidates = limits.maxCandidatesPerSource
+        if (limits.maxCandidatesPerSource < request.maxResults) {
+            throw CognitiveRelevanceRetrievalException(
+                CognitiveRelevanceRetrievalFailure.KNOWLEDGE_CANDIDATE_BOUND_INSUFFICIENT
             )
-        ).candidates
+        }
+
+        val candidates = try {
+            discovery.discover(
+                KnowledgeRelevanceDiscoveryRequest(
+                    turn = request.turn,
+                    input = request.input,
+                    maxCandidates = limits.maxCandidatesPerSource
+                )
+            ).candidates
+        } catch (throwable: Exception) {
+            throw CognitiveRelevanceRetrievalException.providerFailure(
+                CognitiveRelevanceRetrievalFailure.KNOWLEDGE_DISCOVERY_PROVIDER_FAILED,
+                throwable
+            )
+        }
 
         validateKnowledgeCandidates(candidates)
 
         val resolved = ArrayList<KnowledgeItemSnapshot>(minOf(request.maxResults, candidates.size))
         for (candidate in candidates) {
-            when (val result = resolver.resolveExact(candidate)) {
+            val result = try {
+                resolver.resolveExact(candidate)
+            } catch (throwable: Exception) {
+                throw CognitiveRelevanceRetrievalException.providerFailure(
+                    CognitiveRelevanceRetrievalFailure.KNOWLEDGE_RESOLVER_PROVIDER_FAILED,
+                    throwable
+                )
+            }
+            when (result) {
                 is KnowledgeAuthoritativeResolutionResult.Resolved -> {
                     val snapshot = result.snapshot
                     if (
