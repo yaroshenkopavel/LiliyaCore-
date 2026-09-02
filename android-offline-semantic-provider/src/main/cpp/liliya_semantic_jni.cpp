@@ -325,20 +325,45 @@ Java_pro_liliya_android_semanticprovider_SemanticNativeBridge_nativeEmbed(
         if (actual != token_count) return make_status_packet(env, EMBED_OPERATION_FAILED);
 
         llama_memory_clear(llama_get_memory(session->context), true);
-        llama_batch batch = llama_batch_get_one(tokens.data(), token_count);
+
+        llama_batch batch = llama_batch_init(token_count, 0, 1);
+        if (
+            batch.token == nullptr || batch.pos == nullptr || batch.n_seq_id == nullptr ||
+            batch.seq_id == nullptr || batch.logits == nullptr
+        ) {
+            llama_batch_free(batch);
+            return make_status_packet(env, EMBED_PROVIDER_FAILED);
+        }
+        batch.n_tokens = token_count;
+        for (int32_t index = 0; index < token_count; ++index) {
+            batch.token[index] = tokens[static_cast<size_t>(index)];
+            batch.pos[index] = index;
+            batch.n_seq_id[index] = 1;
+            batch.seq_id[index][0] = 0;
+            batch.logits[index] = 1;
+        }
+
         const int32_t decode_result = llama_decode(session->context, batch);
-        if (decode_result != 0) return make_status_packet(env, EMBED_OPERATION_FAILED);
+        if (decode_result != 0) {
+            llama_batch_free(batch);
+            return make_status_packet(env, EMBED_OPERATION_FAILED);
+        }
 
         const float * raw_embedding = llama_get_embeddings_seq(session->context, 0);
-        if (raw_embedding == nullptr) return make_status_packet(env, EMBED_OPERATION_FAILED);
+        if (raw_embedding == nullptr) {
+            llama_batch_free(batch);
+            return make_status_packet(env, EMBED_OPERATION_FAILED);
+        }
 
         float normalized[EMBEDDING_DIMENSION];
         if (!normalize_embedding(raw_embedding, normalized)) {
             std::fill(std::begin(normalized), std::end(normalized), 0.0f);
+            llama_batch_free(batch);
             return make_status_packet(env, EMBED_OPERATION_FAILED);
         }
         jbyteArray result = make_embedding_packet(env, normalized);
         std::fill(std::begin(normalized), std::end(normalized), 0.0f);
+        llama_batch_free(batch);
         return result;
     } catch (...) {
         return make_status_packet(env, EMBED_PROVIDER_FAILED);
