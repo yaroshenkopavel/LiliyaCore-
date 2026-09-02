@@ -92,6 +92,10 @@ class AndroidLlamaCppPhysicalEngineLoaderContractTest {
         batchTokens = 16,
         microBatchTokens = 8,
         threadCount = 2,
+        maxPromptChars = 128,
+        maxPromptUtf8Bytes = 256,
+        maxOutputChars = 64,
+        maxOutputUtf8Bytes = 256,
         useMmap = true
     )
 
@@ -118,7 +122,7 @@ class AndroidLlamaCppPhysicalEngineLoaderContractTest {
 
         override fun infer(
             nativeSessionId: Long,
-            prompt: String,
+            promptUtf8: ByteArray,
             maxOutputChars: Int
         ): LlamaCppNativeInferenceResult {
             lastInferSessionId = nativeSessionId
