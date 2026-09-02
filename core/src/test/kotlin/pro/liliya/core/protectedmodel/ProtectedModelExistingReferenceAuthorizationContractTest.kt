@@ -166,7 +166,11 @@ class ProtectedModelExistingReferenceAuthorizationContractTest {
         )
         assertEquals(ProtectedModelAccessFailure.PUBLISH_FAILED, publishFailure.reason)
         assertFalse(publishFailure.toString().contains("private-publication-secret"))
-        assertFalse(authorization.toString().contains(authorization.ticket.attemptId.value.toString()))
+        val renderedAuthorization = authorization.toString()
+        assertFalse(
+            renderedAuthorization.contains("epoch=${authorization.ticket.attemptId.value}")
+        )
+        assertTrue(renderedAuthorization.contains("epoch=<redacted>"))
     }
 
     private fun reference(generation: Long): ProtectedModelReference =
