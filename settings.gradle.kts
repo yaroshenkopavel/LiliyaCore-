@@ -10,3 +10,4 @@ rootProject.name = "LiliyaCore"
 
 include(":core")
 include(":android-device-key")
+include(":android-protected-model-staging")
