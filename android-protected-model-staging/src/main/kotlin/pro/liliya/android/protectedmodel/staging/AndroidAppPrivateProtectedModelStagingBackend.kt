@@ -3,6 +3,7 @@ package pro.liliya.android.protectedmodel.staging
 import android.content.Context
 import java.io.File
 import java.io.FileOutputStream
+import java.nio.file.FileAlreadyExistsException
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.StandardCopyOption
@@ -34,9 +35,9 @@ data class AndroidProtectedModelStagingPolicy(
  * Android app-private implementation of the frozen Core protected-model staging backend.
  *
  * Physical paths never cross this adapter boundary. A successful seal means the current
- * file was flushed, file-data sync succeeded, the stream closed, and a non-overwriting
- * same-root ATOMIC_MOVE succeeded. Directory metadata sync and power-loss durability are
- * deliberately not claimed.
+ * file was flushed, file-data sync succeeded, the stream closed, a fresh final name was
+ * exclusively reserved, and a same-root ATOMIC_MOVE succeeded over that adapter-owned
+ * reservation. Directory metadata sync and power-loss durability are deliberately not claimed.
  */
 class AndroidAppPrivateProtectedModelStagingBackend private constructor(
     context: Context,
@@ -214,7 +215,7 @@ class AndroidAppPrivateProtectedModelStagingBackend private constructor(
             return@synchronized LargeProtectedModelStagingSealResult.Rejected()
         }
 
-        return@synchronized try {
+        try {
             ensurePrivateRoots()
             val source = record.path.toPath().toAbsolutePath().normalize()
             if (
@@ -235,20 +236,35 @@ class AndroidAppPrivateProtectedModelStagingBackend private constructor(
                 stream.flush()
                 stream.fd.sync()
             }
-            Files.move(source, target, StandardCopyOption.ATOMIC_MOVE)
-            record.path = target.toFile()
-            record.state = PhysicalState.SEALED
-            LargeProtectedModelStagingSealResult.Sealed(
-                LargeProtectedModelSealedArtifactCandidate(
-                    backendId = backendId,
-                    attempt = handle.attempt,
-                    sourceId = handle.artifactId,
-                    plaintextBytes = record.appendedBytes,
-                    durabilityLevel = LargeProtectedModelStagingDurabilityLevel.ATOMIC_VISIBILITY_RENAMED
+
+            try {
+                Files.createFile(target)
+            } catch (_: FileAlreadyExistsException) {
+                return@synchronized LargeProtectedModelStagingSealResult.Rejected()
+            }
+
+            return@synchronized try {
+                Files.move(source, target, StandardCopyOption.ATOMIC_MOVE)
+                record.path = target.toFile()
+                record.state = PhysicalState.SEALED
+                LargeProtectedModelStagingSealResult.Sealed(
+                    LargeProtectedModelSealedArtifactCandidate(
+                        backendId = backendId,
+                        attempt = handle.attempt,
+                        sourceId = handle.artifactId,
+                        plaintextBytes = record.appendedBytes,
+                        durabilityLevel = LargeProtectedModelStagingDurabilityLevel.ATOMIC_VISIBILITY_RENAMED
+                    )
                 )
-            )
+            } catch (throwable: Throwable) {
+                cleanupOwnedReservationAfterMoveFailure(source, target)
+                LargeProtectedModelStagingSealResult.Failed(
+                    reason = LargeProtectedModelStagingBackendFailure.PROVIDER_FAILED,
+                    throwable = throwable
+                )
+            }
         } catch (throwable: Throwable) {
-            LargeProtectedModelStagingSealResult.Failed(
+            return@synchronized LargeProtectedModelStagingSealResult.Failed(
                 reason = LargeProtectedModelStagingBackendFailure.PROVIDER_FAILED,
                 throwable = throwable
             )
@@ -303,6 +319,23 @@ class AndroidAppPrivateProtectedModelStagingBackend private constructor(
     }
 
     internal fun adapterRootForTesting(): File = adapterRoot.toFile()
+
+    private fun cleanupOwnedReservationAfterMoveFailure(
+        source: java.nio.file.Path,
+        target: java.nio.file.Path
+    ) {
+        try {
+            if (
+                Files.exists(source, LinkOption.NOFOLLOW_LINKS) &&
+                Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS) &&
+                Files.size(target) == 0L
+            ) {
+                Files.deleteIfExists(target)
+            }
+        } catch (_: Throwable) {
+            // Move failure remains authoritative. An uncertain reservation is left for explicit handling.
+        }
+    }
 
     private fun ensurePrivateRoots() {
         Files.createDirectories(workingRoot)
