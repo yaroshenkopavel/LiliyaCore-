@@ -27,9 +27,14 @@ class LargeProtectedModelStagingCoordinator(
         var operationInProgress: Boolean = false
     )
 
+    private data class EngineUseLeaseEntry(
+        val source: LargeProtectedModelStagedSource
+    )
+
     private data class PublishedEntry(
         val source: LargeProtectedModelStagedSource,
-        var state: PublishedState = PublishedState.LIVE
+        var state: PublishedState = PublishedState.LIVE,
+        var engineUseLease: EngineUseLeaseEntry? = null
     )
 
     private sealed interface AppendPreparation {
@@ -425,11 +430,77 @@ class LargeProtectedModelStagingCoordinator(
         published.values.map { it.source }.sortedBy { it.stagingGeneration.value }
     }
 
+    fun acquireEngineUse(
+        source: LargeProtectedModelStagedSource
+    ): LargeProtectedModelEngineUseAcquireResult = synchronized(lock) {
+        val current = published[source.sourceId]
+            ?: return@synchronized LargeProtectedModelEngineUseAcquireResult.Rejected(
+                LargeProtectedModelEngineUseFailure.SOURCE_STALE
+            )
+        if (current.source !== source) {
+            return@synchronized LargeProtectedModelEngineUseAcquireResult.Rejected(
+                LargeProtectedModelEngineUseFailure.SOURCE_STALE
+            )
+        }
+        if (current.state != PublishedState.LIVE) {
+            return@synchronized LargeProtectedModelEngineUseAcquireResult.Rejected(
+                LargeProtectedModelEngineUseFailure.SOURCE_RETIRING
+            )
+        }
+        if (current.engineUseLease != null) {
+            return@synchronized LargeProtectedModelEngineUseAcquireResult.Rejected(
+                LargeProtectedModelEngineUseFailure.SOURCE_ALREADY_IN_USE
+            )
+        }
+
+        val leaseEntry = EngineUseLeaseEntry(current.source)
+        current.engineUseLease = leaseEntry
+        LargeProtectedModelEngineUseAcquireResult.Acquired(engineUseLease(current, leaseEntry))
+    }
+
     private fun ownership(entry: PublishedEntry): LargeProtectedModelStagedSourceOwnership =
         object : LargeProtectedModelStagedSourceOwnership {
             override val source: LargeProtectedModelStagedSource = entry.source
             override fun retire(): LargeProtectedModelStagingRetireResult = retireExact(entry)
         }
+
+    private fun engineUseLease(
+        entry: PublishedEntry,
+        leaseEntry: EngineUseLeaseEntry
+    ): LargeProtectedModelEngineUseLease {
+        val capability = LargeProtectedModelEngineSourceCapability(
+            backendId = entry.source.backendId,
+            model = entry.source.model,
+            stagingGeneration = entry.source.stagingGeneration,
+            plaintextBytes = entry.source.plaintextBytes,
+            profile = entry.source.profile,
+            durabilityLevel = entry.source.durabilityLevel,
+            sourceIdentity = entry.source
+        )
+        return object : LargeProtectedModelEngineUseLease {
+            override val source: LargeProtectedModelEngineSourceCapability = capability
+
+            override fun release(): LargeProtectedModelEngineUseReleaseResult =
+                releaseEngineUseExact(entry, leaseEntry)
+        }
+    }
+
+    private fun releaseEngineUseExact(
+        entry: PublishedEntry,
+        leaseEntry: EngineUseLeaseEntry
+    ): LargeProtectedModelEngineUseReleaseResult = synchronized(lock) {
+        val current = published[entry.source.sourceId]
+            ?: return@synchronized LargeProtectedModelEngineUseReleaseResult.Rejected(
+                LargeProtectedModelEngineUseFailure.LEASE_STALE
+            )
+        if (current !== entry || current.engineUseLease !== leaseEntry || leaseEntry.source !== entry.source) {
+            return@synchronized LargeProtectedModelEngineUseReleaseResult.Rejected(
+                LargeProtectedModelEngineUseFailure.LEASE_STALE
+            )
+        }
+        current.engineUseLease = null
+        LargeProtectedModelEngineUseReleaseResult.Released
+    }
 
     private fun retireExact(entry: PublishedEntry): LargeProtectedModelStagingRetireResult {
         synchronized(lock) {
@@ -440,6 +511,11 @@ class LargeProtectedModelStagingCoordinator(
             if (current !== entry || current.state != PublishedState.LIVE) {
                 return LargeProtectedModelStagingRetireResult.Rejected(
                     LargeProtectedModelStagingFailure.RETIRE_STALE
+                )
+            }
+            if (current.engineUseLease != null) {
+                return LargeProtectedModelStagingRetireResult.Rejected(
+                    LargeProtectedModelStagingFailure.RETIRE_IN_USE
                 )
             }
             current.state = PublishedState.RETIRING
