@@ -205,5 +205,8 @@ jobs:
       - name: Install Android API 35, NDK and CMake
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools" "ndk;29.0.13113456" "cmake;3.31.6"
 
+      - name: Run llama.cpp engine ownership contracts
+        run: gradle :android-llama-cpp-engine:testDebugUnitTest --console=plain
+
       - name: Build pinned llama.cpp JNI for arm64
         run: gradle :android-llama-cpp-engine:assembleRelease --console=plain
