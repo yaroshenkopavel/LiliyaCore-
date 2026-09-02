@@ -233,10 +233,11 @@ jobs:
       - name: Build pinned llama.cpp JNI for arm64
         run: gradle :android-llama-cpp-engine:assembleRelease --console=plain
 
-      - name: Run arm64 real-model instrumentation through API 35 translation
+      - name: Run arm64 real-model instrumentation through API 35 Google APIs translation
         uses: ReactiveCircus/android-emulator-runner@v2
         with:
           api-level: 35
+          target: google_apis
           arch: x86_64
           profile: pixel_6
           disable-animations: true
