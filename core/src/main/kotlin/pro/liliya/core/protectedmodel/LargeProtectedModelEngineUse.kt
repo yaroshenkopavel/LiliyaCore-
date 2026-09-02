@@ -17,9 +17,7 @@ class LargeProtectedModelEngineSourceCapability internal constructor(
 ) {
     init {
         require(plaintextBytes > 0L) { "engine source plaintext bytes must be positive" }
-        require(sourceId === sourceIdentity.sourceId || sourceId == sourceIdentity.sourceId) {
-            "engine source identity mismatch"
-        }
+        require(sourceId == sourceIdentity.sourceId) { "engine source identity mismatch" }
     }
 
     override fun toString(): String =
