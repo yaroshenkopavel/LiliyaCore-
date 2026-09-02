@@ -23,7 +23,7 @@ jobs:
   semantic-provider-native:
     name: Android Offline Semantic Provider Native
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 50
 
     steps:
       - name: Checkout
@@ -46,8 +46,40 @@ jobs:
       - name: Install Android API 35, NDK and CMake
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools" "ndk;29.0.13113456" "cmake;3.31.6"
 
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
       - name: Build pinned semantic JNI for arm64
         run: gradle :android-offline-semantic-provider:assembleRelease --console=plain
 
       - name: Run semantic provider unit contracts
         run: gradle :android-offline-semantic-provider:testDebugUnitTest --console=plain
+
+      - name: Prepare verified multilingual embedding fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          asset_dir="android-offline-semantic-provider/src/androidTest/assets"
+          asset="$asset_dir/multilingual-e5-small-q8_0.gguf"
+          mkdir -p "$asset_dir"
+          curl --fail --location --retry 3 \
+            "https://huggingface.co/milimyname/multilingual-e5-small-Q8_0-GGUF/resolve/1695e17549efbfddbe77a6374d151dd57b0ccaad/multilingual-e5-small-q8_0.gguf?download=true" \
+            --output "$asset"
+          echo "dc5a4599f11a6f5f27ecd20f8ebcf218407d51129522e5fccb900ffab8afb96a  $asset" | sha256sum --check --strict
+          test "$(stat --format=%s "$asset")" -eq 132196704
+
+      - name: Compile pinned multilingual instrumentation contract
+        run: gradle :android-offline-semantic-provider:assembleDebugAndroidTest --console=plain
+
+      - name: Run pinned multilingual embeddings through API 35 Google APIs translation
+        uses: ReactiveCircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          script: gradle :android-offline-semantic-provider:connectedDebugAndroidTest --console=plain
