@@ -7,6 +7,7 @@ package pro.liliya.core.protectedmodel
  */
 class LargeProtectedModelEngineSourceCapability internal constructor(
     val backendId: LargeProtectedModelStagingBackendId,
+    val sourceId: LargeProtectedModelOpaqueArtifactId,
     val model: ProtectedModelReference,
     val stagingGeneration: LargeProtectedModelStagingGeneration,
     val plaintextBytes: Long,
@@ -19,9 +20,9 @@ class LargeProtectedModelEngineSourceCapability internal constructor(
     }
 
     override fun toString(): String =
-        "LargeProtectedModelEngineSourceCapability(backendId=$backendId, model=$model, " +
+        "LargeProtectedModelEngineSourceCapability(backendId=$backendId, sourceId=<redacted>, model=$model, " +
             "stagingGeneration=${stagingGeneration.value}, plaintextBytes=$plaintextBytes, " +
-            "profile=$profile, durabilityLevel=$durabilityLevel, sourceId=<redacted>)"
+            "profile=$profile, durabilityLevel=$durabilityLevel)"
 }
 
 enum class LargeProtectedModelEngineUseFailure {
