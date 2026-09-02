@@ -115,7 +115,7 @@ class AndroidLlamaCppRealModelInstrumentedTest {
         backend = backend,
         budgets = LargeProtectedModelStagingBudgets(
             maxTotalPlaintextBytes = totalBytes,
-            maxSegmentPlaintextBytes = SEGMENT_BYTES.toLong(),
+            maxSegmentPlaintextBytes = minOf(SEGMENT_BYTES.toLong(), totalBytes),
             maxSegmentCount = segmentCount(totalBytes),
             maxActiveAttempts = 1,
             maxOpaqueIdentifierChars = 64
