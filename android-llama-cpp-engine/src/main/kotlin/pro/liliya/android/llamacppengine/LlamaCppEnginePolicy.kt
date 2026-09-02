@@ -4,8 +4,8 @@ package pro.liliya.android.llamacppengine
  * Caller-supplied resource policy for one llama.cpp engine session.
  *
  * No device-dependent defaults are guessed by this adapter. A higher layer must select and
- * authorize concrete values before load. Character output limits remain request-owned and are
- * deliberately not converted to token counts.
+ * authorize concrete values before load. Token budgets bound native compute while character
+ * and UTF-8 byte budgets bound JVM/native representation growth independently.
  */
 data class LlamaCppEnginePolicy(
     val contextTokens: Int,
@@ -14,6 +14,10 @@ data class LlamaCppEnginePolicy(
     val batchTokens: Int,
     val microBatchTokens: Int,
     val threadCount: Int,
+    val maxPromptChars: Int,
+    val maxPromptUtf8Bytes: Int,
+    val maxOutputChars: Int,
+    val maxOutputUtf8Bytes: Int,
     val useMmap: Boolean
 ) {
     init {
@@ -23,6 +27,10 @@ data class LlamaCppEnginePolicy(
         require(batchTokens > 0) { "batch token budget must be positive" }
         require(microBatchTokens > 0) { "micro-batch token budget must be positive" }
         require(threadCount > 0) { "thread count must be positive" }
+        require(maxPromptChars > 0) { "prompt character budget must be positive" }
+        require(maxPromptUtf8Bytes > 0) { "prompt UTF-8 byte budget must be positive" }
+        require(maxOutputChars > 0) { "output character budget must be positive" }
+        require(maxOutputUtf8Bytes > 0) { "output UTF-8 byte budget must be positive" }
         require(maxPromptTokens <= contextTokens) {
             "prompt token budget must not exceed context token budget"
         }
@@ -37,6 +45,12 @@ data class LlamaCppEnginePolicy(
         }
         require(microBatchTokens <= batchTokens) {
             "micro-batch token budget must not exceed batch token budget"
+        }
+        require(maxPromptUtf8Bytes.toLong() <= maxPromptChars.toLong() * 4L) {
+            "prompt UTF-8 byte budget must fit prompt character ceiling"
+        }
+        require(maxOutputUtf8Bytes.toLong() <= maxOutputChars.toLong() * 4L) {
+            "output UTF-8 byte budget must fit output character ceiling"
         }
     }
 }
