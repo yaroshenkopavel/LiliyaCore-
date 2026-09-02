@@ -91,6 +91,7 @@ class AndroidAppPrivateProtectedModelStagingBackend private constructor(
             return@synchronized LargeProtectedModelStagingPrepareResult.Rejected()
         }
 
+        var createdWorking: java.nio.file.Path? = null
         try {
             ensurePrivateRoots()
             val token = tokenSource.next()
@@ -113,6 +114,7 @@ class AndroidAppPrivateProtectedModelStagingBackend private constructor(
             }
 
             Files.createFile(working)
+            createdWorking = working
             val handle = LargeProtectedModelWorkingArtifactHandle(
                 backendId = backendId,
                 attempt = attempt,
@@ -127,6 +129,13 @@ class AndroidAppPrivateProtectedModelStagingBackend private constructor(
             )
             LargeProtectedModelStagingPrepareResult.Prepared(handle)
         } catch (throwable: Throwable) {
+            createdWorking?.let { path ->
+                try {
+                    Files.deleteIfExists(path)
+                } catch (_: Throwable) {
+                    // The original provider failure remains authoritative. No success is reported.
+                }
+            }
             LargeProtectedModelStagingPrepareResult.Failed(
                 reason = LargeProtectedModelStagingBackendFailure.PROVIDER_FAILED,
                 throwable = throwable
@@ -201,31 +210,27 @@ class AndroidAppPrivateProtectedModelStagingBackend private constructor(
         if (record.handle != handle || record.state != PhysicalState.WORKING) {
             return@synchronized LargeProtectedModelStagingSealResult.Rejected()
         }
-
-        val source = record.path.toPath().toAbsolutePath().normalize()
-        if (source.parent != workingRoot || !Files.isRegularFile(source, LinkOption.NOFOLLOW_LINKS)) {
-            record.state = PhysicalState.POISONED
-            return@synchronized LargeProtectedModelStagingSealResult.Rejected()
-        }
-        if (Files.size(source) != record.appendedBytes) {
-            record.state = PhysicalState.POISONED
-            return@synchronized LargeProtectedModelStagingSealResult.Rejected()
-        }
-
-        val target = try {
-            childOf(sealedRoot, handle.artifactId.value)
-        } catch (throwable: Throwable) {
-            record.state = PhysicalState.POISONED
-            return@synchronized LargeProtectedModelStagingSealResult.Failed(
-                reason = LargeProtectedModelStagingBackendFailure.PROVIDER_FAILED,
-                throwable = throwable
-            )
-        }
-        if (Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
+        if (record.appendedBytes != record.expectedPlaintextBytes) {
             return@synchronized LargeProtectedModelStagingSealResult.Rejected()
         }
 
         return@synchronized try {
+            ensurePrivateRoots()
+            val source = record.path.toPath().toAbsolutePath().normalize()
+            if (
+                source.parent != workingRoot ||
+                !Files.isRegularFile(source, LinkOption.NOFOLLOW_LINKS) ||
+                Files.size(source) != record.appendedBytes
+            ) {
+                record.state = PhysicalState.POISONED
+                return@synchronized LargeProtectedModelStagingSealResult.Rejected()
+            }
+
+            val target = childOf(sealedRoot, handle.artifactId.value)
+            if (Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
+                return@synchronized LargeProtectedModelStagingSealResult.Rejected()
+            }
+
             FileOutputStream(record.path, true).use { stream ->
                 stream.flush()
                 stream.fd.sync()
@@ -268,6 +273,7 @@ class AndroidAppPrivateProtectedModelStagingBackend private constructor(
         }
 
         return@synchronized try {
+            ensurePrivateRoots()
             if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS)) {
                 LargeProtectedModelStagingDeleteResult.Rejected()
             } else {
@@ -306,6 +312,20 @@ class AndroidAppPrivateProtectedModelStagingBackend private constructor(
         }
         require(adapterRoot.startsWith(appFilesRoot)) {
             "staging root escaped application files directory"
+        }
+
+        val realAppRoot = appFilesRoot.toRealPath()
+        val realAdapterRoot = adapterRoot.toRealPath()
+        val realWorkingRoot = workingRoot.toRealPath()
+        val realSealedRoot = sealedRoot.toRealPath()
+        require(realAdapterRoot.startsWith(realAppRoot)) {
+            "real staging root escaped application files directory"
+        }
+        require(
+            realWorkingRoot.startsWith(realAdapterRoot) &&
+                realSealedRoot.startsWith(realAdapterRoot)
+        ) {
+            "real staging child root escaped adapter root"
         }
     }
 
