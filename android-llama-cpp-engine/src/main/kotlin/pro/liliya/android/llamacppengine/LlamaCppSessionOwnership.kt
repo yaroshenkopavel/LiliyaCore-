@@ -17,7 +17,8 @@ private val LLAMA_CPP_BACKEND_ID = ModelEngineBackendId("llama.cpp-v0.1")
 internal class LlamaCppSessionOwnership(
     override val handleId: ModelEngineHandleId,
     private val nativeSessionId: Long,
-    private val nativePort: LlamaCppNativeSessionPort
+    private val nativePort: LlamaCppNativeSessionPort,
+    private val policy: LlamaCppEnginePolicy
 ) : ModelEngineSessionOwnership {
 
     init {
@@ -38,15 +39,39 @@ internal class LlamaCppSessionOwnership(
                     ModelEngineInferenceFailure.SESSION_FAILED
                 )
             }
+            if (
+                request.prompt.length > policy.maxPromptChars ||
+                request.maxOutputChars > policy.maxOutputChars
+            ) {
+                return@withLock ModelEngineInferenceResult.Rejected(
+                    ModelEngineInferenceFailure.RESOURCE_LIMIT_REJECTED
+                )
+            }
+
+            val promptUtf8 = try {
+                request.prompt.toByteArray(Charsets.UTF_8)
+            } catch (_: Throwable) {
+                return@withLock ModelEngineInferenceResult.Rejected(
+                    ModelEngineInferenceFailure.PROVIDER_FAILED
+                )
+            }
+            if (promptUtf8.size > policy.maxPromptUtf8Bytes) {
+                promptUtf8.fill(0)
+                return@withLock ModelEngineInferenceResult.Rejected(
+                    ModelEngineInferenceFailure.RESOURCE_LIMIT_REJECTED
+                )
+            }
 
             val result = try {
                 nativePort.infer(
                     nativeSessionId = nativeSessionId,
-                    prompt = request.prompt,
+                    promptUtf8 = promptUtf8,
                     maxOutputChars = request.maxOutputChars
                 )
             } catch (_: Throwable) {
                 LlamaCppNativeInferenceResult.Rejected(ModelEngineInferenceFailure.PROVIDER_FAILED)
+            } finally {
+                promptUtf8.fill(0)
             }
 
             when (result) {
