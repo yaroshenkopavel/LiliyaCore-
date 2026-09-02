@@ -55,10 +55,10 @@ repositories {
 dependencies {
     implementation(project(":core"))
     implementation(project(":android-protected-model-staging"))
+    implementation(project(":android-protected-model-engine-source"))
 
     testImplementation(kotlin("test"))
     testImplementation("junit:junit:4.13.2")
-    androidTestImplementation(project(":android-protected-model-engine-source"))
     androidTestImplementation(kotlin("test"))
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test:runner:1.6.2")

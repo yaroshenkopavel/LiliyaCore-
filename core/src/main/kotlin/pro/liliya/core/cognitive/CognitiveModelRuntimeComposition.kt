@@ -9,8 +9,12 @@ import pro.liliya.core.modelengine.ModelEngineInferenceResult
 import pro.liliya.core.modelengine.ModelEngineLoadResult
 import pro.liliya.core.modelengine.ModelEngineLoaderPort
 import pro.liliya.core.modelengine.ModelEngineSessionOwnership
+import pro.liliya.core.modelengine.StagedModelEngineLoadCoordinator
+import pro.liliya.core.protectedmodel.LargeProtectedModelStagedSourceOwnership
 import pro.liliya.core.protectedmodel.ProtectedModelAccessCoordinator
 import pro.liliya.core.protectedmodel.ProtectedModelAccessResult
+import pro.liliya.core.protectedmodel.ProtectedModelAuthorizationResult
+import pro.liliya.core.protectedmodel.ProtectedModelAuthorizedPublicationResult
 import pro.liliya.core.protectedmodel.ProtectedModelPackageEnvelope
 import pro.liliya.core.protectedmodel.ProtectedModelPlaintextConsumer
 import pro.liliya.core.runtime.hardening.RuntimeFailedSessionRetirementResult
@@ -98,7 +102,8 @@ class CognitiveModelRuntimeComposition(
     private val engineLoader: ModelEngineLoaderPort,
     private val compiler: CognitiveModelRequestCompilerPort,
     private val sessionIds: CognitiveModelRuntimeSessionIdSource,
-    private val limits: CognitiveRuntimeLimits = CognitiveRuntimeLimits()
+    private val limits: CognitiveRuntimeLimits = CognitiveRuntimeLimits(),
+    private val stagedEngineLoader: StagedModelEngineLoadCoordinator? = null
 ) {
     private data class Binding(
         val session: RuntimeModelSessionReference,
@@ -240,6 +245,118 @@ class CognitiveModelRuntimeComposition(
                         originalFailure = CognitiveModelActivationFailure.RUNTIME_ACTIVATION_FAILED,
                         originalOutcome = OriginalActivationOutcome.FAILED
                     )
+            }
+        } finally {
+            finishLifecycleMutation()
+        }
+    }
+
+    internal fun activateStagedModel(
+        ownership: LargeProtectedModelStagedSourceOwnership
+    ): CognitiveModelActivationResult {
+        if (!reserveFreshActivation()) {
+            return activationRejected(CognitiveModelActivationFailure.BUSY)
+        }
+
+        try {
+            if (runtimeSessions.currentReference() != null) {
+                return activationRejected(CognitiveModelActivationFailure.LIVE_SESSION_EXISTS)
+            }
+
+            val authorized = when (
+                val result = protectedAccess.authorizeExistingReference(ownership.source.model)
+            ) {
+                is ProtectedModelAuthorizationResult.Authorized -> result.authorization
+                is ProtectedModelAuthorizationResult.Rejected ->
+                    return activationRejected(CognitiveModelActivationFailure.PROTECTED_ACCESS_REJECTED)
+                is ProtectedModelAuthorizationResult.Failed ->
+                    return activationFailed(CognitiveModelActivationFailure.PROTECTED_ACCESS_FAILED)
+            }
+
+            val sessionId = try {
+                sessionIds.next()
+            } catch (_: Exception) {
+                return activationFailed(CognitiveModelActivationFailure.SESSION_ID_FAILED)
+            }
+
+            val stagedLoader = stagedEngineLoader
+                ?: return activationRejected(CognitiveModelActivationFailure.ENGINE_LOAD_REJECTED)
+            val engine = when (val loaded = stagedLoader.load(ownership)) {
+                is ModelEngineLoadResult.Rejected ->
+                    return activationRejected(CognitiveModelActivationFailure.ENGINE_LOAD_REJECTED)
+                is ModelEngineLoadResult.Loaded -> loaded.ownership
+            }
+
+            var runtimeActivation: RuntimeModelActivationResult<ModelEngineSessionOwnership>? = null
+            val publication = protectedAccess.publishAuthorized(authorized) { reference ->
+                runtimeActivation = activation.activate(
+                    sessionId = sessionId,
+                    openedModel = ProtectedModelAccessResult.Opened(reference, engine)
+                ) { session, exactEngine ->
+                    synchronized(stateLock) {
+                        check(lifecycleMutationInProgress) {
+                            "model lifecycle reservation must remain active during staged activation publication"
+                        }
+                        check(binding == null) { "model engine binding already exists" }
+                        check(pendingActivationCleanup == null) {
+                            "pending engine cleanup blocks staged activation"
+                        }
+                        binding = Binding(session, exactEngine)
+                    }
+                }
+            }
+
+            return when (publication) {
+                ProtectedModelAuthorizedPublicationResult.Stale ->
+                    compensateUntransferred(
+                        engine = engine,
+                        originalFailure = CognitiveModelActivationFailure.PROTECTED_ACCESS_REJECTED,
+                        originalOutcome = OriginalActivationOutcome.REJECTED
+                    )
+
+                is ProtectedModelAuthorizedPublicationResult.Failed ->
+                    compensateUntransferred(
+                        engine = engine,
+                        originalFailure = CognitiveModelActivationFailure.PROTECTED_ACCESS_FAILED,
+                        originalOutcome = OriginalActivationOutcome.FAILED
+                    )
+
+                ProtectedModelAuthorizedPublicationResult.Published ->
+                    when (val result = runtimeActivation) {
+                        is RuntimeModelActivationResult.Activated -> {
+                            record(
+                                DiagnosticSeverity.INFO,
+                                "COGNITIVE_MODEL_RUNTIME_ACTIVATED",
+                                "cognitive model runtime activated",
+                                result.session,
+                                mapOf("backendId" to engine.backendId.toString())
+                            )
+                            CognitiveModelActivationResult.Activated(result.session)
+                        }
+
+                        is RuntimeModelActivationResult.Rejected ->
+                            compensateUntransferred(
+                                engine = engine,
+                                originalFailure =
+                                    CognitiveModelActivationFailure.RUNTIME_ACTIVATION_REJECTED,
+                                originalOutcome = OriginalActivationOutcome.REJECTED
+                            )
+
+                        is RuntimeModelActivationResult.Failed ->
+                            compensateUntransferred(
+                                engine = engine,
+                                originalFailure =
+                                    CognitiveModelActivationFailure.RUNTIME_ACTIVATION_FAILED,
+                                originalOutcome = OriginalActivationOutcome.FAILED
+                            )
+
+                        null ->
+                            compensateUntransferred(
+                                engine = engine,
+                                originalFailure = CognitiveModelActivationFailure.PROTECTED_ACCESS_FAILED,
+                                originalOutcome = OriginalActivationOutcome.FAILED
+                            )
+                    }
             }
         } finally {
             finishLifecycleMutation()
