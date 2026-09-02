@@ -41,6 +41,7 @@ import pro.liliya.core.memory.MemorySourceReference
 
 enum class CognitiveGovernedLearningFailure {
     ATTEMPT_IN_PROGRESS,
+    TERMINAL_EVIDENCE_CAPACITY_EXHAUSTED,
     CANDIDATE_MISSING_OR_MISMATCH,
     POLICY_MISSING_OR_MISMATCH,
     GOVERNANCE_FAILED,
@@ -140,10 +141,18 @@ internal class CognitiveGovernedLearningCoordinator(
             terminal[candidateReference]?.let {
                 return CognitiveGovernedLearningResult.AlreadyProcessed(it)
             }
-            if (!inProgress.add(candidateReference)) {
+            if (inProgress.contains(candidateReference)) {
                 return CognitiveGovernedLearningResult.Rejected(
                     CognitiveGovernedLearningFailure.ATTEMPT_IN_PROGRESS
                 )
+            }
+            if (terminal.size + inProgress.size >= limits.maxGovernedLearningTerminalEvidenceEntries) {
+                return CognitiveGovernedLearningResult.Rejected(
+                    CognitiveGovernedLearningFailure.TERMINAL_EVIDENCE_CAPACITY_EXHAUSTED
+                )
+            }
+            check(inProgress.add(candidateReference)) {
+                "governed learning exact candidate reservation must be unique"
             }
         }
 
