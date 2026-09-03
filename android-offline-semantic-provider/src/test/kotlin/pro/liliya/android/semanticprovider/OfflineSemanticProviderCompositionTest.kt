@@ -3,6 +3,7 @@ package pro.liliya.android.semanticprovider
 import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.concurrent.thread
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -148,6 +149,103 @@ class OfflineSemanticProviderCompositionTest {
             provider.discover(SemanticIndexDomain.MEMORY, "again", 1)
         )
         assertEquals(1, fakeSession.loaderCalls)
+    }
+
+    @Test
+    fun incremental_add_replace_and_remove_preserve_exact_generation_semantics() {
+        val fakeSession = FakeSession()
+        val provider = provider(fakeSession)
+        provider.load(artifact())
+        val first = SemanticIndexSourceReference.Memory(MemoryRecordId("incremental"), MemoryGeneration(2))
+        val stale = SemanticIndexSourceReference.Memory(MemoryRecordId("incremental"), MemoryGeneration(1))
+        val second = SemanticIndexSourceReference.Memory(MemoryRecordId("incremental"), MemoryGeneration(3))
+
+        assertEquals(
+            OfflineSemanticAddResult.Indexed,
+            provider.add(SemanticSourceObservation(first, "first content"))
+        )
+        assertEquals(
+            OfflineSemanticAddResult.DuplicateExact,
+            provider.add(SemanticSourceObservation(first, "duplicate content"))
+        )
+        assertEquals(
+            OfflineSemanticAddResult.EntityAlreadyIndexed,
+            provider.add(SemanticSourceObservation(second, "implicit replacement forbidden"))
+        )
+        assertEquals(
+            OfflineSemanticReplaceResult.StaleExpected,
+            provider.replace(stale, SemanticSourceObservation(second, "stale replacement"))
+        )
+        assertEquals(
+            OfflineSemanticReplaceResult.Replaced,
+            provider.replace(first, SemanticSourceObservation(second, "second content"))
+        )
+        assertEquals(OfflineSemanticRemoveResult.StaleOrMissing, provider.remove(first))
+
+        assertEquals(
+            SemanticCandidates(listOf(second)),
+            provider.discover(SemanticIndexDomain.MEMORY, "second", 1)
+        )
+        assertEquals(OfflineSemanticRemoveResult.Removed, provider.remove(second))
+        assertEquals(
+            SemanticCandidates(emptyList()),
+            provider.discover(SemanticIndexDomain.MEMORY, "second", 1)
+        )
+        assertEquals(
+            listOf(
+                "passage: first content",
+                "passage: duplicate content",
+                "passage: implicit replacement forbidden",
+                "passage: stale replacement",
+                "passage: second content",
+                "query: second",
+                "query: second"
+            ),
+            fakeSession.embeddedTexts
+        )
+    }
+
+    @Test
+    fun incremental_embedding_is_single_flight_and_blocks_discovery_rebuild_and_close() {
+        val enteredEmbedding = CountDownLatch(1)
+        val releaseEmbedding = CountDownLatch(1)
+        val fakeSession = FakeSession(
+            onEmbed = { text ->
+                if (text == "passage: incremental content") {
+                    enteredEmbedding.countDown()
+                    check(releaseEmbedding.await(5, TimeUnit.SECONDS))
+                }
+            }
+        )
+        val provider = provider(fakeSession)
+        provider.load(artifact())
+        val result = AtomicReference<OfflineSemanticAddResult>()
+        val updateThread = thread(start = true, name = "semantic-incremental-test") {
+            result.set(
+                provider.add(
+                    SemanticSourceObservation(
+                        SemanticIndexSourceReference.Memory(
+                            MemoryRecordId("incremental-busy"),
+                            MemoryGeneration(1)
+                        ),
+                        "incremental content"
+                    )
+                )
+            )
+        }
+
+        check(enteredEmbedding.await(5, TimeUnit.SECONDS))
+        assertEquals(
+            SemanticProviderFailure(SemanticProviderFailureKind.BUSY),
+            provider.discover(SemanticIndexDomain.MEMORY, "query", 1)
+        )
+        assertEquals(OfflineSemanticRebuildResult.Busy, provider.rebuild(emptyList()))
+        assertEquals(OfflineSemanticProviderCloseResult.Busy, provider.close())
+
+        releaseEmbedding.countDown()
+        updateThread.join(5_000)
+        check(!updateThread.isAlive)
+        assertEquals(OfflineSemanticAddResult.Indexed, result.get())
     }
 
     @Test

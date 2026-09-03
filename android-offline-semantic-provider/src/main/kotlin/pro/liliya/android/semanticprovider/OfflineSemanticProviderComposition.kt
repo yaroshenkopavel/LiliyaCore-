@@ -82,6 +82,39 @@ internal sealed interface OfflineSemanticRebuildResult {
     data object IndexRejected : OfflineSemanticRebuildResult
 }
 
+internal sealed interface OfflineSemanticAddResult {
+    data object Indexed : OfflineSemanticAddResult
+    data object Busy : OfflineSemanticAddResult
+    data object NotReady : OfflineSemanticAddResult
+    data object ResourceRejected : OfflineSemanticAddResult
+    data object EmbeddingRejected : OfflineSemanticAddResult
+    data object EmbeddingFailed : OfflineSemanticAddResult
+    data object SessionFailed : OfflineSemanticAddResult
+    data object DuplicateExact : OfflineSemanticAddResult
+    data object EntityAlreadyIndexed : OfflineSemanticAddResult
+    data object CapacityRejected : OfflineSemanticAddResult
+}
+
+internal sealed interface OfflineSemanticReplaceResult {
+    data object Replaced : OfflineSemanticReplaceResult
+    data object Busy : OfflineSemanticReplaceResult
+    data object NotReady : OfflineSemanticReplaceResult
+    data object ResourceRejected : OfflineSemanticReplaceResult
+    data object EmbeddingRejected : OfflineSemanticReplaceResult
+    data object EmbeddingFailed : OfflineSemanticReplaceResult
+    data object SessionFailed : OfflineSemanticReplaceResult
+    data object StaleExpected : OfflineSemanticReplaceResult
+    data object IdentityMismatch : OfflineSemanticReplaceResult
+    data object NonForwardGeneration : OfflineSemanticReplaceResult
+}
+
+internal sealed interface OfflineSemanticRemoveResult {
+    data object Removed : OfflineSemanticRemoveResult
+    data object Busy : OfflineSemanticRemoveResult
+    data object NotReady : OfflineSemanticRemoveResult
+    data object StaleOrMissing : OfflineSemanticRemoveResult
+}
+
 internal sealed interface OfflineSemanticProviderCloseResult {
     data object Closed : OfflineSemanticProviderCloseResult
     data object Busy : OfflineSemanticProviderCloseResult
@@ -110,7 +143,7 @@ internal class OfflineSemanticProviderComposition(
     private var rebuilding: Boolean = false
 
     @Volatile
-    private var embeddingInFlight: Boolean = false
+    private var operationInFlight: Boolean = false
 
     @Volatile
     private var indexPublished: Boolean = false
@@ -164,7 +197,7 @@ internal class OfflineSemanticProviderComposition(
             if (lifecycle != OfflineSemanticProviderLifecycle.READY) {
                 return OfflineSemanticRebuildResult.NotReady
             }
-            if (rebuilding || embeddingInFlight) return OfflineSemanticRebuildResult.Busy
+            if (rebuilding || operationInFlight) return OfflineSemanticRebuildResult.Busy
             val current = session ?: run {
                 lifecycle = OfflineSemanticProviderLifecycle.FAILED
                 return OfflineSemanticRebuildResult.SessionFailed
@@ -236,6 +269,130 @@ internal class OfflineSemanticProviderComposition(
         }
     }
 
+    fun add(observation: SemanticSourceObservation): OfflineSemanticAddResult {
+        val activeSession = synchronized(this) {
+            if (lifecycle != OfflineSemanticProviderLifecycle.READY) {
+                return OfflineSemanticAddResult.NotReady
+            }
+            if (rebuilding || operationInFlight) return OfflineSemanticAddResult.Busy
+            val current = session ?: run {
+                lifecycle = OfflineSemanticProviderLifecycle.FAILED
+                return OfflineSemanticAddResult.SessionFailed
+            }
+            operationInFlight = true
+            current
+        }
+
+        try {
+            val prepared = when (val preparation = SemanticTextProfile.preparePassage(observation.content)) {
+                is SemanticPreparedTextResult.Prepared -> preparation.text
+                SemanticPreparedTextResult.RequestRejected ->
+                    return OfflineSemanticAddResult.EmbeddingRejected
+                SemanticPreparedTextResult.ResourceRejected ->
+                    return OfflineSemanticAddResult.ResourceRejected
+            }
+            return when (val embedding = activeSession.embed(prepared)) {
+                is SemanticEmbeddingResult.Embedded -> when (
+                    publication.addExact(observation.source, embedding.vector)
+                ) {
+                    SemanticIndexAddResult.Indexed -> {
+                        synchronized(this) { indexPublished = true }
+                        OfflineSemanticAddResult.Indexed
+                    }
+                    SemanticIndexAddResult.DuplicateExact -> OfflineSemanticAddResult.DuplicateExact
+                    SemanticIndexAddResult.EntityAlreadyIndexed ->
+                        OfflineSemanticAddResult.EntityAlreadyIndexed
+                    SemanticIndexAddResult.CapacityRejected ->
+                        OfflineSemanticAddResult.CapacityRejected
+                }
+                SemanticEmbeddingResult.ResourceRejected -> OfflineSemanticAddResult.ResourceRejected
+                SemanticEmbeddingResult.RequestRejected -> OfflineSemanticAddResult.EmbeddingRejected
+                SemanticEmbeddingResult.StaleSession -> poisonAdd(OfflineSemanticAddResult.SessionFailed)
+                SemanticEmbeddingResult.OperationFailed,
+                SemanticEmbeddingResult.ProviderFailed ->
+                    poisonAdd(OfflineSemanticAddResult.EmbeddingFailed)
+            }
+        } catch (_: Exception) {
+            return poisonAdd(OfflineSemanticAddResult.EmbeddingFailed)
+        } finally {
+            synchronized(this) { operationInFlight = false }
+        }
+    }
+
+    fun replace(
+        expected: SemanticIndexSourceReference,
+        replacement: SemanticSourceObservation
+    ): OfflineSemanticReplaceResult {
+        val activeSession = synchronized(this) {
+            if (lifecycle != OfflineSemanticProviderLifecycle.READY) {
+                return OfflineSemanticReplaceResult.NotReady
+            }
+            if (rebuilding || operationInFlight) return OfflineSemanticReplaceResult.Busy
+            val current = session ?: run {
+                lifecycle = OfflineSemanticProviderLifecycle.FAILED
+                return OfflineSemanticReplaceResult.SessionFailed
+            }
+            operationInFlight = true
+            current
+        }
+
+        try {
+            val prepared = when (val preparation = SemanticTextProfile.preparePassage(replacement.content)) {
+                is SemanticPreparedTextResult.Prepared -> preparation.text
+                SemanticPreparedTextResult.RequestRejected ->
+                    return OfflineSemanticReplaceResult.EmbeddingRejected
+                SemanticPreparedTextResult.ResourceRejected ->
+                    return OfflineSemanticReplaceResult.ResourceRejected
+            }
+            return when (val embedding = activeSession.embed(prepared)) {
+                is SemanticEmbeddingResult.Embedded -> when (
+                    publication.replaceExact(expected, replacement.source, embedding.vector)
+                ) {
+                    SemanticIndexReplaceResult.Replaced -> OfflineSemanticReplaceResult.Replaced
+                    SemanticIndexReplaceResult.StaleExpected ->
+                        OfflineSemanticReplaceResult.StaleExpected
+                    SemanticIndexReplaceResult.IdentityMismatch ->
+                        OfflineSemanticReplaceResult.IdentityMismatch
+                    SemanticIndexReplaceResult.NonForwardGeneration ->
+                        OfflineSemanticReplaceResult.NonForwardGeneration
+                }
+                SemanticEmbeddingResult.ResourceRejected -> OfflineSemanticReplaceResult.ResourceRejected
+                SemanticEmbeddingResult.RequestRejected -> OfflineSemanticReplaceResult.EmbeddingRejected
+                SemanticEmbeddingResult.StaleSession ->
+                    poisonReplace(OfflineSemanticReplaceResult.SessionFailed)
+                SemanticEmbeddingResult.OperationFailed,
+                SemanticEmbeddingResult.ProviderFailed ->
+                    poisonReplace(OfflineSemanticReplaceResult.EmbeddingFailed)
+            }
+        } catch (_: Exception) {
+            return poisonReplace(OfflineSemanticReplaceResult.EmbeddingFailed)
+        } finally {
+            synchronized(this) { operationInFlight = false }
+        }
+    }
+
+    fun remove(source: SemanticIndexSourceReference): OfflineSemanticRemoveResult {
+        synchronized(this) {
+            if (lifecycle != OfflineSemanticProviderLifecycle.READY) {
+                return OfflineSemanticRemoveResult.NotReady
+            }
+            if (rebuilding || operationInFlight) return OfflineSemanticRemoveResult.Busy
+            if (session == null) {
+                lifecycle = OfflineSemanticProviderLifecycle.FAILED
+                return OfflineSemanticRemoveResult.NotReady
+            }
+            operationInFlight = true
+        }
+        return try {
+            when (publication.removeExact(source)) {
+                SemanticIndexRemoveResult.Removed -> OfflineSemanticRemoveResult.Removed
+                SemanticIndexRemoveResult.StaleOrMissing -> OfflineSemanticRemoveResult.StaleOrMissing
+            }
+        } finally {
+            synchronized(this) { operationInFlight = false }
+        }
+    }
+
     override fun discover(
         domain: SemanticIndexDomain,
         input: String,
@@ -256,7 +413,7 @@ internal class OfflineSemanticProviderComposition(
                     return SemanticProviderFailure(SemanticProviderFailureKind.BUSY)
                 rebuilding ->
                     return SemanticProviderFailure(SemanticProviderFailureKind.INDEX_UNAVAILABLE)
-                embeddingInFlight ->
+                operationInFlight ->
                     return SemanticProviderFailure(SemanticProviderFailureKind.BUSY)
                 !indexPublished ->
                     return SemanticProviderFailure(SemanticProviderFailureKind.INDEX_UNAVAILABLE)
@@ -264,7 +421,7 @@ internal class OfflineSemanticProviderComposition(
                     val current = session ?: return SemanticProviderFailure(
                         SemanticProviderFailureKind.SESSION_FAILED
                     )
-                    embeddingInFlight = true
+                    operationInFlight = true
                     current
                 }
             }
@@ -304,7 +461,7 @@ internal class OfflineSemanticProviderComposition(
                 )
             }
         } finally {
-            synchronized(this) { embeddingInFlight = false }
+            synchronized(this) { operationInFlight = false }
         }
     }
 
@@ -313,7 +470,7 @@ internal class OfflineSemanticProviderComposition(
         if (lifecycle == OfflineSemanticProviderLifecycle.CLOSED) {
             return OfflineSemanticProviderCloseResult.AlreadyClosed
         }
-        if (rebuilding || embeddingInFlight || lifecycle == OfflineSemanticProviderLifecycle.LOADING ||
+        if (rebuilding || operationInFlight || lifecycle == OfflineSemanticProviderLifecycle.LOADING ||
             lifecycle == OfflineSemanticProviderLifecycle.CLOSING
         ) {
             return OfflineSemanticProviderCloseResult.Busy
@@ -362,5 +519,17 @@ internal class OfflineSemanticProviderComposition(
     private fun poisonDiscovery(kind: SemanticProviderFailureKind): SemanticProviderFailure {
         lifecycle = OfflineSemanticProviderLifecycle.FAILED
         return SemanticProviderFailure(kind)
+    }
+
+    @Synchronized
+    private fun poisonAdd(result: OfflineSemanticAddResult): OfflineSemanticAddResult {
+        lifecycle = OfflineSemanticProviderLifecycle.FAILED
+        return result
+    }
+
+    @Synchronized
+    private fun poisonReplace(result: OfflineSemanticReplaceResult): OfflineSemanticReplaceResult {
+        lifecycle = OfflineSemanticProviderLifecycle.FAILED
+        return result
     }
 }
