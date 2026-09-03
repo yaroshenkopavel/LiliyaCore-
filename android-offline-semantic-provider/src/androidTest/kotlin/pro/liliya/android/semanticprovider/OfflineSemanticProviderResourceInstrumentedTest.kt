@@ -31,7 +31,7 @@ class OfflineSemanticProviderResourceInstrumentedTest {
     fun records_model_embedding_lifecycle_and_flat_index_resource_evidence() {
         withFixture { fixture, root ->
             val validated = assertIs<SemanticModelArtifactValidationResult.Validated>(
-                SemanticModelArtifactValidator(root).validate(fixture, fixtureSpec())
+                benchmarkValidator(root).validate(fixture, fixtureSpec())
             ).artifact
 
             forceGc()
@@ -76,9 +76,9 @@ class OfflineSemanticProviderResourceInstrumentedTest {
                     mapOf(
                         "primaryAbi" to primaryRuntimeAbi(),
                         "abi" to Build.SUPPORTED_ABIS.joinToString(","),
-                        "fixtureBytes" to FIXTURE_SIZE_BYTES.toString(),
-                        "fixtureSha256" to FIXTURE_SHA256,
-                        "llamaRevision" to LLAMA_CPP_REVISION,
+                        "fixtureBytes" to ControlledBenchmarkSemanticModelArtifactV01.SIZE_BYTES.toString(),
+                        "fixtureSha256" to ControlledBenchmarkSemanticModelArtifactV01.SHA256,
+                        "llamaRevision" to SemanticModelProfileV01.LLAMA_CPP_REVISION,
                         "profileDimension" to SemanticEmbeddingVector.DIMENSION.toString(),
                         "loadLatencyMs" to loadLatencyMs.toString(),
                         "processPssBeforeLoadBytes" to processPssBeforeLoadBytes.toString(),
@@ -245,22 +245,24 @@ class OfflineSemanticProviderResourceInstrumentedTest {
         val root = File(targetContext.filesDir, "offline-semantic-resource-test")
         root.deleteRecursively()
         check(root.mkdirs())
-        val fixture = File(root, FIXTURE_NAME)
+        val fixture = File(root, ControlledBenchmarkSemanticModelArtifactV01.FILE_NAME)
         try {
-            testContext.assets.open(FIXTURE_NAME).use { input ->
+            testContext.assets.open(ControlledBenchmarkSemanticModelArtifactV01.FILE_NAME).use { input ->
                 fixture.outputStream().use { output -> input.copyTo(output, DEFAULT_BUFFER_SIZE) }
             }
-            assertEquals(FIXTURE_SIZE_BYTES, fixture.length())
+            assertEquals(ControlledBenchmarkSemanticModelArtifactV01.SIZE_BYTES, fixture.length())
             block(fixture, root)
         } finally {
             root.deleteRecursively()
         }
     }
 
-    private fun fixtureSpec(): SemanticModelArtifactSpec = SemanticModelArtifactSpec(
-        profileGeneration = SemanticProfileGeneration(1),
-        expectedSizeBytes = FIXTURE_SIZE_BYTES,
-        expectedSha256 = FIXTURE_SHA256
+    private fun fixtureSpec(): SemanticModelArtifactSpec =
+        SemanticModelArtifactSpec(ControlledBenchmarkSemanticModelArtifactV01.identity)
+
+    private fun benchmarkValidator(root: File) = SemanticModelArtifactValidator(
+        root,
+        SemanticModelArtifactAcceptance.CONTROLLED_BENCHMARK
     )
 
     private fun testPolicy() = SemanticEmbeddingPolicy(
@@ -282,11 +284,6 @@ class OfflineSemanticProviderResourceInstrumentedTest {
     )
 
     private companion object {
-        const val FIXTURE_NAME = "multilingual-e5-small-q8_0.gguf"
-        const val FIXTURE_SIZE_BYTES = 132_439_008L
-        const val FIXTURE_SHA256 =
-            "e011debc1208e31bf7b6aebee2d9fc8bd2ca11694a77ed66ac9d0c9d0a877c93"
-        const val LLAMA_CPP_REVISION = "0f3a71be15af836d277c9f918adfafb45732677e"
         const val FLAT_INDEX_CANDIDATE_BOUND = 8
         const val MAX_MODEL_LOAD_MEMORY_DELTA_BYTES = 512L * 1024L * 1024L
         const val MAX_WARM_QUERY_LATENCY_MS = 1_500L
