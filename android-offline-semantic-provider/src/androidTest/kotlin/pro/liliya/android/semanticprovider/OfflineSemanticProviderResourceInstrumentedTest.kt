@@ -21,7 +21,8 @@ import pro.liliya.core.memory.MemoryRecordId
  *
  * GitHub-hosted CI currently executes Android x86_64 with native translation. Those measurements
  * are useful preflight evidence only. The canonical ARM64 memory/latency thresholds are enforced
- * automatically when this exact instrumentation test runs on an arm64-v8a Android target.
+ * automatically when this exact instrumentation test runs with arm64-v8a as the primary Android
+ * runtime ABI. Merely advertising arm64-v8a as a translated secondary ABI is not ARM64 evidence.
  */
 @RunWith(AndroidJUnit4::class)
 class OfflineSemanticProviderResourceInstrumentedTest {
@@ -73,6 +74,7 @@ class OfflineSemanticProviderResourceInstrumentedTest {
 
                 recordEvidence(
                     mapOf(
+                        "primaryAbi" to primaryRuntimeAbi(),
                         "abi" to Build.SUPPORTED_ABIS.joinToString(","),
                         "fixtureBytes" to FIXTURE_SIZE_BYTES.toString(),
                         "fixtureSha256" to FIXTURE_SHA256,
@@ -230,8 +232,11 @@ class OfflineSemanticProviderResourceInstrumentedTest {
         InstrumentationRegistry.getInstrumentation().sendStatus(2, bundle)
     }
 
+    private fun primaryRuntimeAbi(): String =
+        Build.SUPPORTED_ABIS.firstOrNull().orEmpty()
+
     private fun isArm64Target(): Boolean =
-        Build.SUPPORTED_ABIS.any { abi -> abi == "arm64-v8a" }
+        primaryRuntimeAbi() == "arm64-v8a"
 
     private fun withFixture(block: (File, File) -> Unit) {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
