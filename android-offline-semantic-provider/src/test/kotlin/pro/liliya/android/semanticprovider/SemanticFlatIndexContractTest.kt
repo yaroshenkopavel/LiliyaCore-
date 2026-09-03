@@ -54,6 +54,29 @@ class SemanticFlatIndexContractTest {
     }
 
     @Test
+    fun bounded_top_k_replaces_worse_early_entries_with_better_late_entries() {
+        val index = SemanticFlatIndex(SemanticProfileGeneration(1))
+        val query = SemanticEmbeddingVector(basis(0))
+        val unrelated = SemanticEmbeddingVector(basis(1))
+        val relevant = SemanticEmbeddingVector(basis(0))
+
+        val earlyLowA = memory("early-low-a", 1)
+        val earlyLowB = memory("early-low-b", 2)
+        val lateBestOlder = memory("late-best-older", 3)
+        val lateBestNewer = memory("late-best-newer", 4)
+
+        assertIs<SemanticIndexAddResult.Indexed>(index.addExact(earlyLowA, unrelated))
+        assertIs<SemanticIndexAddResult.Indexed>(index.addExact(earlyLowB, unrelated))
+        assertIs<SemanticIndexAddResult.Indexed>(index.addExact(lateBestNewer, relevant))
+        assertIs<SemanticIndexAddResult.Indexed>(index.addExact(lateBestOlder, relevant))
+
+        assertEquals(
+            listOf(lateBestOlder, lateBestNewer),
+            index.rank(SemanticIndexDomain.MEMORY, query, maxCandidates = 2).map { it.source }
+        )
+    }
+
+    @Test
     fun duplicate_and_same_entity_new_generation_do_not_silently_replace() {
         val index = SemanticFlatIndex(SemanticProfileGeneration(1))
         val v = SemanticEmbeddingVector(basis(0))
