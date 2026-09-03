@@ -17,14 +17,29 @@ internal data class SemanticCandidates(
     override fun toString(): String = "SemanticCandidates(candidates=<redacted:${candidates.size}>)"
 }
 
+internal enum class SemanticProviderFailureKind {
+    BUSY,
+    INDEX_UNAVAILABLE,
+    RESOURCE_REJECTED,
+    REQUEST_REJECTED,
+    OPERATION_FAILED,
+    SESSION_FAILED,
+    CLOSED,
+    PROVIDER_FAILED
+}
+
 internal data class SemanticProviderFailure(
-    val className: String
+    val kind: SemanticProviderFailureKind,
+    val exceptionClass: String? = null
 ) : SemanticCandidateDiscoveryResult {
     init {
-        require(className.isNotBlank()) { "semantic provider failure class name must not be blank" }
+        require(exceptionClass == null || exceptionClass.isNotBlank()) {
+            "semantic provider exception class must not be blank"
+        }
     }
 
-    override fun toString(): String = "SemanticProviderFailure(className=$className)"
+    override fun toString(): String =
+        "SemanticProviderFailure(kind=$kind, exceptionClass=${exceptionClass ?: "null"})"
 }
 
 internal enum class SemanticDiscoveryContractFailure {
@@ -35,10 +50,11 @@ internal enum class SemanticDiscoveryContractFailure {
 
 internal class SemanticDiscoveryContractException(
     val failure: SemanticDiscoveryContractFailure,
+    val providerFailureKind: SemanticProviderFailureKind? = null,
     val providerExceptionType: String? = null
 ) : IllegalStateException(failure.name) {
     override fun toString(): String =
-        "SemanticDiscoveryContractException(failure=$failure, providerExceptionType=${providerExceptionType ?: "null"})"
+        "SemanticDiscoveryContractException(failure=$failure, providerFailureKind=${providerFailureKind ?: "null"}, providerExceptionType=${providerExceptionType ?: "null"})"
 }
 
 /**
@@ -90,6 +106,7 @@ internal class OfflineSemanticMemoryRelevanceDiscoveryAdapter(
     } catch (failure: Exception) {
         throw SemanticDiscoveryContractException(
             failure = SemanticDiscoveryContractFailure.PROVIDER_FAILED,
+            providerFailureKind = SemanticProviderFailureKind.PROVIDER_FAILED,
             providerExceptionType = failure.javaClass.name
         )
     }
@@ -129,6 +146,7 @@ internal class OfflineSemanticKnowledgeRelevanceDiscoveryAdapter(
     } catch (failure: Exception) {
         throw SemanticDiscoveryContractException(
             failure = SemanticDiscoveryContractFailure.PROVIDER_FAILED,
+            providerFailureKind = SemanticProviderFailureKind.PROVIDER_FAILED,
             providerExceptionType = failure.javaClass.name
         )
     }
@@ -141,7 +159,8 @@ private fun requireCandidates(
     is SemanticProviderFailure ->
         throw SemanticDiscoveryContractException(
             failure = SemanticDiscoveryContractFailure.PROVIDER_FAILED,
-            providerExceptionType = discovered.className
+            providerFailureKind = discovered.kind,
+            providerExceptionType = discovered.exceptionClass
         )
 
     is SemanticCandidates -> {
