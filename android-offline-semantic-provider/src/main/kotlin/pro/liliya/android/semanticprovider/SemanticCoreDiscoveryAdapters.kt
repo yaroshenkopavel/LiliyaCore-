@@ -9,20 +9,22 @@ import pro.liliya.core.cognitive.MemoryRelevanceDiscoveryPort
 import pro.liliya.core.cognitive.MemoryRelevanceDiscoveryRequest
 import pro.liliya.core.cognitive.MemoryRelevanceDiscoveryResult
 
-internal sealed interface SemanticCandidateDiscoveryResult {
-    data class Candidates(
-        val candidates: List<SemanticIndexSourceReference>
-    ) : SemanticCandidateDiscoveryResult {
-        override fun toString(): String = "Candidates(candidates=<redacted:${candidates.size}>)"
+internal sealed interface SemanticCandidateDiscoveryResult
+
+internal data class SemanticCandidates(
+    val candidates: List<SemanticIndexSourceReference>
+) : SemanticCandidateDiscoveryResult {
+    override fun toString(): String = "SemanticCandidates(candidates=<redacted:${candidates.size}>)"
+}
+
+internal data class SemanticProviderFailure(
+    val className: String
+) : SemanticCandidateDiscoveryResult {
+    init {
+        require(className.isNotBlank()) { "semantic provider failure class name must not be blank" }
     }
 
-    data class ProviderFailure(val className: String) : SemanticCandidateDiscoveryResult {
-        init {
-            require(className.isNotBlank()) { "semantic provider failure class name must not be blank" }
-        }
-
-        override fun toString(): String = "ProviderFailure(className=$className)"
-    }
+    override fun toString(): String = "SemanticProviderFailure(className=$className)"
 }
 
 internal enum class SemanticDiscoveryContractFailure {
@@ -136,13 +138,13 @@ private fun requireCandidates(
     discovered: SemanticCandidateDiscoveryResult,
     maxCandidates: Int
 ): List<SemanticIndexSourceReference> = when (discovered) {
-    is SemanticCandidateDiscoveryResult.ProviderFailure ->
+    is SemanticProviderFailure ->
         throw SemanticDiscoveryContractException(
             failure = SemanticDiscoveryContractFailure.PROVIDER_FAILED,
             providerExceptionType = discovered.className
         )
 
-    is SemanticCandidateDiscoveryResult.Candidates -> {
+    is SemanticCandidates -> {
         if (discovered.candidates.size > maxCandidates) {
             throw SemanticDiscoveryContractException(
                 SemanticDiscoveryContractFailure.CANDIDATE_COUNT_EXCEEDED
