@@ -25,6 +25,8 @@ internal sealed interface SemanticEmbeddingSessionLoadResult {
     data object ResourceRejected : SemanticEmbeddingSessionLoadResult
     data object Unsupported : SemanticEmbeddingSessionLoadResult
     data object Rejected : SemanticEmbeddingSessionLoadResult
+    data object ModelLoadRejectedDiagnostic : SemanticEmbeddingSessionLoadResult
+    data object ContextInitRejectedDiagnostic : SemanticEmbeddingSessionLoadResult
     data object ProviderFailed : SemanticEmbeddingSessionLoadResult
 }
 
@@ -63,7 +65,12 @@ internal class SemanticEmbeddingSessionLoader(
             when (nativeId) {
                 SemanticNativeBridge.LOAD_RESOURCE_REJECTED -> SemanticEmbeddingSessionLoadResult.ResourceRejected
                 SemanticNativeBridge.LOAD_UNSUPPORTED -> SemanticEmbeddingSessionLoadResult.Unsupported
-                SemanticNativeBridge.LOAD_REJECTED -> SemanticEmbeddingSessionLoadResult.Rejected
+                SemanticNativeBridge.LOAD_REJECTED ->
+                    SemanticEmbeddingSessionLoadResult.Rejected
+                SemanticNativeBridge.LOAD_MODEL_REJECTED_DIAGNOSTIC ->
+                    SemanticEmbeddingSessionLoadResult.ModelLoadRejectedDiagnostic
+                SemanticNativeBridge.LOAD_CONTEXT_REJECTED_DIAGNOSTIC ->
+                    SemanticEmbeddingSessionLoadResult.ContextInitRejectedDiagnostic
                 SemanticNativeBridge.LOAD_PROVIDER_FAILED -> SemanticEmbeddingSessionLoadResult.ProviderFailed
                 else -> if (nativeId > 0L) {
                     SemanticEmbeddingSessionLoadResult.Loaded(
