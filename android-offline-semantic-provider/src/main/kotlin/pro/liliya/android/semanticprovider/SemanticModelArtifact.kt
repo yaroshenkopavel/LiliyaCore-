@@ -5,23 +5,14 @@ import java.io.FileInputStream
 import java.security.MessageDigest
 
 internal data class SemanticModelArtifactSpec(
-    val profileGeneration: SemanticProfileGeneration,
-    val expectedSizeBytes: Long,
-    val expectedSha256: String
+    val identity: SemanticModelArtifactIdentity
 ) {
-    init {
-        require(expectedSizeBytes > 0L) { "semantic model artifact size must be positive" }
-        require(SHA256_PATTERN.matches(expectedSha256)) {
-            "semantic model artifact SHA-256 must be lowercase hexadecimal"
-        }
-    }
+    val profileGeneration: SemanticProfileGeneration get() = identity.profileGeneration
+    val expectedSizeBytes: Long get() = identity.expectedSizeBytes
+    val expectedSha256: String get() = identity.expectedSha256
 
     override fun toString(): String =
-        "SemanticModelArtifactSpec(profileGeneration=$profileGeneration, expectedSizeBytes=$expectedSizeBytes, expectedSha256=<redacted>)"
-
-    private companion object {
-        val SHA256_PATTERN = Regex("[0-9a-f]{64}")
-    }
+        "SemanticModelArtifactSpec(identity=$identity)"
 }
 
 internal class ValidatedSemanticModelArtifact internal constructor(
@@ -32,12 +23,20 @@ internal class ValidatedSemanticModelArtifact internal constructor(
         "ValidatedSemanticModelArtifact(profileGeneration=${spec.profileGeneration}, path=<redacted>)"
 }
 
+internal enum class SemanticModelArtifactAcceptance {
+    PRODUCTION,
+    CONTROLLED_BENCHMARK
+}
+
 internal sealed interface SemanticModelArtifactValidationResult {
     data class Validated(val artifact: ValidatedSemanticModelArtifact) :
         SemanticModelArtifactValidationResult {
         override fun toString(): String = "Validated(artifact=$artifact)"
     }
 
+    data object ProfileMismatch : SemanticModelArtifactValidationResult
+    data object IncompleteConversionProvenance : SemanticModelArtifactValidationResult
+    data object FileNameMismatch : SemanticModelArtifactValidationResult
     data object OutsideAppPrivateRoot : SemanticModelArtifactValidationResult
     data object Missing : SemanticModelArtifactValidationResult
     data object NotRegularFile : SemanticModelArtifactValidationResult
@@ -48,7 +47,10 @@ internal sealed interface SemanticModelArtifactValidationResult {
     }
 }
 
-internal class SemanticModelArtifactValidator(appPrivateRoot: File) {
+internal class SemanticModelArtifactValidator(
+    appPrivateRoot: File,
+    private val acceptance: SemanticModelArtifactAcceptance = SemanticModelArtifactAcceptance.PRODUCTION
+) {
     private val canonicalRoot: File = appPrivateRoot.canonicalFile
 
     fun validate(
@@ -56,6 +58,20 @@ internal class SemanticModelArtifactValidator(appPrivateRoot: File) {
         spec: SemanticModelArtifactSpec
     ): SemanticModelArtifactValidationResult {
         return try {
+            val identity = spec.identity
+            if (!SemanticModelProfileV01.matches(identity)) {
+                return SemanticModelArtifactValidationResult.ProfileMismatch
+            }
+            if (
+                acceptance == SemanticModelArtifactAcceptance.PRODUCTION &&
+                !identity.hasReproducibleConversionProvenance
+            ) {
+                return SemanticModelArtifactValidationResult.IncompleteConversionProvenance
+            }
+            if (candidate.name != identity.ggufFileName) {
+                return SemanticModelArtifactValidationResult.FileNameMismatch
+            }
+
             val canonicalCandidate = candidate.canonicalFile
             if (!isInsideRoot(canonicalCandidate)) {
                 return SemanticModelArtifactValidationResult.OutsideAppPrivateRoot
