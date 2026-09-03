@@ -164,8 +164,8 @@ class OfflineSemanticProviderRealModelInstrumentedTest {
 
     private companion object {
         const val FIXTURE_NAME = "multilingual-e5-small-q8_0.gguf"
-        const val FIXTURE_SIZE_BYTES = 131_624_960L
+        const val FIXTURE_SIZE_BYTES = 132_439_008L
         const val FIXTURE_SHA256 =
-            "0a34067a40f25d3149b36885faa62bee0e5284d0f9edc102acfc00e115d953e8"
+            "e011debc1208e31bf7b6aebee2d9fc8bd2ca11694a77ed66ac9d0c9d0a877c93"
     }
 }
