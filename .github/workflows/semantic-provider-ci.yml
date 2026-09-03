@@ -64,6 +64,8 @@ jobs:
           set -euo pipefail
           asset_dir="android-offline-semantic-provider/src/androidTest/assets"
           asset="$asset_dir/multilingual-e5-small-q8_0.gguf"
+          identity_file="android-offline-semantic-provider/src/androidTest/semantic-fixture-identity.env"
+          test_file="android-offline-semantic-provider/src/androidTest/kotlin/pro/liliya/android/semanticprovider/OfflineSemanticProviderRealModelInstrumentedTest.kt"
           mkdir -p "$asset_dir"
 
           # Diagnostic artifact bisect. Resolve the verified conversion commit to
@@ -83,13 +85,46 @@ jobs:
 
           fixture_sha256="$(sha256sum "$asset" | awk '{print $1}')"
           fixture_size="$(stat --format=%s "$asset")"
-          echo "SEMANTIC_FIXTURE_REPOSITORY=${model_repo}"
-          echo "SEMANTIC_FIXTURE_REVISION=${exact_revision}"
-          echo "SEMANTIC_FIXTURE_FILE=${filename}"
-          echo "SEMANTIC_FIXTURE_SHA256=${fixture_sha256}"
-          echo "SEMANTIC_FIXTURE_SIZE=${fixture_size}"
           test "$fixture_size" -gt 100000000
           test "$fixture_size" -lt 170000000
+
+          cat > "$identity_file" <<EOF
+          SEMANTIC_FIXTURE_REPOSITORY=${model_repo}
+          SEMANTIC_FIXTURE_REVISION=${exact_revision}
+          SEMANTIC_FIXTURE_FILE=${filename}
+          SEMANTIC_FIXTURE_SHA256=${fixture_sha256}
+          SEMANTIC_FIXTURE_SIZE=${fixture_size}
+          EOF
+          cat "$identity_file"
+
+          # Diagnostic-only binding: compile the Android contract against the
+          # exact bytes downloaded above. If this candidate succeeds, these
+          # values are committed as constants and this mutation is removed.
+          python - "$test_file" "$fixture_size" "$fixture_sha256" <<'PY'
+          from pathlib import Path
+          import re
+          import sys
+
+          path = Path(sys.argv[1])
+          size = sys.argv[2]
+          sha = sys.argv[3]
+          text = path.read_text()
+          text, size_count = re.subn(
+              r'const val FIXTURE_SIZE_BYTES = [0-9_]+L',
+              f'const val FIXTURE_SIZE_BYTES = {size}L',
+              text,
+              count=1,
+          )
+          text, sha_count = re.subn(
+              r'const val FIXTURE_SHA256 =\s*\n\s*"[0-9a-f]{64}"',
+              f'const val FIXTURE_SHA256 =\n            "{sha}"',
+              text,
+              count=1,
+          )
+          if size_count != 1 or sha_count != 1:
+              raise SystemExit('failed to bind exact diagnostic fixture identity')
+          path.write_text(text)
+          PY
 
       - name: Compile pinned multilingual instrumentation contract
         run: gradle :android-offline-semantic-provider:assembleDebugAndroidTest --console=plain
