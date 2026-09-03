@@ -141,6 +141,8 @@ internal class SemanticFlatIndex(
     )
 
     private val entries = LinkedHashMap<String, Entry>()
+    private var memoryEntryCount = 0
+    private var knowledgeEntryCount = 0
 
     @Synchronized
     fun addExact(
@@ -160,6 +162,7 @@ internal class SemanticFlatIndex(
             return SemanticIndexAddResult.CapacityRejected
         }
         entries[key] = Entry(source, profileGeneration, vector)
+        incrementDomainCount(source.domain)
         return SemanticIndexAddResult.Indexed
     }
 
@@ -192,6 +195,7 @@ internal class SemanticFlatIndex(
             return SemanticIndexRemoveResult.StaleOrMissing
         }
         entries.remove(key)
+        decrementDomainCount(source.domain)
         return SemanticIndexRemoveResult.Removed
     }
 
@@ -232,8 +236,11 @@ internal class SemanticFlatIndex(
     }
 
     @Synchronized
-    fun size(domain: SemanticIndexDomain? = null): Int =
-        if (domain == null) entries.size else entries.values.count { it.source.domain == domain }
+    fun size(domain: SemanticIndexDomain? = null): Int = when (domain) {
+        null -> entries.size
+        SemanticIndexDomain.MEMORY -> memoryEntryCount
+        SemanticIndexDomain.KNOWLEDGE -> knowledgeEntryCount
+    }
 
     private fun compareRankedBestFirst(left: Ranked, right: Ranked): Int {
         val similarity = right.similarity.compareTo(left.similarity)
@@ -247,10 +254,29 @@ internal class SemanticFlatIndex(
 
     private fun hasCapacityFor(domain: SemanticIndexDomain): Boolean {
         if (entries.size >= limits.maxTotalEntries) return false
-        val domainSize = entries.values.count { it.source.domain == domain }
         return when (domain) {
-            SemanticIndexDomain.MEMORY -> domainSize < limits.maxMemoryEntries
-            SemanticIndexDomain.KNOWLEDGE -> domainSize < limits.maxKnowledgeEntries
+            SemanticIndexDomain.MEMORY -> memoryEntryCount < limits.maxMemoryEntries
+            SemanticIndexDomain.KNOWLEDGE -> knowledgeEntryCount < limits.maxKnowledgeEntries
+        }
+    }
+
+    private fun incrementDomainCount(domain: SemanticIndexDomain) {
+        when (domain) {
+            SemanticIndexDomain.MEMORY -> memoryEntryCount += 1
+            SemanticIndexDomain.KNOWLEDGE -> knowledgeEntryCount += 1
+        }
+    }
+
+    private fun decrementDomainCount(domain: SemanticIndexDomain) {
+        when (domain) {
+            SemanticIndexDomain.MEMORY -> {
+                check(memoryEntryCount > 0) { "memory semantic index count underflow" }
+                memoryEntryCount -= 1
+            }
+            SemanticIndexDomain.KNOWLEDGE -> {
+                check(knowledgeEntryCount > 0) { "knowledge semantic index count underflow" }
+                knowledgeEntryCount -= 1
+            }
         }
     }
 
