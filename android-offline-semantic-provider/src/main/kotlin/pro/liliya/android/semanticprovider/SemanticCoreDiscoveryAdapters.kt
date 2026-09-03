@@ -20,7 +20,23 @@ internal sealed interface SemanticCandidateDiscoveryResult {
         init {
             require(className.isNotBlank()) { "semantic provider failure class name must not be blank" }
         }
+
+        override fun toString(): String = "ProviderFailure(className=$className)"
     }
+}
+
+internal enum class SemanticDiscoveryContractFailure {
+    PROVIDER_FAILED,
+    CANDIDATE_COUNT_EXCEEDED,
+    CANDIDATE_DOMAIN_MISMATCH
+}
+
+internal class SemanticDiscoveryContractException(
+    val failure: SemanticDiscoveryContractFailure,
+    val providerExceptionType: String? = null
+) : IllegalStateException(failure.name) {
+    override fun toString(): String =
+        "SemanticDiscoveryContractException(failure=$failure, providerExceptionType=${providerExceptionType ?: "null"})"
 }
 
 /**
@@ -43,37 +59,37 @@ internal class OfflineSemanticMemoryRelevanceDiscoveryAdapter(
 ) : MemoryRelevanceDiscoveryPort {
 
     override fun discover(request: MemoryRelevanceDiscoveryRequest): MemoryRelevanceDiscoveryResult {
-        val discovered = try {
-            provider.discover(
-                domain = SemanticIndexDomain.MEMORY,
-                input = request.input.text,
-                maxCandidates = request.maxCandidates
+        val discovered = discoverSafely(
+            domain = SemanticIndexDomain.MEMORY,
+            input = request.input.text,
+            maxCandidates = request.maxCandidates
+        )
+        val candidates = requireCandidates(discovered, request.maxCandidates)
+        val mapped = ArrayList<MemoryRelevanceCandidate>(candidates.size)
+        for (candidate in candidates) {
+            val source = candidate as? SemanticIndexSourceReference.Memory
+                ?: throw SemanticDiscoveryContractException(
+                    SemanticDiscoveryContractFailure.CANDIDATE_DOMAIN_MISMATCH
+                )
+            mapped += MemoryRelevanceCandidate(
+                recordId = source.id,
+                generation = source.generation
             )
-        } catch (failure: Throwable) {
-            return MemoryRelevanceDiscoveryResult.ProviderFailure(failure.structuralClassName())
         }
+        return MemoryRelevanceDiscoveryResult(mapped)
+    }
 
-        return when (discovered) {
-            is SemanticCandidateDiscoveryResult.ProviderFailure ->
-                MemoryRelevanceDiscoveryResult.ProviderFailure(discovered.className)
-
-            is SemanticCandidateDiscoveryResult.Candidates -> {
-                if (discovered.candidates.size > request.maxCandidates) {
-                    return MemoryRelevanceDiscoveryResult.ProviderFailure("CandidateCountExceeded")
-                }
-
-                val mapped = ArrayList<MemoryRelevanceCandidate>(discovered.candidates.size)
-                for (candidate in discovered.candidates) {
-                    val source = candidate as? SemanticIndexSourceReference.Memory
-                        ?: return MemoryRelevanceDiscoveryResult.ProviderFailure("CandidateDomainMismatch")
-                    mapped += MemoryRelevanceCandidate(
-                        recordId = source.id,
-                        generation = source.generation
-                    )
-                }
-                MemoryRelevanceDiscoveryResult.Candidates(mapped)
-            }
-        }
+    private fun discoverSafely(
+        domain: SemanticIndexDomain,
+        input: String,
+        maxCandidates: Int
+    ): SemanticCandidateDiscoveryResult = try {
+        provider.discover(domain, input, maxCandidates)
+    } catch (failure: Exception) {
+        throw SemanticDiscoveryContractException(
+            failure = SemanticDiscoveryContractFailure.PROVIDER_FAILED,
+            providerExceptionType = failure.javaClass.name
+        )
     }
 }
 
@@ -82,39 +98,56 @@ internal class OfflineSemanticKnowledgeRelevanceDiscoveryAdapter(
 ) : KnowledgeRelevanceDiscoveryPort {
 
     override fun discover(request: KnowledgeRelevanceDiscoveryRequest): KnowledgeRelevanceDiscoveryResult {
-        val discovered = try {
-            provider.discover(
-                domain = SemanticIndexDomain.KNOWLEDGE,
-                input = request.input.text,
-                maxCandidates = request.maxCandidates
+        val discovered = discoverSafely(
+            domain = SemanticIndexDomain.KNOWLEDGE,
+            input = request.input.text,
+            maxCandidates = request.maxCandidates
+        )
+        val candidates = requireCandidates(discovered, request.maxCandidates)
+        val mapped = ArrayList<KnowledgeRelevanceCandidate>(candidates.size)
+        for (candidate in candidates) {
+            val source = candidate as? SemanticIndexSourceReference.Knowledge
+                ?: throw SemanticDiscoveryContractException(
+                    SemanticDiscoveryContractFailure.CANDIDATE_DOMAIN_MISMATCH
+                )
+            mapped += KnowledgeRelevanceCandidate(
+                itemId = source.id,
+                generation = source.generation
             )
-        } catch (failure: Throwable) {
-            return KnowledgeRelevanceDiscoveryResult.ProviderFailure(failure.structuralClassName())
         }
+        return KnowledgeRelevanceDiscoveryResult(mapped)
+    }
 
-        return when (discovered) {
-            is SemanticCandidateDiscoveryResult.ProviderFailure ->
-                KnowledgeRelevanceDiscoveryResult.ProviderFailure(discovered.className)
-
-            is SemanticCandidateDiscoveryResult.Candidates -> {
-                if (discovered.candidates.size > request.maxCandidates) {
-                    return KnowledgeRelevanceDiscoveryResult.ProviderFailure("CandidateCountExceeded")
-                }
-
-                val mapped = ArrayList<KnowledgeRelevanceCandidate>(discovered.candidates.size)
-                for (candidate in discovered.candidates) {
-                    val source = candidate as? SemanticIndexSourceReference.Knowledge
-                        ?: return KnowledgeRelevanceDiscoveryResult.ProviderFailure("CandidateDomainMismatch")
-                    mapped += KnowledgeRelevanceCandidate(
-                        itemId = source.id,
-                        generation = source.generation
-                    )
-                }
-                KnowledgeRelevanceDiscoveryResult.Candidates(mapped)
-            }
-        }
+    private fun discoverSafely(
+        domain: SemanticIndexDomain,
+        input: String,
+        maxCandidates: Int
+    ): SemanticCandidateDiscoveryResult = try {
+        provider.discover(domain, input, maxCandidates)
+    } catch (failure: Exception) {
+        throw SemanticDiscoveryContractException(
+            failure = SemanticDiscoveryContractFailure.PROVIDER_FAILED,
+            providerExceptionType = failure.javaClass.name
+        )
     }
 }
 
-private fun Throwable.structuralClassName(): String =
-    this::class.simpleName?.takeIf { it.isNotBlank() } ?: "Unknown"
+private fun requireCandidates(
+    discovered: SemanticCandidateDiscoveryResult,
+    maxCandidates: Int
+): List<SemanticIndexSourceReference> = when (discovered) {
+    is SemanticCandidateDiscoveryResult.ProviderFailure ->
+        throw SemanticDiscoveryContractException(
+            failure = SemanticDiscoveryContractFailure.PROVIDER_FAILED,
+            providerExceptionType = discovered.className
+        )
+
+    is SemanticCandidateDiscoveryResult.Candidates -> {
+        if (discovered.candidates.size > maxCandidates) {
+            throw SemanticDiscoveryContractException(
+                SemanticDiscoveryContractFailure.CANDIDATE_COUNT_EXCEEDED
+            )
+        }
+        discovered.candidates
+    }
+}
