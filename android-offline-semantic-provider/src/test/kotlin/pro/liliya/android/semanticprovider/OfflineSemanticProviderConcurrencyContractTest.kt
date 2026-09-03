@@ -66,14 +66,8 @@ class OfflineSemanticProviderConcurrencyContractTest {
         limits = limits
     )
 
-    private fun artifact(): ValidatedSemanticModelArtifact = ValidatedSemanticModelArtifact(
-        file = File("/private/test/model.gguf"),
-        spec = SemanticModelArtifactSpec(
-            profileGeneration = SemanticProfileGeneration(1),
-            expectedSizeBytes = 1,
-            expectedSha256 = "0".repeat(64)
-        )
-    )
+    private fun artifact(): ValidatedSemanticModelArtifact =
+        TestSemanticModelArtifacts.validated(File("/private/test/model.gguf"))
 
     private fun observation(id: String): SemanticSourceObservation = SemanticSourceObservation(
         source = SemanticIndexSourceReference.Memory(
