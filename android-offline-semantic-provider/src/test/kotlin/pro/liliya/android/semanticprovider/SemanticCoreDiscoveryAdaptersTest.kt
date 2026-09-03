@@ -1,6 +1,6 @@
 package pro.liliya.android.semanticprovider
 
-import kotlin.test.Test
+import org.junit.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import pro.liliya.core.cognitive.CognitiveInput
