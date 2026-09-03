@@ -91,6 +91,7 @@ internal object SemanticModelProfileV01 {
     const val TOKENIZER_PROFILE_ID = "multilingual-e5-small:e5-query-passage-v1"
     const val LLAMA_CPP_REVISION = "0f3a71be15af836d277c9f918adfafb45732677e"
     const val EMBEDDING_DIMENSION = 384
+    const val MAX_ARTIFACT_BYTES = 160L * 1024L * 1024L
 
     val PROFILE_GENERATION = SemanticProfileGeneration(1)
 

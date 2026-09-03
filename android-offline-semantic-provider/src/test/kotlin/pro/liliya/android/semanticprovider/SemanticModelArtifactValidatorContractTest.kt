@@ -128,6 +128,24 @@ class SemanticModelArtifactValidatorContractTest {
     }
 
     @Test
+    fun artifact_over_profile_byte_limit_is_rejected_before_size_or_digest_validation() {
+        withRoot { root ->
+            val file = File(root, "semantic.gguf").also { it.writeBytes(byteArrayOf(0)) }
+            val oversizedSpec = SemanticModelArtifactSpec(
+                productionIdentity(
+                    bytes = byteArrayOf(0),
+                    fileName = file.name,
+                    expectedSizeBytes = SemanticModelProfileV01.MAX_ARTIFACT_BYTES + 1L
+                )
+            )
+
+            assertIs<SemanticModelArtifactValidationResult.ArtifactTooLarge>(
+                validator(root, oversizedSpec).validate(file, oversizedSpec)
+            )
+        }
+    }
+
+    @Test
     fun outside_root_and_symlink_escape_are_rejected_before_hashing() {
         val root = Files.createTempDirectory("semantic-root").toFile()
         val outsideRoot = Files.createTempDirectory("semantic-outside").toFile()

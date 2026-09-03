@@ -41,6 +41,7 @@ internal sealed interface SemanticModelArtifactValidationResult {
     data object OutsideAppPrivateRoot : SemanticModelArtifactValidationResult
     data object Missing : SemanticModelArtifactValidationResult
     data object NotRegularFile : SemanticModelArtifactValidationResult
+    data object ArtifactTooLarge : SemanticModelArtifactValidationResult
     data object SizeMismatch : SemanticModelArtifactValidationResult
     data object DigestMismatch : SemanticModelArtifactValidationResult
     data class Failed(val exceptionClass: String) : SemanticModelArtifactValidationResult {
@@ -99,6 +100,12 @@ internal class SemanticModelArtifactValidator(
             }
             if (!canonicalCandidate.isFile) {
                 return SemanticModelArtifactValidationResult.NotRegularFile
+            }
+            if (
+                trustedIdentity.expectedSizeBytes > SemanticModelProfileV01.MAX_ARTIFACT_BYTES ||
+                canonicalCandidate.length() > SemanticModelProfileV01.MAX_ARTIFACT_BYTES
+            ) {
+                return SemanticModelArtifactValidationResult.ArtifactTooLarge
             }
             if (canonicalCandidate.length() != trustedIdentity.expectedSizeBytes) {
                 return SemanticModelArtifactValidationResult.SizeMismatch
