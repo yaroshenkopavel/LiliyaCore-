@@ -99,7 +99,7 @@ internal sealed interface OfflineSemanticProviderCloseResult {
 internal class OfflineSemanticProviderComposition(
     private val profileGeneration: SemanticProfileGeneration,
     private val sessionLoader: SemanticProviderSessionLoader = NativeSemanticProviderSessionLoader(),
-    limits: SemanticFlatIndexLimits = SemanticFlatIndexLimits()
+    private val limits: SemanticFlatIndexLimits = SemanticFlatIndexLimits()
 ) : SemanticCandidateDiscoveryPort {
     private val publication = SemanticIndexPublication(profileGeneration, limits)
 
@@ -108,6 +108,9 @@ internal class OfflineSemanticProviderComposition(
 
     @Volatile
     private var rebuilding: Boolean = false
+
+    @Volatile
+    private var embeddingInFlight: Boolean = false
 
     @Volatile
     private var indexPublished: Boolean = false
@@ -153,11 +156,15 @@ internal class OfflineSemanticProviderComposition(
     }
 
     fun rebuild(observations: List<SemanticSourceObservation>): OfflineSemanticRebuildResult {
+        if (observations.size > limits.maxTotalEntries) {
+            return OfflineSemanticRebuildResult.IndexRejected
+        }
+
         val activeSession = synchronized(this) {
             if (lifecycle != OfflineSemanticProviderLifecycle.READY) {
                 return OfflineSemanticRebuildResult.NotReady
             }
-            if (rebuilding) return OfflineSemanticRebuildResult.Busy
+            if (rebuilding || embeddingInFlight) return OfflineSemanticRebuildResult.Busy
             val current = session ?: run {
                 lifecycle = OfflineSemanticProviderLifecycle.FAILED
                 return OfflineSemanticRebuildResult.SessionFailed
@@ -249,45 +256,55 @@ internal class OfflineSemanticProviderComposition(
                     return SemanticProviderFailure(SemanticProviderFailureKind.BUSY)
                 rebuilding ->
                     return SemanticProviderFailure(SemanticProviderFailureKind.INDEX_UNAVAILABLE)
+                embeddingInFlight ->
+                    return SemanticProviderFailure(SemanticProviderFailureKind.BUSY)
                 !indexPublished ->
                     return SemanticProviderFailure(SemanticProviderFailureKind.INDEX_UNAVAILABLE)
-                else -> session ?: return SemanticProviderFailure(
-                    SemanticProviderFailureKind.SESSION_FAILED
-                )
+                else -> {
+                    val current = session ?: return SemanticProviderFailure(
+                        SemanticProviderFailureKind.SESSION_FAILED
+                    )
+                    embeddingInFlight = true
+                    current
+                }
             }
         }
 
-        val prepared = when (val preparation = SemanticTextProfile.prepareQuery(input)) {
-            is SemanticPreparedTextResult.Prepared -> preparation.text
-            SemanticPreparedTextResult.RequestRejected ->
-                return SemanticProviderFailure(SemanticProviderFailureKind.REQUEST_REJECTED)
-            SemanticPreparedTextResult.ResourceRejected ->
-                return SemanticProviderFailure(SemanticProviderFailureKind.RESOURCE_REJECTED)
-        }
-
-        return try {
-            when (val embedding = activeSession.embed(prepared)) {
-                is SemanticEmbeddingResult.Embedded -> SemanticCandidates(
-                    publication.rank(domain, embedding.vector, maxCandidates).map { it.source }
-                )
-                SemanticEmbeddingResult.ResourceRejected ->
-                    SemanticProviderFailure(SemanticProviderFailureKind.RESOURCE_REJECTED)
-                SemanticEmbeddingResult.RequestRejected ->
-                    SemanticProviderFailure(SemanticProviderFailureKind.REQUEST_REJECTED)
-                SemanticEmbeddingResult.StaleSession -> {
-                    poisonDiscovery(SemanticProviderFailureKind.SESSION_FAILED)
-                }
-                SemanticEmbeddingResult.OperationFailed,
-                SemanticEmbeddingResult.ProviderFailed -> {
-                    poisonDiscovery(SemanticProviderFailureKind.OPERATION_FAILED)
-                }
+        try {
+            val prepared = when (val preparation = SemanticTextProfile.prepareQuery(input)) {
+                is SemanticPreparedTextResult.Prepared -> preparation.text
+                SemanticPreparedTextResult.RequestRejected ->
+                    return SemanticProviderFailure(SemanticProviderFailureKind.REQUEST_REJECTED)
+                SemanticPreparedTextResult.ResourceRejected ->
+                    return SemanticProviderFailure(SemanticProviderFailureKind.RESOURCE_REJECTED)
             }
-        } catch (failure: Exception) {
-            synchronized(this) { lifecycle = OfflineSemanticProviderLifecycle.FAILED }
-            SemanticProviderFailure(
-                kind = SemanticProviderFailureKind.PROVIDER_FAILED,
-                exceptionClass = failure.javaClass.name
-            )
+
+            return try {
+                when (val embedding = activeSession.embed(prepared)) {
+                    is SemanticEmbeddingResult.Embedded -> SemanticCandidates(
+                        publication.rank(domain, embedding.vector, maxCandidates).map { it.source }
+                    )
+                    SemanticEmbeddingResult.ResourceRejected ->
+                        SemanticProviderFailure(SemanticProviderFailureKind.RESOURCE_REJECTED)
+                    SemanticEmbeddingResult.RequestRejected ->
+                        SemanticProviderFailure(SemanticProviderFailureKind.REQUEST_REJECTED)
+                    SemanticEmbeddingResult.StaleSession -> {
+                        poisonDiscovery(SemanticProviderFailureKind.SESSION_FAILED)
+                    }
+                    SemanticEmbeddingResult.OperationFailed,
+                    SemanticEmbeddingResult.ProviderFailed -> {
+                        poisonDiscovery(SemanticProviderFailureKind.OPERATION_FAILED)
+                    }
+                }
+            } catch (failure: Exception) {
+                synchronized(this) { lifecycle = OfflineSemanticProviderLifecycle.FAILED }
+                SemanticProviderFailure(
+                    kind = SemanticProviderFailureKind.PROVIDER_FAILED,
+                    exceptionClass = failure.javaClass.name
+                )
+            }
+        } finally {
+            synchronized(this) { embeddingInFlight = false }
         }
     }
 
@@ -296,7 +313,7 @@ internal class OfflineSemanticProviderComposition(
         if (lifecycle == OfflineSemanticProviderLifecycle.CLOSED) {
             return OfflineSemanticProviderCloseResult.AlreadyClosed
         }
-        if (rebuilding || lifecycle == OfflineSemanticProviderLifecycle.LOADING ||
+        if (rebuilding || embeddingInFlight || lifecycle == OfflineSemanticProviderLifecycle.LOADING ||
             lifecycle == OfflineSemanticProviderLifecycle.CLOSING
         ) {
             return OfflineSemanticProviderCloseResult.Busy
