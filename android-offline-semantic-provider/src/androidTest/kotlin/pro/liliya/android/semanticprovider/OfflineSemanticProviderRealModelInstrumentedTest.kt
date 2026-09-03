@@ -57,6 +57,83 @@ class OfflineSemanticProviderRealModelInstrumentedTest {
 
     @Test
     fun pinned_model_preserves_relevance_order_for_english_russian_and_ukrainian() {
+        withSession { session ->
+            assertRelevantRanksHigher(
+                session = session,
+                query = "query: where did I leave my keys?",
+                relevant = "passage: I left the keys on the kitchen table.",
+                irrelevant = "passage: Whales migrate through the ocean."
+            )
+            assertRelevantRanksHigher(
+                session = session,
+                query = "query: где я оставил ключи?",
+                relevant = "passage: Я оставил ключи на кухонном столе.",
+                irrelevant = "passage: Киты мигрируют через океан."
+            )
+            assertRelevantRanksHigher(
+                session = session,
+                query = "query: де я залишив ключі?",
+                relevant = "passage: Я залишив ключі на кухонному столі.",
+                irrelevant = "passage: Кити мігрують через океан."
+            )
+        }
+    }
+
+    @Test
+    fun pinned_model_preserves_cross_language_relevance_for_russian_ukrainian_and_english() {
+        withSession { session ->
+            assertRelevantRanksHigher(
+                session = session,
+                query = "query: где я оставил ключи от квартиры?",
+                relevant = "passage: Після вечері ключі від квартири залишилися на кухонному столі.",
+                irrelevant = "passage: Сьогодні біля узбережжя спостерігали міграцію китів."
+            )
+            assertRelevantRanksHigher(
+                session = session,
+                query = "query: де лежать ключі від квартири?",
+                relevant = "passage: После ужина ключи от квартиры остались на кухонном столе.",
+                irrelevant = "passage: Сегодня у побережья наблюдали миграцию китов."
+            )
+            assertRelevantRanksHigher(
+                session = session,
+                query = "query: where are the apartment keys?",
+                relevant = "passage: После ужина ключи от квартиры остались на кухонном столе.",
+                irrelevant = "passage: Сегодня у побережья наблюдали миграцию китов."
+            )
+            assertRelevantRanksHigher(
+                session = session,
+                query = "query: где лежат ключи от квартиры?",
+                relevant = "passage: After dinner, the apartment keys were left on the kitchen table.",
+                irrelevant = "passage: Whales migrate long distances through the ocean each year."
+            )
+        }
+    }
+
+    @Test
+    fun pinned_model_rejects_lexical_overlap_distractor_and_preserves_paraphrase_relevance() {
+        withSession { session ->
+            assertRelevantRanksHigher(
+                session = session,
+                query = "query: где лежат ключи от квартиры?",
+                relevant = "passage: После ужина брелок с ключами от квартиры оставили на кухонном столе.",
+                irrelevant = "passage: В руководстве перечислены ключи шифрования для защиты архивов квартиры."
+            )
+            assertRelevantRanksHigher(
+                session = session,
+                query = "query: как мне добраться до железнодорожного вокзала утром?",
+                relevant = "passage: Утром до станции поездов удобнее всего доехать на автобусе номер двенадцать.",
+                irrelevant = "passage: Утром я обычно завариваю кофе и открываю окно на кухне."
+            )
+            assertRelevantRanksHigher(
+                session = session,
+                query = "query: як вранці дістатися до залізничного вокзалу?",
+                relevant = "passage: До станції поїздів у ранковий час найзручніше їхати дванадцятим автобусом.",
+                irrelevant = "passage: Вранці я зазвичай готую каву та відчиняю кухонне вікно."
+            )
+        }
+    }
+
+    private fun withSession(block: (SemanticEmbeddingSessionOwnership) -> Unit) {
         withFixture { fixture, root ->
             val validated = assertIs<SemanticModelArtifactValidationResult.Validated>(
                 SemanticModelArtifactValidator(root).validate(fixture, fixtureSpec())
@@ -64,26 +141,8 @@ class OfflineSemanticProviderRealModelInstrumentedTest {
             val session = assertIs<SemanticEmbeddingSessionLoadResult.Loaded>(
                 SemanticEmbeddingSessionLoader(testPolicy()).load(validated)
             ).session
-
             try {
-                assertRelevantRanksHigher(
-                    session = session,
-                    query = "query: where did I leave my keys?",
-                    relevant = "passage: I left the keys on the kitchen table.",
-                    irrelevant = "passage: Whales migrate through the ocean."
-                )
-                assertRelevantRanksHigher(
-                    session = session,
-                    query = "query: где я оставил ключи?",
-                    relevant = "passage: Я оставил ключи на кухонном столе.",
-                    irrelevant = "passage: Киты мигрируют через океан."
-                )
-                assertRelevantRanksHigher(
-                    session = session,
-                    query = "query: де я залишив ключі?",
-                    relevant = "passage: Я залишив ключі на кухонному столі.",
-                    irrelevant = "passage: Кити мігрують через океан."
-                )
+                block(session)
             } finally {
                 assertIs<SemanticEmbeddingCloseResult.Closed>(session.close())
             }
@@ -104,7 +163,7 @@ class OfflineSemanticProviderRealModelInstrumentedTest {
         val irrelevantScore = dot(queryVector, irrelevantVector)
         assertTrue(
             relevantScore > irrelevantScore,
-            "expected relevant passage to outrank unrelated passage without relying on an absolute threshold"
+            "expected relevant passage to outrank distractor without relying on an absolute threshold"
         )
     }
 
