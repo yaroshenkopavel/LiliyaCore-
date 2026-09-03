@@ -34,18 +34,16 @@ class SemanticModelArtifactValidatorContractTest {
     fun benchmark_only_provenance_requires_explicit_non_production_acceptance() {
         withRoot { root ->
             val identity = ControlledBenchmarkSemanticModelArtifactV01.identity
-            val file = File(root, identity.ggufFileName).also { fixture ->
-                fixture.writeBytes(ByteArray(identity.expectedSizeBytes.toInt()))
-            }
+            val file = File(root, identity.ggufFileName).also { it.writeBytes(byteArrayOf(0)) }
             val spec = SemanticModelArtifactSpec(identity)
 
             assertIs<SemanticModelArtifactValidationResult.IncompleteConversionProvenance>(
                 SemanticModelArtifactValidator(root).validate(file, spec)
             )
 
-            // Size/hash are deliberately not the real benchmark bytes, so explicit benchmark mode
-            // progresses past provenance and then fails structurally at the cryptographic boundary.
-            assertIs<SemanticModelArtifactValidationResult.DigestMismatch>(
+            // Explicit benchmark acceptance progresses past provenance; the intentionally tiny
+            // fixture then fails at the exact byte-count boundary without allocating model-sized RAM.
+            assertIs<SemanticModelArtifactValidationResult.SizeMismatch>(
                 SemanticModelArtifactValidator(
                     root,
                     SemanticModelArtifactAcceptance.CONTROLLED_BENCHMARK
