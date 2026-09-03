@@ -17,7 +17,7 @@ class OfflineSemanticProviderRealModelInstrumentedTest {
     fun pinned_multilingual_e5_q8_loads_and_closes_without_embedding() {
         withFixture { fixture, root ->
             val validated = assertIs<SemanticModelArtifactValidationResult.Validated>(
-                SemanticModelArtifactValidator(root).validate(fixture, fixtureSpec())
+                benchmarkValidator(root).validate(fixture, fixtureSpec())
             ).artifact
 
             val session = assertIs<SemanticEmbeddingSessionLoadResult.Loaded>(
@@ -32,7 +32,7 @@ class OfflineSemanticProviderRealModelInstrumentedTest {
     @Test
     fun pinned_multilingual_e5_q8_runs_through_validator_native_session_and_close() {
         withFixture { fixture, root ->
-            val validator = SemanticModelArtifactValidator(root)
+            val validator = benchmarkValidator(root)
             val validated = assertIs<SemanticModelArtifactValidationResult.Validated>(
                 validator.validate(fixture, fixtureSpec())
             ).artifact
@@ -148,7 +148,7 @@ class OfflineSemanticProviderRealModelInstrumentedTest {
     private fun withSession(block: (SemanticEmbeddingSessionOwnership) -> Unit) {
         withFixture { fixture, root ->
             val validated = assertIs<SemanticModelArtifactValidationResult.Validated>(
-                SemanticModelArtifactValidator(root).validate(fixture, fixtureSpec())
+                benchmarkValidator(root).validate(fixture, fixtureSpec())
             ).artifact
             val session = assertIs<SemanticEmbeddingSessionLoadResult.Loaded>(
                 SemanticEmbeddingSessionLoader(testPolicy()).load(validated)
@@ -207,22 +207,24 @@ class OfflineSemanticProviderRealModelInstrumentedTest {
         val root = File(targetContext.filesDir, "offline-semantic-real-model-test")
         root.deleteRecursively()
         check(root.mkdirs())
-        val fixture = File(root, FIXTURE_NAME)
+        val fixture = File(root, ControlledBenchmarkSemanticModelArtifactV01.FILE_NAME)
         try {
-            testContext.assets.open(FIXTURE_NAME).use { input ->
+            testContext.assets.open(ControlledBenchmarkSemanticModelArtifactV01.FILE_NAME).use { input ->
                 fixture.outputStream().use { output -> input.copyTo(output, DEFAULT_BUFFER_SIZE) }
             }
-            assertEquals(FIXTURE_SIZE_BYTES, fixture.length())
+            assertEquals(ControlledBenchmarkSemanticModelArtifactV01.SIZE_BYTES, fixture.length())
             block(fixture, root)
         } finally {
             root.deleteRecursively()
         }
     }
 
-    private fun fixtureSpec(): SemanticModelArtifactSpec = SemanticModelArtifactSpec(
-        profileGeneration = SemanticProfileGeneration(1),
-        expectedSizeBytes = FIXTURE_SIZE_BYTES,
-        expectedSha256 = FIXTURE_SHA256
+    private fun fixtureSpec(): SemanticModelArtifactSpec =
+        SemanticModelArtifactSpec(ControlledBenchmarkSemanticModelArtifactV01.identity)
+
+    private fun benchmarkValidator(root: File) = SemanticModelArtifactValidator(
+        root,
+        SemanticModelArtifactAcceptance.CONTROLLED_BENCHMARK
     )
 
     private fun testPolicy() = SemanticEmbeddingPolicy(
@@ -232,11 +234,4 @@ class OfflineSemanticProviderRealModelInstrumentedTest {
         maxInputUtf8Bytes = 4096,
         useMmap = true
     )
-
-    private companion object {
-        const val FIXTURE_NAME = "multilingual-e5-small-q8_0.gguf"
-        const val FIXTURE_SIZE_BYTES = 132_439_008L
-        const val FIXTURE_SHA256 =
-            "e011debc1208e31bf7b6aebee2d9fc8bd2ca11694a77ed66ac9d0c9d0a877c93"
-    }
 }
