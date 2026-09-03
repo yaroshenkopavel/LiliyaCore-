@@ -1,0 +1,47 @@
+name: Semantic Model Provenance
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - semantic/**
+    paths:
+      - 'android-offline-semantic-provider/ci/reproduce_semantic_model_q8.sh'
+      - '.github/workflows/semantic-model-provenance.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'android-offline-semantic-provider/ci/reproduce_semantic_model_q8.sh'
+      - '.github/workflows/semantic-model-provenance.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  reproduce-semantic-model:
+    name: Reproduce multilingual-e5-small Q8_0 provenance
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Reproduce pinned semantic Q8_0 candidate
+        shell: bash
+        run: bash android-offline-semantic-provider/ci/reproduce_semantic_model_q8.sh "$RUNNER_TEMP/semantic-model-provenance"
+
+      - name: Publish structural provenance manifest
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: semantic-model-provenance
+          path: ${{ runner.temp }}/semantic-model-provenance/semantic-model-provenance.txt
+          if-no-files-found: error
+          retention-days: 30
