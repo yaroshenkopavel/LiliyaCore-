@@ -15,9 +15,9 @@ class OfflineSemanticProviderRealModelInstrumentedTest {
 
     @Test
     fun pinned_multilingual_e5_q8_loads_and_closes_without_embedding() {
-        withFixture { fixture, root ->
+        withFixture { fixture, root, selection ->
             val validated = assertIs<SemanticModelArtifactValidationResult.Validated>(
-                benchmarkValidator(root).validate(fixture, fixtureSpec())
+                fixtureValidator(root, selection).validate(fixture, fixtureSpec(selection))
             ).artifact
 
             val session = assertIs<SemanticEmbeddingSessionLoadResult.Loaded>(
@@ -31,10 +31,10 @@ class OfflineSemanticProviderRealModelInstrumentedTest {
 
     @Test
     fun pinned_multilingual_e5_q8_runs_through_validator_native_session_and_close() {
-        withFixture { fixture, root ->
-            val validator = benchmarkValidator(root)
+        withFixture { fixture, root, selection ->
+            val validator = fixtureValidator(root, selection)
             val validated = assertIs<SemanticModelArtifactValidationResult.Validated>(
-                validator.validate(fixture, fixtureSpec())
+                validator.validate(fixture, fixtureSpec(selection))
             ).artifact
 
             val session = assertIs<SemanticEmbeddingSessionLoadResult.Loaded>(
@@ -146,9 +146,9 @@ class OfflineSemanticProviderRealModelInstrumentedTest {
     }
 
     private fun withSession(block: (SemanticEmbeddingSessionOwnership) -> Unit) {
-        withFixture { fixture, root ->
+        withFixture { fixture, root, selection ->
             val validated = assertIs<SemanticModelArtifactValidationResult.Validated>(
-                benchmarkValidator(root).validate(fixture, fixtureSpec())
+                fixtureValidator(root, selection).validate(fixture, fixtureSpec(selection))
             ).artifact
             val session = assertIs<SemanticEmbeddingSessionLoadResult.Loaded>(
                 SemanticEmbeddingSessionLoader(testPolicy()).load(validated)
@@ -200,32 +200,44 @@ class OfflineSemanticProviderRealModelInstrumentedTest {
         assertTrue(abs(normSquared - 1.0) <= 0.001)
     }
 
-    private fun withFixture(block: (File, File) -> Unit) {
+    private fun withFixture(
+        block: (
+            File,
+            File,
+            SelfReproducedSemanticModelFixture.Selection
+        ) -> Unit
+    ) {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val targetContext = instrumentation.targetContext
         val testContext = instrumentation.context
+        val selection = SelfReproducedSemanticModelFixture.select(instrumentation.arguments)
         val root = File(targetContext.filesDir, "offline-semantic-real-model-test")
         root.deleteRecursively()
         check(root.mkdirs())
-        val fixture = File(root, ControlledBenchmarkSemanticModelArtifactV01.FILE_NAME)
+        val fixture = File(root, selection.identity.ggufFileName)
         try {
-            testContext.assets.open(ControlledBenchmarkSemanticModelArtifactV01.FILE_NAME).use { input ->
+            testContext.assets.open(selection.identity.ggufFileName).use { input ->
                 fixture.outputStream().use { output -> input.copyTo(output, DEFAULT_BUFFER_SIZE) }
             }
-            assertEquals(ControlledBenchmarkSemanticModelArtifactV01.SIZE_BYTES, fixture.length())
-            block(fixture, root)
+            assertEquals(selection.identity.expectedSizeBytes, fixture.length())
+            block(fixture, root, selection)
         } finally {
             root.deleteRecursively()
         }
     }
 
-    private fun fixtureSpec(): SemanticModelArtifactSpec =
-        SemanticModelArtifactSpec(ControlledBenchmarkSemanticModelArtifactV01.identity)
+    private fun fixtureSpec(
+        selection: SelfReproducedSemanticModelFixture.Selection
+    ): SemanticModelArtifactSpec =
+        SemanticModelArtifactSpec(selection.identity)
 
-    private fun benchmarkValidator(root: File) = SemanticModelArtifactValidator(
+    private fun fixtureValidator(
+        root: File,
+        selection: SelfReproducedSemanticModelFixture.Selection
+    ) = SemanticModelArtifactValidator(
         root,
-        ControlledBenchmarkSemanticModelArtifactV01.identity,
-        SemanticModelArtifactAcceptance.CONTROLLED_BENCHMARK
+        selection.identity,
+        selection.acceptance
     )
 
     private fun testPolicy() = SemanticEmbeddingPolicy(
