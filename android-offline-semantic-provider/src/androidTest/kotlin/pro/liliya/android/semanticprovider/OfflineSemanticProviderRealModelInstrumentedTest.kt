@@ -224,6 +224,7 @@ class OfflineSemanticProviderRealModelInstrumentedTest {
 
     private fun benchmarkValidator(root: File) = SemanticModelArtifactValidator(
         root,
+        ControlledBenchmarkSemanticModelArtifactV01.identity,
         SemanticModelArtifactAcceptance.CONTROLLED_BENCHMARK
     )
 
