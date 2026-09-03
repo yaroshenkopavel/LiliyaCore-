@@ -35,6 +35,7 @@ internal sealed interface SemanticModelArtifactValidationResult {
     }
 
     data object ProfileMismatch : SemanticModelArtifactValidationResult
+    data object ArtifactIdentityMismatch : SemanticModelArtifactValidationResult
     data object IncompleteConversionProvenance : SemanticModelArtifactValidationResult
     data object FileNameMismatch : SemanticModelArtifactValidationResult
     data object OutsideAppPrivateRoot : SemanticModelArtifactValidationResult
@@ -47,11 +48,25 @@ internal sealed interface SemanticModelArtifactValidationResult {
     }
 }
 
+/**
+ * Validates candidate bytes against one separately supplied trusted artifact identity.
+ *
+ * The candidate spec is evidence to compare, never authority for itself. Production callers must
+ * supply a repository-reviewed reproducible identity. The controlled community Q8 fixture can be
+ * accepted only through an explicit benchmark-only validator instance.
+ */
 internal class SemanticModelArtifactValidator(
     appPrivateRoot: File,
+    private val trustedIdentity: SemanticModelArtifactIdentity,
     private val acceptance: SemanticModelArtifactAcceptance = SemanticModelArtifactAcceptance.PRODUCTION
 ) {
     private val canonicalRoot: File = appPrivateRoot.canonicalFile
+
+    init {
+        require(SemanticModelProfileV01.matches(trustedIdentity)) {
+            "trusted semantic model identity does not match provider profile"
+        }
+    }
 
     fun validate(
         candidate: File,
@@ -62,13 +77,16 @@ internal class SemanticModelArtifactValidator(
             if (!SemanticModelProfileV01.matches(identity)) {
                 return SemanticModelArtifactValidationResult.ProfileMismatch
             }
+            if (identity != trustedIdentity) {
+                return SemanticModelArtifactValidationResult.ArtifactIdentityMismatch
+            }
             if (
                 acceptance == SemanticModelArtifactAcceptance.PRODUCTION &&
-                !identity.hasReproducibleConversionProvenance
+                !trustedIdentity.hasReproducibleConversionProvenance
             ) {
                 return SemanticModelArtifactValidationResult.IncompleteConversionProvenance
             }
-            if (candidate.name != identity.ggufFileName) {
+            if (candidate.name != trustedIdentity.ggufFileName) {
                 return SemanticModelArtifactValidationResult.FileNameMismatch
             }
 
@@ -82,12 +100,12 @@ internal class SemanticModelArtifactValidator(
             if (!canonicalCandidate.isFile) {
                 return SemanticModelArtifactValidationResult.NotRegularFile
             }
-            if (canonicalCandidate.length() != spec.expectedSizeBytes) {
+            if (canonicalCandidate.length() != trustedIdentity.expectedSizeBytes) {
                 return SemanticModelArtifactValidationResult.SizeMismatch
             }
 
             val actualDigest = sha256(canonicalCandidate)
-            if (actualDigest != spec.expectedSha256) {
+            if (actualDigest != trustedIdentity.expectedSha256) {
                 return SemanticModelArtifactValidationResult.DigestMismatch
             }
 
