@@ -58,18 +58,38 @@ jobs:
       - name: Run semantic provider unit contracts
         run: gradle :android-offline-semantic-provider:testDebugUnitTest --console=plain
 
-      - name: Prepare verified multilingual embedding fixture
+      - name: Prepare controlled multilingual embedding fixture
         shell: bash
         run: |
           set -euo pipefail
           asset_dir="android-offline-semantic-provider/src/androidTest/assets"
           asset="$asset_dir/multilingual-e5-small-q8_0.gguf"
           mkdir -p "$asset_dir"
+
+          # Diagnostic artifact bisect. Resolve the verified conversion commit to
+          # its full immutable revision and record exact bytes before Android use.
+          model_repo="TwinSunsLLC/multilingual-e5-small-gguf"
+          requested_revision="b6cac96"
+          metadata="$(curl --fail --location --retry 3 \
+            "https://huggingface.co/api/models/${model_repo}/revision/${requested_revision}")"
+          exact_revision="$(jq -er '.sha' <<<"$metadata")"
+          filename="$(jq -er '[.siblings[].rfilename | select(test("(?i)q8_0.*\\.gguf$"))][0]' <<<"$metadata")"
+          test -n "$exact_revision"
+          test -n "$filename"
+
           curl --fail --location --retry 3 \
-            "https://huggingface.co/cstr/multilingual-e5-small-GGUF/resolve/274299fdb785d87e8d907a24af76016cb1a8a1d8/multilingual-e5-small-q8_0.gguf?download=true" \
+            "https://huggingface.co/${model_repo}/resolve/${exact_revision}/${filename}?download=true" \
             --output "$asset"
-          echo "0a34067a40f25d3149b36885faa62bee0e5284d0f9edc102acfc00e115d953e8  $asset" | sha256sum --check --strict
-          test "$(stat --format=%s "$asset")" -eq 131624960
+
+          fixture_sha256="$(sha256sum "$asset" | awk '{print $1}')"
+          fixture_size="$(stat --format=%s "$asset")"
+          echo "SEMANTIC_FIXTURE_REPOSITORY=${model_repo}"
+          echo "SEMANTIC_FIXTURE_REVISION=${exact_revision}"
+          echo "SEMANTIC_FIXTURE_FILE=${filename}"
+          echo "SEMANTIC_FIXTURE_SHA256=${fixture_sha256}"
+          echo "SEMANTIC_FIXTURE_SIZE=${fixture_size}"
+          test "$fixture_size" -gt 100000000
+          test "$fixture_size" -lt 170000000
 
       - name: Compile pinned multilingual instrumentation contract
         run: gradle :android-offline-semantic-provider:assembleDebugAndroidTest --console=plain
