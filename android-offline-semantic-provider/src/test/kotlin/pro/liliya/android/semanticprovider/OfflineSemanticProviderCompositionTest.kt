@@ -177,14 +177,8 @@ class OfflineSemanticProviderCompositionTest {
         )
     }
 
-    private fun artifact(): ValidatedSemanticModelArtifact = ValidatedSemanticModelArtifact(
-        file = File("/private/test/model.gguf"),
-        spec = SemanticModelArtifactSpec(
-            profileGeneration = SemanticProfileGeneration(1),
-            expectedSizeBytes = 1,
-            expectedSha256 = "0".repeat(64)
-        )
-    )
+    private fun artifact(): ValidatedSemanticModelArtifact =
+        TestSemanticModelArtifacts.validated(File("/private/test/model.gguf"))
 
     private class FakeSession(
         private val onEmbed: (String) -> Unit = {}
