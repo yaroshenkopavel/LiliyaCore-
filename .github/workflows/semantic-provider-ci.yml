@@ -20,6 +20,29 @@ permissions:
   contents: read
 
 jobs:
+  semantic-reference-quality:
+    name: Trusted Semantic Reference Quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install pinned reference runtime
+        run: python -m pip install --disable-pip-version-check 'torch==2.4.1' 'transformers==4.44.2'
+
+      - name: Verify immutable upstream reference ranking
+        env:
+          HF_HUB_DISABLE_TELEMETRY: '1'
+          TRANSFORMERS_VERBOSITY: error
+        run: python android-offline-semantic-provider/ci/verify_trusted_reference_quality.py
+
   semantic-provider-native:
     name: Android Offline Semantic Provider Native
     runs-on: ubuntu-latest
