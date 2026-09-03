@@ -83,5 +83,21 @@ jobs:
           profile: pixel_6
           disable-animations: true
           script: |
+            set -e
             gradle :android-offline-semantic-provider:connectedDebugAndroidTest '-Pandroid.testInstrumentationRunnerArguments.class=pro.liliya.android.semanticprovider.OfflineSemanticProviderRealModelInstrumentedTest#pinned_multilingual_e5_q8_loads_and_closes_without_embedding' --console=plain
+
+            adb logcat -c || true
+            set +e
+            gradle :android-offline-semantic-provider:connectedDebugAndroidTest '-Pandroid.testInstrumentationRunnerArguments.class=pro.liliya.android.semanticprovider.OfflineSemanticProviderRealModelInstrumentedTest#pinned_multilingual_e5_q8_runs_through_validator_native_session_and_close' --console=plain
+            embedding_status=$?
+            set -e
+
+            if [ "$embedding_status" -ne 0 ]; then
+              echo '=== STRUCTURAL NATIVE CRASH EVIDENCE ==='
+              adb logcat -d -b crash 2>/dev/null \
+                | grep -E 'ABI:|Fatal signal|signal [0-9]+|backtrace:|#[0-9]+ pc .*lib(liliya-semantic|llama|ggml)' \
+                || true
+              exit "$embedding_status"
+            fi
+
             gradle :android-offline-semantic-provider:connectedDebugAndroidTest --console=plain
