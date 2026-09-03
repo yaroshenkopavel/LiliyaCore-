@@ -210,7 +210,9 @@ class OfflineSemanticProviderRealModelInstrumentedTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val targetContext = instrumentation.targetContext
         val testContext = instrumentation.context
-        val selection = SelfReproducedSemanticModelFixture.select(instrumentation.arguments)
+        val selection = SelfReproducedSemanticModelFixture.select(
+            InstrumentationRegistry.getArguments()
+        )
         val root = File(targetContext.filesDir, "offline-semantic-real-model-test")
         root.deleteRecursively()
         check(root.mkdirs())
