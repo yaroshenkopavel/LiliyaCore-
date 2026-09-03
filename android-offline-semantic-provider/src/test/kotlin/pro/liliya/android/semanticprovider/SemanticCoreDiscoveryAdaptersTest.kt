@@ -27,7 +27,7 @@ class SemanticCoreDiscoveryAdaptersTest {
             MemoryGeneration(3)
         )
         val provider = recordingProvider(
-            SemanticCandidateDiscoveryResult.Candidates(listOf(first, second))
+            SemanticCandidates(listOf(first, second))
         )
 
         val result = OfflineSemanticMemoryRelevanceDiscoveryAdapter(provider.port).discover(
@@ -48,7 +48,7 @@ class SemanticCoreDiscoveryAdaptersTest {
     @Test
     fun knowledge_adapter_preserves_ranked_exact_identity_and_generation() {
         val provider = recordingProvider(
-            SemanticCandidateDiscoveryResult.Candidates(
+            SemanticCandidates(
                 listOf(
                     SemanticIndexSourceReference.Knowledge(
                         KnowledgeItemId("knowledge-a"),
@@ -77,7 +77,7 @@ class SemanticCoreDiscoveryAdaptersTest {
     @Test
     fun memory_adapter_fails_closed_on_cross_domain_candidate() {
         val provider = SemanticCandidateDiscoveryPort { _, _, _ ->
-            SemanticCandidateDiscoveryResult.Candidates(
+            SemanticCandidates(
                 listOf(
                     SemanticIndexSourceReference.Knowledge(
                         KnowledgeItemId("wrong-domain"),
@@ -106,7 +106,7 @@ class SemanticCoreDiscoveryAdaptersTest {
     @Test
     fun adapter_fails_closed_when_provider_exceeds_requested_bound() {
         val provider = SemanticCandidateDiscoveryPort { _, _, _ ->
-            SemanticCandidateDiscoveryResult.Candidates(
+            SemanticCandidates(
                 listOf(
                     SemanticIndexSourceReference.Memory(MemoryRecordId("a"), MemoryGeneration(1)),
                     SemanticIndexSourceReference.Memory(MemoryRecordId("b"), MemoryGeneration(1))
