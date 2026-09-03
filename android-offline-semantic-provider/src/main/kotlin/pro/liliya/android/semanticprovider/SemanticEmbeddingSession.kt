@@ -124,7 +124,12 @@ internal class SemanticEmbeddingSessionOwnership internal constructor(
                 nativeSessionId = 0L
                 SemanticEmbeddingCloseResult.Closed
             }
-            SemanticNativeBridge.CLOSE_FAILED -> SemanticEmbeddingCloseResult.StaleOrAlreadyClosed
+            SemanticNativeBridge.CLOSE_FAILED -> {
+                // Native registry absence proves that this ownership no longer controls a live
+                // session, even when the local handle had not yet been cleared.
+                nativeSessionId = 0L
+                SemanticEmbeddingCloseResult.StaleOrAlreadyClosed
+            }
             else -> SemanticEmbeddingCloseResult.ProviderFailed
         }
     }

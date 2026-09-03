@@ -487,15 +487,17 @@ internal class OfflineSemanticProviderComposition(
                 SemanticEmbeddingCloseResult.ProviderFailed
             }
         }
-        session = null
-        indexPublished = false
         return when (closeResult) {
             SemanticEmbeddingCloseResult.Closed,
             SemanticEmbeddingCloseResult.StaleOrAlreadyClosed -> {
+                session = null
+                indexPublished = false
                 lifecycle = OfflineSemanticProviderLifecycle.CLOSED
                 OfflineSemanticProviderCloseResult.Closed
             }
             SemanticEmbeddingCloseResult.ProviderFailed -> {
+                // Preserve the exact ownership handle for an explicit cleanup retry. Discovery and
+                // index updates remain rejected by FAILED; there is no hidden retry or reload.
                 lifecycle = OfflineSemanticProviderLifecycle.FAILED
                 OfflineSemanticProviderCloseResult.ProviderFailed
             }

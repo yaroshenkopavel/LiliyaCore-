@@ -264,6 +264,30 @@ class OfflineSemanticProviderCompositionTest {
         )
     }
 
+    @Test
+    fun failed_close_preserves_session_for_explicit_cleanup_retry() {
+        val fakeSession = FakeSession().apply {
+            closeResult = SemanticEmbeddingCloseResult.ProviderFailed
+        }
+        val provider = provider(fakeSession)
+        provider.load(artifact())
+        provider.rebuild(emptyList())
+
+        assertEquals(OfflineSemanticProviderCloseResult.ProviderFailed, provider.close())
+        assertEquals(OfflineSemanticProviderLifecycle.FAILED, provider.lifecycle())
+        assertEquals(1, fakeSession.closeCalls)
+        assertEquals(
+            SemanticProviderFailure(SemanticProviderFailureKind.SESSION_FAILED),
+            provider.discover(SemanticIndexDomain.MEMORY, "query", 1)
+        )
+
+        fakeSession.closeResult = SemanticEmbeddingCloseResult.Closed
+        assertEquals(OfflineSemanticProviderCloseResult.Closed, provider.close())
+        assertEquals(OfflineSemanticProviderLifecycle.CLOSED, provider.lifecycle())
+        assertEquals(2, fakeSession.closeCalls)
+        assertEquals(OfflineSemanticProviderCloseResult.AlreadyClosed, provider.close())
+    }
+
     private fun provider(session: FakeSession): OfflineSemanticProviderComposition {
         val loader = SemanticProviderSessionLoader {
             session.loaderCalls += 1
@@ -283,6 +307,7 @@ class OfflineSemanticProviderCompositionTest {
     ) : SemanticProviderEmbeddingSession {
         var loaderCalls: Int = 0
         var closeCalls: Int = 0
+        var closeResult: SemanticEmbeddingCloseResult = SemanticEmbeddingCloseResult.Closed
         var failOnText: String? = null
         val embeddedTexts = mutableListOf<String>()
 
@@ -295,7 +320,7 @@ class OfflineSemanticProviderCompositionTest {
 
         override fun close(): SemanticEmbeddingCloseResult {
             closeCalls += 1
-            return SemanticEmbeddingCloseResult.Closed
+            return closeResult
         }
     }
 
