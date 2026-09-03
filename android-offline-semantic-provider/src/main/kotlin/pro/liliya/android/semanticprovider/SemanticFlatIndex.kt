@@ -1,6 +1,7 @@
 package pro.liliya.android.semanticprovider
 
 import java.nio.charset.StandardCharsets
+import java.util.PriorityQueue
 import kotlin.math.abs
 import pro.liliya.core.knowledge.KnowledgeGeneration
 import pro.liliya.core.knowledge.KnowledgeItemId
@@ -134,6 +135,11 @@ internal class SemanticFlatIndex(
         val vector: SemanticEmbeddingVector
     )
 
+    private data class Ranked(
+        val source: SemanticIndexSourceReference,
+        val similarity: Double
+    )
+
     private val entries = LinkedHashMap<String, Entry>()
 
     @Synchronized
@@ -189,6 +195,13 @@ internal class SemanticFlatIndex(
         return SemanticIndexRemoveResult.Removed
     }
 
+    /**
+     * Exact flat scan with a bounded live top-K working set.
+     *
+     * Every matching entry is scored exactly, but only at most maxCandidates Ranked objects are
+     * retained in the heap. This avoids materializing/sorting the full domain merely to return K.
+     * Final ordering is identical to the canonical deterministic order.
+     */
     @Synchronized
     fun rank(
         domain: SemanticIndexDomain,
@@ -197,28 +210,40 @@ internal class SemanticFlatIndex(
     ): List<SemanticRankedCandidate> {
         require(maxCandidates > 0) { "maximum semantic candidates must be positive" }
 
-        return entries.values
-            .asSequence()
-            .filter { it.source.domain == domain && it.profileGeneration == profileGeneration }
-            .map { entry -> Ranked(entry.source, query.dot(entry.vector)) }
-            .sortedWith(
-                compareByDescending<Ranked> { it.similarity }
-                    .thenBy { it.source.generationValue }
-                    .thenComparator { left, right -> compareUtf8(left.source, right.source) }
-            )
-            .take(maxCandidates)
-            .map { SemanticRankedCandidate(it.source) }
+        val bestFirst = Comparator<Ranked> { left, right -> compareRankedBestFirst(left, right) }
+        val worstFirst = bestFirst.reversed()
+        val top = PriorityQueue(maxCandidates, worstFirst)
+
+        for (entry in entries.values) {
+            if (entry.source.domain != domain || entry.profileGeneration != profileGeneration) continue
+            val ranked = Ranked(entry.source, query.dot(entry.vector))
+            if (top.size < maxCandidates) {
+                top.add(ranked)
+            } else if (bestFirst.compare(ranked, top.peek()) < 0) {
+                top.poll()
+                top.add(ranked)
+            }
+        }
+
+        return top
             .toList()
+            .sortedWith(bestFirst)
+            .map { SemanticRankedCandidate(it.source) }
     }
 
     @Synchronized
     fun size(domain: SemanticIndexDomain? = null): Int =
         if (domain == null) entries.size else entries.values.count { it.source.domain == domain }
 
-    private data class Ranked(
-        val source: SemanticIndexSourceReference,
-        val similarity: Double
-    )
+    private fun compareRankedBestFirst(left: Ranked, right: Ranked): Int {
+        val similarity = right.similarity.compareTo(left.similarity)
+        if (similarity != 0) return similarity
+
+        val generation = left.source.generationValue.compareTo(right.source.generationValue)
+        if (generation != 0) return generation
+
+        return compareUtf8(left.source, right.source)
+    }
 
     private fun hasCapacityFor(domain: SemanticIndexDomain): Boolean {
         if (entries.size >= limits.maxTotalEntries) return false
