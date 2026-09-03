@@ -17,12 +17,11 @@ endif()
 
 include(FetchContent)
 
-# The original generation-runtime checkpoint (0f3a71be...) is intentionally
-# retained by :android-llama-cpp-engine. The semantic provider uses a separate,
-# explicitly audited runtime because its BERT/embedding graph and GGUF metadata
-# compatibility are independent from the causal generation path.
-# llama.cpp release b10516, published 2026-08-20.
-set(LILIYA_LLAMA_CPP_COMMIT "b95502ba9aa0eb73a2f4fc8878d7fbe6a847a0b9")
+# Keep the semantic provider on the architecture-gated llama.cpp revision used
+# by the existing generation engine. A controlled compatibility trial against
+# release b10516 also rejected the current cstr multilingual-e5-small GGUF at
+# model-load time, so a runtime downgrade is not an accepted fix.
+set(LILIYA_LLAMA_CPP_COMMIT "0f3a71be15af836d277c9f918adfafb45732677e")
 
 FetchContent_Declare(
     llama_cpp
