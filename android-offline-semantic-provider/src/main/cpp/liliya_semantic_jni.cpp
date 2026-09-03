@@ -44,6 +44,7 @@ struct NativeSemanticSession {
     int32_t context_tokens = 0;
     int32_t batch_tokens = 0;
     int32_t max_input_utf8_bytes = 0;
+    bool use_encoder = false;
     std::mutex execution_mutex;
 
     void release() noexcept {
@@ -209,7 +210,9 @@ Java_pro_liliya_android_semanticprovider_SemanticNativeBridge_nativeLoad(
         if (raw_model == nullptr) return LOAD_REJECTED;
         std::unique_ptr<llama_model, decltype(&llama_model_free)> model(raw_model, llama_model_free);
 
-        if (llama_model_has_encoder(model.get()) && llama_model_has_decoder(model.get())) {
+        const bool has_encoder = llama_model_has_encoder(model.get());
+        const bool has_decoder = llama_model_has_decoder(model.get());
+        if (has_encoder == has_decoder) {
             return LOAD_UNSUPPORTED;
         }
         if (llama_model_n_embd_out(model.get()) != EMBEDDING_DIMENSION) {
@@ -246,6 +249,7 @@ Java_pro_liliya_android_semanticprovider_SemanticNativeBridge_nativeLoad(
         session->context_tokens = context_tokens;
         session->batch_tokens = batch_tokens;
         session->max_input_utf8_bytes = max_input_utf8_bytes;
+        session->use_encoder = has_encoder;
 
         const int64_t session_id = allocate_session_id();
         if (session_id <= 0) return LOAD_PROVIDER_FAILED;
@@ -343,8 +347,10 @@ Java_pro_liliya_android_semanticprovider_SemanticNativeBridge_nativeEmbed(
             batch.logits[index] = 1;
         }
 
-        const int32_t decode_result = llama_decode(session->context, batch);
-        if (decode_result != 0) {
+        const int32_t execution_result = session->use_encoder
+            ? llama_encode(session->context, batch)
+            : llama_decode(session->context, batch);
+        if (execution_result != 0) {
             llama_batch_free(batch);
             return make_status_packet(env, EMBED_OPERATION_FAILED);
         }
