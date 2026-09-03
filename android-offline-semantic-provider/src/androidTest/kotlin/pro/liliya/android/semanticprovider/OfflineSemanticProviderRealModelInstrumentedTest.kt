@@ -110,14 +110,26 @@ class OfflineSemanticProviderRealModelInstrumentedTest {
     }
 
     @Test
-    fun pinned_model_rejects_lexical_overlap_distractor_and_preserves_paraphrase_relevance() {
+    fun pinned_model_rejects_reference_validated_lexical_overlap_distractors() {
         withSession { session ->
             assertRelevantRanksHigher(
                 session = session,
-                query = "query: где лежат ключи от квартиры?",
-                relevant = "passage: После ужина брелок с ключами от квартиры оставили на кухонном столе.",
-                irrelevant = "passage: В руководстве перечислены ключи шифрования для защиты архивов квартиры."
+                query = "query: как утром добраться до железнодорожного вокзала?",
+                relevant = "passage: Утром до железнодорожного вокзала удобнее всего доехать на автобусе номер двенадцать.",
+                irrelevant = "passage: Железнодорожный вокзал утром изображён на фотографии в туристическом буклете."
             )
+            assertRelevantRanksHigher(
+                session = session,
+                query = "query: где хранится мой паспорт?",
+                relevant = "passage: Мой паспорт хранится дома в синей папке в верхнем ящике письменного стола.",
+                irrelevant = "passage: В моём паспорте указано место рождения и дата выдачи документа."
+            )
+        }
+    }
+
+    @Test
+    fun pinned_model_preserves_same_topic_paraphrase_relevance() {
+        withSession { session ->
             assertRelevantRanksHigher(
                 session = session,
                 query = "query: как мне добраться до железнодорожного вокзала утром?",
