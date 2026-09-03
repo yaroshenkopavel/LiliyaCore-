@@ -150,14 +150,8 @@ class OfflineSemanticProviderCoreAuthoritativeIntegrationTest {
         return provider
     }
 
-    private fun artifact(): ValidatedSemanticModelArtifact = ValidatedSemanticModelArtifact(
-        file = File("/private/test/semantic-model.gguf"),
-        spec = SemanticModelArtifactSpec(
-            profileGeneration = SemanticProfileGeneration(1),
-            expectedSizeBytes = 1,
-            expectedSha256 = "0".repeat(64)
-        )
-    )
+    private fun artifact(): ValidatedSemanticModelArtifact =
+        TestSemanticModelArtifacts.validated(File("/private/test/semantic-model.gguf"))
 
     private fun turn(): CognitiveTurnReference = CognitiveTurnReference(
         CognitiveTurnId("semantic-provider-aba-turn"),
