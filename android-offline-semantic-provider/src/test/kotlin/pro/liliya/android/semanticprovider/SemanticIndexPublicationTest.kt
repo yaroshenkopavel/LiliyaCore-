@@ -1,6 +1,6 @@
 package pro.liliya.android.semanticprovider
 
-import kotlin.test.Test
+import org.junit.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import pro.liliya.core.memory.MemoryGeneration
