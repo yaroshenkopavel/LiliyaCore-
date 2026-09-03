@@ -2,13 +2,13 @@ package pro.liliya.android.semanticprovider
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertIs
+import kotlin.test.assertFailsWith
 import pro.liliya.core.cognitive.CognitiveInput
+import pro.liliya.core.cognitive.CognitiveTurnGeneration
 import pro.liliya.core.cognitive.CognitiveTurnId
+import pro.liliya.core.cognitive.CognitiveTurnReference
 import pro.liliya.core.cognitive.KnowledgeRelevanceDiscoveryRequest
-import pro.liliya.core.cognitive.KnowledgeRelevanceDiscoveryResult
 import pro.liliya.core.cognitive.MemoryRelevanceDiscoveryRequest
-import pro.liliya.core.cognitive.MemoryRelevanceDiscoveryResult
 import pro.liliya.core.knowledge.KnowledgeGeneration
 import pro.liliya.core.knowledge.KnowledgeItemId
 import pro.liliya.core.memory.MemoryGeneration
@@ -32,15 +32,14 @@ class SemanticCoreDiscoveryAdaptersTest {
 
         val result = OfflineSemanticMemoryRelevanceDiscoveryAdapter(provider.port).discover(
             MemoryRelevanceDiscoveryRequest(
-                turn = CognitiveTurnId("turn-memory"),
+                turn = turn("turn-memory"),
                 input = CognitiveInput("where are my keys?"),
                 maxCandidates = 2
             )
         )
 
-        val candidates = assertIs<MemoryRelevanceDiscoveryResult.Candidates>(result).candidates
-        assertEquals(listOf("memory-a", "memory-b"), candidates.map { it.recordId.value })
-        assertEquals(listOf(7L, 3L), candidates.map { it.generation.value })
+        assertEquals(listOf("memory-a", "memory-b"), result.candidates.map { it.recordId.value })
+        assertEquals(listOf(7L, 3L), result.candidates.map { it.generation.value })
         assertEquals(SemanticIndexDomain.MEMORY, provider.domain)
         assertEquals("where are my keys?", provider.input)
         assertEquals(2, provider.maxCandidates)
@@ -61,16 +60,15 @@ class SemanticCoreDiscoveryAdaptersTest {
 
         val result = OfflineSemanticKnowledgeRelevanceDiscoveryAdapter(provider.port).discover(
             KnowledgeRelevanceDiscoveryRequest(
-                turn = CognitiveTurnId("turn-knowledge"),
+                turn = turn("turn-knowledge"),
                 input = CognitiveInput("what did we learn?"),
                 maxCandidates = 4
             )
         )
 
-        val candidates = assertIs<KnowledgeRelevanceDiscoveryResult.Candidates>(result).candidates
-        assertEquals(1, candidates.size)
-        assertEquals("knowledge-a", candidates.single().itemId.value)
-        assertEquals(11L, candidates.single().generation.value)
+        assertEquals(1, result.candidates.size)
+        assertEquals("knowledge-a", result.candidates.single().itemId.value)
+        assertEquals(11L, result.candidates.single().generation.value)
         assertEquals(SemanticIndexDomain.KNOWLEDGE, provider.domain)
         assertEquals("what did we learn?", provider.input)
         assertEquals(4, provider.maxCandidates)
@@ -89,17 +87,19 @@ class SemanticCoreDiscoveryAdaptersTest {
             )
         }
 
-        val result = OfflineSemanticMemoryRelevanceDiscoveryAdapter(provider).discover(
-            MemoryRelevanceDiscoveryRequest(
-                turn = CognitiveTurnId("turn-domain"),
-                input = CognitiveInput("query"),
-                maxCandidates = 1
+        val failure = assertFailsWith<SemanticDiscoveryContractException> {
+            OfflineSemanticMemoryRelevanceDiscoveryAdapter(provider).discover(
+                MemoryRelevanceDiscoveryRequest(
+                    turn = turn("turn-domain"),
+                    input = CognitiveInput("query"),
+                    maxCandidates = 1
+                )
             )
-        )
+        }
 
         assertEquals(
-            "CandidateDomainMismatch",
-            assertIs<MemoryRelevanceDiscoveryResult.ProviderFailure>(result).className
+            SemanticDiscoveryContractFailure.CANDIDATE_DOMAIN_MISMATCH,
+            failure.failure
         )
     }
 
@@ -114,17 +114,19 @@ class SemanticCoreDiscoveryAdaptersTest {
             )
         }
 
-        val result = OfflineSemanticMemoryRelevanceDiscoveryAdapter(provider).discover(
-            MemoryRelevanceDiscoveryRequest(
-                turn = CognitiveTurnId("turn-bound"),
-                input = CognitiveInput("query"),
-                maxCandidates = 1
+        val failure = assertFailsWith<SemanticDiscoveryContractException> {
+            OfflineSemanticMemoryRelevanceDiscoveryAdapter(provider).discover(
+                MemoryRelevanceDiscoveryRequest(
+                    turn = turn("turn-bound"),
+                    input = CognitiveInput("query"),
+                    maxCandidates = 1
+                )
             )
-        )
+        }
 
         assertEquals(
-            "CandidateCountExceeded",
-            assertIs<MemoryRelevanceDiscoveryResult.ProviderFailure>(result).className
+            SemanticDiscoveryContractFailure.CANDIDATE_COUNT_EXCEEDED,
+            failure.failure
         )
     }
 
@@ -134,19 +136,25 @@ class SemanticCoreDiscoveryAdaptersTest {
             throw IllegalStateException("private query or model detail")
         }
 
-        val result = OfflineSemanticMemoryRelevanceDiscoveryAdapter(provider).discover(
-            MemoryRelevanceDiscoveryRequest(
-                turn = CognitiveTurnId("turn-failure"),
-                input = CognitiveInput("private query"),
-                maxCandidates = 1
+        val failure = assertFailsWith<SemanticDiscoveryContractException> {
+            OfflineSemanticMemoryRelevanceDiscoveryAdapter(provider).discover(
+                MemoryRelevanceDiscoveryRequest(
+                    turn = turn("turn-failure"),
+                    input = CognitiveInput("private query"),
+                    maxCandidates = 1
+                )
             )
-        )
+        }
 
-        assertEquals(
-            "IllegalStateException",
-            assertIs<MemoryRelevanceDiscoveryResult.ProviderFailure>(result).className
-        )
+        assertEquals(SemanticDiscoveryContractFailure.PROVIDER_FAILED, failure.failure)
+        assertEquals("java.lang.IllegalStateException", failure.providerExceptionType)
+        assertEquals("PROVIDER_FAILED", failure.message)
     }
+
+    private fun turn(id: String): CognitiveTurnReference = CognitiveTurnReference(
+        id = CognitiveTurnId(id),
+        generation = CognitiveTurnGeneration(1)
+    )
 
     private fun recordingProvider(result: SemanticCandidateDiscoveryResult): RecordingProvider =
         RecordingProvider(result)
