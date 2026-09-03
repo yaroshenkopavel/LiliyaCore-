@@ -17,8 +17,12 @@ endif()
 
 include(FetchContent)
 
-# Keep semantic and generation runtimes on the same separately audited upstream checkpoint.
-set(LILIYA_LLAMA_CPP_COMMIT "0f3a71be15af836d277c9f918adfafb45732677e")
+# The original generation-runtime checkpoint (0f3a71be...) is intentionally
+# retained by :android-llama-cpp-engine. The semantic provider uses a separate,
+# explicitly audited runtime because its BERT/embedding graph and GGUF metadata
+# compatibility are independent from the causal generation path.
+# llama.cpp release b10516, published 2026-08-20.
+set(LILIYA_LLAMA_CPP_COMMIT "b95502ba9aa0eb73a2f4fc8878d7fbe6a847a0b9")
 
 FetchContent_Declare(
     llama_cpp
