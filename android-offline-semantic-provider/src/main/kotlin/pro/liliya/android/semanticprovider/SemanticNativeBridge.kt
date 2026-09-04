@@ -76,8 +76,7 @@ internal object SemanticNativeBridge {
         contextTokens: Int,
         batchTokens: Int,
         threadCount: Int,
-        maxInputUtf8Bytes: Int,
-        useMmap: Boolean
+        maxInputUtf8Bytes: Int
     ): Long {
         if (loadInProgress || activeSession != null) return LOAD_RESOURCE_REJECTED
         if (
@@ -94,10 +93,6 @@ internal object SemanticNativeBridge {
         val encoderPath = decodePath(sourcePathUtf8) ?: return LOAD_REJECTED
         val tokenizerPath = decodePath(tokenizerPathUtf8) ?: return LOAD_REJECTED
         if (encoderPath.isBlank() || tokenizerPath.isBlank()) return LOAD_REJECTED
-
-        // Kept in the compatibility policy until the migration cleanup removes the old mmap knob.
-        @Suppress("UNUSED_VARIABLE")
-        val ignoredLegacyMmapPolicy = useMmap
 
         loadInProgress = true
         var tokenizerOptions: OrtSession.SessionOptions? = null
