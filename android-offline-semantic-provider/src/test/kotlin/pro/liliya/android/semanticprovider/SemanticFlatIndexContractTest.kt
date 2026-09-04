@@ -54,6 +54,27 @@ class SemanticFlatIndexContractTest {
     }
 
     @Test
+    fun deterministic_tie_break_uses_unsigned_utf8_byte_order_for_non_ascii_ids() {
+        val index = SemanticFlatIndex(SemanticProfileGeneration(1))
+        val equal = SemanticEmbeddingVector(basis(0))
+
+        val emoji = memory("🙂", 1)
+        val cyrillic = memory("я", 1)
+        val accented = memory("é", 1)
+        val ascii = memory("a", 1)
+
+        assertIs<SemanticIndexAddResult.Indexed>(index.addExact(emoji, equal))
+        assertIs<SemanticIndexAddResult.Indexed>(index.addExact(cyrillic, equal))
+        assertIs<SemanticIndexAddResult.Indexed>(index.addExact(accented, equal))
+        assertIs<SemanticIndexAddResult.Indexed>(index.addExact(ascii, equal))
+
+        assertEquals(
+            listOf(ascii, accented, cyrillic, emoji),
+            index.rank(SemanticIndexDomain.MEMORY, equal, maxCandidates = 4).map { it.source }
+        )
+    }
+
+    @Test
     fun bounded_top_k_replaces_worse_early_entries_with_better_late_entries() {
         val index = SemanticFlatIndex(SemanticProfileGeneration(1))
         val query = SemanticEmbeddingVector(basis(0))
