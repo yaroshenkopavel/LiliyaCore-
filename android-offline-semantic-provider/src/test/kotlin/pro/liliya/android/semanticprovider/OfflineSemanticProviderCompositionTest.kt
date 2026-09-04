@@ -249,6 +249,31 @@ class OfflineSemanticProviderCompositionTest {
     }
 
     @Test
+    fun discovery_rejects_candidate_request_above_domain_capacity_before_embedding() {
+        val fakeSession = FakeSession()
+        val provider = OfflineSemanticProviderComposition(
+            profileGeneration = SemanticProfileGeneration(1),
+            sessionLoader = SemanticProviderSessionLoader {
+                fakeSession.loaderCalls += 1
+                SemanticProviderSessionLoadResult.Loaded(fakeSession)
+            },
+            limits = SemanticFlatIndexLimits(
+                maxMemoryEntries = 2,
+                maxKnowledgeEntries = 3,
+                maxTotalEntries = 5
+            )
+        )
+        provider.load(artifact())
+        provider.rebuild(emptyList())
+
+        assertEquals(
+            SemanticProviderFailure(SemanticProviderFailureKind.RESOURCE_REJECTED),
+            provider.discover(SemanticIndexDomain.MEMORY, "query", 3)
+        )
+        assertEquals(emptyList(), fakeSession.embeddedTexts)
+    }
+
+    @Test
     fun close_is_explicit_and_closed_provider_rejects_discovery() {
         val fakeSession = FakeSession()
         val provider = provider(fakeSession)
