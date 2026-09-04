@@ -18,11 +18,16 @@ class SemanticModelArtifactValidatorContractTest {
                 it.writeBytes(bytes)
             }
             val spec = productionSpec(bytes, file.name)
+            installTokenizerSibling(file, spec.identity)
 
             val result = validator(root, spec).validate(file, spec)
             val validated = assertIs<SemanticModelArtifactValidationResult.Validated>(result)
 
             assertEquals(file.canonicalFile, validated.artifact.file)
+            assertEquals(
+                File(file.parentFile, spec.identity.tokenizerFileName).canonicalFile,
+                validated.artifact.tokenizerFile
+            )
             assertEquals(spec, validated.artifact.spec)
             assertTrue(!validated.toString().contains(file.absolutePath))
             assertTrue(!validated.toString().contains(spec.expectedSha256))
@@ -69,6 +74,7 @@ class SemanticModelArtifactValidatorContractTest {
             )
             val file = File(root, identity.modelFileName).also { it.writeBytes(bytes) }
             val spec = SemanticModelArtifactSpec(identity)
+            installTokenizerSibling(file, identity)
 
             assertIs<SemanticModelArtifactValidationResult.IncompleteConversionProvenance>(
                 SemanticModelArtifactValidator(root, identity).validate(file, spec)
@@ -102,6 +108,7 @@ class SemanticModelArtifactValidatorContractTest {
                 )
             )
             val spec = SemanticModelArtifactSpec(identity)
+            installTokenizerSibling(file, identity)
 
             assertIs<SemanticModelArtifactValidationResult.IncompleteConversionProvenance>(
                 SemanticModelArtifactValidator(root, identity).validate(file, spec)
@@ -153,6 +160,7 @@ class SemanticModelArtifactValidatorContractTest {
 
             val file = File(root, "model.onnx").also { it.writeText("actual") }
             val expected = "expected".toByteArray()
+            installTokenizerSibling(file, productionIdentity(expected, file.name))
             val sizeSpec = productionSpec(expected, file.name)
             assertIs<SemanticModelArtifactValidationResult.SizeMismatch>(
                 validator(root, sizeSpec).validate(file, sizeSpec)
@@ -178,6 +186,7 @@ class SemanticModelArtifactValidatorContractTest {
                     expectedSizeBytes = SemanticModelProfileV01.MAX_ARTIFACT_BYTES + 1L
                 )
             )
+            installTokenizerSibling(file, oversizedSpec.identity)
 
             assertIs<SemanticModelArtifactValidationResult.ArtifactTooLarge>(
                 validator(root, oversizedSpec).validate(file, oversizedSpec)
@@ -272,6 +281,9 @@ class SemanticModelArtifactValidatorContractTest {
         modelFormat = SemanticModelFormat.ONNX,
         expectedSizeBytes = expectedSizeBytes,
         expectedSha256 = expectedSha256,
+        tokenizerFileName = TEST_TOKENIZER_FILE_NAME,
+        tokenizerExpectedSizeBytes = TEST_TOKENIZER_BYTES.size.toLong(),
+        tokenizerExpectedSha256 = sha256(TEST_TOKENIZER_BYTES),
         architecture = SemanticModelArchitecture.BERT,
         embeddingDimension = SemanticModelProfileV01.EMBEDDING_DIMENSION,
         poolingType = SemanticPoolingType.MEAN,
@@ -280,10 +292,22 @@ class SemanticModelArtifactValidatorContractTest {
         runtimeIdentity = SemanticModelProfileV01.RUNTIME_IDENTITY
     )
 
+    private fun installTokenizerSibling(
+        encoderFile: File,
+        identity: SemanticModelArtifactIdentity
+    ) {
+        File(encoderFile.parentFile, identity.tokenizerFileName).writeBytes(TEST_TOKENIZER_BYTES)
+    }
+
     private fun sha256(bytes: ByteArray): String =
         MessageDigest.getInstance("SHA-256")
             .digest(bytes)
             .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+
+    private companion object {
+        const val TEST_TOKENIZER_FILE_NAME = "semantic-tokenizer.onnx"
+        val TEST_TOKENIZER_BYTES = "semantic-tokenizer-fixture".toByteArray()
+    }
 
     private inline fun withRoot(block: (File) -> Unit) {
         val root = Files.createTempDirectory("semantic-artifact-test").toFile()
