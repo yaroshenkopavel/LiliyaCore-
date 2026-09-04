@@ -401,6 +401,13 @@ internal class OfflineSemanticProviderComposition(
         if (maxCandidates <= 0) {
             return SemanticProviderFailure(SemanticProviderFailureKind.REQUEST_REJECTED)
         }
+        val domainCandidateCapacity = when (domain) {
+            SemanticIndexDomain.MEMORY -> limits.maxMemoryEntries
+            SemanticIndexDomain.KNOWLEDGE -> limits.maxKnowledgeEntries
+        }
+        if (maxCandidates > domainCandidateCapacity) {
+            return SemanticProviderFailure(SemanticProviderFailureKind.RESOURCE_REJECTED)
+        }
 
         val activeSession = synchronized(this) {
             when {
