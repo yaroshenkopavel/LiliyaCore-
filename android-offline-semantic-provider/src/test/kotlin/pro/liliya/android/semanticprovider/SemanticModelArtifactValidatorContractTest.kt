@@ -84,6 +84,31 @@ class SemanticModelArtifactValidatorContractTest {
     }
 
     @Test
+    fun ephemeral_ci_provenance_cannot_be_accepted_as_published_production_provenance() {
+        withRoot { root ->
+            val bytes = "self-reproduced-ci-fixture".toByteArray()
+            val file = File(root, "semantic-ci.gguf").also { it.writeBytes(bytes) }
+            val identity = productionIdentity(bytes, file.name).copy(
+                conversionProvenance = SemanticConversionProvenance.ReproducibleCiFixture(
+                    conversionToolRevision = SemanticModelProfileV01.LLAMA_CPP_REVISION
+                )
+            )
+            val spec = SemanticModelArtifactSpec(identity)
+
+            assertIs<SemanticModelArtifactValidationResult.IncompleteConversionProvenance>(
+                SemanticModelArtifactValidator(root, identity).validate(file, spec)
+            )
+            assertIs<SemanticModelArtifactValidationResult.Validated>(
+                SemanticModelArtifactValidator(
+                    root,
+                    identity,
+                    SemanticModelArtifactAcceptance.REPRODUCIBLE_CI_FIXTURE
+                ).validate(file, spec)
+            )
+        }
+    }
+
+    @Test
     fun profile_and_file_name_mismatch_fail_before_file_validation() {
         withRoot { root ->
             val bytes = "semantic-model-fixture".toByteArray()

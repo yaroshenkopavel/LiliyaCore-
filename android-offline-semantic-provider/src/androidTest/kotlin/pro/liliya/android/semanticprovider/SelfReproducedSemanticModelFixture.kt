@@ -38,9 +38,7 @@ internal object SelfReproducedSemanticModelFixture {
         val sizeBytes = sizeText.toLong()
 
         val identity = ControlledBenchmarkSemanticModelArtifactV01.identity.copy(
-            conversionProvenance = SemanticConversionProvenance.Reproducible(
-                artifactRepository = SemanticModelProfileV01.UPSTREAM_MODEL_REPOSITORY,
-                artifactRevision = SemanticModelProfileV01.UPSTREAM_MODEL_REVISION,
+            conversionProvenance = SemanticConversionProvenance.ReproducibleCiFixture(
                 conversionToolRevision = SemanticModelProfileV01.LLAMA_CPP_REVISION
             ),
             expectedSizeBytes = sizeBytes,

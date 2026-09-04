@@ -83,8 +83,7 @@ internal class SemanticModelArtifactValidator(
                 return SemanticModelArtifactValidationResult.ArtifactIdentityMismatch
             }
             if (
-                acceptance != SemanticModelArtifactAcceptance.CONTROLLED_BENCHMARK &&
-                !trustedIdentity.hasReproducibleConversionProvenance
+                !acceptance.matches(trustedIdentity.conversionProvenance)
             ) {
                 return SemanticModelArtifactValidationResult.IncompleteConversionProvenance
             }
@@ -151,5 +150,16 @@ internal class SemanticModelArtifactValidator(
 
     private companion object {
         const val HASH_BUFFER_BYTES = 64 * 1024
+
+        fun SemanticModelArtifactAcceptance.matches(
+            provenance: SemanticConversionProvenance
+        ): Boolean = when (this) {
+            SemanticModelArtifactAcceptance.PRODUCTION ->
+                provenance is SemanticConversionProvenance.Reproducible
+            SemanticModelArtifactAcceptance.REPRODUCIBLE_CI_FIXTURE ->
+                provenance is SemanticConversionProvenance.ReproducibleCiFixture
+            SemanticModelArtifactAcceptance.CONTROLLED_BENCHMARK ->
+                provenance is SemanticConversionProvenance.ControlledBenchmark
+        }
     }
 }

@@ -92,7 +92,7 @@ jobs:
       - name: Compile self-reproduced instrumentation contract
         run: gradle :android-offline-semantic-provider:assembleDebugAndroidTest --console=plain
 
-      - name: Run self-reproduced candidate through production native quality path
+      - name: Run ephemeral self-reproduced fixture through native quality path
         uses: ReactiveCircus/android-emulator-runner@v2
         with:
           api-level: 35

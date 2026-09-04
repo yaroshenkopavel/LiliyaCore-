@@ -13,12 +13,9 @@ internal enum class SemanticNormalizationRule {
 }
 
 internal sealed interface SemanticConversionProvenance {
-    val artifactRepository: String
-    val artifactRevision: String
-
     data class Reproducible(
-        override val artifactRepository: String,
-        override val artifactRevision: String,
+        val artifactRepository: String,
+        val artifactRevision: String,
         val conversionToolRevision: String
     ) : SemanticConversionProvenance {
         init {
@@ -28,9 +25,17 @@ internal sealed interface SemanticConversionProvenance {
         }
     }
 
+    data class ReproducibleCiFixture(
+        val conversionToolRevision: String
+    ) : SemanticConversionProvenance {
+        init {
+            require(conversionToolRevision.isNotBlank())
+        }
+    }
+
     data class ControlledBenchmark(
-        override val artifactRepository: String,
-        override val artifactRevision: String
+        val artifactRepository: String,
+        val artifactRevision: String
     ) : SemanticConversionProvenance {
         init {
             require(artifactRepository.isNotBlank())
@@ -69,9 +74,6 @@ internal data class SemanticModelArtifactIdentity(
         require(tokenizerProfileId.isNotBlank())
         require(llamaCppRevision.isNotBlank())
     }
-
-    val hasReproducibleConversionProvenance: Boolean
-        get() = conversionProvenance is SemanticConversionProvenance.Reproducible
 
     override fun toString(): String =
         "SemanticModelArtifactIdentity(profileId=$profileId, profileGeneration=$profileGeneration, " +
