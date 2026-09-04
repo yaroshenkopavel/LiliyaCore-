@@ -70,7 +70,12 @@ class OnnxSemanticStructuralProbeInstrumentedTest {
                                 val output = result.get("tokens").orElse(null)
                                     ?: fail("TOKENIZER_OUTPUT_MISSING")
                                 extractLongVector(output.value)
-                                    ?: fail("TOKENIZER_VALUE_SHAPE")
+                                    ?: fail(
+                                        "TOKENIZER_VALUE_SHAPE:" +
+                                            output.value.javaClass.name +
+                                            ":" +
+                                            output.info.toString()
+                                    )
                             }
                         } catch (failure: AssertionError) {
                             throw failure
