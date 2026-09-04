@@ -213,17 +213,18 @@ internal class SemanticFlatIndex(
         maxCandidates: Int
     ): List<SemanticRankedCandidate> {
         require(maxCandidates > 0) { "maximum semantic candidates must be positive" }
-        val domainCapacity = when (domain) {
-            SemanticIndexDomain.MEMORY -> limits.maxMemoryEntries
-            SemanticIndexDomain.KNOWLEDGE -> limits.maxKnowledgeEntries
-        }
-        require(maxCandidates <= domainCapacity) {
-            "maximum semantic candidates must not exceed bounded domain capacity"
+        val liveDomainEntries = when (domain) {
+            SemanticIndexDomain.MEMORY -> memoryEntryCount
+            SemanticIndexDomain.KNOWLEDGE -> knowledgeEntryCount
         }
 
         val bestFirst = Comparator<Ranked> { left, right -> compareRankedBestFirst(left, right) }
         val worstFirst = bestFirst.reversed()
-        val top = PriorityQueue(maxCandidates, worstFirst)
+        // maxCandidates is a result bound, not a requirement that the index contain that many
+        // entries. Bound the heap's eager allocation by the exact live domain size while still
+        // honoring arbitrarily larger positive request bounds without changing discovery semantics.
+        val initialHeapCapacity = maxOf(1, minOf(maxCandidates, liveDomainEntries))
+        val top = PriorityQueue(initialHeapCapacity, worstFirst)
 
         for (entry in entries.values) {
             if (entry.source.domain != domain || entry.profileGeneration != profileGeneration) continue
