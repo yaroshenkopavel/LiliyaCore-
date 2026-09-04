@@ -16,7 +16,8 @@ internal object TestSemanticModelArtifacts {
                     artifactRevision = "test-artifact-revision",
                     conversionToolRevision = "test-conversion-tool-revision"
                 ),
-                ggufFileName = file.name,
+                modelFileName = SemanticModelProfileV01.ONNX_FILE_NAME,
+                modelFormat = SemanticModelFormat.ONNX,
                 expectedSizeBytes = 1L,
                 expectedSha256 = "0".repeat(64),
                 architecture = SemanticModelArchitecture.BERT,
@@ -24,7 +25,7 @@ internal object TestSemanticModelArtifacts {
                 poolingType = SemanticPoolingType.MEAN,
                 normalizationRule = SemanticNormalizationRule.L2,
                 tokenizerProfileId = SemanticModelProfileV01.TOKENIZER_PROFILE_ID,
-                llamaCppRevision = SemanticModelProfileV01.LLAMA_CPP_REVISION
+                runtimeIdentity = SemanticModelProfileV01.RUNTIME_IDENTITY
             )
         )
     )
