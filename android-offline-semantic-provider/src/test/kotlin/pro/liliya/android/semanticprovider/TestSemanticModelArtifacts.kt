@@ -5,6 +5,7 @@ import java.io.File
 internal object TestSemanticModelArtifacts {
     fun validated(file: File): ValidatedSemanticModelArtifact = ValidatedSemanticModelArtifact(
         file = file,
+        tokenizerFile = File(file.parentFile, SemanticModelProfileV01.TOKENIZER_ONNX_FILE_NAME),
         spec = SemanticModelArtifactSpec(
             SemanticModelArtifactIdentity(
                 profileId = SemanticModelProfileV01.PROFILE_ID,
