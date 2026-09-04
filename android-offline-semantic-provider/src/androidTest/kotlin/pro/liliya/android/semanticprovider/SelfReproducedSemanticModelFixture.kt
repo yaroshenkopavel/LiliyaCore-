@@ -3,14 +3,12 @@ package pro.liliya.android.semanticprovider
 import android.os.Bundle
 
 /**
- * Test-only identity selection for the self-reproduced semantic GGUF acceptance path.
+ * Test-only identity selection for an ONNX artifact produced in the same CI run from the exact
+ * upstream model revision and the repository-controlled export pipeline.
  *
- * Normal instrumentation runs receive no override and therefore keep using the exact immutable
- * TwinSuns controlled benchmark identity. The provenance workflow may supply only SHA-256 + size
- * for bytes produced in the same run from the immutable upstream source and pinned llama.cpp
- * converter. In that mode the identity records the reproducible source/converter chain and uses an
- * explicit ephemeral CI-fixture acceptance mode. It does not claim that the generated GGUF is
- * published at the upstream source repository or accepted as the production artifact.
+ * There is intentionally no community/default artifact fallback on the ONNX branch. Real-model
+ * instrumentation must receive the exact SHA-256 and byte size of the artifact produced by the
+ * current provenance run.
  */
 internal object SelfReproducedSemanticModelFixture {
     const val SHA256_ARGUMENT = "semanticFixtureSha256"
@@ -22,31 +20,38 @@ internal object SelfReproducedSemanticModelFixture {
     )
 
     fun select(arguments: Bundle): Selection {
-        val sha256 = arguments.getString(SHA256_ARGUMENT)?.trim()?.takeIf { it.isNotEmpty() }
-        val sizeText = arguments.getString(SIZE_ARGUMENT)?.trim()?.takeIf { it.isNotEmpty() }
-
-        if (sha256 == null && sizeText == null) {
-            return Selection(
-                identity = ControlledBenchmarkSemanticModelArtifactV01.identity,
-                acceptance = SemanticModelArtifactAcceptance.CONTROLLED_BENCHMARK
-            )
+        val sha256 = requireNotNull(
+            arguments.getString(SHA256_ARGUMENT)?.trim()?.takeIf { it.isNotEmpty() }
+        ) {
+            "ONNX semantic fixture requires exact SHA-256"
         }
-
-        require(sha256 != null && sizeText != null) {
-            "self-reproduced semantic fixture requires both SHA-256 and size"
+        val sizeText = requireNotNull(
+            arguments.getString(SIZE_ARGUMENT)?.trim()?.takeIf { it.isNotEmpty() }
+        ) {
+            "ONNX semantic fixture requires exact byte size"
         }
         val sizeBytes = sizeText.toLong()
 
-        val identity = ControlledBenchmarkSemanticModelArtifactV01.identity.copy(
-            conversionProvenance = SemanticConversionProvenance.ReproducibleCiFixture(
-                conversionToolRevision = SemanticModelProfileV01.LLAMA_CPP_REVISION
-            ),
-            expectedSizeBytes = sizeBytes,
-            expectedSha256 = sha256
-        )
-
         return Selection(
-            identity = identity,
+            identity = SemanticModelArtifactIdentity(
+                profileId = SemanticModelProfileV01.PROFILE_ID,
+                profileGeneration = SemanticModelProfileV01.PROFILE_GENERATION,
+                upstreamModelRepository = SemanticModelProfileV01.UPSTREAM_MODEL_REPOSITORY,
+                upstreamModelRevision = SemanticModelProfileV01.UPSTREAM_MODEL_REVISION,
+                conversionProvenance = SemanticConversionProvenance.ReproducibleCiFixture(
+                    conversionToolRevision = SemanticModelProfileV01.ONNX_EXPORT_PIPELINE_REVISION
+                ),
+                modelFileName = SemanticModelProfileV01.ONNX_FILE_NAME,
+                modelFormat = SemanticModelFormat.ONNX,
+                expectedSizeBytes = sizeBytes,
+                expectedSha256 = sha256,
+                architecture = SemanticModelArchitecture.BERT,
+                embeddingDimension = SemanticModelProfileV01.EMBEDDING_DIMENSION,
+                poolingType = SemanticPoolingType.MEAN,
+                normalizationRule = SemanticNormalizationRule.L2,
+                tokenizerProfileId = SemanticModelProfileV01.TOKENIZER_PROFILE_ID,
+                runtimeIdentity = SemanticModelProfileV01.RUNTIME_IDENTITY
+            ),
             acceptance = SemanticModelArtifactAcceptance.REPRODUCIBLE_CI_FIXTURE
         )
     }
