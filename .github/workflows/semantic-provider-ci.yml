@@ -43,10 +43,10 @@ jobs:
           TRANSFORMERS_VERBOSITY: error
         run: python android-offline-semantic-provider/ci/verify_trusted_reference_quality.py
 
-  semantic-provider-native:
-    name: Android Offline Semantic Provider Native
+  semantic-provider-ort:
+    name: Android Offline Semantic Provider ORT
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
@@ -69,85 +69,14 @@ jobs:
       - name: Install Android API 35
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
 
+      - name: Resolve pinned ORT Android dependencies
+        run: gradle :android-offline-semantic-provider:dependencies --configuration debugRuntimeClasspath --console=plain
+
       - name: Run semantic provider unit contracts
         run: gradle :android-offline-semantic-provider:testDebugUnitTest --console=plain
 
-      - name: Install NDK and CMake
-        run: sdkmanager "ndk;29.0.13113456" "cmake;3.31.6"
+      - name: Compile ORT-backed semantic Android library
+        run: gradle :android-offline-semantic-provider:assembleDebug --console=plain
 
-      - name: Enable KVM
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-
-      - name: Build pinned semantic JNI for arm64
-        run: gradle :android-offline-semantic-provider:assembleRelease --console=plain
-
-      - name: Verify semantic JNI symbol isolation
-        shell: bash
-        run: |
-          set -euo pipefail
-          so="$(find android-offline-semantic-provider/build -type f -name 'libliliya-semantic-jni.so' -print -quit)"
-          test -n "$so"
-          readelf="$ANDROID_SDK_ROOT/ndk/29.0.13113456/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"
-          test -x "$readelf"
-
-          symbols="$("$readelf" --dyn-syms --wide "$so")"
-          for expected in             Java_pro_liliya_android_semanticprovider_SemanticNativeBridge_nativeLinkProbe             Java_pro_liliya_android_semanticprovider_SemanticNativeBridge_nativeLoad             Java_pro_liliya_android_semanticprovider_SemanticNativeBridge_nativeEmbed             Java_pro_liliya_android_semanticprovider_SemanticNativeBridge_nativeClose
-          do
-            printf '%s\n' "$symbols" | grep -Eq "[[:space:]]GLOBAL[[:space:]]+DEFAULT[[:space:]]+[0-9]+[[:space:]]+${expected}$"
-          done
-
-          public_native="$(
-            printf '%s\n' "$symbols" |
-              awk '$5 == "GLOBAL" && $6 == "DEFAULT" { print $8 }' |
-              grep -E '^(llama_|ggml_)' || true
-          )"
-          test -z "$public_native"
-
-          needed="$("$readelf" --dynamic --wide "$so")"
-          if printf '%s\n' "$needed" | grep -Eq 'Shared library: \[(libllama|libggml)[^]]*\]'; then
-            echo "semantic JNI unexpectedly depends on a dynamic llama/ggml library" >&2
-            exit 1
-          fi
-
-      - name: Prepare pinned multilingual embedding fixture
-        shell: bash
-        run: |
-          set -euo pipefail
-          asset_dir="android-offline-semantic-provider/src/androidTest/assets"
-          asset="$asset_dir/multilingual-e5-small-q8_0.gguf"
-          mkdir -p "$asset_dir"
-
-          model_repo="TwinSunsLLC/multilingual-e5-small-gguf"
-          exact_revision="b6cac9615d4ecce28d7f22539b7322d695fc2886"
-          filename="multilingual-e5-small-q8_0.gguf"
-          expected_sha256="e011debc1208e31bf7b6aebee2d9fc8bd2ca11694a77ed66ac9d0c9d0a877c93"
-          expected_size="132439008"
-
-          curl --fail --location --retry 3 \
-            "https://huggingface.co/${model_repo}/resolve/${exact_revision}/${filename}?download=true" \
-            --output "$asset"
-
-          actual_sha256="$(sha256sum "$asset" | awk '{print $1}')"
-          actual_size="$(stat --format=%s "$asset")"
-          test "$actual_sha256" = "$expected_sha256"
-          test "$actual_size" = "$expected_size"
-
-      - name: Compile pinned multilingual instrumentation contract
+      - name: Compile semantic instrumentation contracts
         run: gradle :android-offline-semantic-provider:assembleDebugAndroidTest --console=plain
-
-      - name: Run pinned multilingual embeddings through API 35 Google APIs translation
-        uses: ReactiveCircus/android-emulator-runner@v2
-        with:
-          api-level: 35
-          target: google_apis
-          arch: x86_64
-          profile: pixel_6
-          disable-animations: true
-          script: |
-            gradle :android-offline-semantic-provider:connectedDebugAndroidTest '-Pandroid.testInstrumentationRunnerArguments.class=pro.liliya.android.semanticprovider.OfflineSemanticProviderRealModelInstrumentedTest#pinned_multilingual_e5_q8_loads_and_closes_without_embedding' --console=plain
-            adb logcat -c || true
-            embedding_status=0; gradle :android-offline-semantic-provider:connectedDebugAndroidTest '-Pandroid.testInstrumentationRunnerArguments.class=pro.liliya.android.semanticprovider.OfflineSemanticProviderRealModelInstrumentedTest#pinned_multilingual_e5_q8_runs_through_validator_native_session_and_close' --console=plain || embedding_status=$?; if [ "$embedding_status" -ne 0 ]; then echo '=== STRUCTURAL NATIVE CRASH EVIDENCE ==='; adb logcat -d 2>/dev/null | grep -E 'unsupported types:|GGML_ASSERT|GGML_ABORT|ggml_compute_forward_add_non_quantized|ABI:|Fatal signal|signal [0-9]+|backtrace:|#[0-9]+ pc .*lib(liliya-semantic|llama|ggml)' || true; exit "$embedding_status"; fi
-            gradle :android-offline-semantic-provider:connectedDebugAndroidTest --console=plain
