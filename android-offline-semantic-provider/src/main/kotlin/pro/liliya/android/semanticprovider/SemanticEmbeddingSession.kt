@@ -103,6 +103,11 @@ internal class SemanticEmbeddingSessionOwnership internal constructor(
         val sessionId = nativeSessionId
         if (sessionId <= 0L) return SemanticEmbeddingResult.StaleSession
         if (text.isBlank()) return SemanticEmbeddingResult.RequestRejected
+        // Any String whose UTF-16 length already exceeds this byte ceiling cannot fit after
+        // UTF-8 encoding. Reject before creating the encoded temporary buffer.
+        if (text.length > maxInputUtf8Bytes) {
+            return SemanticEmbeddingResult.ResourceRejected
+        }
 
         val utf8 = text.toByteArray(StandardCharsets.UTF_8)
         return try {
