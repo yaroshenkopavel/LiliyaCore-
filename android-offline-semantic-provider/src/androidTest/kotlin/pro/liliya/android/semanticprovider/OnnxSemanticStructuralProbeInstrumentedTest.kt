@@ -37,82 +37,129 @@ class OnnxSemanticStructuralProbeInstrumentedTest {
             val environment = OrtEnvironment.getEnvironment()
             environment.setTelemetry(false)
 
-            val tokenIds = try {
-                OrtSession.SessionOptions().use { options ->
-                    options.registerCustomOpLibrary(OrtxPackage.getLibraryPath())
-                    environment.createSession(tokenizer.absolutePath, options).use { session ->
-                        assertEquals(setOf("inputs"), session.inputNames, "TOKENIZER_INPUT_CONTRACT")
-                        assertTrue(session.outputNames.contains("tokens"), "TOKENIZER_OUTPUT_CONTRACT")
-                        OnnxTensor.createTensor(environment, arrayOf("query: hello")).use { input ->
-                            session.run(mapOf("inputs" to input), setOf("tokens")).use { result ->
+            val tokenizerOptions = OrtSession.SessionOptions()
+            try {
+                try {
+                    tokenizerOptions.registerCustomOpLibrary(OrtxPackage.getLibraryPath())
+                } catch (_: Throwable) {
+                    fail("TOKENIZER_EXTENSIONS_REGISTER")
+                }
+
+                val tokenizerSession = try {
+                    environment.createSession(tokenizer.absolutePath, tokenizerOptions)
+                } catch (_: Throwable) {
+                    fail("TOKENIZER_SESSION_LOAD")
+                }
+
+                tokenizerSession.use { session ->
+                    assertEquals(setOf("inputs"), session.inputNames, "TOKENIZER_INPUT_CONTRACT")
+                    assertTrue(session.outputNames.contains("tokens"), "TOKENIZER_OUTPUT_CONTRACT")
+
+                    val input = try {
+                        OnnxTensor.createTensor(environment, arrayOf("query: hello"))
+                    } catch (_: Throwable) {
+                        fail("TOKENIZER_TENSOR_CREATE")
+                    }
+
+                    input.use { tensor ->
+                        val tokenIds = try {
+                            session.run(
+                                mapOf("inputs" to tensor),
+                                setOf("tokens")
+                            ).use { result ->
                                 val output = result.get("tokens").orElse(null)
                                     ?: fail("TOKENIZER_OUTPUT_MISSING")
                                 extractLongVector(output.value)
                                     ?: fail("TOKENIZER_VALUE_SHAPE")
                             }
+                        } catch (failure: AssertionError) {
+                            throw failure
+                        } catch (_: Throwable) {
+                            fail("TOKENIZER_RUN")
                         }
+
+                        assertTrue(tokenIds.isNotEmpty(), "TOKENIZER_EMPTY")
+                        assertTrue(tokenIds.size <= 512, "TOKENIZER_UNEXPECTED_BOUND")
+
+                        runEncoderProbe(environment, encoder, tokenIds)
                     }
                 }
-            } catch (_: Throwable) {
-                fail("TOKENIZER_EXECUTION")
+            } finally {
+                tokenizerOptions.close()
             }
 
-            assertTrue(tokenIds.isNotEmpty(), "TOKENIZER_EMPTY")
-            assertTrue(tokenIds.size <= 512, "TOKENIZER_UNEXPECTED_BOUND")
+        } finally {
+            root.deleteRecursively()
+        }
+    }
 
-            try {
-                OrtSession.SessionOptions().use { options ->
-                    environment.createSession(encoder.absolutePath, options).use { session ->
-                        assertTrue(
-                            session.inputNames.containsAll(
-                                setOf("input_ids", "attention_mask", "token_type_ids")
-                            ),
-                            "ENCODER_INPUT_CONTRACT"
-                        )
-                        assertEquals(setOf("embedding"), session.outputNames, "ENCODER_OUTPUT_CONTRACT")
+    private fun runEncoderProbe(
+        environment: OrtEnvironment,
+        encoder: File,
+        tokenIds: LongArray
+    ) {
+        try {
+            OrtSession.SessionOptions().use { options ->
+                val session = try {
+                    environment.createSession(encoder.absolutePath, options)
+                } catch (_: Throwable) {
+                    fail("ENCODER_SESSION_LOAD")
+                }
+                session.use {
+                    assertTrue(
+                        it.inputNames.containsAll(
+                            setOf("input_ids", "attention_mask", "token_type_ids")
+                        ),
+                        "ENCODER_INPUT_CONTRACT"
+                    )
+                    assertEquals(setOf("embedding"), it.outputNames, "ENCODER_OUTPUT_CONTRACT")
 
-                        val shape = longArrayOf(1L, tokenIds.size.toLong())
-                        val ids = tensor(environment, tokenIds, shape)
-                        val maskValues = LongArray(tokenIds.size) { 1L }
-                        val mask = tensor(environment, maskValues, shape)
-                        val typeValues = LongArray(tokenIds.size)
-                        val types = tensor(environment, typeValues, shape)
-                        try {
-                            session.run(
+                    val shape = longArrayOf(1L, tokenIds.size.toLong())
+                    val maskValues = LongArray(tokenIds.size) { 1L }
+                    val typeValues = LongArray(tokenIds.size)
+                    val ids = tensor(environment, tokenIds, shape)
+                    val mask = tensor(environment, maskValues, shape)
+                    val types = tensor(environment, typeValues, shape)
+                    try {
+                        val result = try {
+                            it.run(
                                 mapOf(
                                     "input_ids" to ids,
                                     "attention_mask" to mask,
                                     "token_type_ids" to types
                                 ),
                                 setOf("embedding")
-                            ).use { result ->
-                                val output = result.get("embedding").orElse(null)
-                                    ?: fail("ENCODER_OUTPUT_MISSING")
-                                val vector = extractFloatVector(output.value)
-                                    ?: fail("ENCODER_VALUE_SHAPE")
-                                assertEquals(
-                                    SemanticEmbeddingVector.DIMENSION,
-                                    vector.size,
-                                    "ENCODER_DIMENSION"
-                                )
-                                assertTrue(vector.all(Float::isFinite), "ENCODER_NONFINITE")
-                                vector.fill(0f)
-                            }
-                        } finally {
-                            ids.close()
-                            mask.close()
-                            types.close()
-                            tokenIds.fill(0L)
-                            maskValues.fill(0L)
-                            typeValues.fill(0L)
+                            )
+                        } catch (_: Throwable) {
+                            fail("ENCODER_RUN")
                         }
+                        result.use { outputs ->
+                            val output = outputs.get("embedding").orElse(null)
+                                ?: fail("ENCODER_OUTPUT_MISSING")
+                            val vector = extractFloatVector(output.value)
+                                ?: fail("ENCODER_VALUE_SHAPE")
+                            assertEquals(
+                                SemanticEmbeddingVector.DIMENSION,
+                                vector.size,
+                                "ENCODER_DIMENSION"
+                            )
+                            assertTrue(vector.all(Float::isFinite), "ENCODER_NONFINITE")
+                            vector.fill(0f)
+                        }
+                    } finally {
+                        ids.close()
+                        mask.close()
+                        types.close()
+                        tokenIds.fill(0L)
+                        maskValues.fill(0L)
+                        typeValues.fill(0L)
                     }
                 }
-            } catch (_: Throwable) {
-                fail("ENCODER_EXECUTION")
             }
-        } finally {
-            root.deleteRecursively()
+        } catch (failure: AssertionError) {
+            throw failure
+        } catch (_: Throwable) {
+            fail("ENCODER_EXECUTION")
         }
     }
 
