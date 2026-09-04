@@ -87,7 +87,7 @@ internal class SemanticModelArtifactValidator(
             ) {
                 return SemanticModelArtifactValidationResult.IncompleteConversionProvenance
             }
-            if (candidate.name != trustedIdentity.ggufFileName) {
+            if (candidate.name != trustedIdentity.modelFileName) {
                 return SemanticModelArtifactValidationResult.FileNameMismatch
             }
 
