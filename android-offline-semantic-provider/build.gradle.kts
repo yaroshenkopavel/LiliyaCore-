@@ -25,7 +25,7 @@ repositories {
 dependencies {
     implementation(project(":core"))
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.29.0")
-    implementation("com.microsoft.onnxruntime:onnxruntime-extensions-android:0.14.0")
+    implementation("com.microsoft.onnxruntime:onnxruntime-extensions-android:0.12.4")
 
     testImplementation(kotlin("test"))
     testImplementation("junit:junit:4.13.2")
