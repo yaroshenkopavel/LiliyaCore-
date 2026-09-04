@@ -245,7 +245,7 @@ jobs:
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
 
       - name: Compile exact ARM64 resource instrumentation
-        run: gradle :android-offline-semantic-provider:assembleDebug :android-offline-semantic-provider:assembleDebugAndroidTest --console=plain
+        run: gradle :android-offline-semantic-provider:assembleDebug :android-offline-semantic-provider:assembleDebugAndroidTest -PsemanticSkipGenerationTestDependency=true --console=plain
 
       - name: Run exact ARM64 semantic resource acceptance
         uses: ReactiveCircus/android-emulator-runner@v2.38.0
@@ -256,7 +256,7 @@ jobs:
           profile: pixel_6
           disable-animations: true
           script: |
-            gradle :android-offline-semantic-provider:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.semanticFixtureSha256=$SELF_REPRODUCED_SHA256 -Pandroid.testInstrumentationRunnerArguments.semanticFixtureSizeBytes=$SELF_REPRODUCED_SIZE '-Pandroid.testInstrumentationRunnerArguments.class=pro.liliya.android.semanticprovider.OfflineSemanticProviderResourceInstrumentedTest' --console=plain
+            gradle :android-offline-semantic-provider:connectedDebugAndroidTest -PsemanticSkipGenerationTestDependency=true -Pandroid.testInstrumentationRunnerArguments.semanticFixtureSha256=$SELF_REPRODUCED_SHA256 -Pandroid.testInstrumentationRunnerArguments.semanticFixtureSizeBytes=$SELF_REPRODUCED_SIZE '-Pandroid.testInstrumentationRunnerArguments.class=pro.liliya.android.semanticprovider.OfflineSemanticProviderResourceInstrumentedTest' --console=plain
             adb shell cat /data/local/tmp/semantic-resource-evidence.json > "$RUNNER_TEMP/semantic-resource-arm64.json"
 
       - name: Validate ARM64 resource evidence
