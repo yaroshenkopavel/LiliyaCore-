@@ -15,6 +15,10 @@ EXPECTED_REPRODUCED_SHA256="167b404b82b1cd3a2d4ebd0af3a21c5c317cc9497841d1bc7e4c
 
 WORK_DIR="${1:-${RUNNER_TEMP:-/tmp}/liliya-semantic-provenance}"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CONSTRAINTS_FILE="$SCRIPT_DIR/semantic-converter-python311.constraints.txt"
+test -f "$CONSTRAINTS_FILE"
+CONSTRAINTS_SHA256="$(sha256sum "$CONSTRAINTS_FILE" | awk '{print $1}')"
 MODEL_DIR="$WORK_DIR/upstream-model"
 LLAMA_DIR="$WORK_DIR/llama.cpp"
 OUTPUT_PATH="$WORK_DIR/$OUTPUT_FILENAME"
@@ -77,7 +81,9 @@ git -C "$LLAMA_DIR" fetch --depth 1 origin "$LLAMA_CPP_REVISION"
 git -C "$LLAMA_DIR" checkout --detach FETCH_HEAD
 test "$(git -C "$LLAMA_DIR" rev-parse HEAD)" = "$LLAMA_CPP_REVISION"
 
-"$PYTHON_BIN" -m pip install --disable-pip-version-check -r "$LLAMA_DIR/requirements/requirements-convert_hf_to_gguf.txt"
+"$PYTHON_BIN" -m pip install --disable-pip-version-check   -c "$CONSTRAINTS_FILE"   -r "$LLAMA_DIR/requirements/requirements-convert_hf_to_gguf.txt"
+
+"$PYTHON_BIN" -m pip check
 
 "$PYTHON_BIN" "$LLAMA_DIR/convert_hf_to_gguf.py" \
   "$MODEL_DIR" \
@@ -115,6 +121,7 @@ config_correction=BertModel->XLMRobertaModel
 patched_config_sha256=$PATCHED_CONFIG_SHA256
 conversion_tool=ggml-org/llama.cpp/convert_hf_to_gguf.py
 conversion_tool_revision=$LLAMA_CPP_REVISION
+converter_constraints_sha256=$CONSTRAINTS_SHA256
 conversion_outtype=q8_0
 reproduced_filename=$OUTPUT_FILENAME
 reproduced_size=$REPRODUCED_SIZE
