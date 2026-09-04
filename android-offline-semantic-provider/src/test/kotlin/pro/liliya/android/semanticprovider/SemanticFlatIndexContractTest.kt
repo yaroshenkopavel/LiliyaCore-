@@ -165,6 +165,25 @@ class SemanticFlatIndexContractTest {
     }
 
     @Test
+    fun ranking_rejects_candidate_heap_above_domain_capacity() {
+        val limits = SemanticFlatIndexLimits(
+            maxMemoryEntries = 2,
+            maxKnowledgeEntries = 3,
+            maxTotalEntries = 5
+        )
+        val index = SemanticFlatIndex(SemanticProfileGeneration(1), limits)
+        val query = SemanticEmbeddingVector(basis(0))
+
+        assertFailsWith<IllegalArgumentException> {
+            index.rank(
+                SemanticIndexDomain.MEMORY,
+                query,
+                maxCandidates = 3
+            )
+        }
+    }
+
+    @Test
     fun structural_rendering_redacts_ids_and_vectors() {
         val source = memory("private-memory-id", 4)
         val vector = SemanticEmbeddingVector(basis(0))
