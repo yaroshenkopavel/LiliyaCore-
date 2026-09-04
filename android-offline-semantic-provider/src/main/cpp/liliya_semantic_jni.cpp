@@ -22,8 +22,6 @@ constexpr jlong LOAD_RESOURCE_REJECTED = -1;
 constexpr jlong LOAD_UNSUPPORTED = -2;
 constexpr jlong LOAD_REJECTED = -3;
 constexpr jlong LOAD_PROVIDER_FAILED = -4;
-constexpr jlong LOAD_MODEL_REJECTED_DIAGNOSTIC = -5;
-constexpr jlong LOAD_CONTEXT_REJECTED_DIAGNOSTIC = -6;
 
 constexpr jbyte EMBED_OK = 0;
 constexpr jbyte EMBED_RESOURCE_REJECTED = 1;
@@ -252,7 +250,7 @@ Java_pro_liliya_android_semanticprovider_SemanticNativeBridge_nativeLoad(
             reinterpret_cast<const char *>(path_bytes.data()),
             model_params
         );
-        if (raw_model == nullptr) return LOAD_MODEL_REJECTED_DIAGNOSTIC;
+        if (raw_model == nullptr) return LOAD_REJECTED;
         std::unique_ptr<llama_model, decltype(&llama_model_free)> model(raw_model, llama_model_free);
 
         const bool has_encoder = llama_model_has_encoder(model.get());
@@ -279,7 +277,7 @@ Java_pro_liliya_android_semanticprovider_SemanticNativeBridge_nativeLoad(
         context_params.no_perf = true;
 
         llama_context * raw_context = llama_init_from_model(model.get(), context_params);
-        if (raw_context == nullptr) return LOAD_CONTEXT_REJECTED_DIAGNOSTIC;
+        if (raw_context == nullptr) return LOAD_REJECTED;
         std::unique_ptr<llama_context, decltype(&llama_free)> context(raw_context, llama_free);
         llama_set_n_threads(context.get(), thread_count, thread_count);
 
