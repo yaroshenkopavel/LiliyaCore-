@@ -35,7 +35,11 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
 
     // Test-only coexistence proof with the already frozen generation engine.
-    androidTestImplementation(project(":android-llama-cpp-engine"))
+    // The ARM64 resource-only gate opts out so it measures the semantic provider in isolation
+    // and does not rebuild the unrelated frozen generation native toolchain.
+    if (!project.providers.gradleProperty("semanticSkipGenerationTestDependency").isPresent) {
+        androidTestImplementation(project(":android-llama-cpp-engine"))
+    }
     androidTestImplementation(kotlin("test"))
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test:runner:1.6.2")
