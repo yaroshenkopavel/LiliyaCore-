@@ -165,7 +165,7 @@ class SemanticFlatIndexContractTest {
     }
 
     @Test
-    fun ranking_rejects_candidate_heap_above_domain_capacity() {
+    fun ranking_request_above_domain_capacity_returns_only_live_entries() {
         val limits = SemanticFlatIndexLimits(
             maxMemoryEntries = 2,
             maxKnowledgeEntries = 3,
@@ -173,14 +173,20 @@ class SemanticFlatIndexContractTest {
         )
         val index = SemanticFlatIndex(SemanticProfileGeneration(1), limits)
         val query = SemanticEmbeddingVector(basis(0))
+        val first = memory("first", 1)
+        val second = memory("second", 2)
 
-        assertFailsWith<IllegalArgumentException> {
+        assertIs<SemanticIndexAddResult.Indexed>(index.addExact(first, query))
+        assertIs<SemanticIndexAddResult.Indexed>(index.addExact(second, query))
+
+        assertEquals(
+            listOf(first, second),
             index.rank(
                 SemanticIndexDomain.MEMORY,
                 query,
-                maxCandidates = 3
-            )
-        }
+                maxCandidates = Int.MAX_VALUE
+            ).map { it.source }
+        )
     }
 
     @Test
