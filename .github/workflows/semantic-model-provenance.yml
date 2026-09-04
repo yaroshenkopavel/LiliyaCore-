@@ -157,3 +157,146 @@ jobs:
           profile: pixel_6
           disable-animations: true
           script: gradle :android-offline-semantic-provider:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.semanticFixtureSha256=$SELF_REPRODUCED_SHA256 -Pandroid.testInstrumentationRunnerArguments.semanticFixtureSizeBytes=$SELF_REPRODUCED_SIZE '-Pandroid.testInstrumentationRunnerArguments.class=pro.liliya.android.semanticprovider.OfflineSemanticProviderRealModelInstrumentedTest' --console=plain
+
+
+  arm64-semantic-resources:
+    name: Android ARM64 Semantic Resource Acceptance
+    needs: reproduce-semantic-onnx
+    runs-on: macos-latest
+    timeout-minutes: 75
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download exact ONNX provenance bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: semantic-onnx-provenance
+          path: ${{ runner.temp }}/semantic-onnx-download
+
+      - name: Verify and stage exact ONNX bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import shutil
+
+          root = Path(os.environ["RUNNER_TEMP"]) / "semantic-onnx-download"
+          manifests = list(root.rglob("semantic-onnx-provenance.json"))
+          encoders = list(root.rglob("multilingual-e5-small-liliya-v0.1.onnx"))
+          tokenizers = list(root.rglob("multilingual-e5-small-tokenizer-v0.1.onnx"))
+          if len(manifests) != 1 or len(encoders) != 1 or len(tokenizers) != 1:
+              raise SystemExit(
+                  f"unexpected downloaded provenance layout: "
+                  f"manifest={manifests}, encoder={encoders}, tokenizer={tokenizers}"
+              )
+
+          manifest = json.loads(manifests[0].read_text(encoding="utf-8"))
+          encoder = manifest["encoder"]
+          tokenizer = manifest["tokenizer"]
+
+          def digest(path):
+              h = hashlib.sha256()
+              with path.open("rb") as stream:
+                  for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                      h.update(chunk)
+              return h.hexdigest()
+
+          if encoders[0].stat().st_size != encoder["size"]:
+              raise SystemExit("encoder size mismatch")
+          if digest(encoders[0]) != encoder["sha256"]:
+              raise SystemExit("encoder digest mismatch")
+          if tokenizers[0].stat().st_size != tokenizer["size"]:
+              raise SystemExit("tokenizer size mismatch")
+          if digest(tokenizers[0]) != tokenizer["sha256"]:
+              raise SystemExit("tokenizer digest mismatch")
+
+          assets = Path("android-offline-semantic-provider/src/androidTest/assets")
+          assets.mkdir(parents=True, exist_ok=True)
+          shutil.copy2(encoders[0], assets / encoders[0].name)
+          shutil.copy2(tokenizers[0], assets / tokenizers[0].name)
+
+          env_path = Path(os.environ["GITHUB_ENV"])
+          with env_path.open("a", encoding="utf-8") as env:
+              env.write(f"SELF_REPRODUCED_SHA256={encoder['sha256']}\n")
+              env.write(f"SELF_REPRODUCED_SIZE={encoder['size']}\n")
+          PY
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle 9.6.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.1'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android API 35
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
+
+      - name: Compile exact ARM64 resource instrumentation
+        run: gradle :android-offline-semantic-provider:assembleDebug :android-offline-semantic-provider:assembleDebugAndroidTest --console=plain
+
+      - name: Run exact ARM64 semantic resource acceptance
+        uses: ReactiveCircus/android-emulator-runner@v2.38.0
+        with:
+          api-level: 35
+          target: google_apis
+          arch: arm64-v8a
+          profile: pixel_6
+          disable-animations: true
+          script: |
+            gradle :android-offline-semantic-provider:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.semanticFixtureSha256=$SELF_REPRODUCED_SHA256 -Pandroid.testInstrumentationRunnerArguments.semanticFixtureSizeBytes=$SELF_REPRODUCED_SIZE '-Pandroid.testInstrumentationRunnerArguments.class=pro.liliya.android.semanticprovider.OfflineSemanticProviderResourceInstrumentedTest' --console=plain
+            adb shell cat /data/local/tmp/semantic-resource-evidence.json > "$RUNNER_TEMP/semantic-resource-arm64.json"
+
+      - name: Validate ARM64 resource evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - "$RUNNER_TEMP/semantic-resource-arm64.json" <<'PY'
+          import json
+          import sys
+
+          evidence = json.load(open(sys.argv[1], encoding="utf-8"))
+          if evidence.get("primaryAbi") != "arm64-v8a":
+              raise SystemExit(f"not ARM64 evidence: {evidence.get('primaryAbi')}")
+          if evidence.get("arm64ThresholdsApplied") != "true":
+              raise SystemExit("ARM64 thresholds were not applied")
+
+          required = {
+              "processPssLoadDeltaBytes",
+              "warmShortQueryMedianMs",
+              "repeatedProcessPssBeforeBytes",
+              "repeatedProcessPssAfterBytes",
+              "repeatedProcessPssDeltaBytes",
+              "repeatedNativeHeapBeforeBytes",
+              "repeatedNativeHeapAfterBytes",
+              "repeatedNativeHeapDeltaBytes",
+              "flatScan1kMedianMs",
+              "flatScan10kMedianMs",
+              "flatIndex10kProcessPssDeltaBytes",
+              "reloadCycle1LatencyMs",
+              "reloadCycle2LatencyMs",
+          }
+          missing = sorted(required.difference(evidence))
+          if missing:
+              raise SystemExit(f"missing ARM64 resource evidence fields: {missing}")
+          PY
+
+      - name: Publish ARM64 resource evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: semantic-arm64-resource-evidence
+          path: ${{ runner.temp }}/semantic-resource-arm64.json
+          if-no-files-found: error
+          retention-days: 30
