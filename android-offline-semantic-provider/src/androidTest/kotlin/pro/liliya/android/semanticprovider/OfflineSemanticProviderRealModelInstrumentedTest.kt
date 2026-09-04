@@ -30,6 +30,23 @@ class OfflineSemanticProviderRealModelInstrumentedTest {
     }
 
     @Test
+    fun generation_and_semantic_jni_coexist_in_one_process() {
+        val generationBridge = Class.forName(
+            "pro.liliya.android.llamacppengine.LlamaCppNativeBridge"
+        )
+        val instanceField = generationBridge.getDeclaredField("INSTANCE").apply {
+            isAccessible = true
+        }
+        val nativeLinkProbe = generationBridge.getDeclaredMethod("nativeLinkProbe").apply {
+            isAccessible = true
+        }
+        val generationProbe = nativeLinkProbe.invoke(instanceField.get(null)) as Int
+
+        assertTrue(generationProbe > 0, "generation JNI link probe failed")
+        assertTrue(SemanticNativeBridge.nativeLinkProbe() > 0, "semantic JNI link probe failed")
+    }
+
+    @Test
     fun native_registry_allows_only_one_live_session_and_reopens_after_close() {
         withFixture { fixture, root, selection ->
             val validated = assertIs<SemanticModelArtifactValidationResult.Validated>(
