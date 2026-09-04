@@ -72,6 +72,9 @@ internal data class SemanticModelArtifactIdentity(
     val modelFormat: SemanticModelFormat,
     val expectedSizeBytes: Long,
     val expectedSha256: String,
+    val tokenizerFileName: String = SemanticModelProfileV01.TOKENIZER_ONNX_FILE_NAME,
+    val tokenizerExpectedSizeBytes: Long = SemanticModelProfileV01.TOKENIZER_ONNX_SIZE_BYTES,
+    val tokenizerExpectedSha256: String = SemanticModelProfileV01.TOKENIZER_ONNX_SHA256,
     val architecture: SemanticModelArchitecture,
     val embeddingDimension: Int,
     val poolingType: SemanticPoolingType,
@@ -89,6 +92,14 @@ internal data class SemanticModelArtifactIdentity(
         require(SHA256_PATTERN.matches(expectedSha256)) {
             "semantic model artifact SHA-256 must be lowercase hexadecimal"
         }
+        require(tokenizerFileName.isNotBlank())
+        require(!tokenizerFileName.contains('/') && !tokenizerFileName.contains('\\'))
+        require(tokenizerExpectedSizeBytes > 0L) {
+            "semantic tokenizer artifact size must be positive"
+        }
+        require(SHA256_PATTERN.matches(tokenizerExpectedSha256)) {
+            "semantic tokenizer artifact SHA-256 must be lowercase hexadecimal"
+        }
         require(embeddingDimension > 0)
         require(tokenizerProfileId.isNotBlank())
     }
@@ -96,8 +107,8 @@ internal data class SemanticModelArtifactIdentity(
     override fun toString(): String =
         "SemanticModelArtifactIdentity(profileId=$profileId, profileGeneration=$profileGeneration, " +
             "format=$modelFormat, runtime=${runtimeIdentity.runtimeId}@${runtimeIdentity.runtimeVersion}, " +
-            "provenance=${conversionProvenance::class.simpleName}, expectedSizeBytes=$expectedSizeBytes, " +
-            "expectedSha256=<redacted>)"
+            "provenance=${conversionProvenance::class.simpleName}, encoderBytes=$expectedSizeBytes, " +
+            "tokenizerBytes=$tokenizerExpectedSizeBytes, digests=<redacted>)"
 
     private companion object {
         val SHA256_PATTERN = Regex("[0-9a-f]{64}")
@@ -116,6 +127,11 @@ internal object SemanticModelProfileV01 {
     const val ONNX_EXTENSIONS_VERSION = "0.12.4"
     const val ONNX_EXPORT_PIPELINE_REVISION = "liliya-onnx-export-v0.1"
     const val ONNX_FILE_NAME = "multilingual-e5-small-liliya-v0.1.onnx"
+    const val ONNX_SIZE_BYTES = 118258170L
+    const val ONNX_SHA256 = "11f460a6600163508a6eca0f2ccd8df9272fafbbee10579b3dafa74217b084dc"
+    const val TOKENIZER_ONNX_FILE_NAME = "multilingual-e5-small-tokenizer-v0.1.onnx"
+    const val TOKENIZER_ONNX_SIZE_BYTES = 5069533L
+    const val TOKENIZER_ONNX_SHA256 = "4d28a2a61017a7b222164065d832e51103fbb3a4451c4e4938a2eeb8e83e44e8"
     const val EMBEDDING_DIMENSION = 384
     const val MAX_ARTIFACT_BYTES = 160L * 1024L * 1024L
 
@@ -134,6 +150,9 @@ internal object SemanticModelProfileV01 {
             identity.upstreamModelRepository == UPSTREAM_MODEL_REPOSITORY &&
             identity.upstreamModelRevision == UPSTREAM_MODEL_REVISION &&
             identity.modelFormat == SemanticModelFormat.ONNX &&
+            identity.tokenizerFileName == TOKENIZER_ONNX_FILE_NAME &&
+            identity.tokenizerExpectedSizeBytes == TOKENIZER_ONNX_SIZE_BYTES &&
+            identity.tokenizerExpectedSha256 == TOKENIZER_ONNX_SHA256 &&
             identity.architecture == SemanticModelArchitecture.BERT &&
             identity.embeddingDimension == EMBEDDING_DIMENSION &&
             identity.embeddingDimension == SemanticEmbeddingVector.DIMENSION &&
