@@ -156,4 +156,4 @@ jobs:
           arch: x86_64
           profile: pixel_6
           disable-animations: true
-          script: gradle :android-offline-semantic-provider:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.semanticFixtureSha256=$SELF_REPRODUCED_SHA256 -Pandroid.testInstrumentationRunnerArguments.semanticFixtureSizeBytes=$SELF_REPRODUCED_SIZE '-Pandroid.testInstrumentationRunnerArguments.class=pro.liliya.android.semanticprovider.OfflineSemanticProviderRealModelInstrumentedTest' --console=plain
+          script: gradle :android-offline-semantic-provider:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.semanticFixtureSha256=$SELF_REPRODUCED_SHA256 -Pandroid.testInstrumentationRunnerArguments.semanticFixtureSizeBytes=$SELF_REPRODUCED_SIZE '-Pandroid.testInstrumentationRunnerArguments.class=pro.liliya.android.semanticprovider.OnnxSemanticStructuralProbeInstrumentedTest' --console=plain
