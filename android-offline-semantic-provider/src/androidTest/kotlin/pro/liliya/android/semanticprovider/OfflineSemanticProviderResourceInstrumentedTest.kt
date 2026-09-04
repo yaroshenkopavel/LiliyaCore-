@@ -7,6 +7,7 @@ import android.os.SystemClock
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
+import java.io.FileInputStream
 import kotlin.math.abs
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -241,11 +242,20 @@ class OfflineSemanticProviderResourceInstrumentedTest {
     }
 
     private fun writeEvidenceFile(values: Map<String, String>) {
-        val testContext = InstrumentationRegistry.getInstrumentation().context
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val testContext = instrumentation.context
         val target = File(testContext.filesDir, RESOURCE_EVIDENCE_FILE_NAME)
         val json = JSONObject()
         values.forEach { (key, value) -> json.put(key, value) }
-        target.writeText(json.toString(2) + "\n", Charsets.UTF_8)
+        val rendered = json.toString(2) + "\n"
+        target.writeText(rendered, Charsets.UTF_8)
+
+        val shellValue = "'" + rendered.replace("'", "'\\''") + "'"
+        instrumentation.uiAutomation.executeShellCommand(
+            "printf %s $shellValue > $RESOURCE_EVIDENCE_SHELL_PATH"
+        ).use { descriptor ->
+            FileInputStream(descriptor.fileDescriptor).use { it.readBytes() }
+        }
     }
 
     private fun primaryRuntimeAbi(): String =
@@ -311,6 +321,7 @@ class OfflineSemanticProviderResourceInstrumentedTest {
 
     private companion object {
         const val RESOURCE_EVIDENCE_FILE_NAME = "semantic-resource-evidence.json"
+        const val RESOURCE_EVIDENCE_SHELL_PATH = "/data/local/tmp/semantic-resource-evidence.json"
         const val FLAT_INDEX_CANDIDATE_BOUND = 8
         const val MAX_MODEL_LOAD_MEMORY_DELTA_BYTES = 512L * 1024L * 1024L
         const val MAX_WARM_QUERY_LATENCY_MS = 1_500L
