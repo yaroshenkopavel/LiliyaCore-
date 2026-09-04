@@ -113,25 +113,9 @@ jobs:
             adb logcat -c || true
             embedding_status=0; gradle :android-offline-semantic-provider:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.semanticFixtureSha256=${SELF_REPRODUCED_SHA256} -Pandroid.testInstrumentationRunnerArguments.semanticFixtureSizeBytes=${SELF_REPRODUCED_SIZE} '-Pandroid.testInstrumentationRunnerArguments.class=pro.liliya.android.semanticprovider.OfflineSemanticProviderRealModelInstrumentedTest#pinned_multilingual_e5_q8_runs_through_validator_native_session_and_close' --console=plain || embedding_status=$?; if [ "$embedding_status" -ne 0 ]; then echo '=== STRUCTURAL NATIVE CRASH EVIDENCE ==='; adb logcat -d 2>/dev/null | grep -E 'unsupported types:|GGML_ASSERT|GGML_ABORT|ggml_compute_forward_add_non_quantized|ABI:|Fatal signal|signal [0-9]+|backtrace:|#[0-9]+ pc .*lib(liliya-semantic|llama|ggml)' || true; exit "$embedding_status"; fi
             gradle :android-offline-semantic-provider:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.semanticFixtureSha256=${SELF_REPRODUCED_SHA256} -Pandroid.testInstrumentationRunnerArguments.semanticFixtureSizeBytes=${SELF_REPRODUCED_SIZE} '-Pandroid.testInstrumentationRunnerArguments.class=pro.liliya.android.semanticprovider.OfflineSemanticProviderRealModelInstrumentedTest' --console=plain
-            resource_log="$RUNNER_TEMP/semantic-model-provenance/semantic-resource-x86_64-preflight.txt"
-            resource_status=0
-            gradle :android-offline-semantic-provider:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.semanticFixtureSha256=${SELF_REPRODUCED_SHA256} -Pandroid.testInstrumentationRunnerArguments.semanticFixtureSizeBytes=${SELF_REPRODUCED_SIZE} '-Pandroid.testInstrumentationRunnerArguments.class=pro.liliya.android.semanticprovider.OfflineSemanticProviderResourceInstrumentedTest' --console=plain > "$resource_log" 2>&1 || resource_status=$?
-            cat "$resource_log"
-            if [ "$resource_status" -ne 0 ]; then
-              exit "$resource_status"
-            fi
-
-            instrumentation_component="$(adb shell pm list instrumentation | tr -d '\r' | grep 'pro.liliya.android.semanticprovider' | head -n 1 | sed 's/^instrumentation://; s/ .*//')"
-            test -n "$instrumentation_component"
-            resource_status_log="$RUNNER_TEMP/semantic-model-provenance/semantic-resource-x86_64-status.txt"
-            adb shell am instrument -w -r \
-              -e semanticFixtureSha256 "$SELF_REPRODUCED_SHA256" \
-              -e semanticFixtureSizeBytes "$SELF_REPRODUCED_SIZE" \
-              -e class pro.liliya.android.semanticprovider.OfflineSemanticProviderResourceInstrumentedTest \
-              "$instrumentation_component" > "$resource_status_log" 2>&1
-            cat "$resource_status_log"
-
-            python - "$resource_status_log" "$RUNNER_TEMP/semantic-model-provenance/semantic-resource-x86_64-preflight.json" <<'PY'
+            resource_status=0; gradle :android-offline-semantic-provider:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.semanticFixtureSha256=${SELF_REPRODUCED_SHA256} -Pandroid.testInstrumentationRunnerArguments.semanticFixtureSizeBytes=${SELF_REPRODUCED_SIZE} '-Pandroid.testInstrumentationRunnerArguments.class=pro.liliya.android.semanticprovider.OfflineSemanticProviderResourceInstrumentedTest' --console=plain > "$RUNNER_TEMP/semantic-model-provenance/semantic-resource-x86_64-preflight.txt" 2>&1 || resource_status=$?; cat "$RUNNER_TEMP/semantic-model-provenance/semantic-resource-x86_64-preflight.txt"; exit "$resource_status"
+            instrumentation_component="$(adb shell pm list instrumentation | tr -d '\r' | grep 'pro.liliya.android.semanticprovider' | head -n 1 | sed 's/^instrumentation://; s/ .*//')"; test -n "$instrumentation_component"; adb shell am instrument -w -r -e semanticFixtureSha256 "$SELF_REPRODUCED_SHA256" -e semanticFixtureSizeBytes "$SELF_REPRODUCED_SIZE" -e class pro.liliya.android.semanticprovider.OfflineSemanticProviderResourceInstrumentedTest "$instrumentation_component" > "$RUNNER_TEMP/semantic-model-provenance/semantic-resource-x86_64-status.txt" 2>&1; cat "$RUNNER_TEMP/semantic-model-provenance/semantic-resource-x86_64-status.txt"
+            python - "$RUNNER_TEMP/semantic-model-provenance/semantic-resource-x86_64-status.txt" "$RUNNER_TEMP/semantic-model-provenance/semantic-resource-x86_64-preflight.json" <<'PY'
             import json
             from pathlib import Path
             import sys
