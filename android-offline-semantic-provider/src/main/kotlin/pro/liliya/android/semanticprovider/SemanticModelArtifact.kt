@@ -25,6 +25,7 @@ internal class ValidatedSemanticModelArtifact internal constructor(
 
 internal enum class SemanticModelArtifactAcceptance {
     PRODUCTION,
+    REPRODUCIBLE_CI_FIXTURE,
     CONTROLLED_BENCHMARK
 }
 
@@ -82,7 +83,7 @@ internal class SemanticModelArtifactValidator(
                 return SemanticModelArtifactValidationResult.ArtifactIdentityMismatch
             }
             if (
-                acceptance == SemanticModelArtifactAcceptance.PRODUCTION &&
+                acceptance != SemanticModelArtifactAcceptance.CONTROLLED_BENCHMARK &&
                 !trustedIdentity.hasReproducibleConversionProvenance
             ) {
                 return SemanticModelArtifactValidationResult.IncompleteConversionProvenance

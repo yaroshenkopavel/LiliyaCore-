@@ -63,6 +63,13 @@ class SemanticModelArtifactValidatorContractTest {
             assertIs<SemanticModelArtifactValidationResult.IncompleteConversionProvenance>(
                 SemanticModelArtifactValidator(root, identity).validate(file, spec)
             )
+            assertIs<SemanticModelArtifactValidationResult.IncompleteConversionProvenance>(
+                SemanticModelArtifactValidator(
+                    root,
+                    identity,
+                    SemanticModelArtifactAcceptance.REPRODUCIBLE_CI_FIXTURE
+                ).validate(file, spec)
+            )
 
             // Explicit benchmark acceptance progresses past provenance; the intentionally tiny
             // fixture then fails at the exact byte-count boundary without allocating model-sized RAM.
