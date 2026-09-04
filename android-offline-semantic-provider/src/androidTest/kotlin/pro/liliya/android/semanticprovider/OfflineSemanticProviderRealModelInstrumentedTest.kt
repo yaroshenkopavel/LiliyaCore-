@@ -30,6 +30,33 @@ class OfflineSemanticProviderRealModelInstrumentedTest {
     }
 
     @Test
+    fun native_registry_allows_only_one_live_session_and_reopens_after_close() {
+        withFixture { fixture, root, selection ->
+            val validated = assertIs<SemanticModelArtifactValidationResult.Validated>(
+                fixtureValidator(root, selection).validate(fixture, fixtureSpec(selection))
+            ).artifact
+            val loader = SemanticEmbeddingSessionLoader(testPolicy())
+
+            val first = assertIs<SemanticEmbeddingSessionLoadResult.Loaded>(
+                loader.load(validated)
+            ).session
+            try {
+                assertEquals(
+                    SemanticEmbeddingSessionLoadResult.ResourceRejected,
+                    loader.load(validated)
+                )
+            } finally {
+                assertIs<SemanticEmbeddingCloseResult.Closed>(first.close())
+            }
+
+            val reopened = assertIs<SemanticEmbeddingSessionLoadResult.Loaded>(
+                loader.load(validated)
+            ).session
+            assertIs<SemanticEmbeddingCloseResult.Closed>(reopened.close())
+        }
+    }
+
+    @Test
     fun pinned_model_rejects_more_than_512_tokens_without_truncation() {
         withSession { session ->
             val overTokenBound = "query: " + List(600) { "hello" }.joinToString(" ")
