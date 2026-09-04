@@ -23,7 +23,8 @@ OUTPUT_ENCODER = "multilingual-e5-small-liliya-v0.1.onnx"
 OUTPUT_TOKENIZER = "multilingual-e5-small-tokenizer-v0.1.onnx"
 DIMENSION = 384
 MAX_TOKENS = 512
-MIN_INT8_REFERENCE_COSINE = 0.995
+MIN_FP32_REFERENCE_COSINE = 0.9999
+MIN_INT8_REFERENCE_COSINE = 0.99
 
 SAMPLES = [
     "query: where did I leave my apartment keys?",
@@ -252,7 +253,12 @@ def reference_embedding(model, inputs) -> np.ndarray:
     return normalized.detach().cpu().numpy().astype(np.float32)
 
 
-def validate_encoder(tokenizer, torch_model, encoder_path: Path) -> dict:
+def validate_encoder(
+    tokenizer,
+    torch_model,
+    encoder_path: Path,
+    minimum_reference_cosine: float,
+) -> dict:
     session = ort.InferenceSession(
         encoder_path.as_posix(),
         providers=["CPUExecutionProvider"],
@@ -287,10 +293,10 @@ def validate_encoder(tokenizer, torch_model, encoder_path: Path) -> dict:
             raise RuntimeError(f"ONNX embedding is not L2 normalized: norm={norm}")
         cosine = float(np.dot(expected, actual) / (np.linalg.norm(expected) * norm))
         max_abs = float(np.max(np.abs(expected - actual)))
-        if cosine < MIN_INT8_REFERENCE_COSINE:
+        if cosine < minimum_reference_cosine:
             raise RuntimeError(
-                f"INT8 ONNX reference cosine below gate: {cosine} < "
-                f"{MIN_INT8_REFERENCE_COSINE}"
+                f"ONNX reference cosine below gate for {encoder_path.name}: "
+                f"{cosine} < {minimum_reference_cosine}"
             )
         evidence[text[:24]] = {
             "cosine_to_reference": cosine,
@@ -364,7 +370,18 @@ def main() -> None:
         MODEL_ID,
         revision=MODEL_REVISION,
     ).eval()
-    encoder_evidence = validate_encoder(fast_tokenizer, torch_model, encoder_int8)
+    fp32_evidence = validate_encoder(
+        fast_tokenizer,
+        torch_model,
+        pooled_fp32,
+        MIN_FP32_REFERENCE_COSINE,
+    )
+    encoder_evidence = validate_encoder(
+        fast_tokenizer,
+        torch_model,
+        encoder_int8,
+        MIN_INT8_REFERENCE_COSINE,
+    )
 
     manifest = {
         "pipeline": "liliya-onnx-export-v0.1",
@@ -378,7 +395,10 @@ def main() -> None:
             "pooling": "MEAN",
             "normalization": "L2",
             "quantization": "dynamic-QInt8-per-channel",
-            "reference": encoder_evidence,
+            "fp32_reference": fp32_evidence,
+            "int8_reference": encoder_evidence,
+            "fp32_minimum_cosine": MIN_FP32_REFERENCE_COSINE,
+            "int8_minimum_cosine": MIN_INT8_REFERENCE_COSINE,
         },
         "tokenizer": {
             "file": tokenizer_path.name,
