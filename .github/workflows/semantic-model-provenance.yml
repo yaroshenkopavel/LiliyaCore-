@@ -7,6 +7,7 @@ on:
       - semantic/**
     paths:
       - 'android-offline-semantic-provider/ci/reproduce_semantic_model_q8.sh'
+      - 'android-offline-semantic-provider/THIRD_PARTY_NOTICES.md'
       - 'android-offline-semantic-provider/src/androidTest/kotlin/pro/liliya/android/semanticprovider/SelfReproducedSemanticModelFixture.kt'
       - 'android-offline-semantic-provider/src/androidTest/kotlin/pro/liliya/android/semanticprovider/OfflineSemanticProviderRealModelInstrumentedTest.kt'
       - '.github/workflows/semantic-model-provenance.yml'
@@ -15,6 +16,7 @@ on:
       - main
     paths:
       - 'android-offline-semantic-provider/ci/reproduce_semantic_model_q8.sh'
+      - 'android-offline-semantic-provider/THIRD_PARTY_NOTICES.md'
       - 'android-offline-semantic-provider/src/androidTest/kotlin/pro/liliya/android/semanticprovider/SelfReproducedSemanticModelFixture.kt'
       - 'android-offline-semantic-provider/src/androidTest/kotlin/pro/liliya/android/semanticprovider/OfflineSemanticProviderRealModelInstrumentedTest.kt'
       - '.github/workflows/semantic-model-provenance.yml'
@@ -46,7 +48,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: semantic-model-provenance
-          path: ${{ runner.temp }}/semantic-model-provenance/semantic-model-provenance.txt
+          path: |
+            ${{ runner.temp }}/semantic-model-provenance/semantic-model-provenance.txt
+            android-offline-semantic-provider/THIRD_PARTY_NOTICES.md
           if-no-files-found: error
           retention-days: 30
 
