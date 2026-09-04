@@ -12,11 +12,17 @@ internal data class SemanticEmbeddingPolicy(
     val useMmap: Boolean = true
 ) {
     init {
-        require(contextTokens > 0)
-        require(batchTokens > 0)
-        require(threadCount > 0)
-        require(maxInputUtf8Bytes > 0)
+        require(contextTokens in 1..MAX_CONTEXT_TOKENS)
+        require(batchTokens in 1..MAX_BATCH_TOKENS)
+        require(threadCount in 1..MAX_THREAD_COUNT)
+        require(maxInputUtf8Bytes in 1..SemanticTextProfile.MAX_PREPARED_UTF8_BYTES)
         require(batchTokens <= contextTokens)
+    }
+
+    companion object {
+        const val MAX_CONTEXT_TOKENS = 512
+        const val MAX_BATCH_TOKENS = 512
+        const val MAX_THREAD_COUNT = 4
     }
 }
 
