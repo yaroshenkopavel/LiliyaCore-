@@ -275,11 +275,21 @@ class OfflineSemanticProviderRealModelInstrumentedTest {
         root.deleteRecursively()
         check(root.mkdirs())
         val fixture = File(root, selection.identity.modelFileName)
+        val tokenizerFixture = File(root, selection.identity.tokenizerFileName)
         try {
             testContext.assets.open(selection.identity.modelFileName).use { input ->
                 fixture.outputStream().use { output -> input.copyTo(output, DEFAULT_BUFFER_SIZE) }
             }
+            testContext.assets.open(selection.identity.tokenizerFileName).use { input ->
+                tokenizerFixture.outputStream().use { output ->
+                    input.copyTo(output, DEFAULT_BUFFER_SIZE)
+                }
+            }
             assertEquals(selection.identity.expectedSizeBytes, fixture.length())
+            assertEquals(
+                selection.identity.tokenizerExpectedSizeBytes,
+                tokenizerFixture.length()
+            )
             block(fixture, root, selection)
         } finally {
             root.deleteRecursively()
