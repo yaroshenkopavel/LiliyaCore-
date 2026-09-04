@@ -56,8 +56,18 @@ class SemanticModelArtifactValidatorContractTest {
     @Test
     fun benchmark_only_provenance_requires_explicit_non_production_acceptance() {
         withRoot { root ->
-            val identity = ControlledBenchmarkSemanticModelArtifactV01.identity
-            val file = File(root, identity.onnxFileName).also { it.writeBytes(byteArrayOf(0)) }
+            val bytes = "benchmark-onnx-fixture".toByteArray()
+            val identity = productionIdentity(
+                bytes = bytes,
+                fileName = SemanticModelProfileV01.ONNX_FILE_NAME,
+                expectedSizeBytes = bytes.size.toLong() + 1L
+            ).copy(
+                conversionProvenance = SemanticConversionProvenance.ControlledBenchmark(
+                    artifactRepository = "test/controlled-benchmark",
+                    artifactRevision = "controlled-benchmark-revision"
+                )
+            )
+            val file = File(root, identity.modelFileName).also { it.writeBytes(bytes) }
             val spec = SemanticModelArtifactSpec(identity)
 
             assertIs<SemanticModelArtifactValidationResult.IncompleteConversionProvenance>(
@@ -71,8 +81,6 @@ class SemanticModelArtifactValidatorContractTest {
                 ).validate(file, spec)
             )
 
-            // Explicit benchmark acceptance progresses past provenance; the intentionally tiny
-            // fixture then fails at the exact byte-count boundary without allocating model-sized RAM.
             assertIs<SemanticModelArtifactValidationResult.SizeMismatch>(
                 SemanticModelArtifactValidator(
                     root,
