@@ -13,6 +13,7 @@ import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.json.JSONObject
 import pro.liliya.core.memory.MemoryGeneration
 import pro.liliya.core.memory.MemoryRecordId
 
@@ -72,31 +73,30 @@ class OfflineSemanticProviderResourceInstrumentedTest {
 
                 val flatIndexEvidence = measureFlatIndexEvidence()
 
-                recordEvidence(
-                    mapOf(
-                        "primaryAbi" to primaryRuntimeAbi(),
-                        "abi" to Build.SUPPORTED_ABIS.joinToString(","),
-                        "fixtureBytes" to selection.identity.expectedSizeBytes.toString(),
-                        "fixtureSha256" to selection.identity.expectedSha256,
-                        "fixtureAcceptance" to selection.acceptance.name,
-                        "llamaRevision" to SemanticModelProfileV01.LLAMA_CPP_REVISION,
-                        "profileDimension" to SemanticEmbeddingVector.DIMENSION.toString(),
-                        "loadLatencyMs" to loadLatencyMs.toString(),
-                        "processPssBeforeLoadBytes" to processPssBeforeLoadBytes.toString(),
-                        "processPssAfterLoadBytes" to processPssAfterLoadBytes.toString(),
-                        "processPssLoadDeltaBytes" to processPssLoadDeltaBytes.toString(),
-                        "nativeHeapLoadDeltaBytes" to nativeHeapLoadDeltaBytes.toString(),
-                        "warmShortQueryMedianMs" to warmShortQueryMedianMs.toString(),
-                        "paragraphLatencyMs" to paragraphLatencyMs.toString(),
-                        "repeatedEmbeddingCount" to "12",
-                        "flatScan1kMedianMs" to flatIndexEvidence.scan1kMedianMs.toString(),
-                        "flatScan10kMedianMs" to flatIndexEvidence.scan10kMedianMs.toString(),
-                        "flatIndex10kProcessPssDeltaBytes" to flatIndexEvidence.processPssDeltaBytes.toString(),
-                        "flatIndex10kRawVectorBytes" to flatIndexEvidence.rawVectorBytes.toString(),
-                        "flatIndexCandidateBound" to FLAT_INDEX_CANDIDATE_BOUND.toString(),
-                        "arm64ThresholdsApplied" to isArm64Target().toString()
-                    )
+                val evidence = linkedMapOf(
+                    "primaryAbi" to primaryRuntimeAbi(),
+                    "abi" to Build.SUPPORTED_ABIS.joinToString(","),
+                    "fixtureBytes" to selection.identity.expectedSizeBytes.toString(),
+                    "fixtureSha256" to selection.identity.expectedSha256,
+                    "fixtureAcceptance" to selection.acceptance.name,
+                    "llamaRevision" to SemanticModelProfileV01.LLAMA_CPP_REVISION,
+                    "profileDimension" to SemanticEmbeddingVector.DIMENSION.toString(),
+                    "loadLatencyMs" to loadLatencyMs.toString(),
+                    "processPssBeforeLoadBytes" to processPssBeforeLoadBytes.toString(),
+                    "processPssAfterLoadBytes" to processPssAfterLoadBytes.toString(),
+                    "processPssLoadDeltaBytes" to processPssLoadDeltaBytes.toString(),
+                    "nativeHeapLoadDeltaBytes" to nativeHeapLoadDeltaBytes.toString(),
+                    "warmShortQueryMedianMs" to warmShortQueryMedianMs.toString(),
+                    "paragraphLatencyMs" to paragraphLatencyMs.toString(),
+                    "repeatedEmbeddingCount" to "12",
+                    "flatScan1kMedianMs" to flatIndexEvidence.scan1kMedianMs.toString(),
+                    "flatScan10kMedianMs" to flatIndexEvidence.scan10kMedianMs.toString(),
+                    "flatIndex10kProcessPssDeltaBytes" to flatIndexEvidence.processPssDeltaBytes.toString(),
+                    "flatIndex10kRawVectorBytes" to flatIndexEvidence.rawVectorBytes.toString(),
+                    "flatIndexCandidateBound" to FLAT_INDEX_CANDIDATE_BOUND.toString(),
+                    "arm64ThresholdsApplied" to isArm64Target().toString()
                 )
+                recordEvidence(evidence)
 
                 if (isArm64Target()) {
                     assertTrue(
@@ -120,12 +120,16 @@ class OfflineSemanticProviderResourceInstrumentedTest {
                 val reloadLatencyMs = elapsedMillis(reloadStarted)
                 try {
                     assertNormalized(embedded(reloaded, SHORT_QUERY))
-                    recordEvidence(mapOf("reloadCycle${cycle + 1}LatencyMs" to reloadLatencyMs.toString()))
+                    val key = "reloadCycle${cycle + 1}LatencyMs"
+                    evidence[key] = reloadLatencyMs.toString()
+                    recordEvidence(mapOf(key to reloadLatencyMs.toString()))
                 } finally {
                     assertIs<SemanticEmbeddingCloseResult.Closed>(reloaded.close())
                     assertIs<SemanticEmbeddingCloseResult.StaleOrAlreadyClosed>(reloaded.close())
                 }
             }
+
+            writeEvidenceFile(evidence)
         }
     }
 
@@ -233,6 +237,14 @@ class OfflineSemanticProviderResourceInstrumentedTest {
         InstrumentationRegistry.getInstrumentation().sendStatus(2, bundle)
     }
 
+    private fun writeEvidenceFile(values: Map<String, String>) {
+        val testContext = InstrumentationRegistry.getInstrumentation().context
+        val target = File(testContext.filesDir, RESOURCE_EVIDENCE_FILE_NAME)
+        val json = JSONObject()
+        values.forEach { (key, value) -> json.put(key, value) }
+        target.writeText(json.toString(2) + "\n", Charsets.UTF_8)
+    }
+
     private fun primaryRuntimeAbi(): String =
         Build.SUPPORTED_ABIS.firstOrNull().orEmpty()
 
@@ -295,6 +307,7 @@ class OfflineSemanticProviderResourceInstrumentedTest {
     )
 
     private companion object {
+        const val RESOURCE_EVIDENCE_FILE_NAME = "semantic-resource-evidence.json"
         const val FLAT_INDEX_CANDIDATE_BOUND = 8
         const val MAX_MODEL_LOAD_MEMORY_DELTA_BYTES = 512L * 1024L * 1024L
         const val MAX_WARM_QUERY_LATENCY_MS = 1_500L
