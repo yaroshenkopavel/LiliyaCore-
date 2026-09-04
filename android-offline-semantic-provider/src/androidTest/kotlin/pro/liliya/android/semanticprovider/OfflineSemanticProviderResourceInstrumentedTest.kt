@@ -83,7 +83,7 @@ class OfflineSemanticProviderResourceInstrumentedTest {
                     "fixtureBytes" to selection.identity.expectedSizeBytes.toString(),
                     "fixtureSha256" to selection.identity.expectedSha256,
                     "fixtureAcceptance" to selection.acceptance.name,
-                    "llamaRevision" to SemanticModelProfileV01.LLAMA_CPP_REVISION,
+                    "runtimeVersion" to SemanticModelProfileV01.ONNX_RUNTIME_VERSION,
                     "profileDimension" to SemanticEmbeddingVector.DIMENSION.toString(),
                     "loadLatencyMs" to loadLatencyMs.toString(),
                     "processPssBeforeLoadBytes" to processPssBeforeLoadBytes.toString(),
@@ -291,9 +291,9 @@ class OfflineSemanticProviderResourceInstrumentedTest {
         val root = File(targetContext.filesDir, "offline-semantic-resource-test")
         root.deleteRecursively()
         check(root.mkdirs())
-        val fixture = File(root, selection.identity.ggufFileName)
+        val fixture = File(root, selection.identity.modelFileName)
         try {
-            testContext.assets.open(selection.identity.ggufFileName).use { input ->
+            testContext.assets.open(selection.identity.modelFileName).use { input ->
                 fixture.outputStream().use { output -> input.copyTo(output, DEFAULT_BUFFER_SIZE) }
             }
             assertEquals(selection.identity.expectedSizeBytes, fixture.length())
