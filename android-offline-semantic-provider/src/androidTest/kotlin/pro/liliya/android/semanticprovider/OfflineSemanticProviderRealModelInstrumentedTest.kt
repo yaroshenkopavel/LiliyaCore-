@@ -14,7 +14,7 @@ import org.junit.runner.RunWith
 class OfflineSemanticProviderRealModelInstrumentedTest {
 
     @Test
-    fun pinned_multilingual_e5_q8_loads_and_closes_without_embedding() {
+    fun pinned_multilingual_e5_onnx_loads_and_closes_without_embedding() {
         withFixture { fixture, root, selection ->
             val validated = assertIs<SemanticModelArtifactValidationResult.Validated>(
                 fixtureValidator(root, selection).validate(fixture, fixtureSpec(selection))
@@ -88,7 +88,7 @@ class OfflineSemanticProviderRealModelInstrumentedTest {
     }
 
     @Test
-    fun pinned_multilingual_e5_q8_runs_through_validator_native_session_and_close() {
+    fun pinned_multilingual_e5_onnx_runs_through_validator_native_session_and_close() {
         withFixture { fixture, root, selection ->
             val validator = fixtureValidator(root, selection)
             val validated = assertIs<SemanticModelArtifactValidationResult.Validated>(
@@ -274,9 +274,9 @@ class OfflineSemanticProviderRealModelInstrumentedTest {
         val root = File(targetContext.filesDir, "offline-semantic-real-model-test")
         root.deleteRecursively()
         check(root.mkdirs())
-        val fixture = File(root, selection.identity.ggufFileName)
+        val fixture = File(root, selection.identity.modelFileName)
         try {
-            testContext.assets.open(selection.identity.ggufFileName).use { input ->
+            testContext.assets.open(selection.identity.modelFileName).use { input ->
                 fixture.outputStream().use { output -> input.copyTo(output, DEFAULT_BUFFER_SIZE) }
             }
             assertEquals(selection.identity.expectedSizeBytes, fixture.length())
