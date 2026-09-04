@@ -1,7 +1,6 @@
 package pro.liliya.android.semanticprovider
 
 import ai.onnxruntime.OnnxTensor
-import ai.onnxruntime.OnnxValue
 import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtLoggingLevel
 import ai.onnxruntime.OrtSession
@@ -252,7 +251,7 @@ internal object SemanticNativeBridge {
                 setOf(TOKENIZER_TOKENS_OUTPUT)
             ).use { result ->
                 val output = result.get(TOKENIZER_TOKENS_OUTPUT).orElse(null)
-                return extractLongVector(output)
+                return extractLongVector(output?.value)
             }
         }
     }
@@ -331,12 +330,14 @@ internal object SemanticNativeBridge {
             null
         }
 
-    private fun extractLongVector(value: OnnxValue?): LongArray? {
-        val tensor = value as? OnnxTensor ?: return null
-        val buffer = tensor.longBuffer ?: return null
-        val result = LongArray(buffer.remaining())
-        buffer.get(result)
-        return result
+    private fun extractLongVector(value: Any?): LongArray? = when (value) {
+        is LongArray -> value.copyOf()
+        is Array<*> -> {
+            if (value.size != 1) return null
+            val first = value[0]
+            if (first is LongArray) first.copyOf() else null
+        }
+        else -> null
     }
 
     private fun extractEmbedding(value: Any?): FloatArray? = when (value) {
