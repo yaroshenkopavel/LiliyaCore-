@@ -7,6 +7,8 @@ on:
       - semantic/**
     paths:
       - 'android-offline-semantic-provider/ci/reproduce_semantic_model_q8.sh'
+      - 'android-offline-semantic-provider/ci/semantic-converter-python311.constraints.txt'
+      - 'android-offline-semantic-provider/ci/semantic-converter-python311.constraints.txt'
       - 'android-offline-semantic-provider/THIRD_PARTY_NOTICES.md'
       - 'android-offline-semantic-provider/src/androidTest/kotlin/pro/liliya/android/semanticprovider/SelfReproducedSemanticModelFixture.kt'
       - 'android-offline-semantic-provider/src/androidTest/kotlin/pro/liliya/android/semanticprovider/OfflineSemanticProviderRealModelInstrumentedTest.kt'
@@ -34,10 +36,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Python 3.11
+      - name: Set up Python 3.11.16
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.11.16'
 
       - name: Reproduce pinned semantic Q8_0 candidate
         shell: bash
