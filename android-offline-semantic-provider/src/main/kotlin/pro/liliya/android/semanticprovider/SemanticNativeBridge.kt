@@ -332,10 +332,14 @@ internal object SemanticNativeBridge {
 
     private fun extractLongVector(value: Any?): LongArray? = when (value) {
         is LongArray -> value.copyOf()
+        is IntArray -> LongArray(value.size) { index -> value[index].toLong() }
         is Array<*> -> {
             if (value.size != 1) return null
-            val first = value[0]
-            if (first is LongArray) first.copyOf() else null
+            when (val first = value[0]) {
+                is LongArray -> first.copyOf()
+                is IntArray -> LongArray(first.size) { index -> first[index].toLong() }
+                else -> null
+            }
         }
         else -> null
     }
