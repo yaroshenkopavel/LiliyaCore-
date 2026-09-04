@@ -13,7 +13,7 @@ class SemanticModelArtifactValidatorContractTest {
     fun exact_app_private_production_artifact_validates_against_separate_trusted_identity() {
         withRoot { root ->
             val bytes = "semantic-model-fixture".toByteArray()
-            val file = File(root, "models/semantic.gguf").also {
+            val file = File(root, "models/semantic.onnx").also {
                 it.parentFile!!.mkdirs()
                 it.writeBytes(bytes)
             }
@@ -34,7 +34,7 @@ class SemanticModelArtifactValidatorContractTest {
     fun candidate_cannot_self_authorize_a_different_artifact_identity() {
         withRoot { root ->
             val bytes = "semantic-model-fixture".toByteArray()
-            val file = File(root, "semantic.gguf").also { it.writeBytes(bytes) }
+            val file = File(root, "semantic.onnx").also { it.writeBytes(bytes) }
             val trusted = productionSpec(bytes, file.name)
             val differentIdentity = trusted.identity.copy(
                 conversionProvenance = SemanticConversionProvenance.Reproducible(
@@ -57,7 +57,7 @@ class SemanticModelArtifactValidatorContractTest {
     fun benchmark_only_provenance_requires_explicit_non_production_acceptance() {
         withRoot { root ->
             val identity = ControlledBenchmarkSemanticModelArtifactV01.identity
-            val file = File(root, identity.ggufFileName).also { it.writeBytes(byteArrayOf(0)) }
+            val file = File(root, identity.onnxFileName).also { it.writeBytes(byteArrayOf(0)) }
             val spec = SemanticModelArtifactSpec(identity)
 
             assertIs<SemanticModelArtifactValidationResult.IncompleteConversionProvenance>(
@@ -87,10 +87,10 @@ class SemanticModelArtifactValidatorContractTest {
     fun ephemeral_ci_provenance_cannot_be_accepted_as_published_production_provenance() {
         withRoot { root ->
             val bytes = "self-reproduced-ci-fixture".toByteArray()
-            val file = File(root, "semantic-ci.gguf").also { it.writeBytes(bytes) }
+            val file = File(root, "semantic-ci.onnx").also { it.writeBytes(bytes) }
             val identity = productionIdentity(bytes, file.name).copy(
                 conversionProvenance = SemanticConversionProvenance.ReproducibleCiFixture(
-                    conversionToolRevision = SemanticModelProfileV01.LLAMA_CPP_REVISION
+                    conversionToolRevision = SemanticModelProfileV01.ONNX_EXPORT_PIPELINE_REVISION
                 )
             )
             val spec = SemanticModelArtifactSpec(identity)
@@ -112,7 +112,7 @@ class SemanticModelArtifactValidatorContractTest {
     fun profile_and_file_name_mismatch_fail_before_file_validation() {
         withRoot { root ->
             val bytes = "semantic-model-fixture".toByteArray()
-            val file = File(root, "semantic.gguf").also { it.writeBytes(bytes) }
+            val file = File(root, "semantic.onnx").also { it.writeBytes(bytes) }
             val trusted = productionSpec(bytes, file.name)
             val mismatchedProfile = SemanticModelArtifactSpec(
                 trusted.identity.copy(profileId = "wrong-profile")
@@ -121,7 +121,7 @@ class SemanticModelArtifactValidatorContractTest {
                 validator(root, trusted).validate(file, mismatchedProfile)
             )
 
-            val expectedName = productionSpec(bytes, "expected.gguf")
+            val expectedName = productionSpec(bytes, "expected.onnx")
             assertIs<SemanticModelArtifactValidationResult.FileNameMismatch>(
                 validator(root, expectedName).validate(file, expectedName)
             )
@@ -131,7 +131,7 @@ class SemanticModelArtifactValidatorContractTest {
     @Test
     fun missing_directory_size_and_digest_fail_structurally() {
         withRoot { root ->
-            val missing = File(root, "missing.gguf")
+            val missing = File(root, "missing.onnx")
             val missingSpec = productionSpec("x".toByteArray(), missing.name)
             assertIs<SemanticModelArtifactValidationResult.Missing>(
                 validator(root, missingSpec).validate(missing, missingSpec)
@@ -143,7 +143,7 @@ class SemanticModelArtifactValidatorContractTest {
                 validator(root, directorySpec).validate(directory, directorySpec)
             )
 
-            val file = File(root, "model.gguf").also { it.writeText("actual") }
+            val file = File(root, "model.onnx").also { it.writeText("actual") }
             val expected = "expected".toByteArray()
             val sizeSpec = productionSpec(expected, file.name)
             assertIs<SemanticModelArtifactValidationResult.SizeMismatch>(
@@ -162,7 +162,7 @@ class SemanticModelArtifactValidatorContractTest {
     @Test
     fun artifact_over_profile_byte_limit_is_rejected_before_size_or_digest_validation() {
         withRoot { root ->
-            val file = File(root, "semantic.gguf").also { it.writeBytes(byteArrayOf(0)) }
+            val file = File(root, "semantic.onnx").also { it.writeBytes(byteArrayOf(0)) }
             val oversizedSpec = SemanticModelArtifactSpec(
                 productionIdentity(
                     bytes = byteArrayOf(0),
@@ -182,7 +182,7 @@ class SemanticModelArtifactValidatorContractTest {
         val root = Files.createTempDirectory("semantic-root").toFile()
         val outsideRoot = Files.createTempDirectory("semantic-outside").toFile()
         try {
-            val outside = File(outsideRoot, "semantic.gguf").also { it.writeText("secret") }
+            val outside = File(outsideRoot, "semantic.onnx").also { it.writeText("secret") }
             val outsideSpec = productionSpec("secret".toByteArray(), outside.name)
             val validator = validator(root, outsideSpec)
 
@@ -190,7 +190,7 @@ class SemanticModelArtifactValidatorContractTest {
                 validator.validate(outside, outsideSpec)
             )
 
-            val link = File(root, "linked.gguf")
+            val link = File(root, "linked.onnx")
             try {
                 Files.createSymbolicLink(link.toPath(), outside.toPath())
                 val linkSpec = productionSpec("secret".toByteArray(), link.name)
@@ -211,7 +211,7 @@ class SemanticModelArtifactValidatorContractTest {
         try {
             productionIdentity(
                 bytes = ByteArray(0),
-                fileName = "semantic.gguf",
+                fileName = "semantic.onnx",
                 expectedSizeBytes = 0L
             )
             error("expected size validation")
@@ -220,14 +220,14 @@ class SemanticModelArtifactValidatorContractTest {
         try {
             productionIdentity(
                 bytes = "x".toByteArray(),
-                fileName = "semantic.gguf",
+                fileName = "semantic.onnx",
                 expectedSha256 = "ABC"
             )
             error("expected digest validation")
         } catch (_: IllegalArgumentException) {
         }
         try {
-            productionIdentity("x".toByteArray(), "../semantic.gguf")
+            productionIdentity("x".toByteArray(), "../semantic.onnx")
             error("expected filename validation")
         } catch (_: IllegalArgumentException) {
         }
@@ -260,7 +260,8 @@ class SemanticModelArtifactValidatorContractTest {
             artifactRevision = "test-artifact-revision",
             conversionToolRevision = "test-conversion-tool-revision"
         ),
-        ggufFileName = fileName,
+        modelFileName = fileName,
+        modelFormat = SemanticModelFormat.ONNX,
         expectedSizeBytes = expectedSizeBytes,
         expectedSha256 = expectedSha256,
         architecture = SemanticModelArchitecture.BERT,
@@ -268,7 +269,7 @@ class SemanticModelArtifactValidatorContractTest {
         poolingType = SemanticPoolingType.MEAN,
         normalizationRule = SemanticNormalizationRule.L2,
         tokenizerProfileId = SemanticModelProfileV01.TOKENIZER_PROFILE_ID,
-        llamaCppRevision = SemanticModelProfileV01.LLAMA_CPP_REVISION
+        runtimeIdentity = SemanticModelProfileV01.RUNTIME_IDENTITY
     )
 
     private fun sha256(bytes: ByteArray): String =
