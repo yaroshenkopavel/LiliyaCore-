@@ -2,6 +2,7 @@ package pro.liliya.android.semanticprovider
 
 import java.nio.charset.StandardCharsets
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import org.junit.Test
 
@@ -35,6 +36,24 @@ class SemanticEmbeddingPolicyContractTest {
             SemanticPreparedTextResult.ResourceRejected,
             SemanticTextProfile.preparePassage(overBound)
         )
+    }
+
+    @Test
+    fun embedding_policy_rejects_values_above_architecture_gate_maxima() {
+        assertFailsWith<IllegalArgumentException> {
+            SemanticEmbeddingPolicy(contextTokens = SemanticEmbeddingPolicy.MAX_CONTEXT_TOKENS + 1)
+        }
+        assertFailsWith<IllegalArgumentException> {
+            SemanticEmbeddingPolicy(batchTokens = SemanticEmbeddingPolicy.MAX_BATCH_TOKENS + 1)
+        }
+        assertFailsWith<IllegalArgumentException> {
+            SemanticEmbeddingPolicy(threadCount = SemanticEmbeddingPolicy.MAX_THREAD_COUNT + 1)
+        }
+        assertFailsWith<IllegalArgumentException> {
+            SemanticEmbeddingPolicy(
+                maxInputUtf8Bytes = SemanticTextProfile.MAX_PREPARED_UTF8_BYTES + 1
+            )
+        }
     }
 
     @Test
