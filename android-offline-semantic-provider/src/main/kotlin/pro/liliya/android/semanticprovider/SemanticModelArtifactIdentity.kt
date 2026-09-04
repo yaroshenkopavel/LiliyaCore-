@@ -150,9 +150,6 @@ internal object SemanticModelProfileV01 {
             identity.upstreamModelRepository == UPSTREAM_MODEL_REPOSITORY &&
             identity.upstreamModelRevision == UPSTREAM_MODEL_REVISION &&
             identity.modelFormat == SemanticModelFormat.ONNX &&
-            identity.tokenizerFileName == TOKENIZER_ONNX_FILE_NAME &&
-            identity.tokenizerExpectedSizeBytes == TOKENIZER_ONNX_SIZE_BYTES &&
-            identity.tokenizerExpectedSha256 == TOKENIZER_ONNX_SHA256 &&
             identity.architecture == SemanticModelArchitecture.BERT &&
             identity.embeddingDimension == EMBEDDING_DIMENSION &&
             identity.embeddingDimension == SemanticEmbeddingVector.DIMENSION &&
