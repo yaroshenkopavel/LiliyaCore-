@@ -17,6 +17,7 @@ internal data class SemanticModelArtifactSpec(
 
 internal class ValidatedSemanticModelArtifact internal constructor(
     internal val file: File,
+    internal val tokenizerFile: File,
     val spec: SemanticModelArtifactSpec
 ) {
     override fun toString(): String =
@@ -101,13 +102,33 @@ internal class SemanticModelArtifactValidator(
             if (!canonicalCandidate.isFile) {
                 return SemanticModelArtifactValidationResult.NotRegularFile
             }
+            val tokenizerCandidate = File(
+                canonicalCandidate.parentFile,
+                trustedIdentity.tokenizerFileName
+            ).canonicalFile
+            if (!isInsideRoot(tokenizerCandidate)) {
+                return SemanticModelArtifactValidationResult.OutsideAppPrivateRoot
+            }
+            if (!tokenizerCandidate.exists()) {
+                return SemanticModelArtifactValidationResult.Missing
+            }
+            if (!tokenizerCandidate.isFile) {
+                return SemanticModelArtifactValidationResult.NotRegularFile
+            }
+
+            val expectedBundleBytes = trustedIdentity.expectedSizeBytes +
+                trustedIdentity.tokenizerExpectedSizeBytes
+            val actualBundleBytes = canonicalCandidate.length() + tokenizerCandidate.length()
             if (
-                trustedIdentity.expectedSizeBytes > SemanticModelProfileV01.MAX_ARTIFACT_BYTES ||
-                canonicalCandidate.length() > SemanticModelProfileV01.MAX_ARTIFACT_BYTES
+                expectedBundleBytes > SemanticModelProfileV01.MAX_ARTIFACT_BYTES ||
+                actualBundleBytes > SemanticModelProfileV01.MAX_ARTIFACT_BYTES
             ) {
                 return SemanticModelArtifactValidationResult.ArtifactTooLarge
             }
-            if (canonicalCandidate.length() != trustedIdentity.expectedSizeBytes) {
+            if (
+                canonicalCandidate.length() != trustedIdentity.expectedSizeBytes ||
+                tokenizerCandidate.length() != trustedIdentity.tokenizerExpectedSizeBytes
+            ) {
                 return SemanticModelArtifactValidationResult.SizeMismatch
             }
 
@@ -115,9 +136,17 @@ internal class SemanticModelArtifactValidator(
             if (actualDigest != trustedIdentity.expectedSha256) {
                 return SemanticModelArtifactValidationResult.DigestMismatch
             }
+            val actualTokenizerDigest = sha256(tokenizerCandidate)
+            if (actualTokenizerDigest != trustedIdentity.tokenizerExpectedSha256) {
+                return SemanticModelArtifactValidationResult.DigestMismatch
+            }
 
             SemanticModelArtifactValidationResult.Validated(
-                ValidatedSemanticModelArtifact(canonicalCandidate, spec)
+                ValidatedSemanticModelArtifact(
+                    file = canonicalCandidate,
+                    tokenizerFile = tokenizerCandidate,
+                    spec = spec
+                )
             )
         } catch (failure: Throwable) {
             SemanticModelArtifactValidationResult.Failed(
