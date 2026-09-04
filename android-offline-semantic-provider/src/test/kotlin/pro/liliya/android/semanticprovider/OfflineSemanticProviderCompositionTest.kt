@@ -249,7 +249,7 @@ class OfflineSemanticProviderCompositionTest {
     }
 
     @Test
-    fun discovery_rejects_candidate_request_above_domain_capacity_before_embedding() {
+    fun discovery_request_above_domain_capacity_still_returns_only_live_candidates() {
         val fakeSession = FakeSession()
         val provider = OfflineSemanticProviderComposition(
             profileGeneration = SemanticProfileGeneration(1),
@@ -264,13 +264,23 @@ class OfflineSemanticProviderCompositionTest {
             )
         )
         provider.load(artifact())
-        provider.rebuild(emptyList())
+        val source = SemanticIndexSourceReference.Memory(
+            MemoryRecordId("bounded-live"),
+            MemoryGeneration(1)
+        )
+        assertEquals(
+            OfflineSemanticRebuildResult.Published(1),
+            provider.rebuild(listOf(SemanticSourceObservation(source, "bounded live content")))
+        )
 
         assertEquals(
-            SemanticProviderFailure(SemanticProviderFailureKind.RESOURCE_REJECTED),
-            provider.discover(SemanticIndexDomain.MEMORY, "query", 3)
+            SemanticCandidates(listOf(source)),
+            provider.discover(SemanticIndexDomain.MEMORY, "query", Int.MAX_VALUE)
         )
-        assertEquals(emptyList(), fakeSession.embeddedTexts)
+        assertEquals(
+            listOf("passage: bounded live content", "query: query"),
+            fakeSession.embeddedTexts
+        )
     }
 
     @Test
