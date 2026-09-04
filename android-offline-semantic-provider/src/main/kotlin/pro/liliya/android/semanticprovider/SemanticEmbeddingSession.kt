@@ -56,10 +56,12 @@ internal class SemanticEmbeddingSessionLoader(
     private val policy: SemanticEmbeddingPolicy = SemanticEmbeddingPolicy()
 ) {
     fun load(artifact: ValidatedSemanticModelArtifact): SemanticEmbeddingSessionLoadResult {
-        val path = artifact.file.absolutePath.toByteArray(StandardCharsets.UTF_8)
+        val encoderPath = artifact.file.absolutePath.toByteArray(StandardCharsets.UTF_8)
+        val tokenizerPath = artifact.tokenizerFile.absolutePath.toByteArray(StandardCharsets.UTF_8)
         return try {
             val nativeId = SemanticNativeBridge.nativeLoad(
-                sourcePathUtf8 = path,
+                sourcePathUtf8 = encoderPath,
+                tokenizerPathUtf8 = tokenizerPath,
                 contextTokens = policy.contextTokens,
                 batchTokens = policy.batchTokens,
                 threadCount = policy.threadCount,
@@ -83,7 +85,8 @@ internal class SemanticEmbeddingSessionLoader(
         } catch (_: Throwable) {
             SemanticEmbeddingSessionLoadResult.ProviderFailed
         } finally {
-            path.fill(0)
+            encoderPath.fill(0)
+            tokenizerPath.fill(0)
         }
     }
 }
