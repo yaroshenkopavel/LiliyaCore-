@@ -57,6 +57,20 @@ class SemanticEmbeddingPolicyContractTest {
     }
 
     @Test
+    fun session_boundary_rejects_definitely_over_bound_text_before_native_use() {
+        val ownership = SemanticEmbeddingSessionOwnership(
+            nativeSessionId = 1L,
+            maxInputUtf8Bytes = SemanticTextProfile.MAX_PREPARED_UTF8_BYTES
+        )
+        val overBound = "a".repeat(SemanticTextProfile.MAX_PREPARED_UTF8_BYTES + 1)
+
+        assertEquals(
+            SemanticEmbeddingResult.ResourceRejected,
+            ownership.embed(overBound)
+        )
+    }
+
+    @Test
     fun raw_utf8_over_profile_bound_is_rejected_without_truncation() {
         val overBound = "я".repeat(SemanticTextProfile.MAX_RAW_UTF8_BYTES / 2 + 1)
 
