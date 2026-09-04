@@ -7,6 +7,7 @@ on:
       - semantic/**
     paths:
       - 'android-offline-semantic-provider/ci/reproduce_semantic_model_q8.sh'
+      - 'android-offline-semantic-provider/ci/parse_semantic_resource_status.py'
       - 'android-offline-semantic-provider/ci/semantic-converter-python311.constraints.txt'
       - 'android-offline-semantic-provider/THIRD_PARTY_NOTICES.md'
       - 'android-offline-semantic-provider/src/androidTest/kotlin/pro/liliya/android/semanticprovider/SelfReproducedSemanticModelFixture.kt'
@@ -18,6 +19,7 @@ on:
       - main
     paths:
       - 'android-offline-semantic-provider/ci/reproduce_semantic_model_q8.sh'
+      - 'android-offline-semantic-provider/ci/parse_semantic_resource_status.py'
       - 'android-offline-semantic-provider/ci/semantic-converter-python311.constraints.txt'
       - 'android-offline-semantic-provider/THIRD_PARTY_NOTICES.md'
       - 'android-offline-semantic-provider/src/androidTest/kotlin/pro/liliya/android/semanticprovider/SelfReproducedSemanticModelFixture.kt'
@@ -115,60 +117,7 @@ jobs:
             gradle :android-offline-semantic-provider:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.semanticFixtureSha256=${SELF_REPRODUCED_SHA256} -Pandroid.testInstrumentationRunnerArguments.semanticFixtureSizeBytes=${SELF_REPRODUCED_SIZE} '-Pandroid.testInstrumentationRunnerArguments.class=pro.liliya.android.semanticprovider.OfflineSemanticProviderRealModelInstrumentedTest' --console=plain
             resource_status=0; gradle :android-offline-semantic-provider:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.semanticFixtureSha256=${SELF_REPRODUCED_SHA256} -Pandroid.testInstrumentationRunnerArguments.semanticFixtureSizeBytes=${SELF_REPRODUCED_SIZE} '-Pandroid.testInstrumentationRunnerArguments.class=pro.liliya.android.semanticprovider.OfflineSemanticProviderResourceInstrumentedTest' --console=plain > "$RUNNER_TEMP/semantic-model-provenance/semantic-resource-x86_64-preflight.txt" 2>&1 || resource_status=$?; cat "$RUNNER_TEMP/semantic-model-provenance/semantic-resource-x86_64-preflight.txt"; exit "$resource_status"
             instrumentation_component="$(adb shell pm list instrumentation | tr -d '\r' | grep 'pro.liliya.android.semanticprovider' | head -n 1 | sed 's/^instrumentation://; s/ .*//')"; test -n "$instrumentation_component"; adb shell am instrument -w -r -e semanticFixtureSha256 "$SELF_REPRODUCED_SHA256" -e semanticFixtureSizeBytes "$SELF_REPRODUCED_SIZE" -e class pro.liliya.android.semanticprovider.OfflineSemanticProviderResourceInstrumentedTest "$instrumentation_component" > "$RUNNER_TEMP/semantic-model-provenance/semantic-resource-x86_64-status.txt" 2>&1; cat "$RUNNER_TEMP/semantic-model-provenance/semantic-resource-x86_64-status.txt"
-            python - "$RUNNER_TEMP/semantic-model-provenance/semantic-resource-x86_64-status.txt" "$RUNNER_TEMP/semantic-model-provenance/semantic-resource-x86_64-preflight.json" <<'PY'
-            import json
-            from pathlib import Path
-            import sys
-
-            source = Path(sys.argv[1])
-            target = Path(sys.argv[2])
-            prefix = "INSTRUMENTATION_STATUS: semanticResource."
-            evidence = {}
-            for raw_line in source.read_text(encoding="utf-8", errors="replace").splitlines():
-                line = raw_line.strip()
-                if not line.startswith(prefix):
-                    continue
-                key, separator, value = line[len(prefix):].partition("=")
-                if separator:
-                    evidence[key] = value.strip()
-
-            required = {
-                "primaryAbi",
-                "abi",
-                "fixtureBytes",
-                "fixtureSha256",
-                "fixtureAcceptance",
-                "llamaRevision",
-                "profileDimension",
-                "loadLatencyMs",
-                "processPssBeforeLoadBytes",
-                "processPssAfterLoadBytes",
-                "processPssLoadDeltaBytes",
-                "nativeHeapLoadDeltaBytes",
-                "warmShortQueryMedianMs",
-                "paragraphLatencyMs",
-                "repeatedEmbeddingCount",
-                "flatScan1kMedianMs",
-                "flatScan10kMedianMs",
-                "flatIndex10kProcessPssDeltaBytes",
-                "flatIndex10kRawVectorBytes",
-                "flatIndexCandidateBound",
-                "arm64ThresholdsApplied",
-                "reloadCycle1LatencyMs",
-                "reloadCycle2LatencyMs",
-            }
-            missing = sorted(required.difference(evidence))
-            if missing:
-                raise SystemExit(f"missing semantic resource evidence keys: {missing}")
-            if evidence["arm64ThresholdsApplied"] != "false":
-                raise SystemExit("translated x86_64 preflight must not claim ARM64 threshold evidence")
-
-            target.write_text(
-                json.dumps(evidence, indent=2, sort_keys=True) + "\n",
-                encoding="utf-8",
-            )
-            print(target.read_text(encoding="utf-8"))
-            PY
+            python android-offline-semantic-provider/ci/parse_semantic_resource_status.py "$RUNNER_TEMP/semantic-model-provenance/semantic-resource-x86_64-status.txt" "$RUNNER_TEMP/semantic-model-provenance/semantic-resource-x86_64-preflight.json"
 
       - name: Publish translated resource preflight evidence
         if: always()
