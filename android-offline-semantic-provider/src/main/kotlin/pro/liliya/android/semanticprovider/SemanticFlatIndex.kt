@@ -213,6 +213,13 @@ internal class SemanticFlatIndex(
         maxCandidates: Int
     ): List<SemanticRankedCandidate> {
         require(maxCandidates > 0) { "maximum semantic candidates must be positive" }
+        val domainCapacity = when (domain) {
+            SemanticIndexDomain.MEMORY -> limits.maxMemoryEntries
+            SemanticIndexDomain.KNOWLEDGE -> limits.maxKnowledgeEntries
+        }
+        require(maxCandidates <= domainCapacity) {
+            "maximum semantic candidates must not exceed bounded domain capacity"
+        }
 
         val bestFirst = Comparator<Ranked> { left, right -> compareRankedBestFirst(left, right) }
         val worstFirst = bestFirst.reversed()
