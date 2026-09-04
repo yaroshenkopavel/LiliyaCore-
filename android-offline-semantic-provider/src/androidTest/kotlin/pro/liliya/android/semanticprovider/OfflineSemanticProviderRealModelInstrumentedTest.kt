@@ -418,7 +418,6 @@ class OfflineSemanticProviderRealModelInstrumentedTest {
         contextTokens = 512,
         batchTokens = 512,
         threadCount = 1,
-        maxInputUtf8Bytes = SemanticTextProfile.MAX_PREPARED_UTF8_BYTES,
-        useMmap = true
+        maxInputUtf8Bytes = SemanticTextProfile.MAX_PREPARED_UTF8_BYTES
     )
 }
