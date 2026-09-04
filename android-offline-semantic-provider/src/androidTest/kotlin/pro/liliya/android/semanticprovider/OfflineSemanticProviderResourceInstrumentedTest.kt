@@ -29,9 +29,9 @@ class OfflineSemanticProviderResourceInstrumentedTest {
 
     @Test
     fun records_model_embedding_lifecycle_and_flat_index_resource_evidence() {
-        withFixture { fixture, root ->
+        withFixture { fixture, root, selection ->
             val validated = assertIs<SemanticModelArtifactValidationResult.Validated>(
-                benchmarkValidator(root).validate(fixture, fixtureSpec())
+                fixtureValidator(root, selection).validate(fixture, fixtureSpec(selection))
             ).artifact
 
             forceGc()
@@ -76,8 +76,9 @@ class OfflineSemanticProviderResourceInstrumentedTest {
                     mapOf(
                         "primaryAbi" to primaryRuntimeAbi(),
                         "abi" to Build.SUPPORTED_ABIS.joinToString(","),
-                        "fixtureBytes" to ControlledBenchmarkSemanticModelArtifactV01.SIZE_BYTES.toString(),
-                        "fixtureSha256" to ControlledBenchmarkSemanticModelArtifactV01.SHA256,
+                        "fixtureBytes" to selection.identity.expectedSizeBytes.toString(),
+                        "fixtureSha256" to selection.identity.expectedSha256,
+                        "fixtureAcceptance" to selection.acceptance.name,
                         "llamaRevision" to SemanticModelProfileV01.LLAMA_CPP_REVISION,
                         "profileDimension" to SemanticEmbeddingVector.DIMENSION.toString(),
                         "loadLatencyMs" to loadLatencyMs.toString(),
@@ -238,33 +239,42 @@ class OfflineSemanticProviderResourceInstrumentedTest {
     private fun isArm64Target(): Boolean =
         primaryRuntimeAbi() == "arm64-v8a"
 
-    private fun withFixture(block: (File, File) -> Unit) {
+    private fun withFixture(
+        block: (
+            File,
+            File,
+            SelfReproducedSemanticModelFixture.Selection
+        ) -> Unit
+    ) {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val selection = SelfReproducedSemanticModelFixture.select(
+            InstrumentationRegistry.getArguments()
+        )
         val targetContext = instrumentation.targetContext
         val testContext = instrumentation.context
         val root = File(targetContext.filesDir, "offline-semantic-resource-test")
         root.deleteRecursively()
         check(root.mkdirs())
-        val fixture = File(root, ControlledBenchmarkSemanticModelArtifactV01.FILE_NAME)
+        val fixture = File(root, selection.identity.ggufFileName)
         try {
-            testContext.assets.open(ControlledBenchmarkSemanticModelArtifactV01.FILE_NAME).use { input ->
+            testContext.assets.open(selection.identity.ggufFileName).use { input ->
                 fixture.outputStream().use { output -> input.copyTo(output, DEFAULT_BUFFER_SIZE) }
             }
-            assertEquals(ControlledBenchmarkSemanticModelArtifactV01.SIZE_BYTES, fixture.length())
-            block(fixture, root)
+            assertEquals(selection.identity.expectedSizeBytes, fixture.length())
+            block(fixture, root, selection)
         } finally {
             root.deleteRecursively()
         }
     }
 
-    private fun fixtureSpec(): SemanticModelArtifactSpec =
-        SemanticModelArtifactSpec(ControlledBenchmarkSemanticModelArtifactV01.identity)
+    private fun fixtureSpec(
+        selection: SelfReproducedSemanticModelFixture.Selection
+    ): SemanticModelArtifactSpec = SemanticModelArtifactSpec(selection.identity)
 
-    private fun benchmarkValidator(root: File) = SemanticModelArtifactValidator(
-        root,
-        ControlledBenchmarkSemanticModelArtifactV01.identity,
-        SemanticModelArtifactAcceptance.CONTROLLED_BENCHMARK
-    )
+    private fun fixtureValidator(
+        root: File,
+        selection: SelfReproducedSemanticModelFixture.Selection
+    ) = SemanticModelArtifactValidator(root, selection.identity, selection.acceptance)
 
     private fun testPolicy() = SemanticEmbeddingPolicy(
         contextTokens = 512,
