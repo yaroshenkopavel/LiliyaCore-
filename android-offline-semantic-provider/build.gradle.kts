@@ -18,6 +18,19 @@ android {
         externalNativeBuild {
             cmake {
                 cppFlags += listOf("-std=c++17")
+                arguments += listOf(
+                    "-DCMAKE_BUILD_TYPE=Release",
+                    "-DBUILD_SHARED_LIBS=OFF",
+                    "-DLLAMA_BUILD_COMMON=OFF",
+                    "-DLLAMA_BUILD_EXAMPLES=OFF",
+                    "-DLLAMA_BUILD_SERVER=OFF",
+                    "-DLLAMA_BUILD_TESTS=OFF",
+                    "-DLLAMA_CURL=OFF",
+                    "-DGGML_NATIVE=OFF",
+                    "-DGGML_OPENMP=OFF",
+                    "-DGGML_CPU_KLEIDIAI=OFF",
+                    "-DGGML_BACKEND_DL=OFF",
+                )
             }
         }
     }
