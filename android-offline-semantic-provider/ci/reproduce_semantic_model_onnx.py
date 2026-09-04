@@ -160,10 +160,12 @@ def identify_tokenizer_outputs(session, outputs):
         ]
         if integer_outputs:
             ids = integer_outputs[0]
-            if len(integer_outputs) > 1:
-                mask = integer_outputs[1]
     if ids is None:
         raise RuntimeError(f"unable to identify tokenizer input_ids outputs: {names}")
+    # The Extensions tokenizer graph is used one text at a time without padding. Some generated
+    # tokenizer graphs expose auxiliary integer outputs (for example offsets) but no explicit
+    # attention_mask. Never guess that an arbitrary integer output is the mask. With no padding,
+    # every produced token is attended, so the exact mask is a vector of ones matching input_ids.
     if mask is None:
         mask = np.ones_like(ids, dtype=np.int64)
     return ids, mask, names
