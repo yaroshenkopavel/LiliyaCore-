@@ -7,6 +7,13 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Keep the provider's statically linked llama.cpp/ggml symbols private to this JNI DSO.
+# JNIEXPORT entry points retain default visibility. This prevents provider-native internals from
+# becoming a second public llama/ggml symbol surface when the generation JNI is loaded too.
+set(CMAKE_C_VISIBILITY_PRESET hidden)
+set(CMAKE_CXX_VISIBILITY_PRESET hidden)
+set(CMAKE_VISIBILITY_INLINES_HIDDEN ON)
+
 if(NOT ANDROID)
     message(FATAL_ERROR "Liliya offline semantic provider is Android-only")
 endif()
@@ -52,4 +59,10 @@ target_link_libraries(
     llama
     android
     log
+)
+
+target_link_options(
+    liliya-semantic-jni
+    PRIVATE
+    "-Wl,--exclude-libs,ALL"
 )
