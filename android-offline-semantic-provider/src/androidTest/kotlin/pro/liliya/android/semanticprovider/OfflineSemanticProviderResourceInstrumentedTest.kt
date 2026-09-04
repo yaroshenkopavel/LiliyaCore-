@@ -50,6 +50,7 @@ class OfflineSemanticProviderResourceInstrumentedTest {
             val nativeHeapAfterLoadBytes = Debug.getNativeHeapAllocatedSize()
             val processPssLoadDeltaBytes = processPssAfterLoadBytes - processPssBeforeLoadBytes
             val nativeHeapLoadDeltaBytes = nativeHeapAfterLoadBytes - nativeHeapBeforeLoadBytes
+            val evidence = linkedMapOf<String, String>()
 
             try {
                 repeat(3) {
@@ -73,7 +74,8 @@ class OfflineSemanticProviderResourceInstrumentedTest {
 
                 val flatIndexEvidence = measureFlatIndexEvidence()
 
-                val evidence = linkedMapOf(
+                evidence.putAll(
+                    mapOf(
                     "primaryAbi" to primaryRuntimeAbi(),
                     "abi" to Build.SUPPORTED_ABIS.joinToString(","),
                     "fixtureBytes" to selection.identity.expectedSizeBytes.toString(),
@@ -95,6 +97,7 @@ class OfflineSemanticProviderResourceInstrumentedTest {
                     "flatIndex10kRawVectorBytes" to flatIndexEvidence.rawVectorBytes.toString(),
                     "flatIndexCandidateBound" to FLAT_INDEX_CANDIDATE_BOUND.toString(),
                     "arm64ThresholdsApplied" to isArm64Target().toString()
+                    )
                 )
                 recordEvidence(evidence)
 
