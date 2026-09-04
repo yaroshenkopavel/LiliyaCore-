@@ -37,6 +37,10 @@ constexpr jint CLOSE_FAILED = 1;
 constexpr jint CLOSE_PROVIDER_FAILED = 2;
 
 constexpr int32_t EMBEDDING_DIMENSION = 384;
+constexpr int32_t MAX_CONTEXT_TOKENS = 512;
+constexpr int32_t MAX_BATCH_TOKENS = 512;
+constexpr int32_t MAX_THREAD_COUNT = 4;
+constexpr int32_t MAX_INPUT_UTF8_BYTES = 4105;
 constexpr size_t EMBEDDING_PACKET_BYTES = 1 + EMBEDDING_DIMENSION * sizeof(float);
 
 struct NativeSemanticSession {
@@ -181,8 +185,11 @@ Java_pro_liliya_android_semanticprovider_SemanticNativeBridge_nativeLoad(
     jboolean use_mmap
 ) {
     if (
-        context_tokens <= 0 || batch_tokens <= 0 || thread_count <= 0 ||
-        max_input_utf8_bytes <= 0 || batch_tokens > context_tokens
+        context_tokens <= 0 || context_tokens > MAX_CONTEXT_TOKENS ||
+        batch_tokens <= 0 || batch_tokens > MAX_BATCH_TOKENS ||
+        thread_count <= 0 || thread_count > MAX_THREAD_COUNT ||
+        max_input_utf8_bytes <= 0 || max_input_utf8_bytes > MAX_INPUT_UTF8_BYTES ||
+        batch_tokens > context_tokens
     ) {
         return LOAD_RESOURCE_REJECTED;
     }
