@@ -189,8 +189,17 @@ class OnnxSemanticStructuralProbeInstrumentedTest {
 
     private fun extractLongVector(value: Any?): LongArray? = when (value) {
         is LongArray -> value.copyOf()
+        is IntArray -> LongArray(value.size) { index -> value[index].toLong() }
         is Array<*> -> {
-            if (value.size != 1) null else (value[0] as? LongArray)?.copyOf()
+            if (value.size != 1) {
+                null
+            } else {
+                when (val first = value[0]) {
+                    is LongArray -> first.copyOf()
+                    is IntArray -> LongArray(first.size) { index -> first[index].toLong() }
+                    else -> null
+                }
+            }
         }
         else -> null
     }
