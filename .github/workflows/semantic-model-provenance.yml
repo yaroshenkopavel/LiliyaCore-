@@ -90,3 +90,70 @@ jobs:
             ${{ runner.temp }}/semantic-onnx-pip-freeze.txt
           if-no-files-found: error
           retention-days: 30
+
+      - name: Export exact reproduced artifact identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - "$RUNNER_TEMP/semantic-onnx-a/semantic-onnx-provenance.json" >> "$GITHUB_ENV" <<'PY'
+          import json
+          import sys
+          manifest = json.load(open(sys.argv[1], encoding="utf-8"))
+          encoder = manifest["encoder"]
+          tokenizer = manifest["tokenizer"]
+          print(f"SELF_REPRODUCED_SHA256={encoder['sha256']}")
+          print(f"SELF_REPRODUCED_SIZE={encoder['size']}")
+          print(f"SELF_REPRODUCED_TOKENIZER_SHA256={tokenizer['sha256']}")
+          print(f"SELF_REPRODUCED_TOKENIZER_SIZE={tokenizer['size']}")
+          PY
+
+      - name: Stage exact ONNX bundle for Android instrumentation
+        shell: bash
+        run: |
+          set -euo pipefail
+          asset_dir="android-offline-semantic-provider/src/androidTest/assets"
+          mkdir -p "$asset_dir"
+          cp "$RUNNER_TEMP/semantic-onnx-a/multilingual-e5-small-liliya-v0.1.onnx" \
+            "$asset_dir/multilingual-e5-small-liliya-v0.1.onnx"
+          cp "$RUNNER_TEMP/semantic-onnx-a/multilingual-e5-small-tokenizer-v0.1.onnx" \
+            "$asset_dir/multilingual-e5-small-tokenizer-v0.1.onnx"
+          test "$(stat --format=%s "$asset_dir/multilingual-e5-small-liliya-v0.1.onnx")" -eq 118258170
+          test "$(sha256sum "$asset_dir/multilingual-e5-small-liliya-v0.1.onnx" | awk '{print $1}')" = "11f460a6600163508a6eca0f2ccd8df9272fafbbee10579b3dafa74217b084dc"
+          test "$(stat --format=%s "$asset_dir/multilingual-e5-small-tokenizer-v0.1.onnx")" -eq 5069533
+          test "$(sha256sum "$asset_dir/multilingual-e5-small-tokenizer-v0.1.onnx" | awk '{print $1}')" = "4d28a2a61017a7b222164065d832e51103fbb3a4451c4e4938a2eeb8e83e44e8"
+
+      - name: Set up Java 17 for Android acceptance
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle 9.6.1 for Android acceptance
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.1'
+
+      - name: Set up Android SDK for acceptance
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android API 35
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Compile exact ONNX real-model instrumentation
+        run: gradle :android-offline-semantic-provider:assembleDebug :android-offline-semantic-provider:assembleDebugAndroidTest --console=plain
+
+      - name: Run exact ONNX real-model Android contracts
+        uses: ReactiveCircus/android-emulator-runner@v2.38.0
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          script: gradle :android-offline-semantic-provider:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.semanticFixtureSha256=$SELF_REPRODUCED_SHA256 -Pandroid.testInstrumentationRunnerArguments.semanticFixtureSizeBytes=$SELF_REPRODUCED_SIZE '-Pandroid.testInstrumentationRunnerArguments.class=pro.liliya.android.semanticprovider.OfflineSemanticProviderRealModelInstrumentedTest' --console=plain
