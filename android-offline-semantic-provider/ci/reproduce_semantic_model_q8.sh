@@ -10,6 +10,8 @@ BENCHMARK_FILENAME="multilingual-e5-small-q8_0.gguf"
 BENCHMARK_SHA256="e011debc1208e31bf7b6aebee2d9fc8bd2ca11694a77ed66ac9d0c9d0a877c93"
 BENCHMARK_SIZE="132439008"
 OUTPUT_FILENAME="liliya-multilingual-e5-small-q8_0.gguf"
+EXPECTED_REPRODUCED_SIZE="132438944"
+EXPECTED_REPRODUCED_SHA256="167b404b82b1cd3a2d4ebd0af3a21c5c317cc9497841d1bc7e4cf0f312e58b42"
 
 WORK_DIR="${1:-${RUNNER_TEMP:-/tmp}/liliya-semantic-provenance}"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
@@ -86,6 +88,8 @@ test -f "$OUTPUT_PATH"
 
 REPRODUCED_SHA256="$(sha256sum "$OUTPUT_PATH" | awk '{print $1}')"
 REPRODUCED_SIZE="$(stat --format=%s "$OUTPUT_PATH")"
+test "$REPRODUCED_SHA256" = "$EXPECTED_REPRODUCED_SHA256"
+test "$REPRODUCED_SIZE" = "$EXPECTED_REPRODUCED_SIZE"
 
 fetch_hf_asset "$BENCHMARK_REPO" "$BENCHMARK_REVISION" "$BENCHMARK_FILENAME" "$BENCHMARK_PATH"
 ACTUAL_BENCHMARK_SHA256="$(sha256sum "$BENCHMARK_PATH" | awk '{print $1}')"
@@ -115,6 +119,8 @@ conversion_outtype=q8_0
 reproduced_filename=$OUTPUT_FILENAME
 reproduced_size=$REPRODUCED_SIZE
 reproduced_sha256=$REPRODUCED_SHA256
+expected_reproduced_size=$EXPECTED_REPRODUCED_SIZE
+expected_reproduced_sha256=$EXPECTED_REPRODUCED_SHA256
 benchmark_repository=$BENCHMARK_REPO
 benchmark_revision=$BENCHMARK_REVISION
 benchmark_filename=$BENCHMARK_FILENAME
