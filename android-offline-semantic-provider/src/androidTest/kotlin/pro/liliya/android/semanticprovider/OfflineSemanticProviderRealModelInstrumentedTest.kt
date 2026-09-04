@@ -44,9 +44,21 @@ class OfflineSemanticProviderRealModelInstrumentedTest {
                         val tokenValue = result.get("tokens").orElseThrow().value
                         val tokenIds = when (tokenValue) {
                             is LongArray -> tokenValue
+                            is IntArray -> LongArray(tokenValue.size) { index ->
+                                tokenValue[index].toLong()
+                            }
                             is Array<*> -> {
                                 assertEquals(1, tokenValue.size)
-                                assertIs<LongArray>(tokenValue[0])
+                                when (val first = tokenValue[0]) {
+                                    is LongArray -> first
+                                    is IntArray -> LongArray(first.size) { index ->
+                                        first[index].toLong()
+                                    }
+                                    else -> error(
+                                        "unexpected nested tokenizer tokens value type: " +
+                                            first?.javaClass?.name
+                                    )
+                                }
                             }
                             else -> error("unexpected tokenizer tokens value type: ${tokenValue?.javaClass?.name}")
                         }
