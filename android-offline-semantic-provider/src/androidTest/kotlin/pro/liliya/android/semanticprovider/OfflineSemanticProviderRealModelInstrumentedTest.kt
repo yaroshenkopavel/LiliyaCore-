@@ -1,8 +1,14 @@
 package pro.liliya.android.semanticprovider
 
+import ai.onnxruntime.OnnxTensor
+import ai.onnxruntime.OrtEnvironment
+import ai.onnxruntime.OrtSession
+import ai.onnxruntime.extensions.OrtxPackage
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import kotlin.math.abs
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -12,6 +18,92 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class OfflineSemanticProviderRealModelInstrumentedTest {
+
+    @Test
+    fun ort_tokenizer_and_encoder_structural_probe() {
+        withFixture { fixture, root, selection ->
+            val tokenizerFixture = File(root, selection.identity.tokenizerFileName)
+            val environment = OrtEnvironment.getEnvironment()
+            val tokenizerOptions = OrtSession.SessionOptions().apply {
+                registerCustomOpLibrary(OrtxPackage.getLibraryPath())
+            }
+            val encoderOptions = OrtSession.SessionOptions()
+            val tokenizer = environment.createSession(tokenizerFixture.absolutePath, tokenizerOptions)
+            val encoder = environment.createSession(fixture.absolutePath, encoderOptions)
+            try {
+                assertEquals(setOf("inputs"), tokenizer.inputNames)
+                assertTrue(tokenizer.outputNames.contains("tokens"))
+                assertTrue(encoder.inputNames.containsAll(setOf("input_ids", "attention_mask", "token_type_ids")))
+                assertEquals(setOf("embedding"), encoder.outputNames)
+
+                OnnxTensor.createTensor(
+                    environment,
+                    arrayOf("query: where did I leave my keys?")
+                ).use { input ->
+                    tokenizer.run(mapOf("inputs" to input), setOf("tokens")).use { result ->
+                        val tokenValue = result.get("tokens").orElseThrow().value
+                        val tokenIds = when (tokenValue) {
+                            is LongArray -> tokenValue
+                            is Array<*> -> {
+                                assertEquals(1, tokenValue.size)
+                                assertIs<LongArray>(tokenValue[0])
+                            }
+                            else -> error("unexpected tokenizer tokens value type: ${tokenValue?.javaClass?.name}")
+                        }
+                        assertTrue(tokenIds.isNotEmpty())
+                        assertTrue(tokenIds.size <= 512)
+
+                        val shape = longArrayOf(1L, tokenIds.size.toLong())
+                        fun tensor(values: LongArray): OnnxTensor {
+                            val buffer = ByteBuffer.allocateDirect(values.size * Long.SIZE_BYTES)
+                                .order(ByteOrder.nativeOrder())
+                                .asLongBuffer()
+                            buffer.put(values)
+                            buffer.flip()
+                            return OnnxTensor.createTensor(environment, buffer, shape)
+                        }
+
+                        val attentionMask = LongArray(tokenIds.size) { 1L }
+                        val tokenTypes = LongArray(tokenIds.size)
+                        tensor(tokenIds).use { idsTensor ->
+                            tensor(attentionMask).use { maskTensor ->
+                                tensor(tokenTypes).use { typeTensor ->
+                                    encoder.run(
+                                        mapOf(
+                                            "input_ids" to idsTensor,
+                                            "attention_mask" to maskTensor,
+                                            "token_type_ids" to typeTensor
+                                        ),
+                                        setOf("embedding")
+                                    ).use { encoded ->
+                                        val embeddingValue = encoded.get("embedding").orElseThrow().value
+                                        val vector = when (embeddingValue) {
+                                            is FloatArray -> embeddingValue
+                                            is Array<*> -> {
+                                                assertEquals(1, embeddingValue.size)
+                                                assertIs<FloatArray>(embeddingValue[0])
+                                            }
+                                            else -> error(
+                                                "unexpected embedding value type: " +
+                                                    embeddingValue?.javaClass?.name
+                                            )
+                                        }
+                                        assertEquals(SemanticEmbeddingVector.DIMENSION, vector.size)
+                                        assertTrue(vector.all { it.isFinite() })
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } finally {
+                encoder.close()
+                encoderOptions.close()
+                tokenizer.close()
+                tokenizerOptions.close()
+            }
+        }
+    }
 
     @Test
     fun pinned_multilingual_e5_onnx_loads_and_closes_without_embedding() {
