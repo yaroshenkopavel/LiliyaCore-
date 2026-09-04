@@ -8,7 +8,6 @@ on:
     paths:
       - 'android-offline-semantic-provider/ci/reproduce_semantic_model_q8.sh'
       - 'android-offline-semantic-provider/ci/semantic-converter-python311.constraints.txt'
-      - 'android-offline-semantic-provider/ci/semantic-converter-python311.constraints.txt'
       - 'android-offline-semantic-provider/THIRD_PARTY_NOTICES.md'
       - 'android-offline-semantic-provider/src/androidTest/kotlin/pro/liliya/android/semanticprovider/SelfReproducedSemanticModelFixture.kt'
       - 'android-offline-semantic-provider/src/androidTest/kotlin/pro/liliya/android/semanticprovider/OfflineSemanticProviderRealModelInstrumentedTest.kt'
@@ -18,6 +17,7 @@ on:
       - main
     paths:
       - 'android-offline-semantic-provider/ci/reproduce_semantic_model_q8.sh'
+      - 'android-offline-semantic-provider/ci/semantic-converter-python311.constraints.txt'
       - 'android-offline-semantic-provider/THIRD_PARTY_NOTICES.md'
       - 'android-offline-semantic-provider/src/androidTest/kotlin/pro/liliya/android/semanticprovider/SelfReproducedSemanticModelFixture.kt'
       - 'android-offline-semantic-provider/src/androidTest/kotlin/pro/liliya/android/semanticprovider/OfflineSemanticProviderRealModelInstrumentedTest.kt'
