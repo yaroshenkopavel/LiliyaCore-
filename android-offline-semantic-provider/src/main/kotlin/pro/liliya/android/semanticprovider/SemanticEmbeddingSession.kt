@@ -146,28 +146,31 @@ internal class SemanticEmbeddingSessionOwnership internal constructor(
 
     private fun decodePacket(packet: ByteArray?): SemanticEmbeddingResult {
         if (packet == null || packet.isEmpty()) return SemanticEmbeddingResult.ProviderFailed
-        return when (packet[0]) {
-            SemanticNativeBridge.EMBED_OK -> {
-                val expectedBytes = 1 + SemanticEmbeddingVector.DIMENSION * Float.SIZE_BYTES
-                if (packet.size != expectedBytes) return SemanticEmbeddingResult.ProviderFailed
-                val values = FloatArray(SemanticEmbeddingVector.DIMENSION)
-                val buffer = ByteBuffer.wrap(packet, 1, packet.size - 1).order(ByteOrder.nativeOrder())
-                for (index in values.indices) values[index] = buffer.float
-                try {
-                    SemanticEmbeddingResult.Embedded(SemanticEmbeddingVector(values))
-                } catch (_: IllegalArgumentException) {
-                    SemanticEmbeddingResult.OperationFailed
-                } finally {
-                    values.fill(0f)
-                    packet.fill(0)
+        return try {
+            when (packet[0]) {
+                SemanticNativeBridge.EMBED_OK -> {
+                    val expectedBytes = 1 + SemanticEmbeddingVector.DIMENSION * Float.SIZE_BYTES
+                    if (packet.size != expectedBytes) return SemanticEmbeddingResult.ProviderFailed
+                    val values = FloatArray(SemanticEmbeddingVector.DIMENSION)
+                    val buffer = ByteBuffer.wrap(packet, 1, packet.size - 1).order(ByteOrder.nativeOrder())
+                    for (index in values.indices) values[index] = buffer.float
+                    try {
+                        SemanticEmbeddingResult.Embedded(SemanticEmbeddingVector(values))
+                    } catch (_: IllegalArgumentException) {
+                        SemanticEmbeddingResult.OperationFailed
+                    } finally {
+                        values.fill(0f)
+                    }
                 }
+                SemanticNativeBridge.EMBED_RESOURCE_REJECTED -> SemanticEmbeddingResult.ResourceRejected
+                SemanticNativeBridge.EMBED_REQUEST_REJECTED -> SemanticEmbeddingResult.RequestRejected
+                SemanticNativeBridge.EMBED_STALE_SESSION -> SemanticEmbeddingResult.StaleSession
+                SemanticNativeBridge.EMBED_OPERATION_FAILED -> SemanticEmbeddingResult.OperationFailed
+                SemanticNativeBridge.EMBED_PROVIDER_FAILED -> SemanticEmbeddingResult.ProviderFailed
+                else -> SemanticEmbeddingResult.ProviderFailed
             }
-            SemanticNativeBridge.EMBED_RESOURCE_REJECTED -> SemanticEmbeddingResult.ResourceRejected
-            SemanticNativeBridge.EMBED_REQUEST_REJECTED -> SemanticEmbeddingResult.RequestRejected
-            SemanticNativeBridge.EMBED_STALE_SESSION -> SemanticEmbeddingResult.StaleSession
-            SemanticNativeBridge.EMBED_OPERATION_FAILED -> SemanticEmbeddingResult.OperationFailed
-            SemanticNativeBridge.EMBED_PROVIDER_FAILED -> SemanticEmbeddingResult.ProviderFailed
-            else -> SemanticEmbeddingResult.ProviderFailed
+        } finally {
+            packet.fill(0)
         }
     }
 }
