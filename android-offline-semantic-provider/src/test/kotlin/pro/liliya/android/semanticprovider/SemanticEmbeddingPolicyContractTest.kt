@@ -22,4 +22,18 @@ class SemanticEmbeddingPolicyContractTest {
             SemanticEmbeddingPolicy().maxInputUtf8Bytes
         )
     }
+
+    @Test
+    fun raw_utf8_over_profile_bound_is_rejected_without_truncation() {
+        val overBound = "я".repeat(SemanticTextProfile.MAX_RAW_UTF8_BYTES / 2 + 1)
+
+        assertEquals(
+            SemanticPreparedTextResult.ResourceRejected,
+            SemanticTextProfile.prepareQuery(overBound)
+        )
+        assertEquals(
+            SemanticPreparedTextResult.ResourceRejected,
+            SemanticTextProfile.preparePassage(overBound)
+        )
+    }
 }

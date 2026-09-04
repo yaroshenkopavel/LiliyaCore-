@@ -59,6 +59,59 @@ import pro.liliya.core.observability.LoggerProvider
 class OfflineSemanticProviderCoreAuthoritativeIntegrationTest {
 
     @Test
+    fun over_bound_sources_remain_authoritative_when_semantic_admission_is_rejected() {
+        val foundation = foundation()
+        val memory = MemoryComposition(foundation)
+        val knowledge = KnowledgeComposition(foundation)
+        val content = "a".repeat(SemanticTextProfile.MAX_RAW_UTF8_BYTES + 1)
+        val memoryOwnership = assertIs<MemoryRememberResult.Remembered>(
+            memory.remember(memoryRecord(MemoryRecordId("memory-over-bound"), content, 1))
+        ).ownership
+        val knowledgeOwnership = assertIs<KnowledgeCreateResult.Created>(
+            knowledge.create(
+                knowledgeItem(KnowledgeItemId("knowledge-over-bound"), content, 2)
+            )
+        ).ownership
+        val provider = readyProvider()
+
+        assertEquals(
+            OfflineSemanticAddResult.ResourceRejected,
+            provider.add(
+                SemanticSourceObservation(
+                    SemanticIndexSourceReference.Memory(
+                        memoryOwnership.record.id,
+                        memoryOwnership.generation
+                    ),
+                    memoryOwnership.record.content
+                )
+            )
+        )
+        assertEquals(
+            OfflineSemanticAddResult.ResourceRejected,
+            provider.add(
+                SemanticSourceObservation(
+                    SemanticIndexSourceReference.Knowledge(
+                        knowledgeOwnership.item.id,
+                        knowledgeOwnership.generation
+                    ),
+                    knowledgeOwnership.item.content
+                )
+            )
+        )
+
+        assertEquals(
+            memoryOwnership.generation,
+            memory.inspect(memoryOwnership.record.id)?.generation
+        )
+        assertEquals(content, memory.inspect(memoryOwnership.record.id)?.record?.content)
+        assertEquals(
+            knowledgeOwnership.generation,
+            knowledge.inspect(knowledgeOwnership.item.id)?.generation
+        )
+        assertEquals(content, knowledge.inspect(knowledgeOwnership.item.id)?.item?.content)
+    }
+
+    @Test
     fun provider_candidates_are_exactly_resolved_and_published_into_cognitive_context() {
         val foundation = foundation()
         val memory = MemoryComposition(foundation)

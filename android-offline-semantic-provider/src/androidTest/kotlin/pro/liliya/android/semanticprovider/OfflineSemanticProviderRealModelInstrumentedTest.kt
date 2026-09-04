@@ -30,6 +30,20 @@ class OfflineSemanticProviderRealModelInstrumentedTest {
     }
 
     @Test
+    fun pinned_model_rejects_more_than_512_tokens_without_truncation() {
+        withSession { session ->
+            val overTokenBound = "query: " + List(600) { "hello" }.joinToString(" ")
+            assertTrue(
+                overTokenBound.toByteArray().size <= SemanticTextProfile.MAX_PREPARED_UTF8_BYTES
+            )
+            assertEquals(
+                SemanticEmbeddingResult.ResourceRejected,
+                session.embed(overTokenBound)
+            )
+        }
+    }
+
+    @Test
     fun pinned_multilingual_e5_q8_runs_through_validator_native_session_and_close() {
         withFixture { fixture, root, selection ->
             val validator = fixtureValidator(root, selection)
@@ -246,7 +260,7 @@ class OfflineSemanticProviderRealModelInstrumentedTest {
         contextTokens = 512,
         batchTokens = 512,
         threadCount = 1,
-        maxInputUtf8Bytes = 4096,
+        maxInputUtf8Bytes = SemanticTextProfile.MAX_PREPARED_UTF8_BYTES,
         useMmap = true
     )
 }
