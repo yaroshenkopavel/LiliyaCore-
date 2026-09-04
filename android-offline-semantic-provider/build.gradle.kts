@@ -5,11 +5,10 @@ plugins {
 android {
     namespace = "pro.liliya.android.semanticprovider"
     compileSdk = 35
+
     defaultConfig {
         minSdk = 29
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-
-        }
     }
 
     compileOptions {
@@ -30,6 +29,8 @@ dependencies {
 
     testImplementation(kotlin("test"))
     testImplementation("junit:junit:4.13.2")
+
+    // Test-only coexistence proof with the already frozen generation engine.
     androidTestImplementation(project(":android-llama-cpp-engine"))
     androidTestImplementation(kotlin("test"))
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
