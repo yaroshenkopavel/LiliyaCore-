@@ -31,6 +31,11 @@ internal object SemanticTextProfile {
 
     private fun prepare(raw: String, prefix: String): SemanticPreparedTextResult {
         if (raw.isBlank()) return SemanticPreparedTextResult.RequestRejected
+        // UTF-8 uses at least one byte for every UTF-16 code unit represented by valid text.
+        // Reject definitely-over-bound input before allocating a full encoded copy.
+        if (raw.length > MAX_RAW_UTF8_BYTES) {
+            return SemanticPreparedTextResult.ResourceRejected
+        }
         val rawBytes = raw.toByteArray(StandardCharsets.UTF_8)
         return try {
             if (rawBytes.size > MAX_RAW_UTF8_BYTES) {
