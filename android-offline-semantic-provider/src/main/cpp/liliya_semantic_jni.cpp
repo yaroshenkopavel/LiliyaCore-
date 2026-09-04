@@ -444,6 +444,10 @@ Java_pro_liliya_android_semanticprovider_SemanticNativeBridge_nativeClose(
             auto it = g_sessions.find(static_cast<int64_t>(native_session_id));
             if (it == g_sessions.end() || it->second == nullptr) return CLOSE_FAILED;
             std::unique_lock<std::mutex> session_guard(it->second->execution_mutex);
+
+            // Keep the registry occupied until the physical context/model has been released.
+            // This prevents a new semantic load from overlapping the closing session's resources.
+            it->second->release();
             removed = std::move(it->second);
             g_sessions.erase(it);
         }
