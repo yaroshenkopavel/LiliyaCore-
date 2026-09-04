@@ -132,12 +132,14 @@ internal class SemanticFlatIndex(
     private data class Entry(
         val source: SemanticIndexSourceReference,
         val profileGeneration: SemanticProfileGeneration,
-        val vector: SemanticEmbeddingVector
+        val vector: SemanticEmbeddingVector,
+        val stableIdUtf8: ByteArray
     )
 
     private data class Ranked(
         val source: SemanticIndexSourceReference,
-        val similarity: Double
+        val similarity: Double,
+        val stableIdUtf8: ByteArray
     )
 
     private val entries = LinkedHashMap<String, Entry>()
@@ -161,7 +163,12 @@ internal class SemanticFlatIndex(
         if (!hasCapacityFor(source.domain)) {
             return SemanticIndexAddResult.CapacityRejected
         }
-        entries[key] = Entry(source, profileGeneration, vector)
+        entries[key] = Entry(
+            source = source,
+            profileGeneration = profileGeneration,
+            vector = vector,
+            stableIdUtf8 = source.stableIdUtf8()
+        )
         incrementDomainCount(source.domain)
         return SemanticIndexAddResult.Indexed
     }
@@ -183,7 +190,12 @@ internal class SemanticFlatIndex(
         if (current.source != expected) {
             return SemanticIndexReplaceResult.StaleExpected
         }
-        entries[key] = Entry(replacement, profileGeneration, vector)
+        entries[key] = Entry(
+            source = replacement,
+            profileGeneration = profileGeneration,
+            vector = vector,
+            stableIdUtf8 = current.stableIdUtf8
+        )
         return SemanticIndexReplaceResult.Replaced
     }
 
@@ -228,7 +240,11 @@ internal class SemanticFlatIndex(
 
         for (entry in entries.values) {
             if (entry.source.domain != domain || entry.profileGeneration != profileGeneration) continue
-            val ranked = Ranked(entry.source, query.dot(entry.vector))
+            val ranked = Ranked(
+                source = entry.source,
+                similarity = query.dot(entry.vector),
+                stableIdUtf8 = entry.stableIdUtf8
+            )
             if (top.size < maxCandidates) {
                 top.add(ranked)
             } else if (bestFirst.compare(ranked, top.peek()) < 0) {
@@ -257,7 +273,7 @@ internal class SemanticFlatIndex(
         val generation = left.source.generationValue.compareTo(right.source.generationValue)
         if (generation != 0) return generation
 
-        return compareUtf8(left.source, right.source)
+        return compareUtf8(left.stableIdUtf8, right.stableIdUtf8)
     }
 
     private fun hasCapacityFor(domain: SemanticIndexDomain): Boolean {
@@ -299,17 +315,15 @@ internal class SemanticFlatIndex(
     }
 
     private fun compareUtf8(
-        left: SemanticIndexSourceReference,
-        right: SemanticIndexSourceReference
+        left: ByteArray,
+        right: ByteArray
     ): Int {
-        val a = left.stableIdUtf8()
-        val b = right.stableIdUtf8()
-        val size = minOf(a.size, b.size)
+        val size = minOf(left.size, right.size)
         for (index in 0 until size) {
-            val av = a[index].toInt() and 0xff
-            val bv = b[index].toInt() and 0xff
-            if (av != bv) return av.compareTo(bv)
+            val leftByte = left[index].toInt() and 0xff
+            val rightByte = right[index].toInt() and 0xff
+            if (leftByte != rightByte) return leftByte.compareTo(rightByte)
         }
-        return a.size.compareTo(b.size)
+        return left.size.compareTo(right.size)
     }
 }
