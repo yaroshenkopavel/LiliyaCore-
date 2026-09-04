@@ -36,9 +36,7 @@ internal class NativeSemanticProviderSessionLoader(
             )
             SemanticEmbeddingSessionLoadResult.ResourceRejected -> SemanticProviderSessionLoadResult.ResourceRejected
             SemanticEmbeddingSessionLoadResult.Unsupported -> SemanticProviderSessionLoadResult.Unsupported
-            SemanticEmbeddingSessionLoadResult.Rejected,
-            SemanticEmbeddingSessionLoadResult.ModelLoadRejectedDiagnostic,
-            SemanticEmbeddingSessionLoadResult.ContextInitRejectedDiagnostic -> SemanticProviderSessionLoadResult.Rejected
+            SemanticEmbeddingSessionLoadResult.Rejected -> SemanticProviderSessionLoadResult.Rejected
             SemanticEmbeddingSessionLoadResult.ProviderFailed -> SemanticProviderSessionLoadResult.ProviderFailed
         }
 }
