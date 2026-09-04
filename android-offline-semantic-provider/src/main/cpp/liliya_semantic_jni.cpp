@@ -72,8 +72,39 @@ struct NativeSemanticSession {
 
 std::mutex g_registry_mutex;
 std::unordered_map<int64_t, std::unique_ptr<NativeSemanticSession>> g_sessions;
+bool g_load_in_progress = false;
 std::atomic<int64_t> g_next_session_id{1};
 std::once_flag g_backend_init_once;
+
+class NativeLoadReservation {
+public:
+    bool acquire() {
+        std::lock_guard<std::mutex> guard(g_registry_mutex);
+        if (g_load_in_progress || !g_sessions.empty()) {
+            return false;
+        }
+        g_load_in_progress = true;
+        active_ = true;
+        return true;
+    }
+
+    void commit() noexcept {
+        active_ = false;
+    }
+
+    ~NativeLoadReservation() {
+        if (!active_) return;
+        try {
+            std::lock_guard<std::mutex> guard(g_registry_mutex);
+            g_load_in_progress = false;
+        } catch (...) {
+            // Destructors must not allow an exception to cross the JNI boundary.
+        }
+    }
+
+private:
+    bool active_ = false;
+};
 
 void discard_llama_log(ggml_log_level, const char *, void *) {
     // Model paths, source text and native diagnostics are private at this boundary.
@@ -194,7 +225,12 @@ Java_pro_liliya_android_semanticprovider_SemanticNativeBridge_nativeLoad(
         return LOAD_RESOURCE_REJECTED;
     }
 
+    NativeLoadReservation load_reservation;
     try {
+        if (!load_reservation.acquire()) {
+            return LOAD_RESOURCE_REJECTED;
+        }
+
         std::vector<uint8_t> path_bytes;
         if (!copy_bytes(env, source_path_utf8, path_bytes) || path_bytes.empty()) {
             return LOAD_REJECTED;
@@ -264,8 +300,16 @@ Java_pro_liliya_android_semanticprovider_SemanticNativeBridge_nativeLoad(
         if (session_id <= 0) return LOAD_PROVIDER_FAILED;
 
         std::lock_guard<std::mutex> guard(g_registry_mutex);
+        if (!g_load_in_progress || !g_sessions.empty()) {
+            return LOAD_PROVIDER_FAILED;
+        }
         const auto inserted = g_sessions.emplace(session_id, std::move(session));
-        return inserted.second ? static_cast<jlong>(session_id) : LOAD_PROVIDER_FAILED;
+        if (!inserted.second) {
+            return LOAD_PROVIDER_FAILED;
+        }
+        g_load_in_progress = false;
+        load_reservation.commit();
+        return static_cast<jlong>(session_id);
     } catch (...) {
         return LOAD_PROVIDER_FAILED;
     }
