@@ -133,7 +133,6 @@ internal object SemanticModelProfileV01 {
             identity.profileGeneration == PROFILE_GENERATION &&
             identity.upstreamModelRepository == UPSTREAM_MODEL_REPOSITORY &&
             identity.upstreamModelRevision == UPSTREAM_MODEL_REVISION &&
-            identity.modelFileName == ONNX_FILE_NAME &&
             identity.modelFormat == SemanticModelFormat.ONNX &&
             identity.architecture == SemanticModelArchitecture.BERT &&
             identity.embeddingDimension == EMBEDDING_DIMENSION &&
