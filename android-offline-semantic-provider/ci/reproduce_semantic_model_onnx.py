@@ -230,8 +230,16 @@ def encoder_inputs(session, hf_inputs):
     for name in ("input_ids", "attention_mask", "token_type_ids"):
         if name in available and name in hf_inputs:
             feeds[name] = hf_inputs[name].detach().cpu().numpy().astype(np.int64)
+
     if "input_ids" not in feeds or "attention_mask" not in feeds:
         raise RuntimeError(f"encoder graph inputs are incompatible: {sorted(available)}")
+
+    # The exported BERT graph requires token_type_ids even though this multilingual E5 tokenizer
+    # does not emit them for single-sequence requests. BERT segment id 0 is the exact canonical
+    # value for every token in one unpaired sequence, so synthesize a shape-matched zero tensor.
+    if "token_type_ids" in available and "token_type_ids" not in feeds:
+        feeds["token_type_ids"] = np.zeros_like(feeds["input_ids"], dtype=np.int64)
+
     return feeds
 
 
