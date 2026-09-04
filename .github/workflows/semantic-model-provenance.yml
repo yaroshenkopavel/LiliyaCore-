@@ -48,8 +48,10 @@ jobs:
             'transformers==4.57.6' \
             'sentencepiece==0.2.1' \
             'optimum-onnx[onnxruntime]==0.1.0' \
+            'onnx==1.22.0' \
             'onnxruntime==1.29.0' \
             'onnxruntime-extensions==0.12.0'
+          python -m pip freeze | sort > "$RUNNER_TEMP/semantic-onnx-pip-freeze.txt"
 
       - name: Reproduce exact ONNX semantic artifacts
         run: |
@@ -85,5 +87,6 @@ jobs:
             ${{ runner.temp }}/semantic-onnx-a/multilingual-e5-small-liliya-v0.1.onnx
             ${{ runner.temp }}/semantic-onnx-a/multilingual-e5-small-tokenizer-v0.1.onnx
             ${{ runner.temp }}/semantic-onnx-a/semantic-onnx-provenance.json
+            ${{ runner.temp }}/semantic-onnx-pip-freeze.txt
           if-no-files-found: error
           retention-days: 30
