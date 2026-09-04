@@ -5,8 +5,6 @@ internal object SemanticNativeBridge {
     const val LOAD_RESOURCE_REJECTED = -1L
     const val LOAD_UNSUPPORTED = -2L
     const val LOAD_REJECTED = -3L
-    const val LOAD_MODEL_REJECTED_DIAGNOSTIC = -5L
-    const val LOAD_CONTEXT_REJECTED_DIAGNOSTIC = -6L
     const val LOAD_PROVIDER_FAILED = -4L
 
     const val EMBED_OK: Byte = 0
