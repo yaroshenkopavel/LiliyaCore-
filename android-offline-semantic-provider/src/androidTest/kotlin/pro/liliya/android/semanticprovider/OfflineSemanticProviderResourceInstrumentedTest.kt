@@ -70,9 +70,19 @@ class OfflineSemanticProviderResourceInstrumentedTest {
                 assertNormalized(embedded(session, PARAGRAPH_QUERY))
                 val paragraphLatencyMs = elapsedMillis(paragraphStarted)
 
+                forceGc()
+                val repeatedProcessPssBeforeBytes = processPssBytes()
+                val repeatedNativeHeapBeforeBytes = Debug.getNativeHeapAllocatedSize()
                 repeat(12) {
                     assertNormalized(embedded(session, SHORT_QUERY))
                 }
+                forceGc()
+                val repeatedProcessPssAfterBytes = processPssBytes()
+                val repeatedNativeHeapAfterBytes = Debug.getNativeHeapAllocatedSize()
+                val repeatedProcessPssDeltaBytes =
+                    repeatedProcessPssAfterBytes - repeatedProcessPssBeforeBytes
+                val repeatedNativeHeapDeltaBytes =
+                    repeatedNativeHeapAfterBytes - repeatedNativeHeapBeforeBytes
 
                 val flatIndexEvidence = measureFlatIndexEvidence()
 
@@ -93,6 +103,12 @@ class OfflineSemanticProviderResourceInstrumentedTest {
                     "warmShortQueryMedianMs" to warmShortQueryMedianMs.toString(),
                     "paragraphLatencyMs" to paragraphLatencyMs.toString(),
                     "repeatedEmbeddingCount" to "12",
+                    "repeatedProcessPssBeforeBytes" to repeatedProcessPssBeforeBytes.toString(),
+                    "repeatedProcessPssAfterBytes" to repeatedProcessPssAfterBytes.toString(),
+                    "repeatedProcessPssDeltaBytes" to repeatedProcessPssDeltaBytes.toString(),
+                    "repeatedNativeHeapBeforeBytes" to repeatedNativeHeapBeforeBytes.toString(),
+                    "repeatedNativeHeapAfterBytes" to repeatedNativeHeapAfterBytes.toString(),
+                    "repeatedNativeHeapDeltaBytes" to repeatedNativeHeapDeltaBytes.toString(),
                     "flatScan1kMedianMs" to flatIndexEvidence.scan1kMedianMs.toString(),
                     "flatScan10kMedianMs" to flatIndexEvidence.scan10kMedianMs.toString(),
                     "flatIndex10kProcessPssDeltaBytes" to flatIndexEvidence.processPssDeltaBytes.toString(),
