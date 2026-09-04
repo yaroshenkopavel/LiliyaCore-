@@ -84,6 +84,34 @@ jobs:
       - name: Build pinned semantic JNI for arm64
         run: gradle :android-offline-semantic-provider:assembleRelease --console=plain
 
+      - name: Verify semantic JNI symbol isolation
+        shell: bash
+        run: |
+          set -euo pipefail
+          so="$(find android-offline-semantic-provider/build -type f -name 'libliliya-semantic-jni.so' -print -quit)"
+          test -n "$so"
+          readelf="$ANDROID_SDK_ROOT/ndk/29.0.13113456/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"
+          test -x "$readelf"
+
+          symbols="$("$readelf" --dyn-syms --wide "$so")"
+          for expected in             Java_pro_liliya_android_semanticprovider_SemanticNativeBridge_nativeLinkProbe             Java_pro_liliya_android_semanticprovider_SemanticNativeBridge_nativeLoad             Java_pro_liliya_android_semanticprovider_SemanticNativeBridge_nativeEmbed             Java_pro_liliya_android_semanticprovider_SemanticNativeBridge_nativeClose
+          do
+            printf '%s\n' "$symbols" | grep -Eq "[[:space:]]GLOBAL[[:space:]]+DEFAULT[[:space:]]+[0-9]+[[:space:]]+${expected}$"
+          done
+
+          public_native="$(
+            printf '%s\n' "$symbols" |
+              awk '$5 == "GLOBAL" && $6 == "DEFAULT" { print $8 }' |
+              grep -E '^(llama_|ggml_)' || true
+          )"
+          test -z "$public_native"
+
+          needed="$("$readelf" --dynamic --wide "$so")"
+          if printf '%s\n' "$needed" | grep -Eq 'Shared library: \[(libllama|libggml)[^]]*\]'; then
+            echo "semantic JNI unexpectedly depends on a dynamic llama/ggml library" >&2
+            exit 1
+          fi
+
       - name: Prepare pinned multilingual embedding fixture
         shell: bash
         run: |
