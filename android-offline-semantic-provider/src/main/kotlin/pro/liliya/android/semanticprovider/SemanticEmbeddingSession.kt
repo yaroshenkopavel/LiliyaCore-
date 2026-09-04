@@ -8,8 +8,7 @@ internal data class SemanticEmbeddingPolicy(
     val contextTokens: Int = 512,
     val batchTokens: Int = 512,
     val threadCount: Int = 1,
-    val maxInputUtf8Bytes: Int = SemanticTextProfile.MAX_PREPARED_UTF8_BYTES,
-    val useMmap: Boolean = true
+    val maxInputUtf8Bytes: Int = SemanticTextProfile.MAX_PREPARED_UTF8_BYTES
 ) {
     init {
         require(contextTokens in 1..MAX_CONTEXT_TOKENS)
@@ -65,8 +64,7 @@ internal class SemanticEmbeddingSessionLoader(
                 contextTokens = policy.contextTokens,
                 batchTokens = policy.batchTokens,
                 threadCount = policy.threadCount,
-                maxInputUtf8Bytes = policy.maxInputUtf8Bytes,
-                useMmap = policy.useMmap
+                maxInputUtf8Bytes = policy.maxInputUtf8Bytes
             )
             when (nativeId) {
                 SemanticNativeBridge.LOAD_RESOURCE_REJECTED -> SemanticEmbeddingSessionLoadResult.ResourceRejected
