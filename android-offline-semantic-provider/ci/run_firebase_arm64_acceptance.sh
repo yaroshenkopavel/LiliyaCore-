@@ -18,7 +18,7 @@ fi
 
 APP_APK="$1"
 TEST_APK="$2"
-GCP_PROJECT="\${3:-liliyacore-test-lab}"
+GCP_PROJECT="${3:-liliyacore-test-lab}"
 
 readonly FIXTURE_SHA256="11f460a6600163508a6eca0f2ccd8df9272fafbbee10579b3dafa74217b084dc"
 readonly FIXTURE_SIZE_BYTES="118258170"
@@ -54,12 +54,12 @@ head_short="unknown"
 if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   head_short="$(git rev-parse --short=12 HEAD)"
 fi
-matrix_label="LiliyaCore-ONNX-ARM64-\${head_short}"
+matrix_label="LiliyaCore-ONNX-ARM64-${head_short}"
 
 echo "=== Firebase physical ARM64 acceptance ==="
 echo "project=$GCP_PROJECT"
 echo "matrixLabel=$matrix_label"
-echo "device=\${DEVICE_MODEL}-api\${DEVICE_VERSION}"
+echo "device=${DEVICE_MODEL}-api${DEVICE_VERSION}"
 echo "fixtureSha256=$FIXTURE_SHA256"
 echo "fixtureSizeBytes=$FIXTURE_SIZE_BYTES"
 echo "testClass=$TEST_CLASS"
@@ -68,8 +68,8 @@ gcloud firebase test android run \
   --type instrumentation \
   --app "$APP_APK" \
   --test "$TEST_APK" \
-  --device "model=\${DEVICE_MODEL},version=\${DEVICE_VERSION},locale=\${DEVICE_LOCALE},orientation=\${DEVICE_ORIENTATION}" \
-  --test-targets "class \${TEST_CLASS}" \
-  --environment-variables "semanticFixtureSha256=\${FIXTURE_SHA256},semanticFixtureSizeBytes=\${FIXTURE_SIZE_BYTES}" \
+  --device "model=${DEVICE_MODEL},version=${DEVICE_VERSION},locale=${DEVICE_LOCALE},orientation=${DEVICE_ORIENTATION}" \
+  --test-targets "class ${TEST_CLASS}" \
+  --environment-variables "semanticFixtureSha256=${FIXTURE_SHA256},semanticFixtureSizeBytes=${FIXTURE_SIZE_BYTES}" \
   --timeout 15m \
-  --client-details "matrixLabel=\${matrix_label}"
+  --client-details "matrixLabel=${matrix_label}"
