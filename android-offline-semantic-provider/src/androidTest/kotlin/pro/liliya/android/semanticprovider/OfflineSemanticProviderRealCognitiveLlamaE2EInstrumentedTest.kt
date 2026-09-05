@@ -262,7 +262,7 @@ class OfflineSemanticProviderRealCognitiveLlamaE2EInstrumentedTest {
             ModelEngineLoadResult.Rejected(ModelEngineLoadFailure.LOAD_REJECTED)
         }
         val compiler = CognitiveModelRequestCompilerPort { request ->
-            val contents = request.context.items.map { it.content }
+            val contents = request.inference.context.items.map { it.content }
             contextCompilerObservedRelevantMemory = contents.contains(RELEVANT_MEMORY)
             contextCompilerObservedRelevantKnowledge = contents.contains(RELEVANT_KNOWLEDGE)
             check(contextCompilerObservedRelevantMemory) {
