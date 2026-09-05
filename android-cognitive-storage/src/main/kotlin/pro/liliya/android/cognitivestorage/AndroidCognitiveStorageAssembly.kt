@@ -24,6 +24,10 @@ import pro.liliya.core.encryption.EncryptedPersistentRecordStore
 import pro.liliya.core.encryption.PersistentCognitiveDekOpenResult
 import pro.liliya.core.encryption.PersistentCognitiveDekStore
 import pro.liliya.core.foundation.FoundationComposition
+import pro.liliya.core.knowledge.EncryptedPersistentKnowledgeComposition
+import pro.liliya.core.knowledge.EncryptedPersistentKnowledgeOpenResult
+import pro.liliya.core.memory.EncryptedPersistentMemoryComposition
+import pro.liliya.core.memory.EncryptedPersistentMemoryOpenResult
 import pro.liliya.core.persistence.PersistentRecordStore
 import pro.liliya.core.persistence.PersistentStoreId
 import pro.liliya.core.persistence.PersistentStoreOpenResult
@@ -39,6 +43,32 @@ sealed interface AndroidCognitiveStorageOpenResult {
         val reason: String,
         val throwable: Throwable? = null
     ) : AndroidCognitiveStorageOpenResult
+}
+
+sealed interface AndroidEncryptedMemoryOpenResult {
+    data class Opened(
+        val composition: EncryptedPersistentMemoryComposition
+    ) : AndroidEncryptedMemoryOpenResult
+
+    data object Corrupt : AndroidEncryptedMemoryOpenResult
+    data class Incompatible(val reason: String) : AndroidEncryptedMemoryOpenResult
+    data class EncryptionUnavailable(
+        val category: CognitiveEncryptionFailureCategory
+    ) : AndroidEncryptedMemoryOpenResult
+    data class Failed(val reason: String) : AndroidEncryptedMemoryOpenResult
+}
+
+sealed interface AndroidEncryptedKnowledgeOpenResult {
+    data class Opened(
+        val composition: EncryptedPersistentKnowledgeComposition
+    ) : AndroidEncryptedKnowledgeOpenResult
+
+    data object Corrupt : AndroidEncryptedKnowledgeOpenResult
+    data class Incompatible(val reason: String) : AndroidEncryptedKnowledgeOpenResult
+    data class EncryptionUnavailable(
+        val category: CognitiveEncryptionFailureCategory
+    ) : AndroidEncryptedKnowledgeOpenResult
+    data class Failed(val reason: String) : AndroidEncryptedKnowledgeOpenResult
 }
 
 sealed interface AndroidEncryptedRecordStoreOpenResult {
@@ -69,6 +99,72 @@ class AndroidCognitiveStorageAssembly private constructor(
     private val nonceSource: CognitiveNonceSource,
     private val aead: CognitiveAeadProvider
 ) {
+    fun openEncryptedMemory(
+        storeId: PersistentStoreId,
+        activeDek: pro.liliya.core.encryption.CognitiveDekReference
+    ): AndroidEncryptedMemoryOpenResult =
+        when (val encrypted = openEncryptedRecordStore(storeId)) {
+            is AndroidEncryptedRecordStoreOpenResult.Opened ->
+                when (
+                    val opened = EncryptedPersistentMemoryComposition.open(
+                        foundation = foundation,
+                        encryptedStore = encrypted.store,
+                        activeDek = activeDek
+                    )
+                ) {
+                    is EncryptedPersistentMemoryOpenResult.Opened ->
+                        AndroidEncryptedMemoryOpenResult.Opened(opened.composition)
+                    EncryptedPersistentMemoryOpenResult.Corrupt ->
+                        AndroidEncryptedMemoryOpenResult.Corrupt
+                    is EncryptedPersistentMemoryOpenResult.Incompatible ->
+                        AndroidEncryptedMemoryOpenResult.Incompatible(opened.reason)
+                    is EncryptedPersistentMemoryOpenResult.EncryptionUnavailable ->
+                        AndroidEncryptedMemoryOpenResult.EncryptionUnavailable(opened.category)
+                    is EncryptedPersistentMemoryOpenResult.RestorationFailed ->
+                        AndroidEncryptedMemoryOpenResult.Failed(opened.reason)
+                }
+
+            AndroidEncryptedRecordStoreOpenResult.Corrupt ->
+                AndroidEncryptedMemoryOpenResult.Corrupt
+            is AndroidEncryptedRecordStoreOpenResult.Incompatible ->
+                AndroidEncryptedMemoryOpenResult.Incompatible(encrypted.reason)
+            is AndroidEncryptedRecordStoreOpenResult.Failed ->
+                AndroidEncryptedMemoryOpenResult.Failed(encrypted.reason)
+        }
+
+    fun openEncryptedKnowledge(
+        storeId: PersistentStoreId,
+        activeDek: pro.liliya.core.encryption.CognitiveDekReference
+    ): AndroidEncryptedKnowledgeOpenResult =
+        when (val encrypted = openEncryptedRecordStore(storeId)) {
+            is AndroidEncryptedRecordStoreOpenResult.Opened ->
+                when (
+                    val opened = EncryptedPersistentKnowledgeComposition.open(
+                        foundation = foundation,
+                        encryptedStore = encrypted.store,
+                        activeDek = activeDek
+                    )
+                ) {
+                    is EncryptedPersistentKnowledgeOpenResult.Opened ->
+                        AndroidEncryptedKnowledgeOpenResult.Opened(opened.composition)
+                    EncryptedPersistentKnowledgeOpenResult.Corrupt ->
+                        AndroidEncryptedKnowledgeOpenResult.Corrupt
+                    is EncryptedPersistentKnowledgeOpenResult.Incompatible ->
+                        AndroidEncryptedKnowledgeOpenResult.Incompatible(opened.reason)
+                    is EncryptedPersistentKnowledgeOpenResult.EncryptionUnavailable ->
+                        AndroidEncryptedKnowledgeOpenResult.EncryptionUnavailable(opened.category)
+                    is EncryptedPersistentKnowledgeOpenResult.RestorationFailed ->
+                        AndroidEncryptedKnowledgeOpenResult.Failed(opened.reason)
+                }
+
+            AndroidEncryptedRecordStoreOpenResult.Corrupt ->
+                AndroidEncryptedKnowledgeOpenResult.Corrupt
+            is AndroidEncryptedRecordStoreOpenResult.Incompatible ->
+                AndroidEncryptedKnowledgeOpenResult.Incompatible(encrypted.reason)
+            is AndroidEncryptedRecordStoreOpenResult.Failed ->
+                AndroidEncryptedKnowledgeOpenResult.Failed(encrypted.reason)
+        }
+
     fun openEncryptedRecordStore(
         storeId: PersistentStoreId
     ): AndroidEncryptedRecordStoreOpenResult {
