@@ -69,16 +69,5 @@ internal class SemanticIndexPublication(
 
     fun size(domain: SemanticIndexDomain? = null): Int = published.size(domain)
 
-    /**
-     * Releases all currently published derived vectors by replacing the retained index object.
-     *
-     * This is intentionally explicit lifecycle work. It is used only after the embedding session
-     * has closed successfully; failed close retains the exact provider ownership for cleanup retry.
-     */
-    @Synchronized
-    fun clear() {
-        published = newIndex()
-    }
-
     private fun newIndex(): SemanticFlatIndex = SemanticFlatIndex(profileGeneration, limits)
 }
