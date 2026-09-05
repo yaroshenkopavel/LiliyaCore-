@@ -120,6 +120,11 @@ class EncryptedPersistentRecordStore(
             }
         }
 
+    internal fun snapshotEntries(): List<pro.liliya.core.persistence.PersistentRecordSnapshot> =
+        store.snapshotEntries()
+
+    internal fun generationHighWatermark(): Long = store.generationHighWatermark()
+
     fun open(id: PersistentEntityId): CognitiveEncryptionResult<CognitivePlaintext> {
         val snapshot = store.inspect(id)
             ?: return CognitiveEncryptionResult.Rejected(CognitiveEncryptionFailureCategory.INVALID_REQUEST)
