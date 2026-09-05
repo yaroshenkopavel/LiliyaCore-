@@ -13,6 +13,7 @@ internal object LlamaCppNativeBridge {
     const val INFER_STALE_SESSION: Byte = 3
     const val INFER_OPERATION_FAILED: Byte = 4
     const val INFER_PROVIDER_FAILED: Byte = 5
+    const val INFER_CANCELLED: Byte = 6
 
     const val CLOSE_OK = 0
     const val CLOSE_FAILED = 1
@@ -42,6 +43,13 @@ internal object LlamaCppNativeBridge {
         nativeSessionId: Long,
         promptUtf8: ByteArray,
         maxOutputChars: Int
+    ): ByteArray
+
+    external fun nativeInferStreaming(
+        nativeSessionId: Long,
+        promptUtf8: ByteArray,
+        maxOutputChars: Int,
+        sink: LlamaCppNativeStreamingSink
     ): ByteArray
 
     external fun nativeClose(nativeSessionId: Long): Int

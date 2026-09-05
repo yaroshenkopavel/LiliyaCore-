@@ -5,6 +5,7 @@ import pro.liliya.android.protectedmodel.enginesource.AndroidAppPrivateStagedMod
 import pro.liliya.android.protectedmodel.staging.AndroidAppPrivateProtectedModelStagingBackend
 import pro.liliya.android.protectedmodel.staging.AndroidProtectedModelStagingPolicy
 import pro.liliya.core.cognitive.CognitiveInferencePort
+import pro.liliya.core.cognitive.CognitiveStreamingInferencePort
 import pro.liliya.core.cognitive.CognitiveModelRequestCompilerPort
 import pro.liliya.core.cognitive.CognitiveModelRuntimeComposition
 import pro.liliya.core.cognitive.CognitiveModelRuntimeSessionIdSource
@@ -33,6 +34,9 @@ class AndroidLlamaCppCognitiveModelAssembly private constructor(
         cognitiveRuntime.stagedModelActivationPort()
 
     val inferencePort: CognitiveInferencePort = cognitiveRuntime.inferencePort
+
+    val streamingInferencePort: CognitiveStreamingInferencePort =
+        cognitiveRuntime.streamingInferencePort
 
     companion object {
         fun create(

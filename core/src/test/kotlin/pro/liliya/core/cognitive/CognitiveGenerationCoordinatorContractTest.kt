@@ -73,7 +73,8 @@ class CognitiveGenerationCoordinatorContractTest {
             maxDecisionOptions = 4,
             maxDecisionOptionChars = 64,
             maxDecisionRationaleChars = 64
-        )
+        ),
+        streamingInference: CognitiveStreamingInferencePort? = null
     ): Fixture {
         val logs = InMemoryLogWriter()
         val correlation = AtomicInteger(0)
@@ -101,6 +102,7 @@ class CognitiveGenerationCoordinatorContractTest {
             selfSnapshots = SelfSnapshotPort { null },
             personalitySnapshots = PersonalitySnapshotPort { emptyList() },
             inference = inference,
+            streamingInference = streamingInference,
             limits = limits,
             materialization = materialization,
             planning = planning,
@@ -165,6 +167,85 @@ class CognitiveGenerationCoordinatorContractTest {
         )
     }
 
+    @Test
+    fun streaming_generation_delivers_progress_before_terminal_authoritative_publication() {
+        val events = mutableListOf<String>()
+        val oneShot = CognitiveInferencePort { error("one-shot must not run") }
+        val streaming = CognitiveStreamingInferencePort { request, sink ->
+            sink.onChunk(CognitiveInferenceChunk(request.turn, 1, "part-a"))
+            events += "chunk-1"
+            sink.onChunk(CognitiveInferenceChunk(request.turn, 2, "part-b"))
+            events += "chunk-2"
+            CognitiveInferenceResult.Succeeded(request.turn, "part-apart-b")
+        }
+        val materializer = CognitiveMaterializationPort {
+            events += "materialize"
+            CognitiveMaterializationResult.Succeeded(candidate())
+        }
+        val f = fixture(
+            prefix = "stream-success",
+            inference = oneShot,
+            materialization = materializer,
+            streamingInference = streaming
+        )
+        val turn = readyTurn(f.composition)
+        val delivered = mutableListOf<CognitiveInferenceChunk>()
+
+        val result = assertIs<CognitiveGenerationResult.Succeeded>(
+            f.composition.generateCognitionStreaming(
+                turn.reference,
+                CognitiveStreamingSink { chunk ->
+                    delivered += chunk
+                    CognitiveStreamControl.CONTINUE
+                }
+            )
+        )
+
+        assertEquals(listOf("chunk-1", "chunk-2", "materialize"), events)
+        assertEquals(listOf(1L, 2L), delivered.map { it.sequence })
+        assertEquals("part-apart-b", delivered.joinToString("") { it.text })
+        assertEquals(CognitiveTurnLifecycle.COGNITION_READY, turn.lifecycle())
+        assertTrue(f.planning.inspect(result.planning.id) != null)
+        assertTrue(f.reasoning.inspect(result.reasoning.id) != null)
+        assertTrue(f.decision.inspect(result.decision.id) != null)
+    }
+
+    @Test
+    fun cancelled_stream_never_publishes_partial_text_as_authoritative_cognition() {
+        val oneShot = CognitiveInferencePort { error("one-shot must not run") }
+        val streaming = CognitiveStreamingInferencePort { request, sink ->
+            sink.onChunk(CognitiveInferenceChunk(request.turn, 1, "partial-output"))
+            CognitiveInferenceResult.Rejected(request.turn, CognitiveInferenceFailure.CANCELLED)
+        }
+        val materializer = CognitiveMaterializationPort {
+            error("materializer must not run after cancelled stream")
+        }
+        val f = fixture(
+            prefix = "stream-cancel",
+            inference = oneShot,
+            materialization = materializer,
+            streamingInference = streaming
+        )
+        val turn = readyTurn(f.composition)
+        val delivered = mutableListOf<String>()
+
+        val rejected = assertIs<CognitiveGenerationResult.Rejected>(
+            f.composition.generateCognitionStreaming(
+                turn.reference,
+                CognitiveStreamingSink { chunk ->
+                    delivered += chunk.text
+                    CognitiveStreamControl.CONTINUE
+                }
+            )
+        )
+
+        assertEquals(CognitiveGenerationFailure.INFERENCE_CANCELLED, rejected.reason)
+        assertEquals(listOf("partial-output"), delivered)
+        assertTrue(f.planning.snapshot().isEmpty())
+        assertTrue(f.reasoning.snapshot().isEmpty())
+        assertTrue(f.decision.snapshot().isEmpty())
+        assertEquals(CognitiveTurnLifecycle.FAILED, turn.lifecycle())
+    }
     @Test
     fun generation_observability_never_contains_raw_turn_id_or_private_payloads_even_indirectly() {
         val rawTurnId = "secret-raw-turn-id-never-log"

@@ -25,6 +25,11 @@ internal sealed interface LlamaCppNativeCloseResult {
     data class Failed(val reason: ModelEngineCloseFailure) : LlamaCppNativeCloseResult
 }
 
+internal fun interface LlamaCppNativeStreamingSink {
+    /** Returns false to request cooperative cancellation. */
+    fun onChunk(chunkUtf8: ByteArray): Boolean
+}
+
 internal interface LlamaCppNativeSessionPort {
     fun load(sourcePath: String, policy: LlamaCppEnginePolicy): LlamaCppNativeLoadResult
 
@@ -33,6 +38,14 @@ internal interface LlamaCppNativeSessionPort {
         promptUtf8: ByteArray,
         maxOutputChars: Int
     ): LlamaCppNativeInferenceResult
+
+    fun stream(
+        nativeSessionId: Long,
+        promptUtf8: ByteArray,
+        maxOutputChars: Int,
+        sink: LlamaCppNativeStreamingSink
+    ): LlamaCppNativeInferenceResult =
+        LlamaCppNativeInferenceResult.Rejected(ModelEngineInferenceFailure.REQUEST_REJECTED)
 
     fun close(nativeSessionId: Long): LlamaCppNativeCloseResult
 }
@@ -143,16 +156,34 @@ private object JniLlamaCppNativeSessionPort : LlamaCppNativeSessionPort {
         nativeSessionId: Long,
         promptUtf8: ByteArray,
         maxOutputChars: Int
-    ): LlamaCppNativeInferenceResult {
-        val packet = LlamaCppNativeBridge.nativeInfer(
-            nativeSessionId = nativeSessionId,
-            promptUtf8 = promptUtf8,
-            maxOutputChars = maxOutputChars
+    ): LlamaCppNativeInferenceResult =
+        decodeInferencePacket(
+            LlamaCppNativeBridge.nativeInfer(
+                nativeSessionId = nativeSessionId,
+                promptUtf8 = promptUtf8,
+                maxOutputChars = maxOutputChars
+            )
         )
+
+    override fun stream(
+        nativeSessionId: Long,
+        promptUtf8: ByteArray,
+        maxOutputChars: Int,
+        sink: LlamaCppNativeStreamingSink
+    ): LlamaCppNativeInferenceResult =
+        decodeInferencePacket(
+            LlamaCppNativeBridge.nativeInferStreaming(
+                nativeSessionId = nativeSessionId,
+                promptUtf8 = promptUtf8,
+                maxOutputChars = maxOutputChars,
+                sink = sink
+            )
+        )
+
+    private fun decodeInferencePacket(packet: ByteArray): LlamaCppNativeInferenceResult {
         if (packet.isEmpty()) {
             return LlamaCppNativeInferenceResult.Rejected(ModelEngineInferenceFailure.PROVIDER_FAILED)
         }
-
         return when (packet[0]) {
             LlamaCppNativeBridge.INFER_OK -> LlamaCppNativeInferenceResult.Succeeded(
                 packet.copyOfRange(1, packet.size).toString(Charsets.UTF_8)
@@ -167,6 +198,8 @@ private object JniLlamaCppNativeSessionPort : LlamaCppNativeSessionPort {
                 LlamaCppNativeInferenceResult.Rejected(ModelEngineInferenceFailure.SESSION_FAILED)
             LlamaCppNativeBridge.INFER_OPERATION_FAILED ->
                 LlamaCppNativeInferenceResult.Rejected(ModelEngineInferenceFailure.OPERATION_FAILED)
+            LlamaCppNativeBridge.INFER_CANCELLED ->
+                LlamaCppNativeInferenceResult.Rejected(ModelEngineInferenceFailure.CANCELLED)
             else -> LlamaCppNativeInferenceResult.Rejected(ModelEngineInferenceFailure.PROVIDER_FAILED)
         }
     }

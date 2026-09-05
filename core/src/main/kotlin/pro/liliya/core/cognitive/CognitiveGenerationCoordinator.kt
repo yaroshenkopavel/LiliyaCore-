@@ -63,6 +63,8 @@ enum class CognitiveGenerationFailure {
     DEPENDENCIES_UNAVAILABLE,
     INFERENCE_PROVIDER_FAILED,
     INFERENCE_PROVIDER_REJECTED,
+    INFERENCE_CANCELLED,
+    STREAMING_UNAVAILABLE,
     FOREIGN_INFERENCE_RESULT,
     INFERENCE_OUTPUT_LIMIT_REJECTED,
     MATERIALIZER_FAILED,
@@ -87,11 +89,33 @@ internal class CognitiveGenerationCoordinator(
     private val decision: DecisionComposition,
     private val artifactIds: CognitiveArtifactIdSource,
     private val timestamps: CognitiveTimestampSource,
-    private val limits: CognitiveRuntimeLimits
+    private val limits: CognitiveRuntimeLimits,
+    private val streamingInference: CognitiveStreamingInferencePort? = null
 ) {
     private data class CompensationResult(val complete: Boolean)
 
-    fun generate(reference: CognitiveTurnReference): CognitiveGenerationResult {
+    fun generate(reference: CognitiveTurnReference): CognitiveGenerationResult =
+        generateWithInference(reference) { request ->
+            inference.infer(request)
+        }
+
+    fun generateStreaming(
+        reference: CognitiveTurnReference,
+        sink: CognitiveStreamingSink
+    ): CognitiveGenerationResult {
+        val streaming = streamingInference
+            ?: return CognitiveGenerationResult.Rejected(
+                CognitiveGenerationFailure.STREAMING_UNAVAILABLE
+            )
+        return generateWithInference(reference) { request ->
+            streaming.infer(request, sink)
+        }
+    }
+
+    private fun generateWithInference(
+        reference: CognitiveTurnReference,
+        inferCall: (CognitiveInferenceRequest) -> CognitiveInferenceResult
+    ): CognitiveGenerationResult {
         when (turns.beginGeneratingIfCurrent(reference)) {
             CognitiveTurnTransitionResult.Transitioned -> Unit
             CognitiveTurnTransitionResult.Stale -> return CognitiveGenerationResult.Stale
@@ -105,15 +129,14 @@ internal class CognitiveGenerationCoordinator(
             return CognitiveGenerationResult.Stale
         }
 
+        val inferenceRequest = CognitiveInferenceRequest(
+            turn = reference,
+            input = input,
+            context = context,
+            maxOutputChars = limits.maxInferenceOutputChars
+        )
         val inferenceResult = try {
-            inference.infer(
-                CognitiveInferenceRequest(
-                    turn = reference,
-                    input = input,
-                    context = context,
-                    maxOutputChars = limits.maxInferenceOutputChars
-                )
-            )
+            inferCall(inferenceRequest)
         } catch (_: Exception) {
             return rejectCurrent(reference, CognitiveGenerationFailure.INFERENCE_PROVIDER_FAILED)
         }
@@ -127,7 +150,14 @@ internal class CognitiveGenerationCoordinator(
 
         val succeededInference = when (inferenceResult) {
             is CognitiveInferenceResult.Rejected ->
-                return rejectCurrent(reference, CognitiveGenerationFailure.INFERENCE_PROVIDER_REJECTED)
+                return rejectCurrent(
+                    reference,
+                    if (inferenceResult.reason == CognitiveInferenceFailure.CANCELLED) {
+                        CognitiveGenerationFailure.INFERENCE_CANCELLED
+                    } else {
+                        CognitiveGenerationFailure.INFERENCE_PROVIDER_REJECTED
+                    }
+                )
             is CognitiveInferenceResult.Succeeded -> inferenceResult
         }
         if (succeededInference.output.length > limits.maxInferenceOutputChars) {

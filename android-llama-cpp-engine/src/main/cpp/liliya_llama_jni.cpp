@@ -28,6 +28,7 @@ constexpr jbyte INFER_REQUEST_REJECTED = 2;
 constexpr jbyte INFER_STALE_SESSION = 3;
 constexpr jbyte INFER_OPERATION_FAILED = 4;
 constexpr jbyte INFER_PROVIDER_FAILED = 5;
+constexpr jbyte INFER_CANCELLED = 6;
 
 constexpr jint CLOSE_OK = 0;
 constexpr jint CLOSE_FAILED = 1;
@@ -207,6 +208,124 @@ PieceResult token_to_piece(
     }
     piece.assign(buffer.data(), static_cast<size_t>(count));
     return PieceResult::OK;
+}
+
+struct Utf8PrefixScan {
+    size_t complete_bytes = 0;
+    bool invalid = false;
+};
+
+Utf8PrefixScan scan_complete_utf8_prefix(const std::string & bytes) {
+    size_t index = 0;
+    while (index < bytes.size()) {
+        const uint8_t lead = static_cast<uint8_t>(bytes[index]);
+        size_t width = 0;
+
+        if (lead <= 0x7fU) {
+            width = 1;
+        } else if (lead >= 0xc2U && lead <= 0xdfU) {
+            width = 2;
+        } else if (lead >= 0xe0U && lead <= 0xefU) {
+            width = 3;
+        } else if (lead >= 0xf0U && lead <= 0xf4U) {
+            width = 4;
+        } else {
+            return Utf8PrefixScan{index, true};
+        }
+
+        if (bytes.size() - index < width) {
+            return Utf8PrefixScan{index, false};
+        }
+
+        const auto continuation = [&](size_t offset) {
+            const uint8_t value = static_cast<uint8_t>(bytes[index + offset]);
+            return value >= 0x80U && value <= 0xbfU;
+        };
+
+        if (width >= 2 && !continuation(1)) {
+            return Utf8PrefixScan{index, true};
+        }
+        if (width >= 3 && !continuation(2)) {
+            return Utf8PrefixScan{index, true};
+        }
+        if (width >= 4 && !continuation(3)) {
+            return Utf8PrefixScan{index, true};
+        }
+
+        if (width == 3) {
+            const uint8_t second = static_cast<uint8_t>(bytes[index + 1]);
+            if (lead == 0xe0U && second < 0xa0U) {
+                return Utf8PrefixScan{index, true};
+            }
+            if (lead == 0xedU && second > 0x9fU) {
+                return Utf8PrefixScan{index, true};
+            }
+        }
+
+        if (width == 4) {
+            const uint8_t second = static_cast<uint8_t>(bytes[index + 1]);
+            if (lead == 0xf0U && second < 0x90U) {
+                return Utf8PrefixScan{index, true};
+            }
+            if (lead == 0xf4U && second > 0x8fU) {
+                return Utf8PrefixScan{index, true};
+            }
+        }
+
+        index += width;
+    }
+
+    return Utf8PrefixScan{index, false};
+}
+
+enum class StreamCallbackResult {
+    CONTINUE,
+    CANCELLED,
+    FAILED
+};
+
+StreamCallbackResult emit_stream_chunk(
+    JNIEnv * env,
+    jobject sink,
+    jmethodID on_chunk,
+    const std::string & chunk
+) {
+    if (sink == nullptr || on_chunk == nullptr || chunk.empty()) {
+        return StreamCallbackResult::FAILED;
+    }
+    if (chunk.size() > static_cast<size_t>(std::numeric_limits<jsize>::max())) {
+        return StreamCallbackResult::FAILED;
+    }
+
+    jbyteArray payload = env->NewByteArray(static_cast<jsize>(chunk.size()));
+    if (payload == nullptr) {
+        if (env->ExceptionCheck()) {
+            env->ExceptionClear();
+        }
+        return StreamCallbackResult::FAILED;
+    }
+
+    env->SetByteArrayRegion(
+        payload,
+        0,
+        static_cast<jsize>(chunk.size()),
+        reinterpret_cast<const jbyte *>(chunk.data())
+    );
+    if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+        env->DeleteLocalRef(payload);
+        return StreamCallbackResult::FAILED;
+    }
+
+    const jboolean keep_going = env->CallBooleanMethod(sink, on_chunk, payload);
+    env->DeleteLocalRef(payload);
+    if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+        return StreamCallbackResult::CANCELLED;
+    }
+    return keep_going == JNI_TRUE
+        ? StreamCallbackResult::CONTINUE
+        : StreamCallbackResult::CANCELLED;
 }
 
 }  // namespace
@@ -486,6 +605,213 @@ Java_pro_liliya_android_llamacppengine_LlamaCppNativeBridge_nativeInfer(
                     llama_memory_clear(llama_get_memory(session->context), true);
                     return make_infer_packet(env, INFER_OPERATION_FAILED);
                 }
+            }
+
+            llama_memory_clear(llama_get_memory(session->context), true);
+            return make_infer_packet(env, INFER_OK, output);
+        } catch (...) {
+            llama_memory_clear(llama_get_memory(session->context), true);
+            return make_infer_packet(env, INFER_PROVIDER_FAILED);
+        }
+    } catch (...) {
+        return make_infer_packet(env, INFER_PROVIDER_FAILED);
+    }
+}
+
+extern "C"
+JNIEXPORT jbyteArray JNICALL
+Java_pro_liliya_android_llamacppengine_LlamaCppNativeBridge_nativeInferStreaming(
+    JNIEnv * env,
+    jobject,
+    jlong native_session_id,
+    jbyteArray prompt_utf8,
+    jint max_output_chars,
+    jobject sink
+) {
+    if (native_session_id <= 0) {
+        return make_infer_packet(env, INFER_STALE_SESSION);
+    }
+    if (max_output_chars <= 0 || prompt_utf8 == nullptr || sink == nullptr) {
+        return make_infer_packet(env, INFER_REQUEST_REJECTED);
+    }
+
+    try {
+        NativeSession * session = nullptr;
+        std::unique_lock<std::mutex> session_guard;
+        {
+            std::unique_lock<std::mutex> registry_guard(g_registry_mutex);
+            auto it = g_sessions.find(static_cast<int64_t>(native_session_id));
+            if (it == g_sessions.end() || it->second == nullptr) {
+                return make_infer_packet(env, INFER_STALE_SESSION);
+            }
+            session = it->second.get();
+            session_guard = std::unique_lock<std::mutex>(session->execution_mutex);
+        }
+
+        jclass sink_class = env->GetObjectClass(sink);
+        if (sink_class == nullptr) {
+            if (env->ExceptionCheck()) {
+                env->ExceptionClear();
+            }
+            return make_infer_packet(env, INFER_PROVIDER_FAILED);
+        }
+        jmethodID on_chunk = env->GetMethodID(sink_class, "onChunk", "([B)Z");
+        env->DeleteLocalRef(sink_class);
+        if (on_chunk == nullptr) {
+            if (env->ExceptionCheck()) {
+                env->ExceptionClear();
+            }
+            return make_infer_packet(env, INFER_PROVIDER_FAILED);
+        }
+
+        const jsize prompt_size = env->GetArrayLength(prompt_utf8);
+        if (prompt_size < 0) {
+            return make_infer_packet(env, INFER_PROVIDER_FAILED);
+        }
+        if (prompt_size > session->max_prompt_utf8_bytes) {
+            return make_infer_packet(env, INFER_RESOURCE_REJECTED);
+        }
+
+        std::vector<uint8_t> prompt;
+        if (!copy_bytes(env, prompt_utf8, prompt)) {
+            return make_infer_packet(env, INFER_PROVIDER_FAILED);
+        }
+        ByteScrubber prompt_scrubber(prompt);
+
+        try {
+            int32_t token_count = llama_tokenize(
+                session->vocab,
+                reinterpret_cast<const char *>(prompt.data()),
+                static_cast<int32_t>(prompt.size()),
+                nullptr,
+                0,
+                true,
+                true
+            );
+            if (token_count == std::numeric_limits<int32_t>::min()) {
+                return make_infer_packet(env, INFER_RESOURCE_REJECTED);
+            }
+            if (token_count < 0) {
+                token_count = -token_count;
+            }
+            if (token_count <= 0) {
+                return make_infer_packet(env, INFER_REQUEST_REJECTED);
+            }
+            if (token_count > session->max_prompt_tokens) {
+                return make_infer_packet(env, INFER_RESOURCE_REJECTED);
+            }
+
+            std::vector<llama_token> tokens(static_cast<size_t>(token_count));
+            const int32_t actual = llama_tokenize(
+                session->vocab,
+                reinterpret_cast<const char *>(prompt.data()),
+                static_cast<int32_t>(prompt.size()),
+                tokens.data(),
+                token_count,
+                true,
+                true
+            );
+            if (actual < 0 || actual != token_count) {
+                return make_infer_packet(env, INFER_OPERATION_FAILED);
+            }
+
+            llama_memory_clear(llama_get_memory(session->context), true);
+
+            int32_t offset = 0;
+            while (offset < token_count) {
+                const int32_t chunk = std::min(session->batch_tokens, token_count - offset);
+                llama_batch batch = llama_batch_get_one(tokens.data() + offset, chunk);
+                if (llama_decode(session->context, batch) != 0) {
+                    llama_memory_clear(llama_get_memory(session->context), true);
+                    return make_infer_packet(env, INFER_OPERATION_FAILED);
+                }
+                offset += chunk;
+            }
+
+            std::unique_ptr<llama_sampler, decltype(&llama_sampler_free)> sampler(
+                llama_sampler_init_greedy(),
+                llama_sampler_free
+            );
+            if (sampler == nullptr) {
+                llama_memory_clear(llama_get_memory(session->context), true);
+                return make_infer_packet(env, INFER_PROVIDER_FAILED);
+            }
+
+            std::string output;
+            std::string pending_utf8;
+            const size_t char_byte_ceiling = static_cast<size_t>(max_output_chars) * 4U;
+            const size_t max_output_bytes = std::min(
+                char_byte_ceiling,
+                static_cast<size_t>(session->max_output_utf8_bytes)
+            );
+
+            for (int32_t generated = 0; generated < session->max_generated_tokens; ++generated) {
+                const llama_token token = llama_sampler_sample(sampler.get(), session->context, -1);
+                if (llama_vocab_is_eog(session->vocab, token)) {
+                    break;
+                }
+
+                const size_t remaining =
+                    max_output_bytes - std::min(max_output_bytes, output.size());
+                std::string piece;
+                const PieceResult piece_result = token_to_piece(
+                    session->vocab,
+                    token,
+                    remaining,
+                    piece
+                );
+                if (piece_result == PieceResult::TOO_LARGE) {
+                    break;
+                }
+                if (piece_result == PieceResult::FAILED) {
+                    llama_memory_clear(llama_get_memory(session->context), true);
+                    return make_infer_packet(env, INFER_OPERATION_FAILED);
+                }
+
+                output.append(piece);
+                pending_utf8.append(piece);
+
+                const Utf8PrefixScan scan = scan_complete_utf8_prefix(pending_utf8);
+                if (scan.invalid) {
+                    llama_memory_clear(llama_get_memory(session->context), true);
+                    return make_infer_packet(env, INFER_OPERATION_FAILED);
+                }
+                if (scan.complete_bytes > 0) {
+                    const std::string complete_chunk =
+                        pending_utf8.substr(0, scan.complete_bytes);
+                    const StreamCallbackResult callback = emit_stream_chunk(
+                        env,
+                        sink,
+                        on_chunk,
+                        complete_chunk
+                    );
+                    pending_utf8.erase(0, scan.complete_bytes);
+
+                    if (callback == StreamCallbackResult::CANCELLED) {
+                        llama_memory_clear(llama_get_memory(session->context), true);
+                        return make_infer_packet(env, INFER_CANCELLED);
+                    }
+                    if (callback == StreamCallbackResult::FAILED) {
+                        llama_memory_clear(llama_get_memory(session->context), true);
+                        return make_infer_packet(env, INFER_PROVIDER_FAILED);
+                    }
+                }
+
+                if (output.size() >= max_output_bytes) {
+                    break;
+                }
+
+                llama_token next_token = token;
+                llama_batch next = llama_batch_get_one(&next_token, 1);
+                if (llama_decode(session->context, next) != 0) {
+                    llama_memory_clear(llama_get_memory(session->context), true);
+                    return make_infer_packet(env, INFER_OPERATION_FAILED);
+                }
+            }
+
+            if (!pending_utf8.empty()) {
+                llama_memory_clear(llama_get_memory(session->context), true);
+                return make_infer_packet(env, INFER_OPERATION_FAILED);
             }
 
             llama_memory_clear(llama_get_memory(session->context), true);

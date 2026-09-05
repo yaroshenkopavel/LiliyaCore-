@@ -26,7 +26,8 @@ class CognitiveRuntimeComposition(
     timestamps: CognitiveTimestampSource? = null,
     outcomeMaterialization: CognitiveOutcomeMaterializationPort? = null,
     reflection: ReflectionComposition? = null,
-    learning: LearningComposition? = null
+    learning: LearningComposition? = null,
+    private val streamingInference: CognitiveStreamingInferencePort? = null
 ) {
     init {
         require(scope.value.length <= limits.maxRuntimeScopeIdChars) {
@@ -55,6 +56,7 @@ class CognitiveRuntimeComposition(
             turns = turns,
             scope = scope,
             inference = inference,
+            streamingInference = streamingInference,
             materialization = materialization,
             planning = planning,
             reasoning = reasoning,
@@ -215,6 +217,61 @@ class CognitiveRuntimeComposition(
                 DiagnosticSeverity.WARNING,
                 "COGNITIVE_GENERATION_REJECTED",
                 "cognitive generation rejected",
+                context,
+                mapOf("rejectionReason" to result.reason.name)
+            )
+        }
+        return result
+    }
+
+    fun generateCognitionStreaming(
+        reference: CognitiveTurnReference,
+        sink: CognitiveStreamingSink
+    ): CognitiveGenerationResult {
+        val context = foundation.rootContext(
+            operation = "generateCognitionStreaming",
+            component = "CognitiveRuntime",
+            metadata = turnMetadata(reference)
+        )
+        val coordinator = generationCoordinator
+        if (coordinator == null) {
+            foundation.observability.record(
+                DiagnosticSeverity.WARNING,
+                "COGNITIVE_STREAMING_GENERATION_REJECTED",
+                "cognitive streaming generation rejected",
+                context,
+                mapOf("rejectionReason" to CognitiveGenerationFailure.DEPENDENCIES_UNAVAILABLE.name)
+            )
+            return CognitiveGenerationResult.Rejected(
+                CognitiveGenerationFailure.DEPENDENCIES_UNAVAILABLE
+            )
+        }
+
+        val result = coordinator.generateStreaming(reference, sink)
+        when (result) {
+            is CognitiveGenerationResult.Succeeded -> foundation.observability.record(
+                DiagnosticSeverity.INFO,
+                "COGNITIVE_STREAMING_GENERATION_PUBLISHED",
+                "cognitive streaming generation published",
+                context,
+                mapOf(
+                    "planningGeneration" to result.planning.generation.value.toString(),
+                    "reasoningGeneration" to result.reasoning.generation.value.toString(),
+                    "decisionGeneration" to result.decision.generation.value.toString()
+                )
+            )
+
+            CognitiveGenerationResult.Stale -> foundation.observability.record(
+                DiagnosticSeverity.WARNING,
+                "COGNITIVE_STREAMING_GENERATION_STALE",
+                "cognitive streaming generation is no longer current",
+                context
+            )
+
+            is CognitiveGenerationResult.Rejected -> foundation.observability.record(
+                DiagnosticSeverity.WARNING,
+                "COGNITIVE_STREAMING_GENERATION_REJECTED",
+                "cognitive streaming generation rejected",
                 context,
                 mapOf("rejectionReason" to result.reason.name)
             )

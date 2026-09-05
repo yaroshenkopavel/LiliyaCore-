@@ -9,7 +9,10 @@ import pro.liliya.core.modelengine.ModelEngineHandleId
 import pro.liliya.core.modelengine.ModelEngineInferenceFailure
 import pro.liliya.core.modelengine.ModelEngineInferenceRequest
 import pro.liliya.core.modelengine.ModelEngineInferenceResult
-import pro.liliya.core.modelengine.ModelEngineSessionOwnership
+import pro.liliya.core.modelengine.ModelEngineStreamChunk
+import pro.liliya.core.modelengine.ModelEngineStreamControl
+import pro.liliya.core.modelengine.ModelEngineStreamingSessionOwnership
+import pro.liliya.core.modelengine.ModelEngineStreamingSink
 
 private val LLAMA_CPP_BACKEND_ID = ModelEngineBackendId("llama.cpp-v0.1")
 
@@ -19,7 +22,7 @@ internal class LlamaCppSessionOwnership(
     private val nativeSessionId: Long,
     private val nativePort: LlamaCppNativeSessionPort,
     private val policy: LlamaCppEnginePolicy
-) : ModelEngineSessionOwnership {
+) : ModelEngineStreamingSessionOwnership {
 
     init {
         require(nativeSessionId > 0L) { "native session id must be positive" }
@@ -31,12 +34,18 @@ internal class LlamaCppSessionOwnership(
     // This is engine-local; no Core/staging/backend ownership lock is held during native work.
     private val executionLock = ReentrantLock(true)
     private var state = State.LIVE
+    private var operationInProgress = false
 
     override fun infer(request: ModelEngineInferenceRequest): ModelEngineInferenceResult =
         executionLock.withLock {
             if (state != State.LIVE) {
                 return@withLock ModelEngineInferenceResult.Rejected(
                     ModelEngineInferenceFailure.SESSION_FAILED
+                )
+            }
+            if (operationInProgress) {
+                return@withLock ModelEngineInferenceResult.Rejected(
+                    ModelEngineInferenceFailure.RESOURCE_LIMIT_REJECTED
                 )
             }
             if (
@@ -62,6 +71,7 @@ internal class LlamaCppSessionOwnership(
                 )
             }
 
+            operationInProgress = true
             val result = try {
                 nativePort.infer(
                     nativeSessionId = nativeSessionId,
@@ -71,6 +81,7 @@ internal class LlamaCppSessionOwnership(
             } catch (_: Throwable) {
                 LlamaCppNativeInferenceResult.Rejected(ModelEngineInferenceFailure.PROVIDER_FAILED)
             } finally {
+                operationInProgress = false
                 promptUtf8.fill(0)
             }
 
@@ -85,7 +96,145 @@ internal class LlamaCppSessionOwnership(
             }
         }
 
+    override fun stream(
+        request: ModelEngineInferenceRequest,
+        sink: ModelEngineStreamingSink
+    ): ModelEngineInferenceResult = executionLock.withLock {
+        if (state != State.LIVE) {
+            return@withLock ModelEngineInferenceResult.Rejected(
+                ModelEngineInferenceFailure.SESSION_FAILED
+            )
+        }
+        if (operationInProgress) {
+            return@withLock ModelEngineInferenceResult.Rejected(
+                ModelEngineInferenceFailure.RESOURCE_LIMIT_REJECTED
+            )
+        }
+        if (
+            request.prompt.length > policy.maxPromptChars ||
+            request.maxOutputChars > policy.maxOutputChars
+        ) {
+            return@withLock ModelEngineInferenceResult.Rejected(
+                ModelEngineInferenceFailure.RESOURCE_LIMIT_REJECTED
+            )
+        }
+
+        val promptUtf8 = try {
+            request.prompt.toByteArray(Charsets.UTF_8)
+        } catch (_: Throwable) {
+            return@withLock ModelEngineInferenceResult.Rejected(
+                ModelEngineInferenceFailure.PROVIDER_FAILED
+            )
+        }
+        if (promptUtf8.size > policy.maxPromptUtf8Bytes) {
+            promptUtf8.fill(0)
+            return@withLock ModelEngineInferenceResult.Rejected(
+                ModelEngineInferenceFailure.RESOURCE_LIMIT_REJECTED
+            )
+        }
+
+        var sequence = 0L
+        var stopped = false
+        var contractViolation = false
+        val collected = StringBuilder()
+        operationInProgress = true
+        val result = try {
+            nativePort.stream(
+                nativeSessionId = nativeSessionId,
+                promptUtf8 = promptUtf8,
+                maxOutputChars = request.maxOutputChars,
+                sink = LlamaCppNativeStreamingSink { chunkUtf8 ->
+                    if (chunkUtf8.isEmpty()) {
+                        contractViolation = true
+                        return@LlamaCppNativeStreamingSink false
+                    }
+                    val text = try {
+                        chunkUtf8.toString(Charsets.UTF_8)
+                    } catch (_: Throwable) {
+                        contractViolation = true
+                        return@LlamaCppNativeStreamingSink false
+                    }
+                    if (text.isEmpty()) {
+                        contractViolation = true
+                        return@LlamaCppNativeStreamingSink false
+                    }
+                    val nextChars = collected.length + text.length
+                    if (
+                        nextChars > request.maxOutputChars ||
+                        nextChars > policy.maxOutputChars
+                    ) {
+                        contractViolation = true
+                        return@LlamaCppNativeStreamingSink false
+                    }
+
+                    val nextSequence = sequence + 1L
+                    val control = try {
+                        sink.onChunk(ModelEngineStreamChunk(nextSequence, text))
+                    } catch (_: Throwable) {
+                        ModelEngineStreamControl.STOP
+                    }
+                    if (control == ModelEngineStreamControl.STOP) {
+                        stopped = true
+                        false
+                    } else {
+                        sequence = nextSequence
+                        collected.append(text)
+                        true
+                    }
+                }
+            )
+        } catch (_: Throwable) {
+            LlamaCppNativeInferenceResult.Rejected(ModelEngineInferenceFailure.PROVIDER_FAILED)
+        } finally {
+            operationInProgress = false
+            promptUtf8.fill(0)
+        }
+
+        if (contractViolation) {
+            return@withLock ModelEngineInferenceResult.Rejected(
+                ModelEngineInferenceFailure.PROVIDER_FAILED
+            )
+        }
+
+        if (stopped) {
+            return@withLock when (result) {
+                is LlamaCppNativeInferenceResult.Rejected ->
+                    if (result.reason == ModelEngineInferenceFailure.CANCELLED) {
+                        ModelEngineInferenceResult.Rejected(ModelEngineInferenceFailure.CANCELLED)
+                    } else {
+                        ModelEngineInferenceResult.Rejected(ModelEngineInferenceFailure.PROVIDER_FAILED)
+                    }
+                is LlamaCppNativeInferenceResult.Succeeded ->
+                    ModelEngineInferenceResult.Rejected(ModelEngineInferenceFailure.PROVIDER_FAILED)
+            }
+        }
+
+        when (result) {
+            is LlamaCppNativeInferenceResult.Rejected ->
+                ModelEngineInferenceResult.Rejected(result.reason)
+
+            is LlamaCppNativeInferenceResult.Succeeded -> {
+                if (
+                    result.output.length > request.maxOutputChars ||
+                    result.output.length > policy.maxOutputChars ||
+                    result.output != collected.toString()
+                ) {
+                    ModelEngineInferenceResult.Rejected(
+                        ModelEngineInferenceFailure.PROVIDER_FAILED
+                    )
+                } else {
+                    ModelEngineInferenceResult.Succeeded(result.output)
+                }
+            }
+        }
+    }
+
     override fun close(): ModelEngineCloseResult = executionLock.withLock {
+        if (operationInProgress) {
+            return@withLock ModelEngineCloseResult.Failed(
+                ModelEngineCloseFailure.CLOSE_FAILED
+            )
+        }
         if (state == State.CLOSED) {
             return@withLock ModelEngineCloseResult.Closed
         }

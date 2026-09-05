@@ -18,6 +18,9 @@ import pro.liliya.core.modelengine.ModelEngineCloseResult
 import pro.liliya.core.modelengine.ModelEngineInferenceRequest
 import pro.liliya.core.modelengine.ModelEngineInferenceResult
 import pro.liliya.core.modelengine.ModelEngineLoadResult
+import pro.liliya.core.modelengine.ModelEngineStreamControl
+import pro.liliya.core.modelengine.ModelEngineStreamingSessionOwnership
+import pro.liliya.core.modelengine.ModelEngineStreamingSink
 import pro.liliya.core.modelengine.StagedModelEngineLoadCoordinator
 import pro.liliya.core.protectedmodel.LargeProtectedModelPayloadProfile
 import pro.liliya.core.protectedmodel.LargeProtectedModelStagedSourceOwnership
@@ -95,6 +98,91 @@ class AndroidLlamaCppRealModelInstrumentedTest {
             assertTrue(broadInference.output.length > oneTokenInference.output.length)
             assertIs<ModelEngineCloseResult.Closed>(oneTokenLoaded.ownership.close())
 
+            assertIs<LargeProtectedModelStagingRetireResult.Retired>(ownership.retire())
+        }
+
+    @Test
+    fun verified_fixture_streams_incrementally_cancels_and_reuses_same_native_session() =
+        withCleanRoot { targetContext, testContext ->
+            val backend = backend(targetContext)
+            val staging = coordinator(backend, STORIES_15M_BYTES)
+            val ownership = testContext.assets.open(STORIES_15M_ASSET).use { input ->
+                publishSegmented(
+                    coordinator = staging,
+                    input = input,
+                    totalBytes = STORIES_15M_BYTES,
+                    packageId = "streaming-stories15m"
+                )
+            }
+
+            val loader = AndroidLlamaCppPhysicalEngineLoader(
+                enginePolicy(maxGeneratedTokens = 8)
+            )
+            val coordinator = StagedModelEngineLoadCoordinator(
+                staging,
+                AndroidAppPrivateStagedModelEngineLoader(backend, loader)
+            )
+            val loaded = assertIs<ModelEngineLoadResult.Loaded>(
+                coordinator.load(ownership)
+            )
+            val streaming = assertIs<ModelEngineStreamingSessionOwnership>(
+                loaded.ownership
+            )
+
+            val chunks = mutableListOf<String>()
+            val sequences = mutableListOf<Long>()
+            val streamed = assertIs<ModelEngineInferenceResult.Succeeded>(
+                streaming.stream(
+                    ModelEngineInferenceRequest(
+                        prompt = "Once upon a time",
+                        maxOutputChars = 64
+                    ),
+                    ModelEngineStreamingSink { chunk ->
+                        sequences += chunk.sequence
+                        chunks += chunk.text
+                        ModelEngineStreamControl.CONTINUE
+                    }
+                )
+            )
+
+            assertTrue(chunks.size > 1)
+            assertEquals(
+                (1L..chunks.size.toLong()).toList(),
+                sequences
+            )
+            assertEquals(streamed.output, chunks.joinToString(""))
+            assertTrue(streamed.output.isNotBlank())
+
+            var cancellationChunks = 0
+            val cancelled = assertIs<ModelEngineInferenceResult.Rejected>(
+                streaming.stream(
+                    ModelEngineInferenceRequest(
+                        prompt = "Once upon a time",
+                        maxOutputChars = 64
+                    ),
+                    ModelEngineStreamingSink {
+                        cancellationChunks += 1
+                        ModelEngineStreamControl.STOP
+                    }
+                )
+            )
+            assertEquals(
+                pro.liliya.core.modelengine.ModelEngineInferenceFailure.CANCELLED,
+                cancelled.reason
+            )
+            assertEquals(1, cancellationChunks)
+
+            val reused = assertIs<ModelEngineInferenceResult.Succeeded>(
+                loaded.ownership.infer(
+                    ModelEngineInferenceRequest(
+                        prompt = "Once upon a time",
+                        maxOutputChars = 64
+                    )
+                )
+            )
+            assertTrue(reused.output.isNotBlank())
+
+            assertIs<ModelEngineCloseResult.Closed>(loaded.ownership.close())
             assertIs<LargeProtectedModelStagingRetireResult.Retired>(ownership.retire())
         }
 
