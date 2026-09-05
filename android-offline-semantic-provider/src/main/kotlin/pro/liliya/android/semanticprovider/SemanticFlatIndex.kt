@@ -260,6 +260,17 @@ internal class SemanticFlatIndex(
     }
 
     @Synchronized
+    fun clear() {
+        entries.values.forEach { entry ->
+            entry.vector.clear()
+            entry.stableIdUtf8.fill(0)
+        }
+        entries.clear()
+        memoryEntryCount = 0
+        knowledgeEntryCount = 0
+    }
+
+    @Synchronized
     fun size(domain: SemanticIndexDomain? = null): Int = when (domain) {
         null -> entries.size
         SemanticIndexDomain.MEMORY -> memoryEntryCount
