@@ -126,7 +126,27 @@ jobs:
           set -euo pipefail
           export ANDROID_SERIAL="$ANDROID_DEVICE_SERIAL"
           gradle :android-offline-semantic-provider:connectedDebugAndroidTest             -PsemanticSkipGenerationTestDependency=true             -Pandroid.testInstrumentationRunnerArguments.semanticFixtureSha256="$SELF_REPRODUCED_SHA256"             -Pandroid.testInstrumentationRunnerArguments.semanticFixtureSizeBytes="$SELF_REPRODUCED_SIZE"             '-Pandroid.testInstrumentationRunnerArguments.class=pro.liliya.android.semanticprovider.OfflineSemanticProviderResourceInstrumentedTest'             --console=plain
-          adb -s "$ANDROID_DEVICE_SERIAL" shell cat /data/local/tmp/semantic-resource-evidence.json             > "$RUNNER_TEMP/semantic-resource-arm64-device.json"
+
+          evidence_name="semantic-resource-evidence.json"
+          mapfile -t semantic_packages < <(
+            adb -s "$ANDROID_DEVICE_SERIAL" shell pm list packages |
+              tr -d '\r' |
+              sed 's/^package://' |
+              grep '^pro\.liliya\.android\.semanticprovider'
+          )
+          test "${#semantic_packages[@]}" -gt 0
+
+          evidence_found=0
+          for package_name in "${semantic_packages[@]}"; do
+            if adb -s "$ANDROID_DEVICE_SERIAL" shell run-as "$package_name" test -f "files/$evidence_name" 2>/dev/null; then
+              adb -s "$ANDROID_DEVICE_SERIAL" shell run-as "$package_name" cat "files/$evidence_name"                 > "$RUNNER_TEMP/semantic-resource-arm64-device.json"
+              echo "resource evidence retrieved from app-private package: $package_name"
+              evidence_found=1
+              break
+            fi
+          done
+          test "$evidence_found" -eq 1
+          test -s "$RUNNER_TEMP/semantic-resource-arm64-device.json"
 
       - name: Validate ARM64 resource evidence
         shell: bash
