@@ -55,7 +55,6 @@ class CognitiveGenerationCoordinatorContractTest {
         prefix: String,
         inference: CognitiveInferencePort,
         materialization: CognitiveMaterializationPort,
-        streamingInference: CognitiveStreamingInferencePort? = null,
         limits: CognitiveRuntimeLimits = CognitiveRuntimeLimits(
             maxRuntimeScopeIdChars = 64,
             maxTurnIdChars = 128,
@@ -74,7 +73,8 @@ class CognitiveGenerationCoordinatorContractTest {
             maxDecisionOptions = 4,
             maxDecisionOptionChars = 64,
             maxDecisionRationaleChars = 64
-        )
+        ),
+        streamingInference: CognitiveStreamingInferencePort? = null
     ): Fixture {
         val logs = InMemoryLogWriter()
         val correlation = AtomicInteger(0)
