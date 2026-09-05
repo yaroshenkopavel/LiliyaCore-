@@ -7,6 +7,9 @@ on:
         description: Successful Semantic Model Provenance run ID containing semantic-onnx-provenance
         required: true
         type: string
+  push:
+    branches:
+      - semantic/i8-physical-arm64-acceptance
 
 permissions:
   contents: read
@@ -28,7 +31,7 @@ jobs:
           name: semantic-onnx-provenance
           path: ${{ runner.temp }}/semantic-onnx-download
           repository: ${{ github.repository }}
-          run-id: ${{ inputs.provenance_run_id }}
+          run-id: ${{ inputs.provenance_run_id || '33971026771' }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Verify and stage exact ONNX bundle
