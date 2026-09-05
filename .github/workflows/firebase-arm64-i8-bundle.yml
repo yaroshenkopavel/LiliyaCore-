@@ -1,0 +1,193 @@
+name: Firebase ARM64 I8 Bundle
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/firebase-arm64-i8-bundle.yml'
+      - 'android-offline-semantic-provider/ci/run_firebase_full_i8_acceptance.sh'
+      - 'android-offline-semantic-provider/src/androidTest/**'
+      - 'android-offline-semantic-provider/build.gradle.kts'
+      - 'android-llama-cpp-engine/**'
+  workflow_dispatch:
+    inputs:
+      provenance_run_id:
+        description: Successful Semantic Model Provenance run ID containing semantic-onnx-provenance
+        required: false
+        default: '33981322350'
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build-firebase-arm64-i8-bundle:
+    name: Build exact Firebase ARM64 I8 APK bundle
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Download exact ONNX provenance bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: semantic-onnx-provenance
+          path: ${{ runner.temp }}/semantic-onnx-download
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.provenance_run_id || '33981322350' }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify and stage exact ONNX bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import shutil
+
+          root = Path(os.environ["RUNNER_TEMP"]) / "semantic-onnx-download"
+          manifests = list(root.rglob("semantic-onnx-provenance.json"))
+          encoders = list(root.rglob("multilingual-e5-small-liliya-v0.1.onnx"))
+          tokenizers = list(root.rglob("multilingual-e5-small-tokenizer-v0.1.onnx"))
+          if len(manifests) != 1 or len(encoders) != 1 or len(tokenizers) != 1:
+              raise SystemExit(
+                  f"unexpected provenance layout: manifest={manifests}, "
+                  f"encoder={encoders}, tokenizer={tokenizers}"
+              )
+
+          manifest = json.loads(manifests[0].read_text(encoding="utf-8"))
+          encoder = manifest["encoder"]
+          tokenizer = manifest["tokenizer"]
+
+          def digest(path):
+              h = hashlib.sha256()
+              with path.open("rb") as stream:
+                  for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                      h.update(chunk)
+              return h.hexdigest()
+
+          if encoders[0].stat().st_size != encoder["size"] or digest(encoders[0]) != encoder["sha256"]:
+              raise SystemExit("encoder provenance mismatch")
+          if tokenizers[0].stat().st_size != tokenizer["size"] or digest(tokenizers[0]) != tokenizer["sha256"]:
+              raise SystemExit("tokenizer provenance mismatch")
+
+          assets = Path("android-offline-semantic-provider/src/androidTest/assets")
+          assets.mkdir(parents=True, exist_ok=True)
+          shutil.copy2(encoders[0], assets / encoders[0].name)
+          shutil.copy2(tokenizers[0], assets / tokenizers[0].name)
+          PY
+
+      - name: Stage verified llama.cpp combined-residency fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          asset_dir="android-offline-semantic-provider/src/androidTest/assets"
+          asset="$asset_dir/stories15M-q4_0.gguf"
+          mkdir -p "$asset_dir"
+          curl --fail --location --retry 3 \
+            "https://huggingface.co/ggml-org/tiny-llamas/resolve/def3e2dd70df35ecbf6403ea347de4c5977220c1/stories15M-q4_0.gguf?download=true" \
+            --output "$asset"
+          echo "6151b1929d7f5aa3385d9ddef3393e55587c0a55de661562322bc51dfda93a04  $asset" | sha256sum --check --strict
+          test "$(stat --format=%s "$asset")" -eq 19077344
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle 9.6.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.1'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install pinned Android native toolchain
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools" "ndk;29.0.13113456" "cmake;3.31.6"
+
+      - name: Compile exact ARM64 Firebase instrumentation bundle
+        run: |
+          gradle \
+            :android-offline-semantic-provider:assembleDebug \
+            :android-offline-semantic-provider:assembleDebugAndroidTest \
+            --console=plain
+
+      - name: Collect exact APK bundle and manifest
+        shell: bash
+        env:
+          EXACT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          PROVENANCE_RUN_ID: ${{ inputs.provenance_run_id || '33981322350' }}
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/firebase-arm64-i8-bundle"
+          mkdir -p "$out"
+
+          mapfile -t apks < <(find android-offline-semantic-provider/build -type f -name '*.apk' -print | sort)
+          printf '%s\n' "${apks[@]}"
+          test "${#apks[@]}" -ge 2
+
+          for apk in "${apks[@]}"; do
+            cp "$apk" "$out/"
+          done
+
+          mapfile -t test_apks < <(find "$out" -maxdepth 1 -type f -name '*androidTest*.apk' -print | sort)
+          mapfile -t app_apks < <(find "$out" -maxdepth 1 -type f -name '*.apk' ! -name '*androidTest*.apk' -print | sort)
+          test "${#test_apks[@]}" -eq 1
+          test "${#app_apks[@]}" -eq 1
+
+          cp android-offline-semantic-provider/ci/run_firebase_full_i8_acceptance.sh "$out/"
+          chmod +x "$out/run_firebase_full_i8_acceptance.sh"
+
+          python3 - "$out" <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import sys
+
+          out = Path(sys.argv[1])
+          files = []
+          for path in sorted(out.iterdir()):
+              if path.is_file():
+                  h = hashlib.sha256(path.read_bytes()).hexdigest()
+                  files.append({
+                      "name": path.name,
+                      "bytes": path.stat().st_size,
+                      "sha256": h,
+                  })
+
+          manifest = {
+              "evidenceClass": "firebase-physical-arm64-i8-input-bundle",
+              "acceptanceEvidence": False,
+              "exactCommitSha": os.environ["EXACT_SHA"],
+              "semanticProvenanceRunId": os.environ["PROVENANCE_RUN_ID"],
+              "devicePolicy": "physical-arm64-only",
+              "rebuildTierPolicy": "physical-arm64-full-1k-5k-10k-20k",
+              "files": files,
+          }
+          (out / "firebase-arm64-i8-bundle-manifest.json").write_text(
+              json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+          cat "$out/firebase-arm64-i8-bundle-manifest.json"
+
+      - name: Upload Firebase ARM64 I8 input bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: firebase-arm64-i8-bundle-${{ github.event.pull_request.head.sha || github.sha }}
+          path: ${{ runner.temp }}/firebase-arm64-i8-bundle
+          if-no-files-found: error
+          retention-days: 30
