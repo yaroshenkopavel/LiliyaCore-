@@ -839,7 +839,8 @@ class CognitiveModelRuntimeComposition(
                 rejected(request, CognitiveInferenceFailure.PROVIDER_REJECTED)
             ModelEngineInferenceFailure.RESOURCE_LIMIT_REJECTED ->
                 rejected(request, CognitiveInferenceFailure.RESOURCE_LIMIT_REJECTED)
-            ModelEngineInferenceFailure.OPERATION_FAILED,
+            ModelEngineInferenceFailure.OPERATION_FAILED ->
+                rejected(request, CognitiveInferenceFailure.PROVIDER_FAILED)
             ModelEngineInferenceFailure.CANCELLED ->
                 rejected(request, CognitiveInferenceFailure.CANCELLED)
             ModelEngineInferenceFailure.TIMED_OUT ->
