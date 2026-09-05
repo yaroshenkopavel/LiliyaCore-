@@ -28,7 +28,7 @@ jobs:
       - name: Checkout exact source
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Download exact ONNX provenance bundle
         uses: actions/download-artifact@v4
@@ -154,7 +154,7 @@ jobs:
       - name: Validate and classify hosted evidence
         env:
           PROVENANCE_RUN_ID: ${{ inputs.provenance_run_id || '33981322350' }}
-          MEASURED_SHA: ${{ github.sha }}
+          MEASURED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
           python3 - "$RUNNER_TEMP/hosted-semantic-startup-baseline.json" <<'PY'
@@ -234,7 +234,7 @@ jobs:
       - name: Upload hosted startup baseline
         uses: actions/upload-artifact@v4
         with:
-          name: hosted-semantic-startup-baseline-${{ github.sha }}
+          name: hosted-semantic-startup-baseline-${{ github.event.pull_request.head.sha || github.sha }}
           path: ${{ runner.temp }}/hosted-semantic-startup-baseline.json
           if-no-files-found: error
           retention-days: 30
