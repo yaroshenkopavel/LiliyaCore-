@@ -112,6 +112,13 @@ jobs:
       - name: Install Android API 35
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
 
+      - name: Validate semantic CI helper scripts
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n android-offline-semantic-provider/ci/run_firebase_arm64_acceptance.sh
+          python -m py_compile             android-offline-semantic-provider/ci/parse_semantic_resource_status.py             android-offline-semantic-provider/ci/reproduce_semantic_model_onnx.py             android-offline-semantic-provider/ci/verify_trusted_reference_quality.py
+
       - name: Resolve pinned ORT Android dependencies
         run: gradle :android-offline-semantic-provider:dependencies --configuration debugRuntimeClasspath --console=plain
 
