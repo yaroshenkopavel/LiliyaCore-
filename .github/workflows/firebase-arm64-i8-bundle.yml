@@ -191,3 +191,75 @@ jobs:
           path: ${{ runner.temp }}/firebase-arm64-i8-bundle
           if-no-files-found: error
           retention-days: 30
+
+  verify-firebase-apk-pair:
+    name: Verify Firebase APK pair on hosted emulator
+    needs: build-firebase-arm64-i8-bundle
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Download exact Firebase ARM64 I8 bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: firebase-arm64-i8-bundle-${{ github.event.pull_request.head.sha || github.sha }}
+          path: ${{ runner.temp }}/firebase-arm64-i8-bundle
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Enable KVM
+        shell: bash
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Verify target package and instrumentation contract
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: default
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: |
+            set -euo pipefail
+            bundle="$RUNNER_TEMP/firebase-arm64-i8-bundle"
+            app="$bundle/android-semantic-test-host-debug.apk"
+            test_apk="$bundle/android-offline-semantic-provider-debug-androidTest.apk"
+            test -f "$app"
+            test -f "$test_apk"
+
+            app_id="$(apkanalyzer manifest application-id "$app")"
+            test_id="$(apkanalyzer manifest application-id "$test_apk")"
+            target_pkg="$(apkanalyzer manifest print "$test_apk" | sed -n 's/.*targetPackage="\([^"]*\)".*/\1/p' | head -1)"
+            runner="$(apkanalyzer manifest print "$test_apk" | sed -n 's/.*android:name="\([^"]*AndroidJUnitRunner\)".*/\1/p' | head -1)"
+
+            echo "appId=$app_id"
+            echo "testId=$test_id"
+            echo "targetPackage=$target_pkg"
+            echo "runner=$runner"
+
+            test "$app_id" = "pro.liliya.android.semanticprovider"
+            test "$target_pkg" = "$app_id"
+            test -n "$runner"
+
+            adb install -r "$app"
+            adb install -r "$test_apk"
+            adb shell pm list instrumentation
+            adb shell pm path "$app_id"
+            adb shell pm path "$test_id"
+
+            echo "Firebase APK pair preflight passed"
