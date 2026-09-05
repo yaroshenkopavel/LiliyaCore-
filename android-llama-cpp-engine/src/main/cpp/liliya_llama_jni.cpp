@@ -28,6 +28,7 @@ constexpr jbyte INFER_REQUEST_REJECTED = 2;
 constexpr jbyte INFER_STALE_SESSION = 3;
 constexpr jbyte INFER_OPERATION_FAILED = 4;
 constexpr jbyte INFER_PROVIDER_FAILED = 5;
+constexpr jbyte INFER_CANCELLED = 6;
 
 constexpr jint CLOSE_OK = 0;
 constexpr jint CLOSE_FAILED = 1;
@@ -207,6 +208,124 @@ PieceResult token_to_piece(
     }
     piece.assign(buffer.data(), static_cast<size_t>(count));
     return PieceResult::OK;
+}
+
+struct Utf8PrefixScan {
+    size_t complete_bytes = 0;
+    bool invalid = false;
+};
+
+Utf8PrefixScan scan_complete_utf8_prefix(const std::string & bytes) {
+    size_t index = 0;
+    while (index < bytes.size()) {
+        const uint8_t lead = static_cast<uint8_t>(bytes[index]);
+        size_t width = 0;
+
+        if (lead <= 0x7fU) {
+            width = 1;
+        } else if (lead >= 0xc2U && lead <= 0xdfU) {
+            width = 2;
+        } else if (lead >= 0xe0U && lead <= 0xefU) {
+            width = 3;
+        } else if (lead >= 0xf0U && lead <= 0xf4U) {
+            width = 4;
+        } else {
+            return Utf8PrefixScan{index, true};
+        }
+
+        if (bytes.size() - index < width) {
+            return Utf8PrefixScan{index, false};
+        }
+
+        const auto continuation = [&](size_t offset) {
+            const uint8_t value = static_cast<uint8_t>(bytes[index + offset]);
+            return value >= 0x80U && value <= 0xbfU;
+        };
+
+        if (width >= 2 && !continuation(1)) {
+            return Utf8PrefixScan{index, true};
+        }
+        if (width >= 3 && !continuation(2)) {
+            return Utf8PrefixScan{index, true};
+        }
+        if (width >= 4 && !continuation(3)) {
+            return Utf8PrefixScan{index, true};
+        }
+
+        if (width == 3) {
+            const uint8_t second = static_cast<uint8_t>(bytes[index + 1]);
+            if (lead == 0xe0U && second < 0xa0U) {
+                return Utf8PrefixScan{index, true};
+            }
+            if (lead == 0xedU && second > 0x9fU) {
+                return Utf8PrefixScan{index, true};
+            }
+        }
+
+        if (width == 4) {
+            const uint8_t second = static_cast<uint8_t>(bytes[index + 1]);
+            if (lead == 0xf0U && second < 0x90U) {
+                return Utf8PrefixScan{index, true};
+            }
+            if (lead == 0xf4U && second > 0x8fU) {
+                return Utf8PrefixScan{index, true};
+            }
+        }
+
+        index += width;
+    }
+
+    return Utf8PrefixScan{index, false};
+}
+
+enum class StreamCallbackResult {
+    CONTINUE,
+    CANCELLED,
+    FAILED
+};
+
+StreamCallbackResult emit_stream_chunk(
+    JNIEnv * env,
+    jobject sink,
+    jmethodID on_chunk,
+    const std::string & chunk
+) {
+    if (sink == nullptr || on_chunk == nullptr || chunk.empty()) {
+        return StreamCallbackResult::FAILED;
+    }
+    if (chunk.size() > static_cast<size_t>(std::numeric_limits<jsize>::max())) {
+        return StreamCallbackResult::FAILED;
+    }
+
+    jbyteArray payload = env->NewByteArray(static_cast<jsize>(chunk.size()));
+    if (payload == nullptr) {
+        if (env->ExceptionCheck()) {
+            env->ExceptionClear();
+        }
+        return StreamCallbackResult::FAILED;
+    }
+
+    env->SetByteArrayRegion(
+        payload,
+        0,
+        static_cast<jsize>(chunk.size()),
+        reinterpret_cast<const jbyte *>(chunk.data())
+    );
+    if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+        env->DeleteLocalRef(payload);
+        return StreamCallbackResult::FAILED;
+    }
+
+    const jboolean keep_going = env->CallBooleanMethod(sink, on_chunk, payload);
+    env->DeleteLocalRef(payload);
+    if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+        return StreamCallbackResult::CANCELLED;
+    }
+    return keep_going == JNI_TRUE
+        ? StreamCallbackResult::CONTINUE
+        : StreamCallbackResult::CANCELLED;
 }
 
 }  // namespace
