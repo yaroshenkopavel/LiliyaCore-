@@ -211,9 +211,29 @@ jobs:
           project_aar_bytes = sum(x["bytes"] for x in artifacts if x["kind"] == "project-aar")
           project_native_uncompressed = sum(x["uncompressed_bytes"] for x in native_entries)
           project_native_compressed = sum(x["compressed_bytes"] for x in native_entries)
+          project_arm64_native_uncompressed = sum(
+              x["uncompressed_bytes"]
+              for x in native_entries
+              if x["entry"].startswith("jni/arm64-v8a/")
+          )
+          project_arm64_native_compressed = sum(
+              x["compressed_bytes"]
+              for x in native_entries
+              if x["entry"].startswith("jni/arm64-v8a/")
+          )
           semantic_runtime_aar_bytes = sum(x["bytes"] for x in dependency_rows)
           semantic_native_uncompressed = sum(x["uncompressed_bytes"] for x in dependency_native)
           semantic_native_compressed = sum(x["compressed_bytes"] for x in dependency_native)
+          semantic_arm64_native_uncompressed = sum(
+              x["uncompressed_bytes"]
+              for x in dependency_native
+              if x["entry"].startswith("jni/arm64-v8a/")
+          )
+          semantic_arm64_native_compressed = sum(
+              x["compressed_bytes"]
+              for x in dependency_native
+              if x["entry"].startswith("jni/arm64-v8a/")
+          )
 
           report = {
               "schema": "liliya-production-package-footprint-v0.1",
@@ -233,12 +253,24 @@ jobs:
                   "project_embedded_native_uncompressed_mib": mib(project_native_uncompressed),
                   "project_embedded_native_compressed_bytes": project_native_compressed,
                   "project_embedded_native_compressed_mib": mib(project_native_compressed),
+                  "project_arm64_native_uncompressed_bytes": project_arm64_native_uncompressed,
+                  "project_arm64_native_uncompressed_mib": mib(project_arm64_native_uncompressed),
+                  "project_arm64_native_compressed_bytes": project_arm64_native_compressed,
+                  "project_arm64_native_compressed_mib": mib(project_arm64_native_compressed),
                   "semantic_runtime_aar_bytes": semantic_runtime_aar_bytes,
                   "semantic_runtime_aar_mib": mib(semantic_runtime_aar_bytes),
                   "semantic_runtime_native_uncompressed_bytes": semantic_native_uncompressed,
                   "semantic_runtime_native_uncompressed_mib": mib(semantic_native_uncompressed),
                   "semantic_runtime_native_compressed_bytes": semantic_native_compressed,
                   "semantic_runtime_native_compressed_mib": mib(semantic_native_compressed),
+                  "semantic_arm64_native_uncompressed_bytes": semantic_arm64_native_uncompressed,
+                  "semantic_arm64_native_uncompressed_mib": mib(semantic_arm64_native_uncompressed),
+                  "semantic_arm64_native_compressed_bytes": semantic_arm64_native_compressed,
+                  "semantic_arm64_native_compressed_mib": mib(semantic_arm64_native_compressed),
+                  "combined_arm64_native_uncompressed_bytes": project_arm64_native_uncompressed + semantic_arm64_native_uncompressed,
+                  "combined_arm64_native_uncompressed_mib": mib(project_arm64_native_uncompressed + semantic_arm64_native_uncompressed),
+                  "combined_arm64_native_compressed_bytes": project_arm64_native_compressed + semantic_arm64_native_compressed,
+                  "combined_arm64_native_compressed_mib": mib(project_arm64_native_compressed + semantic_arm64_native_compressed),
                   "raw_distribution_sum_bytes": core_bytes + project_aar_bytes + semantic_runtime_aar_bytes,
                   "raw_distribution_sum_mib": mib(core_bytes + project_aar_bytes + semantic_runtime_aar_bytes),
               },
@@ -265,9 +297,13 @@ jobs:
               "|---|---:|---:|",
               f"| Core JAR | {core_bytes} | {mib(core_bytes)} |",
               f"| Project release AARs | {project_aar_bytes} | {mib(project_aar_bytes)} |",
-              f"| Project embedded native (uncompressed) | {project_native_uncompressed} | {mib(project_native_uncompressed)} |",
+              f"| Project embedded native (all ABI, uncompressed) | {project_native_uncompressed} | {mib(project_native_uncompressed)} |",
+              f"| Project ARM64 native (uncompressed) | {project_arm64_native_uncompressed} | {mib(project_arm64_native_uncompressed)} |",
               f"| Semantic runtime AARs | {semantic_runtime_aar_bytes} | {mib(semantic_runtime_aar_bytes)} |",
-              f"| Semantic runtime native (uncompressed) | {semantic_native_uncompressed} | {mib(semantic_native_uncompressed)} |",
+              f"| Semantic runtime native (all ABI, uncompressed) | {semantic_native_uncompressed} | {mib(semantic_native_uncompressed)} |",
+              f"| Semantic ARM64 native (uncompressed) | {semantic_arm64_native_uncompressed} | {mib(semantic_arm64_native_uncompressed)} |",
+              f"| Combined ARM64 native (uncompressed) | {project_arm64_native_uncompressed + semantic_arm64_native_uncompressed} | {mib(project_arm64_native_uncompressed + semantic_arm64_native_uncompressed)} |",
+              f"| Combined ARM64 native (compressed-in-AAR view) | {project_arm64_native_compressed + semantic_arm64_native_compressed} | {mib(project_arm64_native_compressed + semantic_arm64_native_compressed)} |",
               f"| Raw JAR+AAR distribution sum | {report['totals']['raw_distribution_sum_bytes']} | {report['totals']['raw_distribution_sum_mib']} |",
               "",
               "Model weights are excluded. Native uncompressed values are diagnostic views inside AARs and are not added again to the raw distribution sum.",
