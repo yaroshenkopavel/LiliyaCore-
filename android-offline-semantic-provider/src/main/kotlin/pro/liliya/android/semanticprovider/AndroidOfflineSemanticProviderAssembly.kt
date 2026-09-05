@@ -17,25 +17,38 @@ import pro.liliya.core.memory.MemoryRecordSnapshot
  * away from the Android main/UI thread.
  */
 class AndroidOfflineSemanticProviderAssembly internal constructor(
-    private val provider: OfflineSemanticProviderComposition
+    provider: OfflineSemanticProviderComposition
 ) {
     @Volatile
     private var publicState: AndroidOfflineSemanticProviderState =
         AndroidOfflineSemanticProviderState.UNAVAILABLE
 
-    private val memoryAdapter = OfflineSemanticMemoryRelevanceDiscoveryAdapter(provider)
-    private val knowledgeAdapter = OfflineSemanticKnowledgeRelevanceDiscoveryAdapter(provider)
+    private var providerRef: OfflineSemanticProviderComposition? = provider
+    private var memoryAdapterRef: OfflineSemanticMemoryRelevanceDiscoveryAdapter? =
+        OfflineSemanticMemoryRelevanceDiscoveryAdapter(provider)
+    private var knowledgeAdapterRef: OfflineSemanticKnowledgeRelevanceDiscoveryAdapter? =
+        OfflineSemanticKnowledgeRelevanceDiscoveryAdapter(provider)
 
     val memoryRelevanceDiscovery: MemoryRelevanceDiscoveryPort =
         MemoryRelevanceDiscoveryPort { request ->
-            requireReady()
-            memoryAdapter.discover(request)
+            val adapter = synchronized(this) {
+                requireReady()
+                memoryAdapterRef ?: throw AndroidOfflineSemanticProviderUnavailableException(
+                    publicState
+                )
+            }
+            adapter.discover(request)
         }
 
     val knowledgeRelevanceDiscovery: KnowledgeRelevanceDiscoveryPort =
         KnowledgeRelevanceDiscoveryPort { request ->
-            requireReady()
-            knowledgeAdapter.discover(request)
+            val adapter = synchronized(this) {
+                requireReady()
+                knowledgeAdapterRef ?: throw AndroidOfflineSemanticProviderUnavailableException(
+                    publicState
+                )
+            }
+            adapter.discover(request)
         }
 
     fun state(): AndroidOfflineSemanticProviderState = publicState
@@ -55,6 +68,9 @@ class AndroidOfflineSemanticProviderAssembly internal constructor(
         if (publicState != AndroidOfflineSemanticProviderState.UNAVAILABLE) {
             return AndroidOfflineSemanticProviderLoadResult.Busy
         }
+        val provider = providerRef ?: return failLoad(
+            AndroidOfflineSemanticProviderLoadResult.ProviderFailed
+        )
 
         publicState = AndroidOfflineSemanticProviderState.LOADING
 
@@ -115,13 +131,18 @@ class AndroidOfflineSemanticProviderAssembly internal constructor(
         memory: List<MemoryRecordSnapshot>,
         knowledge: List<KnowledgeItemSnapshot>
     ): AndroidOfflineSemanticProviderRebuildResult {
-        synchronized(this) {
+        val provider = synchronized(this) {
             if (publicState != AndroidOfflineSemanticProviderState.LOADED &&
                 publicState != AndroidOfflineSemanticProviderState.READY
             ) {
                 return AndroidOfflineSemanticProviderRebuildResult.NotLoaded
             }
+            val active = providerRef ?: run {
+                publicState = AndroidOfflineSemanticProviderState.FAILED
+                return AndroidOfflineSemanticProviderRebuildResult.Failed
+            }
             publicState = AndroidOfflineSemanticProviderState.REBUILDING
+            active
         }
 
         val observations = ArrayList<SemanticSourceObservation>(memory.size + knowledge.size)
@@ -171,10 +192,11 @@ class AndroidOfflineSemanticProviderAssembly internal constructor(
     internal fun synchronizeAdd(
         observation: SemanticSourceObservation
     ): AndroidOfflineSemanticMutationApplyResult {
-        synchronized(this) {
+        val provider = synchronized(this) {
             if (publicState != AndroidOfflineSemanticProviderState.READY) {
                 return AndroidOfflineSemanticMutationApplyResult.NotReady
             }
+            providerRef ?: return AndroidOfflineSemanticMutationApplyResult.NotReady
         }
 
         return when (provider.add(observation)) {
@@ -203,10 +225,11 @@ class AndroidOfflineSemanticProviderAssembly internal constructor(
         expected: SemanticIndexSourceReference,
         replacement: SemanticSourceObservation
     ): AndroidOfflineSemanticMutationApplyResult {
-        synchronized(this) {
+        val provider = synchronized(this) {
             if (publicState != AndroidOfflineSemanticProviderState.READY) {
                 return AndroidOfflineSemanticMutationApplyResult.NotReady
             }
+            providerRef ?: return AndroidOfflineSemanticMutationApplyResult.NotReady
         }
 
         return when (provider.replace(expected, replacement)) {
@@ -233,10 +256,11 @@ class AndroidOfflineSemanticProviderAssembly internal constructor(
     internal fun synchronizeRemove(
         source: SemanticIndexSourceReference
     ): AndroidOfflineSemanticMutationApplyResult {
-        synchronized(this) {
+        val provider = synchronized(this) {
             if (publicState != AndroidOfflineSemanticProviderState.READY) {
                 return AndroidOfflineSemanticMutationApplyResult.NotReady
             }
+            providerRef ?: return AndroidOfflineSemanticMutationApplyResult.NotReady
         }
 
         return when (provider.remove(source)) {
@@ -268,14 +292,23 @@ class AndroidOfflineSemanticProviderAssembly internal constructor(
         if (publicState == AndroidOfflineSemanticProviderState.CLOSED) {
             return AndroidOfflineSemanticProviderCloseResult.AlreadyClosed
         }
+        val provider = providerRef
+        if (provider == null) {
+            releaseProviderOwnership()
+            publicState = AndroidOfflineSemanticProviderState.CLOSED
+            return AndroidOfflineSemanticProviderCloseResult.AlreadyClosed
+        }
+
         val previous = publicState
         publicState = AndroidOfflineSemanticProviderState.CLOSING
         return when (provider.close()) {
             OfflineSemanticProviderCloseResult.Closed -> {
+                releaseProviderOwnership()
                 publicState = AndroidOfflineSemanticProviderState.CLOSED
                 AndroidOfflineSemanticProviderCloseResult.Closed
             }
             OfflineSemanticProviderCloseResult.AlreadyClosed -> {
+                releaseProviderOwnership()
                 publicState = AndroidOfflineSemanticProviderState.CLOSED
                 AndroidOfflineSemanticProviderCloseResult.AlreadyClosed
             }
@@ -288,6 +321,16 @@ class AndroidOfflineSemanticProviderAssembly internal constructor(
                 AndroidOfflineSemanticProviderCloseResult.ProviderFailed
             }
         }
+    }
+
+    @Synchronized
+    internal fun ownsProviderResources(): Boolean = providerRef != null
+
+    @Synchronized
+    private fun releaseProviderOwnership() {
+        memoryAdapterRef = null
+        knowledgeAdapterRef = null
+        providerRef = null
     }
 
     private fun requireReady() {
