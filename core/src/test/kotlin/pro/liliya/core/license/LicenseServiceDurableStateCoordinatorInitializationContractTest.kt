@@ -116,6 +116,79 @@ class LicenseServiceDurableStateCoordinatorInitializationContractTest {
         assertEquals(second.snapshot, coordinator.inspectPublished())
     }
 
+    @Test
+    fun committed_state_restores_offline_without_new_service_response() {
+        val backend = FakeBackend()
+        val protector = FakeProtector(protectorReference)
+        val firstProcess = coordinator(backend, protector)
+
+        val committed = assertIs<LicenseServiceDurableStateAcceptanceResult.Advanced>(
+            firstProcess.verifyAndAccept(signedEnvelope(replay = 11))
+        )
+        assertEquals(1L, committed.snapshot.generation.value)
+        assertEquals(1L, committed.snapshot.backendRevision.value)
+
+        val restarted = coordinator(backend, protector)
+        assertNull(restarted.inspectPublished())
+
+        val restored = assertIs<LicenseServiceDurableInitializationResult.Restored>(
+            restarted.initialize()
+        )
+        assertEquals(committed.snapshot, restored.snapshot)
+        assertEquals(committed.snapshot, restarted.inspectPublished())
+
+        val context = assertIs<LicenseServiceDurablePolicyContextResult.Available>(
+            restarted.policyContext(
+                scope = committed.snapshot.states.single().scope,
+                now = baseTime.plusSeconds(30),
+                suspiciousTimeOrReplayState = false
+            )
+        )
+        assertEquals(11L, context.context.minimumReplaySequence!!.value)
+        assertEquals(7L, context.context.minimumRevocationEpoch.value)
+        assertEquals(baseTime.plusSeconds(11), context.latestServerTime)
+    }
+
+    @Test
+    fun repeated_initialize_is_idempotent_and_does_not_commit_new_generation() {
+        val backend = FakeBackend()
+        val protector = FakeProtector(protectorReference)
+        val firstProcess = coordinator(backend, protector)
+
+        assertIs<LicenseServiceDurableStateAcceptanceResult.Advanced>(
+            firstProcess.verifyAndAccept(signedEnvelope(replay = 11))
+        )
+        val commitsBeforeRestore = backend.commitCalls
+
+        val restarted = coordinator(backend, protector)
+        val restored = assertIs<LicenseServiceDurableInitializationResult.Restored>(
+            restarted.initialize()
+        )
+        val repeated = assertIs<LicenseServiceDurableInitializationResult.AlreadyInitialized>(
+            restarted.initialize()
+        )
+
+        assertEquals(restored.snapshot, repeated.snapshot)
+        assertEquals(commitsBeforeRestore, backend.commitCalls)
+        assertEquals(1L, repeated.snapshot.generation.value)
+        assertEquals(1L, repeated.snapshot.backendRevision.value)
+    }
+
+    @Test
+    fun missing_backend_restore_is_explicit_and_does_not_prepare_protector() {
+        val backend = FakeBackend()
+        val protector = FakeProtector(protectorReference)
+        val restarted = coordinator(backend, protector)
+
+        assertIs<LicenseServiceDurableInitializationResult.Missing>(
+            restarted.initialize()
+        )
+        assertNull(restarted.inspectPublished())
+        assertEquals(0, protector.prepareCalls)
+        assertEquals(0, protector.sealCalls)
+        assertEquals(0, backend.commitCalls)
+    }
+
     private fun coordinator(
         backend: FakeBackend,
         protector: FakeProtector
