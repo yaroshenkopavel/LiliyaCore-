@@ -75,7 +75,8 @@ class CognitiveInferenceRequest(
 enum class CognitiveInferenceFailure {
     PROVIDER_REJECTED,
     PROVIDER_FAILED,
-    RESOURCE_LIMIT_REJECTED
+    RESOURCE_LIMIT_REJECTED,
+    CANCELLED
 }
 
 sealed interface CognitiveInferenceResult {
@@ -99,3 +100,34 @@ sealed interface CognitiveInferenceResult {
 fun interface CognitiveInferencePort {
     fun infer(request: CognitiveInferenceRequest): CognitiveInferenceResult
 }
+
+enum class CognitiveStreamControl {
+    CONTINUE,
+    STOP
+}
+
+class CognitiveInferenceChunk(
+    val turn: CognitiveTurnReference,
+    val sequence: Long,
+    val text: String
+) {
+    init {
+        require(sequence > 0L) { "cognitive inference chunk sequence must be positive" }
+        require(text.isNotEmpty()) { "cognitive inference chunk must not be empty" }
+    }
+
+    override fun toString(): String =
+        "CognitiveInferenceChunk(turn=$turn, sequence=$sequence, text=<redacted:${text.length}>)"
+}
+
+fun interface CognitiveStreamingSink {
+    fun onChunk(chunk: CognitiveInferenceChunk): CognitiveStreamControl
+}
+
+fun interface CognitiveStreamingInferencePort {
+    fun infer(
+        request: CognitiveInferenceRequest,
+        sink: CognitiveStreamingSink
+    ): CognitiveInferenceResult
+}
+
