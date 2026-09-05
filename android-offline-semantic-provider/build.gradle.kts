@@ -45,3 +45,61 @@ dependencies {
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test:runner:1.6.2")
 }
+
+
+tasks.register("reportSemanticRuntimeFootprint") {
+    dependsOn("assembleRelease")
+    doLast {
+        val runtime = configurations.getByName("releaseRuntimeClasspath")
+        val resolved = runtime.resolvedConfiguration.resolvedArtifacts
+            .sortedWith(compareBy({ it.moduleVersion.id.group }, { it.name }, { it.moduleVersion.id.version }))
+
+        val releaseAar = layout.buildDirectory
+            .file("outputs/aar/android-offline-semantic-provider-release.aar")
+            .get()
+            .asFile
+        check(releaseAar.isFile) { "release semantic provider AAR is missing" }
+
+        val selected = resolved.filter {
+            it.moduleVersion.id.group == "com.microsoft.onnxruntime"
+        }
+        check(selected.any { it.name == "onnxruntime-android" }) {
+            "pinned onnxruntime-android artifact is missing from release runtime classpath"
+        }
+        check(selected.any { it.name == "onnxruntime-extensions-android" }) {
+            "pinned onnxruntime-extensions-android artifact is missing from release runtime classpath"
+        }
+
+        val report = layout.buildDirectory
+            .file("reports/semantic-runtime-footprint.json")
+            .get()
+            .asFile
+        report.parentFile.mkdirs()
+
+        fun escaped(value: String): String =
+            value.replace("\\", "\\\\").replace("\"", "\\\"")
+
+        val externalBytes = selected.sumOf { it.file.length() }
+        val json = buildString {
+            appendLine("{")
+            appendLine("  \"scope\": \"semantic-release-runtime-input-lower-bound\",")
+            appendLine("  \"finalApkEvidence\": false,")
+            appendLine("  \"providerReleaseAarBytes\": ${releaseAar.length()},")
+            appendLine("  \"onnxRuntimeArtifactsBytes\": $externalBytes,")
+            appendLine("  \"combinedLowerBoundBytes\": ${releaseAar.length() + externalBytes},")
+            appendLine("  \"artifacts\": [")
+            selected.forEachIndexed { index, artifact ->
+                val id = artifact.moduleVersion.id
+                val comma = if (index == selected.lastIndex) "" else ","
+                appendLine(
+                    "    {\"group\":\"${escaped(id.group)}\",\"name\":\"${escaped(artifact.name)}\",\"version\":\"${escaped(id.version)}\",\"bytes\":${artifact.file.length()}}$comma"
+                )
+            }
+            appendLine("  ]")
+            appendLine("}")
+        }
+        report.writeText(json)
+        println("SEMANTIC_RUNTIME_FOOTPRINT_REPORT=${report.absolutePath}")
+        println(json)
+    }
+}
