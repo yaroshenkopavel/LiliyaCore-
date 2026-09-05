@@ -55,6 +55,7 @@ class CognitiveGenerationCoordinatorContractTest {
         prefix: String,
         inference: CognitiveInferencePort,
         materialization: CognitiveMaterializationPort,
+        streamingInference: CognitiveStreamingInferencePort? = null,
         limits: CognitiveRuntimeLimits = CognitiveRuntimeLimits(
             maxRuntimeScopeIdChars = 64,
             maxTurnIdChars = 128,
@@ -101,6 +102,7 @@ class CognitiveGenerationCoordinatorContractTest {
             selfSnapshots = SelfSnapshotPort { null },
             personalitySnapshots = PersonalitySnapshotPort { emptyList() },
             inference = inference,
+            streamingInference = streamingInference,
             limits = limits,
             materialization = materialization,
             planning = planning,
