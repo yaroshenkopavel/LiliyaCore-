@@ -9,6 +9,8 @@ on:
       - 'android-offline-semantic-provider/ci/reproduce_semantic_model_onnx.py'
       - 'android-offline-semantic-provider/src/main/kotlin/pro/liliya/android/semanticprovider/SemanticModelArtifactIdentity.kt'
       - 'android-offline-semantic-provider/src/main/kotlin/pro/liliya/android/semanticprovider/AndroidOfflineSemanticCognitiveRetrievalAssembly.kt'
+      - 'android-offline-semantic-provider/src/main/kotlin/pro/liliya/android/semanticprovider/AndroidOfflineSemanticArtifactProvisioner.kt'
+      - 'android-offline-semantic-provider/src/androidTest/kotlin/pro/liliya/android/semanticprovider/AndroidOfflineSemanticArtifactProvisionerInstrumentedTest.kt'
       - 'android-offline-semantic-provider/src/androidTest/kotlin/pro/liliya/android/semanticprovider/OfflineSemanticProviderRealCognitiveLlamaE2EInstrumentedTest.kt'
       - '.github/workflows/semantic-model-provenance.yml'
   pull_request:
@@ -173,6 +175,16 @@ jobs:
           profile: pixel_6
           disable-animations: true
           script: gradle :android-offline-semantic-provider:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.semanticFixtureSha256=$SELF_REPRODUCED_SHA256 -Pandroid.testInstrumentationRunnerArguments.semanticFixtureSizeBytes=$SELF_REPRODUCED_SIZE '-Pandroid.testInstrumentationRunnerArguments.class=pro.liliya.android.semanticprovider.OfflineSemanticProviderRealModelInstrumentedTest' --console=plain
+
+      - name: Run exact semantic artifact provisioning Android contract
+        uses: ReactiveCircus/android-emulator-runner@v2.38.0
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          script: gradle :android-offline-semantic-provider:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.semanticFixtureSha256=$SELF_REPRODUCED_SHA256 -Pandroid.testInstrumentationRunnerArguments.semanticFixtureSizeBytes=$SELF_REPRODUCED_SIZE '-Pandroid.testInstrumentationRunnerArguments.class=pro.liliya.android.semanticprovider.AndroidOfflineSemanticArtifactProvisionerInstrumentedTest' --console=plain
 
       - name: Run real ONNX to Cognitive Context to llama.cpp end-to-end contract
         uses: ReactiveCircus/android-emulator-runner@v2.38.0
