@@ -46,6 +46,7 @@ class OfflineSemanticProviderProductionResourceInstrumentedTest {
                 "arm64ThresholdsApplied" to isArm64Target().toString()
             )
 
+            writeProgress("provider-load-start")
             forceGc()
             val processPssBeforeStartupBytes = processPssBytes()
             val startupStarted = SystemClock.elapsedRealtimeNanos()
@@ -60,10 +61,12 @@ class OfflineSemanticProviderProductionResourceInstrumentedTest {
 
             evidence["processPssBeforeStartupBytes"] = processPssBeforeStartupBytes.toString()
             evidence["artifactValidationAndOrtLoadMs"] = artifactValidationAndOrtLoadMs.toString()
+            writeProgress("provider-load-complete", artifactValidationAndOrtLoadMs)
 
             var firstFullStartupMs: Long? = null
             try {
                 for (count in REBUILD_TIERS) {
+                    writeProgress("rebuild-$count-start")
                     val snapshots = memorySnapshots(count)
                     forceGc()
                     val beforePss = processPssBytes()
@@ -98,6 +101,7 @@ class OfflineSemanticProviderProductionResourceInstrumentedTest {
                         evidence["fullStartup1kMs"] = firstFullStartupMs.toString()
                     }
 
+                    writeProgress("rebuild-$count-complete", sample.value)
                     recordEvidence(
                         mapOf(
                             "realRebuild${count}LatencyMs" to sample.value.toString(),
@@ -128,6 +132,7 @@ class OfflineSemanticProviderProductionResourceInstrumentedTest {
             }
 
             writeEvidenceFile(evidence)
+            writeProgress("complete")
             recordEvidence(evidence)
         }
     }
@@ -201,6 +206,27 @@ class OfflineSemanticProviderProductionResourceInstrumentedTest {
         InstrumentationRegistry.getInstrumentation().sendStatus(2, bundle)
     }
 
+    private fun writeProgress(phase: String, elapsedMs: Long? = null) {
+        val targetContext = InstrumentationRegistry.getInstrumentation().targetContext
+        val target = File(targetContext.filesDir, RESOURCE_PROGRESS_FILE_NAME)
+        val payload = buildString {
+            append("phase=")
+            append(phase)
+            if (elapsedMs != null) {
+                append(" elapsedMs=")
+                append(elapsedMs)
+            }
+            append('\n')
+        }
+        target.writeText(payload, Charsets.UTF_8)
+        recordEvidence(
+            buildMap {
+                put("phase", phase)
+                if (elapsedMs != null) put("phaseElapsedMs", elapsedMs.toString())
+            }
+        )
+    }
+
     private fun writeEvidenceFile(values: Map<String, String>) {
         val targetContext = InstrumentationRegistry.getInstrumentation().targetContext
         val target = File(targetContext.filesDir, RESOURCE_EVIDENCE_FILE_NAME)
@@ -257,6 +283,7 @@ class OfflineSemanticProviderProductionResourceInstrumentedTest {
         val REBUILD_TIERS = intArrayOf(1_000, 5_000, 10_000, 20_000)
         const val PEAK_SAMPLE_INTERVAL_MS = 25L
         const val RESOURCE_EVIDENCE_FILE_NAME = "post-onnx-production-resource-evidence.json"
+        const val RESOURCE_PROGRESS_FILE_NAME = "post-onnx-production-resource-progress.txt"
         val BASE: Instant = Instant.parse("2026-09-05T15:00:00Z")
     }
 }
