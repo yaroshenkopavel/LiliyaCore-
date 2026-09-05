@@ -41,6 +41,20 @@ class AndroidOfflineSemanticProviderAssembly internal constructor(
     fun state(): AndroidOfflineSemanticProviderState = publicState
 
     /**
+     * Loads one bundle previously published by [AndroidOfflineSemanticArtifactProvisioner].
+     *
+     * The bundle is opaque so production hosts do not need access to private filesystem paths.
+     * This method is blocking and must be called away from the Android main/UI thread.
+     */
+    fun load(
+        bundle: AndroidOfflineSemanticProvisionedBundle
+    ): AndroidOfflineSemanticProviderLoadResult =
+        load(
+            appPrivateRoot = bundle.appPrivateRoot,
+            encoderFile = bundle.encoderFile
+        )
+
+    /**
      * Validates and loads the exact repository-approved v0.1 ONNX encoder/tokenizer bundle.
      *
      * [encoderFile] must be inside [appPrivateRoot]. The tokenizer must be present beside it under
