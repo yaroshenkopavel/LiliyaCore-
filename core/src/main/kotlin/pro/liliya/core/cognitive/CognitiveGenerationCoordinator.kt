@@ -83,14 +83,14 @@ internal class CognitiveGenerationCoordinator(
     private val turns: CognitiveTurnRegistry,
     private val scope: CognitiveRuntimeScopeId,
     private val inference: CognitiveInferencePort,
-    private val streamingInference: CognitiveStreamingInferencePort? = null,
     private val materialization: CognitiveMaterializationPort,
     private val planning: PlanningComposition,
     private val reasoning: ReasoningComposition,
     private val decision: DecisionComposition,
     private val artifactIds: CognitiveArtifactIdSource,
     private val timestamps: CognitiveTimestampSource,
-    private val limits: CognitiveRuntimeLimits
+    private val limits: CognitiveRuntimeLimits,
+    private val streamingInference: CognitiveStreamingInferencePort? = null
 ) {
     private data class CompensationResult(val complete: Boolean)
 
