@@ -340,7 +340,7 @@ class OfflineSemanticProviderCoreAuthoritativeIntegrationTest {
     }
 
     private fun artifact(): ValidatedSemanticModelArtifact =
-        TestSemanticModelArtifacts.validated(File("/private/test/semantic-model.gguf"))
+        TestSemanticModelArtifacts.validated(File("/private/test/semantic-model.onnx"))
 
     private fun turn(): CognitiveTurnReference = CognitiveTurnReference(
         CognitiveTurnId("semantic-provider-aba-turn"),
