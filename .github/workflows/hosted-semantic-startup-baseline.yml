@@ -5,8 +5,14 @@ on:
     inputs:
       provenance_run_id:
         description: Successful Semantic Model Provenance run ID containing semantic-onnx-provenance
-        required: true
+        required: false
+        default: '33981322350'
         type: string
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/hosted-semantic-startup-baseline.yml'
 
 permissions:
   contents: read
@@ -30,7 +36,7 @@ jobs:
           name: semantic-onnx-provenance
           path: ${{ runner.temp }}/semantic-onnx-download
           repository: ${{ github.repository }}
-          run-id: ${{ inputs.provenance_run_id }}
+          run-id: ${{ inputs.provenance_run_id || '33981322350' }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Verify and stage exact ONNX bundle
@@ -149,7 +155,7 @@ jobs:
 
       - name: Validate and classify hosted evidence
         env:
-          PROVENANCE_RUN_ID: ${{ inputs.provenance_run_id }}
+          PROVENANCE_RUN_ID: ${{ inputs.provenance_run_id || '33981322350' }}
           MEASURED_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
