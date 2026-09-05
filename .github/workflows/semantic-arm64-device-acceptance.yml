@@ -96,8 +96,8 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install Android API 35
-        run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
+      - name: Install Android API 35 and pinned native toolchain
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools" "ndk;29.0.13113456" "cmake;3.31.6"
 
       - name: Verify one physical ARM64 Android device
         shell: bash
@@ -118,14 +118,14 @@ jobs:
           echo "ANDROID_DEVICE_SERIAL=$serial" >> "$GITHUB_ENV"
 
       - name: Compile exact ARM64 resource instrumentation
-        run: gradle :android-offline-semantic-provider:assembleDebug :android-offline-semantic-provider:assembleDebugAndroidTest -PsemanticSkipGenerationTestDependency=true --console=plain
+        run: gradle :android-offline-semantic-provider:assembleDebug :android-offline-semantic-provider:assembleDebugAndroidTest --console=plain
 
       - name: Run exact physical ARM64 semantic resource acceptance
         shell: bash
         run: |
           set -euo pipefail
           export ANDROID_SERIAL="$ANDROID_DEVICE_SERIAL"
-          gradle :android-offline-semantic-provider:connectedDebugAndroidTest             -PsemanticSkipGenerationTestDependency=true             -Pandroid.testInstrumentationRunnerArguments.semanticFixtureSha256="$SELF_REPRODUCED_SHA256"             -Pandroid.testInstrumentationRunnerArguments.semanticFixtureSizeBytes="$SELF_REPRODUCED_SIZE"             '-Pandroid.testInstrumentationRunnerArguments.class=pro.liliya.android.semanticprovider.OfflineSemanticProviderResourceInstrumentedTest'             --console=plain
+          gradle :android-offline-semantic-provider:connectedDebugAndroidTest             -Pandroid.testInstrumentationRunnerArguments.semanticFixtureSha256="$SELF_REPRODUCED_SHA256"             -Pandroid.testInstrumentationRunnerArguments.semanticFixtureSizeBytes="$SELF_REPRODUCED_SIZE"             '-Pandroid.testInstrumentationRunnerArguments.class=pro.liliya.android.semanticprovider.OfflineSemanticProviderResourceInstrumentedTest'             --console=plain
 
           evidence_name="semantic-resource-evidence.json"
           mapfile -t semantic_packages < <(
@@ -195,7 +195,6 @@ jobs:
           set -euo pipefail
           export ANDROID_SERIAL="$ANDROID_DEVICE_SERIAL"
           gradle :android-offline-semantic-provider:connectedDebugAndroidTest \
-            -PsemanticSkipGenerationTestDependency=true \
             -Pandroid.testInstrumentationRunnerArguments.semanticFixtureSha256="$SELF_REPRODUCED_SHA256" \
             -Pandroid.testInstrumentationRunnerArguments.semanticFixtureSizeBytes="$SELF_REPRODUCED_SIZE" \
             '-Pandroid.testInstrumentationRunnerArguments.class=pro.liliya.android.semanticprovider.OfflineSemanticProviderProductionResourceInstrumentedTest' \
@@ -276,9 +275,6 @@ jobs:
             --output "$asset"
           echo "6151b1929d7f5aa3385d9ddef3393e55587c0a55de661562322bc51dfda93a04  $asset" | sha256sum --check --strict
           test "$(stat --format=%s "$asset")" -eq 19077344
-
-      - name: Install NDK and CMake for combined residency
-        run: sdkmanager "ndk;29.0.13113456" "cmake;3.31.6"
 
       - name: Compile combined ONNX and llama ARM64 instrumentation
         run: gradle :android-offline-semantic-provider:assembleDebug :android-offline-semantic-provider:assembleDebugAndroidTest --console=plain
