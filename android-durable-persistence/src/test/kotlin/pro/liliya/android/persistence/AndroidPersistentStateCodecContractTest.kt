@@ -71,6 +71,34 @@ class AndroidPersistentStateCodecContractTest {
     }
 
     @Test
+    fun malformed_utf8_identifier_is_corrupt() {
+        val encoded = AndroidPersistentStateCodec.encode(1, fixtureState())
+
+        // Locate the first UTF-8 body byte (store id) after the fixed header and its length prefix.
+        val headerBytes = 4 + 4 + 8 + 4
+        val storeLengthOffset = headerBytes
+        val storeBytesOffset = storeLengthOffset + 4
+        encoded[storeBytesOffset] = 0xC3.toByte()
+        encoded[storeBytesOffset + 1] = 0x28.toByte()
+
+        // Recompute the outer body digest so this specifically exercises strict UTF-8 decoding,
+        // not the checksum-corruption branch.
+        val bodyLength =
+            ((encoded[storeLengthOffset - 4].toInt() and 0xff) shl 24) or
+                ((encoded[storeLengthOffset - 3].toInt() and 0xff) shl 16) or
+                ((encoded[storeLengthOffset - 2].toInt() and 0xff) shl 8) or
+                (encoded[storeLengthOffset - 1].toInt() and 0xff)
+        val body = encoded.copyOfRange(headerBytes, headerBytes + bodyLength)
+        val digest = java.security.MessageDigest.getInstance("SHA-256").digest(body)
+        digest.copyInto(encoded, headerBytes + bodyLength)
+
+        assertEquals(
+            AndroidPersistentStateCodec.DecodeResult.Corrupt,
+            AndroidPersistentStateCodec.decode(encoded)
+        )
+    }
+
+    @Test
     fun truncated_state_is_corrupt() {
         val encoded = AndroidPersistentStateCodec.encode(1, fixtureState())
         val truncated = encoded.copyOf(encoded.size - 3)
