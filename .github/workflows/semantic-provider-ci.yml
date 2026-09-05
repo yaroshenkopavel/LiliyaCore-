@@ -128,5 +128,15 @@ jobs:
       - name: Compile ORT-backed semantic Android library
         run: gradle :android-offline-semantic-provider:assembleDebug --console=plain
 
+      - name: Record release runtime footprint lower bound
+        run: gradle :android-offline-semantic-provider:reportSemanticRuntimeFootprint --console=plain
+
+      - name: Publish semantic runtime footprint evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: semantic-runtime-footprint
+          path: android-offline-semantic-provider/build/reports/semantic-runtime-footprint.json
+          if-no-files-found: error
+
       - name: Compile semantic instrumentation contracts
         run: gradle :android-offline-semantic-provider:assembleDebugAndroidTest --console=plain
