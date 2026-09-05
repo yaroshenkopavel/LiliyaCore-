@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - semantic/**
     paths:
       - 'android-offline-semantic-provider/**'
       - '.github/workflows/semantic-provider-ci.yml'
@@ -37,9 +36,53 @@ jobs:
       - name: Install pinned reference runtime
         run: python -m pip install --disable-pip-version-check 'torch==2.4.1' 'transformers==4.44.2'
 
+      - name: Prefetch immutable upstream reference with bounded retry
+        env:
+          HF_HUB_DISABLE_TELEMETRY: '1'
+        shell: bash
+        run: |
+          python - <<'PY'
+          import time
+          from huggingface_hub import snapshot_download
+
+          repo_id = "intfloat/multilingual-e5-small"
+          revision = "fd1525a9fd15316a2d503bf26ab031a61d056e98"
+          delays = (0, 15, 30, 60, 120)
+
+          last = None
+          for attempt, delay in enumerate(delays, start=1):
+              if delay:
+                  time.sleep(delay)
+              try:
+                  path = snapshot_download(
+                      repo_id=repo_id,
+                      revision=revision,
+                      allow_patterns=[
+                          "config.json",
+                          "model.safetensors",
+                          "sentencepiece.bpe.model",
+                          "special_tokens_map.json",
+                          "tokenizer.json",
+                          "tokenizer_config.json",
+                      ],
+                  )
+                  print(f"immutable reference cached at {path}")
+                  break
+              except Exception as exc:
+                  last = exc
+                  print(
+                      f"immutable reference prefetch attempt {attempt}/{len(delays)} failed: "
+                      f"{type(exc).__name__}"
+                  )
+          else:
+              raise last
+          PY
+
       - name: Verify immutable upstream reference ranking
         env:
           HF_HUB_DISABLE_TELEMETRY: '1'
+          HF_HUB_OFFLINE: '1'
+          TRANSFORMERS_OFFLINE: '1'
           TRANSFORMERS_VERBOSITY: error
         run: python android-offline-semantic-provider/ci/verify_trusted_reference_quality.py
 
