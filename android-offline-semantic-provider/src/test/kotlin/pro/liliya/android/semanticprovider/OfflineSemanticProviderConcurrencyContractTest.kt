@@ -67,7 +67,7 @@ class OfflineSemanticProviderConcurrencyContractTest {
     )
 
     private fun artifact(): ValidatedSemanticModelArtifact =
-        TestSemanticModelArtifacts.validated(File("/private/test/model.gguf"))
+        TestSemanticModelArtifacts.validated(File("/private/test/model.onnx"))
 
     private fun observation(id: String): SemanticSourceObservation = SemanticSourceObservation(
         source = SemanticIndexSourceReference.Memory(
