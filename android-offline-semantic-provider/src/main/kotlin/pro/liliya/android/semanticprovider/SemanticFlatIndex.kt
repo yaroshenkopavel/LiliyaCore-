@@ -190,6 +190,7 @@ internal class SemanticFlatIndex(
         if (current.source != expected) {
             return SemanticIndexReplaceResult.StaleExpected
         }
+        current.vector.clear()
         entries[key] = Entry(
             source = replacement,
             profileGeneration = profileGeneration,
@@ -207,6 +208,8 @@ internal class SemanticFlatIndex(
             return SemanticIndexRemoveResult.StaleOrMissing
         }
         entries.remove(key)
+        current.vector.clear()
+        current.stableIdUtf8.fill(0)
         decrementDomainCount(source.domain)
         return SemanticIndexRemoveResult.Removed
     }
