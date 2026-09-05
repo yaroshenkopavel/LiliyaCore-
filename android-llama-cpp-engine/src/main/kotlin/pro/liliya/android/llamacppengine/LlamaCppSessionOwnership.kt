@@ -34,12 +34,18 @@ internal class LlamaCppSessionOwnership(
     // This is engine-local; no Core/staging/backend ownership lock is held during native work.
     private val executionLock = ReentrantLock(true)
     private var state = State.LIVE
+    private var operationInProgress = false
 
     override fun infer(request: ModelEngineInferenceRequest): ModelEngineInferenceResult =
         executionLock.withLock {
             if (state != State.LIVE) {
                 return@withLock ModelEngineInferenceResult.Rejected(
                     ModelEngineInferenceFailure.SESSION_FAILED
+                )
+            }
+            if (operationInProgress) {
+                return@withLock ModelEngineInferenceResult.Rejected(
+                    ModelEngineInferenceFailure.RESOURCE_LIMIT_REJECTED
                 )
             }
             if (
@@ -65,6 +71,7 @@ internal class LlamaCppSessionOwnership(
                 )
             }
 
+            operationInProgress = true
             val result = try {
                 nativePort.infer(
                     nativeSessionId = nativeSessionId,
@@ -74,6 +81,7 @@ internal class LlamaCppSessionOwnership(
             } catch (_: Throwable) {
                 LlamaCppNativeInferenceResult.Rejected(ModelEngineInferenceFailure.PROVIDER_FAILED)
             } finally {
+                operationInProgress = false
                 promptUtf8.fill(0)
             }
 
@@ -95,6 +103,11 @@ internal class LlamaCppSessionOwnership(
         if (state != State.LIVE) {
             return@withLock ModelEngineInferenceResult.Rejected(
                 ModelEngineInferenceFailure.SESSION_FAILED
+            )
+        }
+        if (operationInProgress) {
+            return@withLock ModelEngineInferenceResult.Rejected(
+                ModelEngineInferenceFailure.RESOURCE_LIMIT_REJECTED
             )
         }
         if (
@@ -124,6 +137,7 @@ internal class LlamaCppSessionOwnership(
         var stopped = false
         var contractViolation = false
         val collected = StringBuilder()
+        operationInProgress = true
         val result = try {
             nativePort.stream(
                 nativeSessionId = nativeSessionId,
@@ -172,6 +186,7 @@ internal class LlamaCppSessionOwnership(
         } catch (_: Throwable) {
             LlamaCppNativeInferenceResult.Rejected(ModelEngineInferenceFailure.PROVIDER_FAILED)
         } finally {
+            operationInProgress = false
             promptUtf8.fill(0)
         }
 
@@ -215,6 +230,11 @@ internal class LlamaCppSessionOwnership(
     }
 
     override fun close(): ModelEngineCloseResult = executionLock.withLock {
+        if (operationInProgress) {
+            return@withLock ModelEngineCloseResult.Failed(
+                ModelEngineCloseFailure.CLOSE_FAILED
+            )
+        }
         if (state == State.CLOSED) {
             return@withLock ModelEngineCloseResult.Closed
         }
