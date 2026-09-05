@@ -14,6 +14,11 @@ on:
     paths:
       - '.github/workflows/hosted-semantic-startup-baseline.yml'
       - '.github/scripts/run-hosted-semantic-startup-baseline.sh'
+      - 'android-offline-semantic-provider/src/androidTest/kotlin/pro/liliya/android/semanticprovider/OfflineSemanticProviderProductionResourceInstrumentedTest.kt'
+
+concurrency:
+  group: hosted-semantic-startup-baseline-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -23,7 +28,7 @@ jobs:
   hosted-baseline:
     name: Hosted x86_64 Semantic Startup Baseline
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
 
     steps:
       - name: Checkout exact source
