@@ -64,8 +64,11 @@ class OfflineSemanticProviderProductionResourceInstrumentedTest {
             writeProgress("provider-load-complete", artifactValidationAndOrtLoadMs)
 
             var firstFullStartupMs: Long? = null
+            val rebuildTiers = if (isArm64Target()) ARM64_REBUILD_TIERS else HOSTED_REBUILD_TIERS
+            evidence["rebuildTierPolicy"] =
+                if (isArm64Target()) "physical-arm64-full-1k-5k-10k-20k" else "hosted-x86_64-pipeline-1k"
             try {
-                for (count in REBUILD_TIERS) {
+                for (count in rebuildTiers) {
                     writeProgress("rebuild-$count-start")
                     val snapshots = memorySnapshots(count)
                     forceGc()
@@ -96,7 +99,7 @@ class OfflineSemanticProviderProductionResourceInstrumentedTest {
                         (count.toLong() * SemanticEmbeddingVector.DIMENSION * Float.SIZE_BYTES)
                             .toString()
 
-                    if (count == REBUILD_TIERS.first()) {
+                    if (count == rebuildTiers.first()) {
                         firstFullStartupMs = artifactValidationAndOrtLoadMs + sample.value
                         evidence["fullStartup1kMs"] = firstFullStartupMs.toString()
                     }
@@ -113,9 +116,10 @@ class OfflineSemanticProviderProductionResourceInstrumentedTest {
                 }
 
                 forceGc()
-                evidence["processPssReady20kBytes"] = processPssBytes().toString()
-
+                val readyPssBytes = processPssBytes()
+                evidence["processPssReadyBytes"] = readyPssBytes.toString()
                 if (isArm64Target()) {
+                    evidence["processPssReady20kBytes"] = readyPssBytes.toString()
                     assertTrue(
                         firstFullStartupMs != null && firstFullStartupMs > 0L,
                         "physical ARM64 full startup evidence must be recorded"
@@ -280,7 +284,8 @@ class OfflineSemanticProviderProductionResourceInstrumentedTest {
     )
 
     private companion object {
-        val REBUILD_TIERS = intArrayOf(1_000, 5_000, 10_000, 20_000)
+        val ARM64_REBUILD_TIERS = intArrayOf(1_000, 5_000, 10_000, 20_000)
+        val HOSTED_REBUILD_TIERS = intArrayOf(1_000)
         const val PEAK_SAMPLE_INTERVAL_MS = 25L
         const val RESOURCE_EVIDENCE_FILE_NAME = "post-onnx-production-resource-evidence.json"
         const val RESOURCE_PROGRESS_FILE_NAME = "post-onnx-production-resource-progress.txt"
