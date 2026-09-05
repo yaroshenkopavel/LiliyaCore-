@@ -9,6 +9,9 @@ import pro.liliya.core.modelengine.ModelEngineInferenceResult
 import pro.liliya.core.modelengine.ModelEngineLoadResult
 import pro.liliya.core.modelengine.ModelEngineLoaderPort
 import pro.liliya.core.modelengine.ModelEngineSessionOwnership
+import pro.liliya.core.modelengine.ModelEngineStreamControl
+import pro.liliya.core.modelengine.ModelEngineStreamingSessionOwnership
+import pro.liliya.core.modelengine.ModelEngineStreamingSink
 import pro.liliya.core.modelengine.StagedModelEngineLoadCoordinator
 import pro.liliya.core.protectedmodel.LargeProtectedModelStagedSourceOwnership
 import pro.liliya.core.protectedmodel.ProtectedModelAccessCoordinator
@@ -128,6 +131,11 @@ class CognitiveModelRuntimeComposition(
     private var pendingActivationCleanup: ModelEngineSessionOwnership? = null
 
     val inferencePort: CognitiveInferencePort = CognitiveInferencePort { request -> infer(request) }
+
+    val streamingInferencePort: CognitiveStreamingInferencePort =
+        CognitiveStreamingInferencePort { request, sink ->
+            inferStreaming(request, sink)
+        }
 
     fun currentSession(): RuntimeModelSessionReference? = runtimeSessions.currentReference()
 
@@ -630,6 +638,185 @@ class CognitiveModelRuntimeComposition(
         }
     }
 
+    private fun inferStreaming(
+        request: CognitiveInferenceRequest,
+        sink: CognitiveStreamingSink
+    ): CognitiveInferenceResult {
+        if (request.maxOutputChars > limits.maxInferenceOutputChars) {
+            return rejected(request, CognitiveInferenceFailure.RESOURCE_LIMIT_REJECTED)
+        }
+
+        val compiled = try {
+            compiler.compile(
+                CognitiveModelRequestCompilerRequest(
+                    inference = request,
+                    maxPromptChars = limits.maxModelPromptChars,
+                    responseBudgets = CognitiveStructuredResponseBudgets.from(limits)
+                )
+            )
+        } catch (_: Exception) {
+            return rejected(request, CognitiveInferenceFailure.PROVIDER_FAILED)
+        }
+
+        val compiledRequest = when (compiled) {
+            is CognitiveModelRequestCompilerResult.Rejected -> {
+                val failure = when (compiled.reason) {
+                    CognitiveModelRequestCompilerFailure.RESOURCE_LIMIT_REJECTED ->
+                        CognitiveInferenceFailure.RESOURCE_LIMIT_REJECTED
+                    CognitiveModelRequestCompilerFailure.COMPILER_REJECTED ->
+                        CognitiveInferenceFailure.PROVIDER_REJECTED
+                    CognitiveModelRequestCompilerFailure.PROVIDER_FAILED ->
+                        CognitiveInferenceFailure.PROVIDER_FAILED
+                }
+                return rejected(request, failure)
+            }
+            is CognitiveModelRequestCompilerResult.Compiled -> compiled.request
+        }
+
+        if (compiledRequest.prompt.isBlank()) {
+            return rejected(request, CognitiveInferenceFailure.PROVIDER_FAILED)
+        }
+        if (compiledRequest.prompt.length > limits.maxModelPromptChars) {
+            return rejected(request, CognitiveInferenceFailure.RESOURCE_LIMIT_REJECTED)
+        }
+
+        val ticket = when (val admitted = operationSupervisor.admit()) {
+            is RuntimeOperationAdmissionResult.Admitted -> admitted.ticket
+            is RuntimeOperationAdmissionResult.Rejected -> {
+                val failure = if (admitted.reason == RuntimeHardeningFailure.RESOURCE_LIMIT_REJECTED) {
+                    CognitiveInferenceFailure.RESOURCE_LIMIT_REJECTED
+                } else {
+                    CognitiveInferenceFailure.PROVIDER_REJECTED
+                }
+                return rejected(request, failure)
+            }
+        }
+
+        val exactBinding = bindingFor(ticket.session)
+        if (exactBinding == null) {
+            containProviderFailure(ticket.session, ticket)
+            return rejected(request, CognitiveInferenceFailure.PROVIDER_FAILED)
+        }
+
+        val streamingEngine = exactBinding.engine as? ModelEngineStreamingSessionOwnership
+            ?: return handleEngineRejection(
+                request = request,
+                session = ticket.session,
+                ticket = ticket,
+                failure = ModelEngineInferenceFailure.REQUEST_REJECTED
+            )
+
+        var expectedSequence = 1L
+        var cumulativeChars = 0
+        var consumerStopped = false
+        var providerContractViolation = false
+        val collected = StringBuilder()
+
+        val engineResult = try {
+            streamingEngine.stream(
+                request = ModelEngineInferenceRequest(
+                    prompt = compiledRequest.prompt,
+                    maxOutputChars = request.maxOutputChars
+                ),
+                sink = ModelEngineStreamingSink { chunk ->
+                    if (
+                        providerContractViolation ||
+                        chunk.sequence != expectedSequence ||
+                        chunk.text.isEmpty()
+                    ) {
+                        providerContractViolation = true
+                        return@ModelEngineStreamingSink ModelEngineStreamControl.STOP
+                    }
+
+                    val nextChars = cumulativeChars + chunk.text.length
+                    if (
+                        nextChars > request.maxOutputChars ||
+                        nextChars > limits.maxInferenceOutputChars
+                    ) {
+                        providerContractViolation = true
+                        return@ModelEngineStreamingSink ModelEngineStreamControl.STOP
+                    }
+
+                    val control = try {
+                        sink.onChunk(
+                            CognitiveInferenceChunk(
+                                turn = request.turn,
+                                sequence = chunk.sequence,
+                                text = chunk.text
+                            )
+                        )
+                    } catch (_: Exception) {
+                        consumerStopped = true
+                        CognitiveStreamControl.STOP
+                    }
+
+                    if (control == CognitiveStreamControl.STOP) {
+                        consumerStopped = true
+                        ModelEngineStreamControl.STOP
+                    } else {
+                        collected.append(chunk.text)
+                        cumulativeChars = nextChars
+                        expectedSequence += 1L
+                        ModelEngineStreamControl.CONTINUE
+                    }
+                }
+            )
+        } catch (_: Exception) {
+            containProviderFailure(ticket.session, ticket)
+            return rejected(request, CognitiveInferenceFailure.PROVIDER_FAILED)
+        }
+
+        if (providerContractViolation) {
+            containProviderFailure(ticket.session, ticket)
+            return rejected(request, CognitiveInferenceFailure.PROVIDER_FAILED)
+        }
+
+        if (consumerStopped) {
+            return when (engineResult) {
+                is ModelEngineInferenceResult.Rejected -> {
+                    if (engineResult.reason == ModelEngineInferenceFailure.CANCELLED) {
+                        handleEngineRejection(
+                            request,
+                            ticket.session,
+                            ticket,
+                            ModelEngineInferenceFailure.CANCELLED
+                        )
+                    } else {
+                        containProviderFailure(ticket.session, ticket)
+                        rejected(request, CognitiveInferenceFailure.PROVIDER_FAILED)
+                    }
+                }
+                is ModelEngineInferenceResult.Succeeded -> {
+                    containProviderFailure(ticket.session, ticket)
+                    rejected(request, CognitiveInferenceFailure.PROVIDER_FAILED)
+                }
+            }
+        }
+
+        return when (engineResult) {
+            is ModelEngineInferenceResult.Rejected -> handleEngineRejection(
+                request = request,
+                session = ticket.session,
+                ticket = ticket,
+                failure = engineResult.reason
+            )
+
+            is ModelEngineInferenceResult.Succeeded -> {
+                if (engineResult.output != collected.toString()) {
+                    containProviderFailure(ticket.session, ticket)
+                    rejected(request, CognitiveInferenceFailure.PROVIDER_FAILED)
+                } else {
+                    handleEngineSuccess(
+                        request = request,
+                        session = ticket.session,
+                        ticket = ticket,
+                        output = engineResult.output
+                    )
+                }
+            }
+        }
+    }
+
     private fun handleEngineRejection(
         request: CognitiveInferenceRequest,
         session: RuntimeModelSessionReference,
@@ -653,7 +840,8 @@ class CognitiveModelRuntimeComposition(
             ModelEngineInferenceFailure.RESOURCE_LIMIT_REJECTED ->
                 rejected(request, CognitiveInferenceFailure.RESOURCE_LIMIT_REJECTED)
             ModelEngineInferenceFailure.OPERATION_FAILED,
-            ModelEngineInferenceFailure.CANCELLED,
+            ModelEngineInferenceFailure.CANCELLED ->
+                rejected(request, CognitiveInferenceFailure.CANCELLED)
             ModelEngineInferenceFailure.TIMED_OUT ->
                 rejected(request, CognitiveInferenceFailure.PROVIDER_FAILED)
             ModelEngineInferenceFailure.SESSION_FAILED -> {
