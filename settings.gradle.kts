@@ -17,3 +17,5 @@ include(":android-offline-semantic-provider")
 include(":android-durable-persistence")
 
 include(":android-cognitive-storage")
+
+include(":android-semantic-test-host")
