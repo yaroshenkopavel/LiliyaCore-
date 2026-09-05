@@ -122,7 +122,7 @@ jobs:
         run: |
           gradle \
             :android-semantic-test-host:assembleDebug \
-            :android-offline-semantic-provider:assembleDebugAndroidTest \
+            :android-semantic-test-host:assembleDebugAndroidTest \
             --console=plain
 
       - name: Collect exact APK bundle and manifest
@@ -136,7 +136,7 @@ jobs:
           mkdir -p "$out"
 
           app_apk="android-semantic-test-host/build/outputs/apk/debug/android-semantic-test-host-debug.apk"
-          test_apk="android-offline-semantic-provider/build/outputs/apk/androidTest/debug/android-offline-semantic-provider-debug-androidTest.apk"
+          test_apk="android-semantic-test-host/build/outputs/apk/androidTest/debug/android-semantic-test-host-debug-androidTest.apk"
 
           test -f "$app_apk"
           test -f "$test_apk"
