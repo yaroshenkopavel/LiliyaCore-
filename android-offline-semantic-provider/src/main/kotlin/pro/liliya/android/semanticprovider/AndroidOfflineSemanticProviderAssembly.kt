@@ -47,6 +47,20 @@ class AndroidOfflineSemanticProviderAssembly internal constructor(
      * its exact pinned file name. Callers cannot supply alternate digests, model identities or
      * generic model-loading parameters.
      */
+    /**
+     * Loads the exact provisioned production bundle from [appPrivateRoot] without requiring the
+     * host to expose or pass the private encoder path.
+     *
+     * Blocking; schedule off the Android main/UI thread.
+     */
+    fun loadProvisioned(
+        appPrivateRoot: File
+    ): AndroidOfflineSemanticProviderLoadResult =
+        load(
+            appPrivateRoot = appPrivateRoot,
+            encoderFile = File(appPrivateRoot, SemanticModelProfileV01.ONNX_FILE_NAME)
+        )
+
     @Synchronized
     fun load(
         appPrivateRoot: File,
@@ -367,7 +381,7 @@ class AndroidOfflineSemanticProviderUnavailableException(
         "AndroidOfflineSemanticProviderUnavailableException(providerState=$providerState)"
 }
 
-private fun productionSemanticModelIdentity(): SemanticModelArtifactIdentity =
+internal fun productionSemanticModelIdentity(): SemanticModelArtifactIdentity =
     SemanticModelArtifactIdentity(
         profileId = SemanticModelProfileV01.PROFILE_ID,
         profileGeneration = SemanticModelProfileV01.PROFILE_GENERATION,
