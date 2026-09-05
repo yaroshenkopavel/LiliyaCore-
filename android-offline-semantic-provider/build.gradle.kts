@@ -34,11 +34,12 @@ dependencies {
     testImplementation(kotlin("test"))
     testImplementation("junit:junit:4.13.2")
 
-    // Test-only coexistence proof with the already frozen generation engine.
+    // Test-only coexistence and full real-engine proof with the frozen generation engine.
     // The ARM64 resource-only gate opts out so it measures the semantic provider in isolation
     // and does not rebuild the unrelated frozen generation native toolchain.
     if (!project.providers.gradleProperty("semanticSkipGenerationTestDependency").isPresent) {
         androidTestImplementation(project(":android-llama-cpp-engine"))
+        androidTestImplementation(project(":android-protected-model-staging"))
     }
     androidTestImplementation(kotlin("test"))
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
