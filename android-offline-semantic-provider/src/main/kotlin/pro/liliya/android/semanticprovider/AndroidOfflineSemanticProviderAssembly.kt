@@ -381,7 +381,7 @@ class AndroidOfflineSemanticProviderUnavailableException(
         "AndroidOfflineSemanticProviderUnavailableException(providerState=$providerState)"
 }
 
-private fun productionSemanticModelIdentity(): SemanticModelArtifactIdentity =
+internal fun productionSemanticModelIdentity(): SemanticModelArtifactIdentity =
     SemanticModelArtifactIdentity(
         profileId = SemanticModelProfileV01.PROFILE_ID,
         profileGeneration = SemanticModelProfileV01.PROFILE_GENERATION,
