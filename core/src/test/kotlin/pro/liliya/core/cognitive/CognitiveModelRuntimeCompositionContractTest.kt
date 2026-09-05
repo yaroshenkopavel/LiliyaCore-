@@ -28,6 +28,10 @@ import pro.liliya.core.modelengine.ModelEngineInferenceResult
 import pro.liliya.core.modelengine.ModelEngineLoadResult
 import pro.liliya.core.modelengine.ModelEngineLoaderPort
 import pro.liliya.core.modelengine.ModelEngineSessionOwnership
+import pro.liliya.core.modelengine.ModelEngineStreamChunk
+import pro.liliya.core.modelengine.ModelEngineStreamControl
+import pro.liliya.core.modelengine.ModelEngineStreamingSessionOwnership
+import pro.liliya.core.modelengine.ModelEngineStreamingSink
 import pro.liliya.core.observability.LoggerProvider
 import pro.liliya.core.protectedmodel.ModelDekGeneration
 import pro.liliya.core.protectedmodel.ModelDekId
@@ -94,6 +98,44 @@ class CognitiveModelRuntimeCompositionContractTest {
         }
     }
 
+    private class StreamingFakeEngine(
+        private val chunks: List<String>,
+        private val terminal: ModelEngineInferenceResult =
+            ModelEngineInferenceResult.Succeeded(chunks.joinToString(""))
+    ) : ModelEngineStreamingSessionOwnership {
+        override val backendId = ModelEngineBackendId("streaming-fake-engine")
+        override val handleId = ModelEngineHandleId("private-streaming-handle")
+        var inferCalls = 0
+            private set
+        var streamCalls = 0
+            private set
+
+        override fun infer(request: ModelEngineInferenceRequest): ModelEngineInferenceResult {
+            inferCalls += 1
+            return ModelEngineInferenceResult.Succeeded("one-shot-should-not-run")
+        }
+
+        override fun stream(
+            request: ModelEngineInferenceRequest,
+            sink: ModelEngineStreamingSink
+        ): ModelEngineInferenceResult {
+            streamCalls += 1
+            for ((index, text) in chunks.withIndex()) {
+                val control = sink.onChunk(
+                    ModelEngineStreamChunk(index.toLong() + 1L, text)
+                )
+                if (control == ModelEngineStreamControl.STOP) {
+                    return ModelEngineInferenceResult.Rejected(
+                        ModelEngineInferenceFailure.CANCELLED
+                    )
+                }
+            }
+            return terminal
+        }
+
+        override fun close(): ModelEngineCloseResult = ModelEngineCloseResult.Closed
+    }
+
     private data class ProtectedFixture(
         val reference: ProtectedModelReference,
         val envelope: ProtectedModelPackageEnvelope,
@@ -140,6 +182,90 @@ class CognitiveModelRuntimeCompositionContractTest {
         assertEquals(1024, assertNotNull(engine.lastRequest).maxOutputChars)
         assertTrue(assertNotNull(engine.lastRequest).prompt.contains("private input"))
         assertFalse(assertNotNull(engine.lastRequest).toString().contains("private input"))
+    }
+
+    @Test
+    fun explicit_streaming_rejects_non_streaming_engine_without_one_shot_fallback() {
+        val engine = FakeEngine()
+        val fixture = runtimeFixture(
+            engineLoader = ModelEngineLoaderPort { _, _ -> ModelEngineLoadResult.Loaded(engine) }
+        )
+        val session = activate(fixture)
+        val delivered = mutableListOf<CognitiveInferenceChunk>()
+
+        val rejected = assertIs<CognitiveInferenceResult.Rejected>(
+            fixture.composition.streamingInferencePort.infer(
+                inferenceRequest(),
+                CognitiveStreamingSink { chunk ->
+                    delivered += chunk
+                    CognitiveStreamControl.CONTINUE
+                }
+            )
+        )
+
+        assertEquals(CognitiveInferenceFailure.PROVIDER_REJECTED, rejected.reason)
+        assertEquals(0, engine.inferCalls)
+        assertTrue(delivered.isEmpty())
+        assertEquals(0, fixture.composition.operationSupervisor.inFlightCount(session))
+        assertEquals(RuntimeModelSessionLifecycle.ACTIVE, fixture.composition.currentLifecycle())
+    }
+
+    @Test
+    fun streaming_success_preserves_sequence_concat_and_releases_exact_ticket() {
+        val engine = StreamingFakeEngine(listOf("hel", "lo", " ", "world"))
+        val fixture = runtimeFixture(
+            engineLoader = ModelEngineLoaderPort { _, _ -> ModelEngineLoadResult.Loaded(engine) }
+        )
+        val session = activate(fixture)
+        val delivered = mutableListOf<CognitiveInferenceChunk>()
+
+        val result = assertIs<CognitiveInferenceResult.Succeeded>(
+            fixture.composition.streamingInferencePort.infer(
+                inferenceRequest(),
+                CognitiveStreamingSink { chunk ->
+                    delivered += chunk
+                    CognitiveStreamControl.CONTINUE
+                }
+            )
+        )
+
+        assertEquals("hello world", result.output)
+        assertEquals(listOf(1L, 2L, 3L, 4L), delivered.map { it.sequence })
+        assertEquals("hello world", delivered.joinToString("") { it.text })
+        assertEquals(1, engine.streamCalls)
+        assertEquals(0, engine.inferCalls)
+        assertEquals(0, fixture.composition.operationSupervisor.inFlightCount(session))
+        assertEquals(RuntimeModelSessionLifecycle.ACTIVE, fixture.composition.currentLifecycle())
+    }
+
+    @Test
+    fun streaming_stop_is_cancelled_and_releases_ticket_without_failing_session() {
+        val engine = StreamingFakeEngine(listOf("first", "second", "third"))
+        val fixture = runtimeFixture(
+            engineLoader = ModelEngineLoaderPort { _, _ -> ModelEngineLoadResult.Loaded(engine) }
+        )
+        val session = activate(fixture)
+        val delivered = mutableListOf<String>()
+
+        val result = assertIs<CognitiveInferenceResult.Rejected>(
+            fixture.composition.streamingInferencePort.infer(
+                inferenceRequest(),
+                CognitiveStreamingSink { chunk ->
+                    delivered += chunk.text
+                    if (chunk.sequence == 2L) {
+                        CognitiveStreamControl.STOP
+                    } else {
+                        CognitiveStreamControl.CONTINUE
+                    }
+                }
+            )
+        )
+
+        assertEquals(CognitiveInferenceFailure.CANCELLED, result.reason)
+        assertEquals(listOf("first", "second"), delivered)
+        assertEquals(0, fixture.composition.operationSupervisor.inFlightCount(session))
+        assertEquals(RuntimeModelSessionLifecycle.ACTIVE, fixture.composition.currentLifecycle())
+        assertEquals(null, fixture.composition.currentFailure())
     }
 
     @Test
