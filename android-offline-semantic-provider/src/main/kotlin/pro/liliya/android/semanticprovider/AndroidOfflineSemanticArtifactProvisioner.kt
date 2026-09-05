@@ -243,10 +243,7 @@ class AndroidOfflineSemanticArtifactProvisioner {
 
     companion object {
         const val DEFAULT_DIRECTORY = "liliya-semantic-artifacts-v1"
-    }
-
-    private companion object Internal {
-        const val TEMP_SUFFIX = ".provisioning.tmp"
-        const val BUFFER_BYTES = 64 * 1024
+        private const val TEMP_SUFFIX = ".provisioning.tmp"
+        private const val BUFFER_BYTES = 64 * 1024
     }
 }
