@@ -67,8 +67,8 @@ class LlamaCppSessionOwnershipContractTest {
     @Test
     fun streaming_chunks_preserve_sequence_concat_and_same_session_reuse() {
         val native = FakeNativePort().apply {
-            streamChunks = listOf("hel", "lo", " ", "мир")
-            streamResult = LlamaCppNativeInferenceResult.Succeeded("hello мир")
+            streamChunks = listOf("hi", " ", "мир")
+            streamResult = LlamaCppNativeInferenceResult.Succeeded("hi мир")
             inferResult = LlamaCppNativeInferenceResult.Succeeded("again")
         }
         val session = session(native)
@@ -84,9 +84,9 @@ class LlamaCppSessionOwnershipContractTest {
             )
         )
 
-        assertEquals("hello мир", streamed.output)
-        assertEquals(listOf(1L, 2L, 3L, 4L), delivered.map { it.first })
-        assertEquals("hello мир", delivered.joinToString("") { it.second })
+        assertEquals("hi мир", streamed.output)
+        assertEquals(listOf(1L, 2L, 3L), delivered.map { it.first })
+        assertEquals("hi мир", delivered.joinToString("") { it.second })
         assertEquals(1, native.streamCalls.get())
         assertEquals(0, native.inferCalls.get())
 
