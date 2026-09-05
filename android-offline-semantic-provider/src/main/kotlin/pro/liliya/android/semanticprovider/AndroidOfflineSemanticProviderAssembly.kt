@@ -168,6 +168,101 @@ class AndroidOfflineSemanticProviderAssembly internal constructor(
         }
     }
 
+    internal fun synchronizeAdd(
+        observation: SemanticSourceObservation
+    ): AndroidOfflineSemanticMutationApplyResult {
+        synchronized(this) {
+            if (publicState != AndroidOfflineSemanticProviderState.READY) {
+                return AndroidOfflineSemanticMutationApplyResult.NotReady
+            }
+        }
+
+        return when (provider.add(observation)) {
+            OfflineSemanticAddResult.Indexed ->
+                AndroidOfflineSemanticMutationApplyResult.Applied
+            OfflineSemanticAddResult.DuplicateExact ->
+                AndroidOfflineSemanticMutationApplyResult.AlreadyApplied
+            OfflineSemanticAddResult.EmbeddingFailed,
+            OfflineSemanticAddResult.SessionFailed -> {
+                markProviderFailed()
+                AndroidOfflineSemanticMutationApplyResult.RebuildRequired
+            }
+            OfflineSemanticAddResult.Busy,
+            OfflineSemanticAddResult.NotReady,
+            OfflineSemanticAddResult.ResourceRejected,
+            OfflineSemanticAddResult.EmbeddingRejected,
+            OfflineSemanticAddResult.EntityAlreadyIndexed,
+            OfflineSemanticAddResult.CapacityRejected -> {
+                markRebuildRequired()
+                AndroidOfflineSemanticMutationApplyResult.RebuildRequired
+            }
+        }
+    }
+
+    internal fun synchronizeReplace(
+        expected: SemanticIndexSourceReference,
+        replacement: SemanticSourceObservation
+    ): AndroidOfflineSemanticMutationApplyResult {
+        synchronized(this) {
+            if (publicState != AndroidOfflineSemanticProviderState.READY) {
+                return AndroidOfflineSemanticMutationApplyResult.NotReady
+            }
+        }
+
+        return when (provider.replace(expected, replacement)) {
+            OfflineSemanticReplaceResult.Replaced ->
+                AndroidOfflineSemanticMutationApplyResult.Applied
+            OfflineSemanticReplaceResult.EmbeddingFailed,
+            OfflineSemanticReplaceResult.SessionFailed -> {
+                markProviderFailed()
+                AndroidOfflineSemanticMutationApplyResult.RebuildRequired
+            }
+            OfflineSemanticReplaceResult.Busy,
+            OfflineSemanticReplaceResult.NotReady,
+            OfflineSemanticReplaceResult.ResourceRejected,
+            OfflineSemanticReplaceResult.EmbeddingRejected,
+            OfflineSemanticReplaceResult.StaleExpected,
+            OfflineSemanticReplaceResult.IdentityMismatch,
+            OfflineSemanticReplaceResult.NonForwardGeneration -> {
+                markRebuildRequired()
+                AndroidOfflineSemanticMutationApplyResult.RebuildRequired
+            }
+        }
+    }
+
+    internal fun synchronizeRemove(
+        source: SemanticIndexSourceReference
+    ): AndroidOfflineSemanticMutationApplyResult {
+        synchronized(this) {
+            if (publicState != AndroidOfflineSemanticProviderState.READY) {
+                return AndroidOfflineSemanticMutationApplyResult.NotReady
+            }
+        }
+
+        return when (provider.remove(source)) {
+            OfflineSemanticRemoveResult.Removed ->
+                AndroidOfflineSemanticMutationApplyResult.Applied
+            OfflineSemanticRemoveResult.Busy,
+            OfflineSemanticRemoveResult.NotReady,
+            OfflineSemanticRemoveResult.StaleOrMissing -> {
+                markRebuildRequired()
+                AndroidOfflineSemanticMutationApplyResult.RebuildRequired
+            }
+        }
+    }
+
+    @Synchronized
+    private fun markRebuildRequired() {
+        if (publicState == AndroidOfflineSemanticProviderState.READY) {
+            publicState = AndroidOfflineSemanticProviderState.LOADED
+        }
+    }
+
+    @Synchronized
+    private fun markProviderFailed() {
+        publicState = AndroidOfflineSemanticProviderState.FAILED
+    }
+
     @Synchronized
     fun close(): AndroidOfflineSemanticProviderCloseResult {
         if (publicState == AndroidOfflineSemanticProviderState.CLOSED) {
@@ -249,6 +344,13 @@ sealed interface AndroidOfflineSemanticProviderRebuildResult {
     data object Busy : AndroidOfflineSemanticProviderRebuildResult
     data object NotLoaded : AndroidOfflineSemanticProviderRebuildResult
     data object Failed : AndroidOfflineSemanticProviderRebuildResult
+}
+
+internal sealed interface AndroidOfflineSemanticMutationApplyResult {
+    data object Applied : AndroidOfflineSemanticMutationApplyResult
+    data object AlreadyApplied : AndroidOfflineSemanticMutationApplyResult
+    data object RebuildRequired : AndroidOfflineSemanticMutationApplyResult
+    data object NotReady : AndroidOfflineSemanticMutationApplyResult
 }
 
 sealed interface AndroidOfflineSemanticProviderCloseResult {
