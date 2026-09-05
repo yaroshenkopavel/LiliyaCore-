@@ -188,4 +188,171 @@ jobs:
           name: semantic-arm64-device-resource-evidence
           path: ${{ runner.temp }}/semantic-resource-arm64-device.json
           if-no-files-found: error
+
+      - name: Run physical ARM64 real production rebuild evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          export ANDROID_SERIAL="$ANDROID_DEVICE_SERIAL"
+          gradle :android-offline-semantic-provider:connectedDebugAndroidTest \
+            -PsemanticSkipGenerationTestDependency=true \
+            -Pandroid.testInstrumentationRunnerArguments.semanticFixtureSha256="$SELF_REPRODUCED_SHA256" \
+            -Pandroid.testInstrumentationRunnerArguments.semanticFixtureSizeBytes="$SELF_REPRODUCED_SIZE" \
+            '-Pandroid.testInstrumentationRunnerArguments.class=pro.liliya.android.semanticprovider.OfflineSemanticProviderProductionResourceInstrumentedTest' \
+            --console=plain
+
+          evidence_name="post-onnx-production-resource-evidence.json"
+          mapfile -t semantic_packages < <(
+            adb -s "$ANDROID_DEVICE_SERIAL" shell pm list packages |
+              tr -d '\r' |
+              sed 's/^package://' |
+              grep '^pro\.liliya\.android\.semanticprovider'
+          )
+          test "${#semantic_packages[@]}" -gt 0
+
+          evidence_found=0
+          for package_name in "${semantic_packages[@]}"; do
+            if adb -s "$ANDROID_DEVICE_SERIAL" shell run-as "$package_name" test -f "files/$evidence_name" 2>/dev/null; then
+              adb -s "$ANDROID_DEVICE_SERIAL" shell run-as "$package_name" cat "files/$evidence_name" \
+                > "$RUNNER_TEMP/post-onnx-production-resource-arm64-device.json"
+              evidence_found=1
+              break
+            fi
+          done
+          test "$evidence_found" -eq 1
+          test -s "$RUNNER_TEMP/post-onnx-production-resource-arm64-device.json"
+
+      - name: Validate physical ARM64 real rebuild evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - "$RUNNER_TEMP/post-onnx-production-resource-arm64-device.json" <<'PY'
+          import json
+          import sys
+
+          evidence = json.load(open(sys.argv[1], encoding="utf-8"))
+          if evidence.get("primaryAbi") != "arm64-v8a":
+              raise SystemExit(f"not ARM64 evidence: {evidence.get('primaryAbi')}")
+          if evidence.get("arm64ThresholdsApplied") != "true":
+              raise SystemExit("ARM64 thresholds were not applied")
+          if evidence.get("realEmbeddingRebuild") != "true":
+              raise SystemExit("real embedding rebuild evidence missing")
+
+          required = {
+              "artifactValidationAndOrtLoadMs",
+              "fullStartup1kMs",
+              "realRebuild1000LatencyMs",
+              "realRebuild5000LatencyMs",
+              "realRebuild10000LatencyMs",
+              "realRebuild20000LatencyMs",
+              "realRebuild1000PeakPssBytes",
+              "realRebuild5000PeakPssBytes",
+              "realRebuild10000PeakPssBytes",
+              "realRebuild20000PeakPssBytes",
+              "processPssReady20kBytes",
+              "processPssAfterCloseBytes",
+          }
+          missing = sorted(required.difference(evidence))
+          if missing:
+              raise SystemExit(f"missing production ARM64 resource evidence fields: {missing}")
+          PY
+
+      - name: Publish physical ARM64 production resource evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: post-onnx-production-arm64-resource-evidence
+          path: ${{ runner.temp }}/post-onnx-production-resource-arm64-device.json
+          if-no-files-found: error
+
+      - name: Stage verified llama.cpp generation fixture for combined residency
+        shell: bash
+        run: |
+          set -euo pipefail
+          asset_dir="android-offline-semantic-provider/src/androidTest/assets"
+          asset="$asset_dir/stories15M-q4_0.gguf"
+          mkdir -p "$asset_dir"
+          curl --fail --location --retry 3 \
+            "https://huggingface.co/ggml-org/tiny-llamas/resolve/def3e2dd70df35ecbf6403ea347de4c5977220c1/stories15M-q4_0.gguf?download=true" \
+            --output "$asset"
+          echo "6151b1929d7f5aa3385d9ddef3393e55587c0a55de661562322bc51dfda93a04  $asset" | sha256sum --check --strict
+          test "$(stat --format=%s "$asset")" -eq 19077344
+
+      - name: Install NDK and CMake for combined residency
+        run: sdkmanager "ndk;29.0.13113456" "cmake;3.31.6"
+
+      - name: Compile combined ONNX and llama ARM64 instrumentation
+        run: gradle :android-offline-semantic-provider:assembleDebug :android-offline-semantic-provider:assembleDebugAndroidTest --console=plain
+
+      - name: Run physical ARM64 combined ONNX and llama residency evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          export ANDROID_SERIAL="$ANDROID_DEVICE_SERIAL"
+          gradle :android-offline-semantic-provider:connectedDebugAndroidTest \
+            -Pandroid.testInstrumentationRunnerArguments.semanticFixtureSha256="$SELF_REPRODUCED_SHA256" \
+            -Pandroid.testInstrumentationRunnerArguments.semanticFixtureSizeBytes="$SELF_REPRODUCED_SIZE" \
+            '-Pandroid.testInstrumentationRunnerArguments.class=pro.liliya.android.semanticprovider.OfflineSemanticProviderCombinedEngineResourceInstrumentedTest' \
+            --console=plain
+
+          evidence_name="post-onnx-combined-engine-resource-evidence.json"
+          mapfile -t semantic_packages < <(
+            adb -s "$ANDROID_DEVICE_SERIAL" shell pm list packages |
+              tr -d '\r' |
+              sed 's/^package://' |
+              grep '^pro\.liliya\.android\.semanticprovider'
+          )
+          test "${#semantic_packages[@]}" -gt 0
+
+          evidence_found=0
+          for package_name in "${semantic_packages[@]}"; do
+            if adb -s "$ANDROID_DEVICE_SERIAL" shell run-as "$package_name" test -f "files/$evidence_name" 2>/dev/null; then
+              adb -s "$ANDROID_DEVICE_SERIAL" shell run-as "$package_name" cat "files/$evidence_name" \
+                > "$RUNNER_TEMP/post-onnx-combined-engine-resource-arm64-device.json"
+              evidence_found=1
+              break
+            fi
+          done
+          test "$evidence_found" -eq 1
+          test -s "$RUNNER_TEMP/post-onnx-combined-engine-resource-arm64-device.json"
+
+      - name: Validate physical ARM64 combined residency evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - "$RUNNER_TEMP/post-onnx-combined-engine-resource-arm64-device.json" <<'PY'
+          import json
+          import sys
+
+          evidence = json.load(open(sys.argv[1], encoding="utf-8"))
+          if evidence.get("primaryAbi") != "arm64-v8a":
+              raise SystemExit(f"not ARM64 combined evidence: {evidence.get('primaryAbi')}")
+          if evidence.get("targetProductionLlmEvidence") != "false":
+              raise SystemExit("controlled GGUF fixture must not be represented as target production LLM evidence")
+
+          required = {
+              "semanticReadyPssBytes",
+              "semanticReadyNativeHeapBytes",
+              "combinedActivePssBytes",
+              "combinedActiveNativeHeapBytes",
+              "llamaActivationPssDeltaBytes",
+              "llamaActivationNativeHeapDeltaBytes",
+              "combinedAfterInferencePssBytes",
+              "combinedInferencePssDeltaBytes",
+              "afterBothClosedPssBytes",
+          }
+          missing = sorted(required.difference(evidence))
+          if missing:
+              raise SystemExit(f"missing combined ARM64 resource evidence fields: {missing}")
+          if int(evidence["semanticEntryCount"]) != 20000:
+              raise SystemExit("combined evidence did not use the 20k semantic index bound")
+          if int(evidence["generationFixtureBytes"]) != 19077344:
+              raise SystemExit("unexpected generation fixture size")
+          PY
+
+      - name: Publish physical ARM64 combined residency evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: post-onnx-combined-arm64-resource-evidence
+          path: ${{ runner.temp }}/post-onnx-combined-engine-resource-arm64-device.json
+          if-no-files-found: error
           retention-days: 30
