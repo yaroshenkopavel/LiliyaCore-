@@ -1,7 +1,7 @@
 package pro.liliya.android.persistence
 
 import java.time.Instant
-import kotlin.test.Test
+import org.junit.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
