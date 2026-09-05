@@ -1,0 +1,132 @@
+name: Semantic Provider CI
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'android-offline-semantic-provider/**'
+      - '.github/workflows/semantic-provider-ci.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'android-offline-semantic-provider/**'
+      - '.github/workflows/semantic-provider-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  semantic-reference-quality:
+    name: Trusted Semantic Reference Quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install pinned reference runtime
+        run: python -m pip install --disable-pip-version-check 'torch==2.4.1' 'transformers==4.44.2'
+
+      - name: Prefetch immutable upstream reference with bounded retry
+        env:
+          HF_HUB_DISABLE_TELEMETRY: '1'
+        shell: bash
+        run: |
+          python - <<'PY'
+          import time
+          from huggingface_hub import snapshot_download
+
+          repo_id = "intfloat/multilingual-e5-small"
+          revision = "fd1525a9fd15316a2d503bf26ab031a61d056e98"
+          delays = (0, 15, 30, 60, 120)
+
+          last = None
+          for attempt, delay in enumerate(delays, start=1):
+              if delay:
+                  time.sleep(delay)
+              try:
+                  path = snapshot_download(
+                      repo_id=repo_id,
+                      revision=revision,
+                      allow_patterns=[
+                          "config.json",
+                          "model.safetensors",
+                          "sentencepiece.bpe.model",
+                          "special_tokens_map.json",
+                          "tokenizer.json",
+                          "tokenizer_config.json",
+                      ],
+                  )
+                  print(f"immutable reference cached at {path}")
+                  break
+              except Exception as exc:
+                  last = exc
+                  print(
+                      f"immutable reference prefetch attempt {attempt}/{len(delays)} failed: "
+                      f"{type(exc).__name__}"
+                  )
+          else:
+              raise last
+          PY
+
+      - name: Verify immutable upstream reference ranking
+        env:
+          HF_HUB_DISABLE_TELEMETRY: '1'
+          HF_HUB_OFFLINE: '1'
+          TRANSFORMERS_OFFLINE: '1'
+          TRANSFORMERS_VERBOSITY: error
+        run: python android-offline-semantic-provider/ci/verify_trusted_reference_quality.py
+
+  semantic-provider-ort:
+    name: Android Offline Semantic Provider ORT
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle 9.6.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.1'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android API 35
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
+
+      - name: Validate semantic CI helper scripts
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n android-offline-semantic-provider/ci/run_firebase_arm64_acceptance.sh
+          python -m py_compile             android-offline-semantic-provider/ci/parse_semantic_resource_status.py             android-offline-semantic-provider/ci/reproduce_semantic_model_onnx.py             android-offline-semantic-provider/ci/verify_trusted_reference_quality.py
+
+      - name: Resolve pinned ORT Android dependencies
+        run: gradle :android-offline-semantic-provider:dependencies --configuration debugRuntimeClasspath --console=plain
+
+      - name: Run semantic provider unit contracts
+        run: gradle :android-offline-semantic-provider:testDebugUnitTest --console=plain
+
+      - name: Compile ORT-backed semantic Android library
+        run: gradle :android-offline-semantic-provider:assembleDebug --console=plain
+
+      - name: Compile semantic instrumentation contracts
+        run: gradle :android-offline-semantic-provider:assembleDebugAndroidTest --console=plain
