@@ -9,6 +9,7 @@ on:
       - 'android-offline-semantic-provider/ci/run_firebase_full_i8_acceptance.sh'
       - 'android-offline-semantic-provider/src/androidTest/**'
       - 'android-offline-semantic-provider/build.gradle.kts'
+      - 'android-semantic-test-host/**'
       - 'android-llama-cpp-engine/**'
   workflow_dispatch:
     inputs:
@@ -119,7 +120,7 @@ jobs:
       - name: Compile exact ARM64 Firebase instrumentation bundle
         run: |
           gradle \
-            :android-offline-semantic-provider:assembleDebug \
+            :android-semantic-test-host:assembleDebug \
             :android-offline-semantic-provider:assembleDebugAndroidTest \
             --console=plain
 
@@ -133,18 +134,17 @@ jobs:
           out="$RUNNER_TEMP/firebase-arm64-i8-bundle"
           mkdir -p "$out"
 
-          mapfile -t apks < <(find android-offline-semantic-provider/build -type f -name '*.apk' -print | sort)
-          printf '%s\n' "${apks[@]}"
-          test "${#apks[@]}" -ge 2
+          app_apk="android-semantic-test-host/build/outputs/apk/debug/android-semantic-test-host-debug.apk"
+          test_apk="android-offline-semantic-provider/build/outputs/apk/androidTest/debug/android-offline-semantic-provider-debug-androidTest.apk"
 
-          for apk in "${apks[@]}"; do
-            cp "$apk" "$out/"
-          done
+          test -f "$app_apk"
+          test -f "$test_apk"
 
-          mapfile -t test_apks < <(find "$out" -maxdepth 1 -type f -name '*androidTest*.apk' -print | sort)
-          mapfile -t app_apks < <(find "$out" -maxdepth 1 -type f -name '*.apk' ! -name '*androidTest*.apk' -print | sort)
-          test "${#test_apks[@]}" -eq 1
-          test "${#app_apks[@]}" -eq 1
+          cp "$app_apk" "$out/"
+          cp "$test_apk" "$out/"
+
+          echo "target APK: $app_apk"
+          echo "androidTest APK: $test_apk"
 
           cp android-offline-semantic-provider/ci/run_firebase_full_i8_acceptance.sh "$out/"
           chmod +x "$out/run_firebase_full_i8_acceptance.sh"
