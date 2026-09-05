@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import hashlib
+from importlib.metadata import version as package_version
 import json
 import math
 import shutil
@@ -387,6 +388,16 @@ def main() -> None:
         "pipeline": "liliya-onnx-export-v0.1",
         "upstream_model": MODEL_ID,
         "upstream_revision": MODEL_REVISION,
+        "toolchain": {
+            "python": sys.version.split()[0],
+            "torch": package_version("torch"),
+            "transformers": package_version("transformers"),
+            "sentencepiece": package_version("sentencepiece"),
+            "optimum_onnx": package_version("optimum-onnx"),
+            "onnx": package_version("onnx"),
+            "onnxruntime": package_version("onnxruntime"),
+            "onnxruntime_extensions": package_version("onnxruntime-extensions"),
+        },
         "encoder": {
             "file": encoder_int8.name,
             "size": encoder_int8.stat().st_size,
