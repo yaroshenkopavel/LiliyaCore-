@@ -7,8 +7,6 @@ import android.os.SystemClock
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
-import java.io.FileInputStream
-import java.io.FileOutputStream
 import kotlin.math.abs
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -267,23 +265,6 @@ class OfflineSemanticProviderResourceInstrumentedTest {
         values.forEach { (key, value) -> json.put(key, value) }
         val rendered = json.toString(2) + "\n"
         target.writeText(rendered, Charsets.UTF_8)
-
-        val descriptors = instrumentation.uiAutomation.executeShellCommandRw(
-            "tee $RESOURCE_EVIDENCE_SHELL_PATH"
-        )
-        try {
-            FileOutputStream(descriptors[1].fileDescriptor).use { output ->
-                output.write(rendered.toByteArray(Charsets.UTF_8))
-                output.flush()
-            }
-            FileInputStream(descriptors[0].fileDescriptor).use { input ->
-                input.readBytes()
-            }
-        } finally {
-            descriptors.forEach { descriptor ->
-                runCatching { descriptor.close() }
-            }
-        }
     }
 
     private fun primaryRuntimeAbi(): String =
