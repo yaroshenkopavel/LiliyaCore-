@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - '.github/workflows/firebase-arm64-i8-bundle.yml'
+      - '.github/scripts/verify-firebase-i8-apk-pair.sh'
       - 'android-offline-semantic-provider/ci/run_firebase_full_i8_acceptance.sh'
       - 'android-offline-semantic-provider/src/androidTest/**'
       - 'android-offline-semantic-provider/build.gradle.kts'
@@ -234,32 +235,4 @@ jobs:
           target: default
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: |
-            set -euo pipefail
-            bundle="$RUNNER_TEMP/firebase-arm64-i8-bundle"
-            app="$bundle/android-semantic-test-host-debug.apk"
-            test_apk="$bundle/android-offline-semantic-provider-debug-androidTest.apk"
-            test -f "$app"
-            test -f "$test_apk"
-
-            app_id="$(apkanalyzer manifest application-id "$app")"
-            test_id="$(apkanalyzer manifest application-id "$test_apk")"
-            target_pkg="$(apkanalyzer manifest print "$test_apk" | sed -n 's/.*targetPackage="\([^"]*\)".*/\1/p' | head -1)"
-            runner="$(apkanalyzer manifest print "$test_apk" | sed -n 's/.*android:name="\([^"]*AndroidJUnitRunner\)".*/\1/p' | head -1)"
-
-            echo "appId=$app_id"
-            echo "testId=$test_id"
-            echo "targetPackage=$target_pkg"
-            echo "runner=$runner"
-
-            test "$app_id" = "pro.liliya.android.semanticprovider"
-            test "$target_pkg" = "$app_id"
-            test -n "$runner"
-
-            adb install -r "$app"
-            adb install -r "$test_apk"
-            adb shell pm list instrumentation
-            adb shell pm path "$app_id"
-            adb shell pm path "$test_id"
-
-            echo "Firebase APK pair preflight passed"
+          script: bash .github/scripts/verify-firebase-i8-apk-pair.sh
