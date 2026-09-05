@@ -1,0 +1,225 @@
+name: Hosted Semantic Startup Baseline
+
+on:
+  workflow_dispatch:
+    inputs:
+      provenance_run_id:
+        description: Successful Semantic Model Provenance run ID containing semantic-onnx-provenance
+        required: false
+        default: '33981322350'
+        type: string
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/hosted-semantic-startup-baseline.yml'
+      - '.github/scripts/run-hosted-semantic-startup-baseline.sh'
+      - 'android-offline-semantic-provider/src/androidTest/kotlin/pro/liliya/android/semanticprovider/OfflineSemanticProviderProductionResourceInstrumentedTest.kt'
+
+concurrency:
+  group: hosted-semantic-startup-baseline-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  hosted-baseline:
+    name: Hosted x86_64 Semantic Startup Baseline
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Download exact ONNX provenance bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: semantic-onnx-provenance
+          path: ${{ runner.temp }}/semantic-onnx-download
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.provenance_run_id || '33981322350' }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify and stage exact ONNX bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import shutil
+
+          root = Path(os.environ["RUNNER_TEMP"]) / "semantic-onnx-download"
+          manifests = list(root.rglob("semantic-onnx-provenance.json"))
+          encoders = list(root.rglob("multilingual-e5-small-liliya-v0.1.onnx"))
+          tokenizers = list(root.rglob("multilingual-e5-small-tokenizer-v0.1.onnx"))
+          if len(manifests) != 1 or len(encoders) != 1 or len(tokenizers) != 1:
+              raise SystemExit(
+                  f"unexpected provenance layout: manifest={manifests}, "
+                  f"encoder={encoders}, tokenizer={tokenizers}"
+              )
+
+          manifest = json.loads(manifests[0].read_text(encoding="utf-8"))
+          encoder = manifest["encoder"]
+          tokenizer = manifest["tokenizer"]
+
+          def digest(path):
+              h = hashlib.sha256()
+              with path.open("rb") as stream:
+                  for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                      h.update(chunk)
+              return h.hexdigest()
+
+          if encoders[0].stat().st_size != encoder["size"]:
+              raise SystemExit("encoder size mismatch")
+          if digest(encoders[0]) != encoder["sha256"]:
+              raise SystemExit("encoder digest mismatch")
+          if tokenizers[0].stat().st_size != tokenizer["size"]:
+              raise SystemExit("tokenizer size mismatch")
+          if digest(tokenizers[0]) != tokenizer["sha256"]:
+              raise SystemExit("tokenizer digest mismatch")
+
+          assets = Path("android-offline-semantic-provider/src/androidTest/assets")
+          assets.mkdir(parents=True, exist_ok=True)
+          shutil.copy2(encoders[0], assets / encoders[0].name)
+          shutil.copy2(tokenizers[0], assets / tokenizers[0].name)
+
+          with Path(os.environ["GITHUB_ENV"]).open("a", encoding="utf-8") as env:
+              env.write(f"SELF_REPRODUCED_SHA256={encoder['sha256']}\n")
+              env.write(f"SELF_REPRODUCED_SIZE={encoder['size']}\n")
+          PY
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle 9.6.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.1'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android API 35 and pinned native toolchain
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools" "ndk;29.0.13113456" "cmake;3.31.6"
+
+      - name: Compile production resource instrumentation
+        run: |
+          gradle \
+            :android-offline-semantic-provider:assembleDebug \
+            :android-offline-semantic-provider:assembleDebugAndroidTest \
+            --console=plain
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          test -e /dev/kvm
+          ls -l /dev/kvm
+
+      - name: Run hosted production startup and rebuild baseline
+        uses: ReactiveCircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          script: bash .github/scripts/run-hosted-semantic-startup-baseline.sh
+
+      - name: Validate and classify hosted evidence
+        env:
+          PROVENANCE_RUN_ID: ${{ inputs.provenance_run_id || '33981322350' }}
+          MEASURED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          python3 - "$RUNNER_TEMP/hosted-semantic-startup-baseline.json" <<'PY'
+          import json
+          import os
+          import sys
+          from pathlib import Path
+
+          path = Path(sys.argv[1])
+          evidence = json.loads(path.read_text(encoding="utf-8"))
+
+          if evidence.get("primaryAbi") != "x86_64":
+              raise SystemExit(f"expected hosted x86_64 evidence, got {evidence.get('primaryAbi')}")
+          if evidence.get("arm64ThresholdsApplied") != "false":
+              raise SystemExit("hosted baseline must not apply ARM64 acceptance thresholds")
+          if evidence.get("realEmbeddingRebuild") != "true":
+              raise SystemExit("real embedding rebuild evidence missing")
+
+          required = {
+              "artifactValidationAndOrtLoadMs",
+              "fullStartup1kMs",
+              "realRebuild1000LatencyMs",
+              "realRebuild1000PeakPssBytes",
+              "processPssBeforeStartupBytes",
+              "processPssReadyBytes",
+              "processPssAfterCloseBytes",
+              "rebuildTierPolicy",
+          }
+          missing = sorted(required.difference(evidence))
+          if missing:
+              raise SystemExit(f"missing hosted baseline fields: {missing}")
+
+          if evidence.get("rebuildTierPolicy") != "hosted-x86_64-pipeline-1k":
+              raise SystemExit(
+                  f"unexpected hosted rebuild tier policy: {evidence.get('rebuildTierPolicy')}"
+              )
+
+          evidence["evidenceClass"] = "hosted-x86_64-non-acceptance"
+          evidence["acceptanceEvidence"] = "false"
+          evidence["measuredCommitSha"] = os.environ["MEASURED_SHA"]
+          evidence["provenanceRunId"] = os.environ["PROVENANCE_RUN_ID"]
+          evidence["interpretation"] = (
+              "Hosted emulator baseline only; does not replace physical ARM64 I8 acceptance."
+          )
+
+          path.write_text(
+              json.dumps(evidence, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+
+          summary = [
+              "# Hosted Semantic Startup Baseline v0.1",
+              "",
+              f"Exact commit: \`{evidence['measuredCommitSha']}\`",
+              f"Provenance run: \`{evidence['provenanceRunId']}\`",
+              "",
+              "**NON-ACCEPTANCE x86_64 emulator evidence.**",
+              "",
+              "| Metric | Value |",
+              "|---|---:|",
+              f"| Artifact validation + ORT load | {evidence['artifactValidationAndOrtLoadMs']} ms |",
+              f"| Full startup through 1k rebuild | {evidence['fullStartup1kMs']} ms |",
+              f"| Real rebuild 1k | {evidence['realRebuild1000LatencyMs']} ms |",
+              f"| Ready-after-1k PSS | {int(evidence['processPssReadyBytes']) / 1048576:.3f} MiB |",
+              f"| After close PSS | {int(evidence['processPssAfterCloseBytes']) / 1048576:.3f} MiB |",
+              "",
+              "Hosted x86_64 intentionally runs only the 1k real-embedding pipeline probe.",
+              "Physical ARM64 I8 remains the only full 1k/5k/10k/20k acceptance evidence.",
+              "",
+          ]
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as out:
+              out.write("\n".join(summary))
+          PY
+
+      - name: Upload hosted startup baseline
+        uses: actions/upload-artifact@v4
+        with:
+          name: hosted-semantic-startup-baseline-${{ github.event.pull_request.head.sha || github.sha }}
+          path: ${{ runner.temp }}/hosted-semantic-startup-baseline.json
+          if-no-files-found: error
+          retention-days: 30
