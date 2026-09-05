@@ -61,26 +61,69 @@ class StagedModelEngineLoadCoordinator(
     private fun leasedSession(
         delegate: ModelEngineSessionOwnership,
         lease: LargeProtectedModelEngineUseLease
-    ): ModelEngineSessionOwnership = object : ModelEngineSessionOwnership {
-        override val backendId: ModelEngineBackendId = delegate.backendId
-        override val handleId: ModelEngineHandleId = delegate.handleId
+    ): ModelEngineSessionOwnership {
+        val lifecycle = LeasedSessionLifecycle(delegate, lease)
+        return if (delegate is ModelEngineStreamingSessionOwnership) {
+            object : ModelEngineStreamingSessionOwnership {
+                override val backendId: ModelEngineBackendId = delegate.backendId
+                override val handleId: ModelEngineHandleId = delegate.handleId
 
+                override fun infer(
+                    request: ModelEngineInferenceRequest
+                ): ModelEngineInferenceResult =
+                    lifecycle.infer(request)
+
+                override fun stream(
+                    request: ModelEngineInferenceRequest,
+                    sink: ModelEngineStreamingSink
+                ): ModelEngineInferenceResult {
+                    if (!lifecycle.operationAllowed()) {
+                        return ModelEngineInferenceResult.Rejected(
+                            ModelEngineInferenceFailure.SESSION_FAILED
+                        )
+                    }
+                    return delegate.stream(request, sink)
+                }
+
+                override fun close(): ModelEngineCloseResult = lifecycle.close()
+            }
+        } else {
+            object : ModelEngineSessionOwnership {
+                override val backendId: ModelEngineBackendId = delegate.backendId
+                override val handleId: ModelEngineHandleId = delegate.handleId
+
+                override fun infer(
+                    request: ModelEngineInferenceRequest
+                ): ModelEngineInferenceResult =
+                    lifecycle.infer(request)
+
+                override fun close(): ModelEngineCloseResult = lifecycle.close()
+            }
+        }
+    }
+
+    private class LeasedSessionLifecycle(
+        private val delegate: ModelEngineSessionOwnership,
+        private val lease: LargeProtectedModelEngineUseLease
+    ) {
         private val closeLock = Any()
         private var engineClosed = false
         private var fullyClosed = false
 
-        override fun infer(request: ModelEngineInferenceRequest): ModelEngineInferenceResult {
-            synchronized(closeLock) {
-                if (engineClosed || fullyClosed) {
-                    return ModelEngineInferenceResult.Rejected(
-                        ModelEngineInferenceFailure.SESSION_FAILED
-                    )
-                }
+        fun operationAllowed(): Boolean = synchronized(closeLock) {
+            !engineClosed && !fullyClosed
+        }
+
+        fun infer(request: ModelEngineInferenceRequest): ModelEngineInferenceResult {
+            if (!operationAllowed()) {
+                return ModelEngineInferenceResult.Rejected(
+                    ModelEngineInferenceFailure.SESSION_FAILED
+                )
             }
             return delegate.infer(request)
         }
 
-        override fun close(): ModelEngineCloseResult = synchronized(closeLock) {
+        fun close(): ModelEngineCloseResult = synchronized(closeLock) {
             if (fullyClosed) return@synchronized ModelEngineCloseResult.Closed
 
             if (!engineClosed) {
@@ -97,7 +140,7 @@ class StagedModelEngineLoadCoordinator(
                 }
             }
 
-            return@synchronized when (lease.release()) {
+            when (lease.release()) {
                 LargeProtectedModelEngineUseReleaseResult.Released -> {
                     fullyClosed = true
                     ModelEngineCloseResult.Closed
@@ -107,4 +150,5 @@ class StagedModelEngineLoadCoordinator(
             }
         }
     }
+
 }
