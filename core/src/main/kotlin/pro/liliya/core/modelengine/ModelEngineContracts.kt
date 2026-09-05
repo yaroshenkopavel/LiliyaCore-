@@ -81,6 +81,41 @@ sealed interface ModelEngineInferenceResult {
     ) : ModelEngineInferenceResult
 }
 
+enum class ModelEngineStreamControl {
+    CONTINUE,
+    STOP
+}
+
+class ModelEngineStreamChunk(
+    val sequence: Long,
+    val text: String
+) {
+    init {
+        require(sequence > 0L) { "model engine stream sequence must be positive" }
+        require(text.isNotEmpty()) { "model engine stream chunk must not be empty" }
+    }
+
+    override fun toString(): String =
+        "ModelEngineStreamChunk(sequence=$sequence, text=<redacted:${text.length}>)"
+}
+
+fun interface ModelEngineStreamingSink {
+    fun onChunk(chunk: ModelEngineStreamChunk): ModelEngineStreamControl
+}
+
+/**
+ * Optional streaming capability of one exact [ModelEngineSessionOwnership].
+ *
+ * Explicit streaming callers must not silently fall back to one-shot inference when this
+ * capability is absent.
+ */
+interface ModelEngineStreamingSessionOwnership : ModelEngineSessionOwnership {
+    fun stream(
+        request: ModelEngineInferenceRequest,
+        sink: ModelEngineStreamingSink
+    ): ModelEngineInferenceResult
+}
+
 enum class ModelEngineCloseFailure {
     CLOSE_FAILED,
     PROVIDER_FAILED
