@@ -260,8 +260,9 @@ class OfflineSemanticProviderResourceInstrumentedTest {
 
     private fun writeEvidenceFile(values: Map<String, String>) {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
-        val testContext = instrumentation.context
-        val target = File(testContext.filesDir, RESOURCE_EVIDENCE_FILE_NAME)
+        val targetContext = instrumentation.targetContext
+        val target = File(targetContext.filesDir, RESOURCE_EVIDENCE_FILE_NAME)
+        target.parentFile?.mkdirs()
         val json = JSONObject()
         values.forEach { (key, value) -> json.put(key, value) }
         val rendered = json.toString(2) + "\n"
