@@ -3,7 +3,7 @@ set -euo pipefail
 
 bundle="${RUNNER_TEMP:?RUNNER_TEMP is required}/firebase-arm64-i8-bundle"
 app="$bundle/android-semantic-test-host-debug.apk"
-test_apk="$bundle/android-offline-semantic-provider-debug-androidTest.apk"
+test_apk="$bundle/android-semantic-test-host-debug-androidTest.apk"
 
 test -f "$app"
 test -f "$test_apk"
