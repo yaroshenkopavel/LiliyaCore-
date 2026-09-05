@@ -16,7 +16,6 @@ class CognitiveRuntimeComposition(
     selfSnapshots: SelfSnapshotPort,
     personalitySnapshots: PersonalitySnapshotPort,
     private val inference: CognitiveInferencePort,
-    private val streamingInference: CognitiveStreamingInferencePort? = null,
     val limits: CognitiveRuntimeLimits = CognitiveRuntimeLimits(),
     registry: CognitiveTurnRegistry? = null,
     materialization: CognitiveMaterializationPort? = null,
@@ -27,7 +26,8 @@ class CognitiveRuntimeComposition(
     timestamps: CognitiveTimestampSource? = null,
     outcomeMaterialization: CognitiveOutcomeMaterializationPort? = null,
     reflection: ReflectionComposition? = null,
-    learning: LearningComposition? = null
+    learning: LearningComposition? = null,
+    private val streamingInference: CognitiveStreamingInferencePort? = null
 ) {
     init {
         require(scope.value.length <= limits.maxRuntimeScopeIdChars) {
