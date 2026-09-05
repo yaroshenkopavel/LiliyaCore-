@@ -33,14 +33,20 @@ internal class SemanticIndexPublication(
         for (seed in seeds) {
             when (replacement.addExact(seed.source, seed.vector)) {
                 SemanticIndexAddResult.Indexed -> Unit
-                SemanticIndexAddResult.CapacityRejected ->
+                SemanticIndexAddResult.CapacityRejected -> {
+                    replacement.clear()
                     return SemanticIndexRebuildResult.CapacityRejected
+                }
                 SemanticIndexAddResult.DuplicateExact,
-                SemanticIndexAddResult.EntityAlreadyIndexed ->
+                SemanticIndexAddResult.EntityAlreadyIndexed -> {
+                    replacement.clear()
                     return SemanticIndexRebuildResult.DuplicateOrConflictingIdentity
+                }
             }
         }
+        val previous = published
         published = replacement
+        previous.clear()
         return SemanticIndexRebuildResult.Published(seeds.size)
     }
 
@@ -68,6 +74,13 @@ internal class SemanticIndexPublication(
     ): List<SemanticRankedCandidate> = published.rank(domain, query, maxCandidates)
 
     fun size(domain: SemanticIndexDomain? = null): Int = published.size(domain)
+
+    @Synchronized
+    fun release() {
+        val previous = published
+        published = newIndex()
+        previous.clear()
+    }
 
     private fun newIndex(): SemanticFlatIndex = SemanticFlatIndex(profileGeneration, limits)
 }

@@ -79,6 +79,11 @@ internal class SemanticEmbeddingVector(values: FloatArray) {
 
     fun copyValues(): FloatArray = value.copyOf()
 
+    @Synchronized
+    fun clear() {
+        value.fill(0f)
+    }
+
     override fun toString(): String = "SemanticEmbeddingVector(<redacted:$DIMENSION>)"
 
     companion object {
@@ -190,6 +195,7 @@ internal class SemanticFlatIndex(
         if (current.source != expected) {
             return SemanticIndexReplaceResult.StaleExpected
         }
+        current.vector.clear()
         entries[key] = Entry(
             source = replacement,
             profileGeneration = profileGeneration,
@@ -207,6 +213,8 @@ internal class SemanticFlatIndex(
             return SemanticIndexRemoveResult.StaleOrMissing
         }
         entries.remove(key)
+        current.vector.clear()
+        current.stableIdUtf8.fill(0)
         decrementDomainCount(source.domain)
         return SemanticIndexRemoveResult.Removed
     }
@@ -257,6 +265,17 @@ internal class SemanticFlatIndex(
             .toList()
             .sortedWith(bestFirst)
             .map { SemanticRankedCandidate(it.source) }
+    }
+
+    @Synchronized
+    fun clear() {
+        entries.values.forEach { entry ->
+            entry.vector.clear()
+            entry.stableIdUtf8.fill(0)
+        }
+        entries.clear()
+        memoryEntryCount = 0
+        knowledgeEntryCount = 0
     }
 
     @Synchronized

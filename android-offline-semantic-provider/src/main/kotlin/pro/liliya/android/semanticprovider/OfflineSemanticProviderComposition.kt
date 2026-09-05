@@ -484,17 +484,20 @@ internal class OfflineSemanticProviderComposition(
                 SemanticEmbeddingCloseResult.ProviderFailed
             }
         }
+        publication.release()
+        indexPublished = false
+
         return when (closeResult) {
             SemanticEmbeddingCloseResult.Closed,
             SemanticEmbeddingCloseResult.StaleOrAlreadyClosed -> {
                 session = null
-                indexPublished = false
                 lifecycle = OfflineSemanticProviderLifecycle.CLOSED
                 OfflineSemanticProviderCloseResult.Closed
             }
             SemanticEmbeddingCloseResult.ProviderFailed -> {
-                // Preserve the exact ownership handle for an explicit cleanup retry. Discovery and
-                // index updates remain rejected by FAILED; there is no hidden retry or reload.
+                // Preserve the exact session ownership handle for an explicit cleanup retry, but
+                // release the derived index immediately. Discovery and index updates remain
+                // rejected by FAILED; retaining vectors cannot help native cleanup.
                 lifecycle = OfflineSemanticProviderLifecycle.FAILED
                 OfflineSemanticProviderCloseResult.ProviderFailed
             }
