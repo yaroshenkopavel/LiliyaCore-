@@ -1,0 +1,302 @@
+name: Production Package Footprint
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/production-package-footprint.yml'
+      - 'build.gradle.kts'
+      - 'settings.gradle.kts'
+      - 'gradle.properties'
+      - 'core/**'
+      - 'android-device-key/**'
+      - 'android-protected-model-staging/**'
+      - 'android-protected-model-engine-source/**'
+      - 'android-llama-cpp-engine/**'
+      - 'android-offline-semantic-provider/**'
+      - 'android-durable-persistence/**'
+      - 'android-cognitive-storage/**'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/production-package-footprint.yml'
+      - 'build.gradle.kts'
+      - 'settings.gradle.kts'
+      - 'gradle.properties'
+      - 'core/**'
+      - 'android-device-key/**'
+      - 'android-protected-model-staging/**'
+      - 'android-protected-model-engine-source/**'
+      - 'android-llama-cpp-engine/**'
+      - 'android-offline-semantic-provider/**'
+      - 'android-durable-persistence/**'
+      - 'android-cognitive-storage/**'
+
+permissions:
+  contents: read
+
+jobs:
+  footprint:
+    name: Release Distribution Footprint
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle 9.6.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.1'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install pinned Android build toolchain
+        run: |
+          sdkmanager \
+            "platforms;android-35" \
+            "build-tools;35.0.0" \
+            "platform-tools" \
+            "ndk;29.0.13113456" \
+            "cmake;3.31.6"
+
+      - name: Build release distribution artifacts
+        run: |
+          gradle \
+            :core:jar \
+            :android-device-key:assembleRelease \
+            :android-protected-model-staging:assembleRelease \
+            :android-protected-model-engine-source:assembleRelease \
+            :android-llama-cpp-engine:assembleRelease \
+            :android-offline-semantic-provider:assembleRelease \
+            :android-durable-persistence:assembleRelease \
+            :android-cognitive-storage:assembleRelease \
+            --console=plain
+
+      - name: Resolve semantic runtime dependencies
+        run: |
+          mkdir -p build/footprint
+          gradle \
+            :android-offline-semantic-provider:dependencies \
+            --configuration releaseRuntimeClasspath \
+            --console=plain \
+            > build/footprint/semantic-runtime-dependencies.txt
+
+      - name: Generate exact footprint report
+        env:
+          MEASURED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import zipfile
+
+          root = Path.cwd()
+          out = root / "build" / "footprint"
+          out.mkdir(parents=True, exist_ok=True)
+
+          modules = [
+              "android-device-key",
+              "android-protected-model-staging",
+              "android-protected-model-engine-source",
+              "android-llama-cpp-engine",
+              "android-offline-semantic-provider",
+              "android-durable-persistence",
+              "android-cognitive-storage",
+          ]
+
+          def mib(value):
+              return round(value / (1024 * 1024), 3)
+
+          def file_row(kind, path):
+              size = path.stat().st_size
+              return {
+                  "kind": kind,
+                  "path": str(path.relative_to(root)),
+                  "bytes": size,
+                  "mib": mib(size),
+              }
+
+          artifacts = []
+          core_jars = sorted((root / "core" / "build" / "libs").glob("*.jar"))
+          if not core_jars:
+              raise SystemExit("core release jar missing")
+          for path in core_jars:
+              artifacts.append(file_row("core-jar", path))
+
+          project_aars = []
+          native_entries = []
+          for module in modules:
+              aars = sorted((root / module / "build" / "outputs" / "aar").glob("*-release.aar"))
+              if len(aars) != 1:
+                  raise SystemExit(f"expected one release AAR for {module}, found {len(aars)}")
+              aar = aars[0]
+              project_aars.append(aar)
+              artifacts.append(file_row("project-aar", aar))
+              with zipfile.ZipFile(aar) as archive:
+                  for info in archive.infolist():
+                      name = info.filename
+                      if name.endswith(".so") and (
+                          name.startswith("jni/") or name.startswith("lib/")
+                      ):
+                          native_entries.append({
+                              "owner": module,
+                              "entry": name,
+                              "uncompressed_bytes": info.file_size,
+                              "compressed_bytes": info.compress_size,
+                              "uncompressed_mib": mib(info.file_size),
+                              "compressed_mib": mib(info.compress_size),
+                          })
+
+          gradle_home = Path(os.environ.get("GRADLE_USER_HOME", Path.home() / ".gradle"))
+          ort_root = gradle_home / "caches" / "modules-2" / "files-2.1" / "com.microsoft.onnxruntime"
+          dependency_aars = []
+          if ort_root.exists():
+              for path in sorted(ort_root.rglob("*.aar")):
+                  if (
+                      "onnxruntime-android" in str(path)
+                      or "onnxruntime-extensions-android" in str(path)
+                  ):
+                      dependency_aars.append(path)
+
+          if not dependency_aars:
+              raise SystemExit("resolved ONNX Runtime Android AARs were not found")
+
+          seen = set()
+          dependency_rows = []
+          dependency_native = []
+          for path in dependency_aars:
+              key = (path.name, path.stat().st_size)
+              if key in seen:
+                  continue
+              seen.add(key)
+              row = {
+                  "kind": "semantic-runtime-aar",
+                  "file": path.name,
+                  "version_path": str(path.relative_to(gradle_home)),
+                  "bytes": path.stat().st_size,
+                  "mib": mib(path.stat().st_size),
+              }
+              dependency_rows.append(row)
+              with zipfile.ZipFile(path) as archive:
+                  for info in archive.infolist():
+                      if info.filename.endswith(".so") and (
+                          info.filename.startswith("jni/")
+                          or info.filename.startswith("lib/")
+                      ):
+                          dependency_native.append({
+                              "owner": path.name,
+                              "entry": info.filename,
+                              "uncompressed_bytes": info.file_size,
+                              "compressed_bytes": info.compress_size,
+                              "uncompressed_mib": mib(info.file_size),
+                              "compressed_mib": mib(info.compress_size),
+                          })
+
+          core_bytes = sum(x["bytes"] for x in artifacts if x["kind"] == "core-jar")
+          project_aar_bytes = sum(x["bytes"] for x in artifacts if x["kind"] == "project-aar")
+          project_native_uncompressed = sum(x["uncompressed_bytes"] for x in native_entries)
+          project_native_compressed = sum(x["compressed_bytes"] for x in native_entries)
+          semantic_runtime_aar_bytes = sum(x["bytes"] for x in dependency_rows)
+          semantic_native_uncompressed = sum(x["uncompressed_bytes"] for x in dependency_native)
+          semantic_native_compressed = sum(x["compressed_bytes"] for x in dependency_native)
+
+          report = {
+              "schema": "liliya-production-package-footprint-v0.1",
+              "commit_sha": os.environ["MEASURED_SHA"],
+              "scope": "release-distribution-baseline-not-final-apk",
+              "excludes_model_weights": True,
+              "artifacts": artifacts,
+              "project_native_entries": native_entries,
+              "semantic_runtime_artifacts": dependency_rows,
+              "semantic_runtime_native_entries": dependency_native,
+              "totals": {
+                  "core_jar_bytes": core_bytes,
+                  "core_jar_mib": mib(core_bytes),
+                  "project_release_aar_bytes": project_aar_bytes,
+                  "project_release_aar_mib": mib(project_aar_bytes),
+                  "project_embedded_native_uncompressed_bytes": project_native_uncompressed,
+                  "project_embedded_native_uncompressed_mib": mib(project_native_uncompressed),
+                  "project_embedded_native_compressed_bytes": project_native_compressed,
+                  "project_embedded_native_compressed_mib": mib(project_native_compressed),
+                  "semantic_runtime_aar_bytes": semantic_runtime_aar_bytes,
+                  "semantic_runtime_aar_mib": mib(semantic_runtime_aar_bytes),
+                  "semantic_runtime_native_uncompressed_bytes": semantic_native_uncompressed,
+                  "semantic_runtime_native_uncompressed_mib": mib(semantic_native_uncompressed),
+                  "semantic_runtime_native_compressed_bytes": semantic_native_compressed,
+                  "semantic_runtime_native_compressed_mib": mib(semantic_native_compressed),
+                  "raw_distribution_sum_bytes": core_bytes + project_aar_bytes + semantic_runtime_aar_bytes,
+                  "raw_distribution_sum_mib": mib(core_bytes + project_aar_bytes + semantic_runtime_aar_bytes),
+              },
+              "limitations": [
+                  "No production Android application module exists, so this is not final APK/AAB/install size.",
+                  "AAR compressed bytes and embedded native uncompressed bytes are different views and must not be added together.",
+                  "ONNX/GGUF model weights are separate runtime assets and are excluded from package footprint.",
+              ],
+          }
+
+          (out / "production-package-footprint.json").write_text(
+              json.dumps(report, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+
+          lines = [
+              "# Production Package Footprint v0.1",
+              "",
+              f"Exact commit: \`{report['commit_sha']}\`",
+              "",
+              "**Scope:** release-distribution baseline; not final APK/AAB/install size.",
+              "",
+              "| Category | Bytes | MiB |",
+              "|---|---:|---:|",
+              f"| Core JAR | {core_bytes} | {mib(core_bytes)} |",
+              f"| Project release AARs | {project_aar_bytes} | {mib(project_aar_bytes)} |",
+              f"| Project embedded native (uncompressed) | {project_native_uncompressed} | {mib(project_native_uncompressed)} |",
+              f"| Semantic runtime AARs | {semantic_runtime_aar_bytes} | {mib(semantic_runtime_aar_bytes)} |",
+              f"| Semantic runtime native (uncompressed) | {semantic_native_uncompressed} | {mib(semantic_native_uncompressed)} |",
+              f"| Raw JAR+AAR distribution sum | {report['totals']['raw_distribution_sum_bytes']} | {report['totals']['raw_distribution_sum_mib']} |",
+              "",
+              "Model weights are excluded. Native uncompressed values are diagnostic views inside AARs and are not added again to the raw distribution sum.",
+              "",
+              "## Project artifacts",
+              "",
+          ]
+          for row in artifacts:
+              lines.append(f"- {row['kind']}: \`{row['path']}\` — {row['bytes']} bytes ({row['mib']} MiB)")
+          lines += ["", "## Semantic runtime artifacts", ""]
+          for row in dependency_rows:
+              lines.append(f"- \`{row['file']}\` — {row['bytes']} bytes ({row['mib']} MiB)")
+          lines += ["", "## Limitations", ""]
+          for item in report["limitations"]:
+              lines.append(f"- {item}")
+
+          markdown = "\n".join(lines) + "\n"
+          (out / "production-package-footprint.md").write_text(markdown, encoding="utf-8")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
+              summary.write(markdown)
+          PY
+
+      - name: Upload footprint evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-package-footprint-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            build/footprint/production-package-footprint.json
+            build/footprint/production-package-footprint.md
+            build/footprint/semantic-runtime-dependencies.txt
+          if-no-files-found: error
+          retention-days: 30
