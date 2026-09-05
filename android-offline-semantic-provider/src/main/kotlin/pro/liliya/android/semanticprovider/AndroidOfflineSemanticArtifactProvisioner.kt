@@ -101,18 +101,6 @@ class AndroidOfflineSemanticArtifactProvisioner {
         encoderTemp.delete()
         tokenizerTemp.delete()
 
-        val encoderPrepared = prepare(
-            input = encoderInput,
-            temp = encoderTemp,
-            expectedBytes = identity.expectedSizeBytes,
-            expectedSha256 = identity.expectedSha256
-        )
-        if (!encoderPrepared) {
-            encoderTemp.delete()
-            tokenizerTemp.delete()
-            return AndroidOfflineSemanticArtifactProvisionResult.SourceRejected
-        }
-
         val tokenizerPrepared = prepare(
             input = tokenizerInput,
             temp = tokenizerTemp,
@@ -120,6 +108,18 @@ class AndroidOfflineSemanticArtifactProvisioner {
             expectedSha256 = identity.tokenizerExpectedSha256
         )
         if (!tokenizerPrepared) {
+            encoderTemp.delete()
+            tokenizerTemp.delete()
+            return AndroidOfflineSemanticArtifactProvisionResult.SourceRejected
+        }
+
+        val encoderPrepared = prepare(
+            input = encoderInput,
+            temp = encoderTemp,
+            expectedBytes = identity.expectedSizeBytes,
+            expectedSha256 = identity.expectedSha256
+        )
+        if (!encoderPrepared) {
             encoderTemp.delete()
             tokenizerTemp.delete()
             return AndroidOfflineSemanticArtifactProvisionResult.SourceRejected
