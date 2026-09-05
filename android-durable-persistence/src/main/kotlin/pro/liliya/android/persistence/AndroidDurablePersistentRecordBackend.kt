@@ -9,7 +9,9 @@ import java.io.EOFException
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
+import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
+import java.nio.charset.CodingErrorAction
 import java.nio.charset.StandardCharsets
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
@@ -418,7 +420,16 @@ internal object AndroidPersistentStateCodec {
         if (size <= 0 || size > MAX_IDENTIFIER_BYTES) return null
         val bytes = ByteArray(size)
         input.readFully(bytes)
-        val value = bytes.toString(StandardCharsets.UTF_8)
+        val value = try {
+            StandardCharsets.UTF_8.newDecoder()
+                .onMalformedInput(CodingErrorAction.REPORT)
+                .onUnmappableCharacter(CodingErrorAction.REPORT)
+                .decode(ByteBuffer.wrap(bytes))
+                .toString()
+        } catch (_: java.nio.charset.CharacterCodingException) {
+            bytes.fill(0)
+            return null
+        }
         bytes.fill(0)
         if (value.isBlank()) return null
         return value
