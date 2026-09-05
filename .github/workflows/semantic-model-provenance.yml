@@ -8,6 +8,8 @@ on:
     paths:
       - 'android-offline-semantic-provider/ci/reproduce_semantic_model_onnx.py'
       - 'android-offline-semantic-provider/src/main/kotlin/pro/liliya/android/semanticprovider/SemanticModelArtifactIdentity.kt'
+      - 'android-offline-semantic-provider/src/main/kotlin/pro/liliya/android/semanticprovider/AndroidOfflineSemanticCognitiveRetrievalAssembly.kt'
+      - 'android-offline-semantic-provider/src/androidTest/kotlin/pro/liliya/android/semanticprovider/OfflineSemanticProviderRealCognitiveLlamaE2EInstrumentedTest.kt'
       - '.github/workflows/semantic-model-provenance.yml'
   pull_request:
     branches:
@@ -15,6 +17,8 @@ on:
     paths:
       - 'android-offline-semantic-provider/ci/reproduce_semantic_model_onnx.py'
       - 'android-offline-semantic-provider/src/main/kotlin/pro/liliya/android/semanticprovider/SemanticModelArtifactIdentity.kt'
+      - 'android-offline-semantic-provider/src/main/kotlin/pro/liliya/android/semanticprovider/AndroidOfflineSemanticCognitiveRetrievalAssembly.kt'
+      - 'android-offline-semantic-provider/src/androidTest/kotlin/pro/liliya/android/semanticprovider/OfflineSemanticProviderRealCognitiveLlamaE2EInstrumentedTest.kt'
       - '.github/workflows/semantic-model-provenance.yml'
 
 permissions:
@@ -122,6 +126,18 @@ jobs:
           test "$(stat --format=%s "$asset_dir/multilingual-e5-small-tokenizer-v0.1.onnx")" -eq 5069533
           test "$(sha256sum "$asset_dir/multilingual-e5-small-tokenizer-v0.1.onnx" | awk '{print $1}')" = "4d28a2a61017a7b222164065d832e51103fbb3a4451c4e4938a2eeb8e83e44e8"
 
+      - name: Stage verified llama.cpp generation fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          asset_dir="android-offline-semantic-provider/src/androidTest/assets"
+          asset="$asset_dir/stories15M-q4_0.gguf"
+          curl --fail --location --retry 3 \
+            "https://huggingface.co/ggml-org/tiny-llamas/resolve/def3e2dd70df35ecbf6403ea347de4c5977220c1/stories15M-q4_0.gguf?download=true" \
+            --output "$asset"
+          echo "6151b1929d7f5aa3385d9ddef3393e55587c0a55de661562322bc51dfda93a04  $asset" | sha256sum --check --strict
+          test "$(stat --format=%s "$asset")" -eq 19077344
+
       - name: Set up Java 17 for Android acceptance
         uses: actions/setup-java@v5
         with:
@@ -136,8 +152,8 @@ jobs:
       - name: Set up Android SDK for acceptance
         uses: android-actions/setup-android@v3
 
-      - name: Install Android API 35
-        run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
+      - name: Install Android API 35, NDK and CMake
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools" "ndk;29.0.13113456" "cmake;3.31.6"
 
       - name: Enable KVM
         run: |
@@ -145,7 +161,7 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Compile exact ONNX real-model instrumentation
+      - name: Compile exact ONNX and full real-engine instrumentation
         run: gradle :android-offline-semantic-provider:assembleDebug :android-offline-semantic-provider:assembleDebugAndroidTest --console=plain
 
       - name: Run exact ONNX real-model Android contracts
@@ -157,3 +173,13 @@ jobs:
           profile: pixel_6
           disable-animations: true
           script: gradle :android-offline-semantic-provider:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.semanticFixtureSha256=$SELF_REPRODUCED_SHA256 -Pandroid.testInstrumentationRunnerArguments.semanticFixtureSizeBytes=$SELF_REPRODUCED_SIZE '-Pandroid.testInstrumentationRunnerArguments.class=pro.liliya.android.semanticprovider.OfflineSemanticProviderRealModelInstrumentedTest' --console=plain
+
+      - name: Run real ONNX to Cognitive Context to llama.cpp end-to-end contract
+        uses: ReactiveCircus/android-emulator-runner@v2.38.0
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          script: gradle :android-offline-semantic-provider:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.semanticFixtureSha256=$SELF_REPRODUCED_SHA256 -Pandroid.testInstrumentationRunnerArguments.semanticFixtureSizeBytes=$SELF_REPRODUCED_SIZE '-Pandroid.testInstrumentationRunnerArguments.class=pro.liliya.android.semanticprovider.OfflineSemanticProviderRealCognitiveLlamaE2EInstrumentedTest' --console=plain
