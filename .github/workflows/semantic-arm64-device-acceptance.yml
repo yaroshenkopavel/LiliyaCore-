@@ -188,4 +188,79 @@ jobs:
           name: semantic-arm64-device-resource-evidence
           path: ${{ runner.temp }}/semantic-resource-arm64-device.json
           if-no-files-found: error
+
+      - name: Run physical ARM64 real production rebuild evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          export ANDROID_SERIAL="$ANDROID_DEVICE_SERIAL"
+          gradle :android-offline-semantic-provider:connectedDebugAndroidTest \
+            -PsemanticSkipGenerationTestDependency=true \
+            -Pandroid.testInstrumentationRunnerArguments.semanticFixtureSha256="$SELF_REPRODUCED_SHA256" \
+            -Pandroid.testInstrumentationRunnerArguments.semanticFixtureSizeBytes="$SELF_REPRODUCED_SIZE" \
+            '-Pandroid.testInstrumentationRunnerArguments.class=pro.liliya.android.semanticprovider.OfflineSemanticProviderProductionResourceInstrumentedTest' \
+            --console=plain
+
+          evidence_name="post-onnx-production-resource-evidence.json"
+          mapfile -t semantic_packages < <(
+            adb -s "$ANDROID_DEVICE_SERIAL" shell pm list packages |
+              tr -d '\r' |
+              sed 's/^package://' |
+              grep '^pro\.liliya\.android\.semanticprovider'
+          )
+          test "${#semantic_packages[@]}" -gt 0
+
+          evidence_found=0
+          for package_name in "${semantic_packages[@]}"; do
+            if adb -s "$ANDROID_DEVICE_SERIAL" shell run-as "$package_name" test -f "files/$evidence_name" 2>/dev/null; then
+              adb -s "$ANDROID_DEVICE_SERIAL" shell run-as "$package_name" cat "files/$evidence_name" \
+                > "$RUNNER_TEMP/post-onnx-production-resource-arm64-device.json"
+              evidence_found=1
+              break
+            fi
+          done
+          test "$evidence_found" -eq 1
+          test -s "$RUNNER_TEMP/post-onnx-production-resource-arm64-device.json"
+
+      - name: Validate physical ARM64 real rebuild evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - "$RUNNER_TEMP/post-onnx-production-resource-arm64-device.json" <<'PY'
+          import json
+          import sys
+
+          evidence = json.load(open(sys.argv[1], encoding="utf-8"))
+          if evidence.get("primaryAbi") != "arm64-v8a":
+              raise SystemExit(f"not ARM64 evidence: {evidence.get('primaryAbi')}")
+          if evidence.get("arm64ThresholdsApplied") != "true":
+              raise SystemExit("ARM64 thresholds were not applied")
+          if evidence.get("realEmbeddingRebuild") != "true":
+              raise SystemExit("real embedding rebuild evidence missing")
+
+          required = {
+              "artifactValidationAndOrtLoadMs",
+              "fullStartup1kMs",
+              "realRebuild1000LatencyMs",
+              "realRebuild5000LatencyMs",
+              "realRebuild10000LatencyMs",
+              "realRebuild20000LatencyMs",
+              "realRebuild1000PeakPssBytes",
+              "realRebuild5000PeakPssBytes",
+              "realRebuild10000PeakPssBytes",
+              "realRebuild20000PeakPssBytes",
+              "processPssReady20kBytes",
+              "processPssAfterCloseBytes",
+          }
+          missing = sorted(required.difference(evidence))
+          if missing:
+              raise SystemExit(f"missing production ARM64 resource evidence fields: {missing}")
+          PY
+
+      - name: Publish physical ARM64 production resource evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: post-onnx-production-arm64-resource-evidence
+          path: ${{ runner.temp }}/post-onnx-production-resource-arm64-device.json
+          if-no-files-found: error
           retention-days: 30
