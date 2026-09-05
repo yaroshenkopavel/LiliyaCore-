@@ -33,11 +33,15 @@ internal class SemanticIndexPublication(
         for (seed in seeds) {
             when (replacement.addExact(seed.source, seed.vector)) {
                 SemanticIndexAddResult.Indexed -> Unit
-                SemanticIndexAddResult.CapacityRejected ->
+                SemanticIndexAddResult.CapacityRejected -> {
+                    replacement.clear()
                     return SemanticIndexRebuildResult.CapacityRejected
+                }
                 SemanticIndexAddResult.DuplicateExact,
-                SemanticIndexAddResult.EntityAlreadyIndexed ->
+                SemanticIndexAddResult.EntityAlreadyIndexed -> {
+                    replacement.clear()
                     return SemanticIndexRebuildResult.DuplicateOrConflictingIdentity
+                }
             }
         }
         val previous = published
