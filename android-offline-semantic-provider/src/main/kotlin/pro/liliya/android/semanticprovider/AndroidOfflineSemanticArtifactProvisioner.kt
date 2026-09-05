@@ -1,5 +1,6 @@
 package pro.liliya.android.semanticprovider
 
+import android.content.Context
 import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
@@ -31,6 +32,37 @@ sealed interface AndroidOfflineSemanticArtifactProvisionResult {
 class AndroidOfflineSemanticArtifactProvisioner {
 
     fun provision(
+        context: Context,
+        encoderInput: InputStream,
+        tokenizerInput: InputStream,
+        directoryName: String = DEFAULT_DIRECTORY,
+        mode: AndroidOfflineSemanticArtifactProvisionMode =
+            AndroidOfflineSemanticArtifactProvisionMode.INSTALL_ONLY
+    ): AndroidOfflineSemanticArtifactProvisionResult {
+        if (
+            directoryName.isBlank() ||
+            directoryName.contains('/') ||
+            directoryName.contains('\\')
+        ) {
+            return AndroidOfflineSemanticArtifactProvisionResult.PublicationFailed
+        }
+        val appRoot = try {
+            context.applicationContext.filesDir.canonicalFile
+        } catch (_: IOException) {
+            return AndroidOfflineSemanticArtifactProvisionResult.PublicationFailed
+        }
+        val root = try {
+            File(appRoot, directoryName).canonicalFile
+        } catch (_: IOException) {
+            return AndroidOfflineSemanticArtifactProvisionResult.PublicationFailed
+        }
+        if (root.parentFile != appRoot) {
+            return AndroidOfflineSemanticArtifactProvisionResult.PublicationFailed
+        }
+        return provisionIntoRoot(root, encoderInput, tokenizerInput, mode)
+    }
+
+    internal fun provisionIntoRoot(
         appPrivateRoot: File,
         encoderInput: InputStream,
         tokenizerInput: InputStream,
@@ -209,7 +241,11 @@ class AndroidOfflineSemanticArtifactProvisioner {
         PRESENT_NON_EXACT
     }
 
-    private companion object {
+    companion object {
+        const val DEFAULT_DIRECTORY = "liliya-semantic-artifacts-v1"
+    }
+
+    private companion object Internal {
         const val TEMP_SUFFIX = ".provisioning.tmp"
         const val BUFFER_BYTES = 64 * 1024
     }
