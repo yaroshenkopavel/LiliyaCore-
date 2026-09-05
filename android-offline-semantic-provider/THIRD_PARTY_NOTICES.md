@@ -40,6 +40,13 @@ review rather than treating this notice as proof of distribution clearance.
 The provenance workflow exports the pinned upstream model with the repository-controlled, pinned
 ONNX toolchain and verifies two independent exports byte-for-byte before publishing evidence.
 
+The export environment records its exact Python package versions in
+`semantic-onnx-provenance.json`. The tokenizer graph is generated with Python
+`onnxruntime-extensions==0.12.0`; Android execution uses the separately published Maven artifact
+`onnxruntime-extensions-android:0.12.4`. This cross-package version difference is intentional and
+must remain explicit in provenance. The generated tokenizer graph is accepted only after it passes
+the Android real-model instrumentation against the pinned Android runtime.
+
 Exact accepted v0.1 evidence identity:
 
 - Encoder: `multilingual-e5-small-liliya-v0.1.onnx`
