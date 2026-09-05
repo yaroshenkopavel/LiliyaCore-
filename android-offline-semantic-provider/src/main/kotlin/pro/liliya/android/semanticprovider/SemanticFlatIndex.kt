@@ -79,6 +79,11 @@ internal class SemanticEmbeddingVector(values: FloatArray) {
 
     fun copyValues(): FloatArray = value.copyOf()
 
+    @Synchronized
+    fun clear() {
+        value.fill(0f)
+    }
+
     override fun toString(): String = "SemanticEmbeddingVector(<redacted:$DIMENSION>)"
 
     companion object {
