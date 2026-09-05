@@ -16,6 +16,8 @@ import pro.liliya.core.modelengine.ModelEngineInferenceFailure
 import pro.liliya.core.modelengine.ModelEngineInferenceRequest
 import pro.liliya.core.modelengine.ModelEngineInferenceResult
 import pro.liliya.core.modelengine.ModelEngineLoadFailure
+import pro.liliya.core.modelengine.ModelEngineStreamControl
+import pro.liliya.core.modelengine.ModelEngineStreamingSink
 
 class LlamaCppSessionOwnershipContractTest {
 
@@ -60,6 +62,73 @@ class LlamaCppSessionOwnershipContractTest {
         )
         assertEquals(ModelEngineInferenceFailure.RESOURCE_LIMIT_REJECTED, outputChars.reason)
         assertEquals(0, native.inferCalls.get())
+    }
+
+    @Test
+    fun streaming_chunks_preserve_sequence_concat_and_same_session_reuse() {
+        val native = FakeNativePort().apply {
+            streamChunks = listOf("hel", "lo", " ", "мир")
+            streamResult = LlamaCppNativeInferenceResult.Succeeded("hello мир")
+            inferResult = LlamaCppNativeInferenceResult.Succeeded("again")
+        }
+        val session = session(native)
+        val delivered = mutableListOf<Pair<Long, String>>()
+
+        val streamed = assertIs<ModelEngineInferenceResult.Succeeded>(
+            session.stream(
+                ModelEngineInferenceRequest("private", maxOutputChars = 8),
+                ModelEngineStreamingSink { chunk ->
+                    delivered += chunk.sequence to chunk.text
+                    ModelEngineStreamControl.CONTINUE
+                }
+            )
+        )
+
+        assertEquals("hello мир", streamed.output)
+        assertEquals(listOf(1L, 2L, 3L, 4L), delivered.map { it.first })
+        assertEquals("hello мир", delivered.joinToString("") { it.second })
+        assertEquals(1, native.streamCalls.get())
+        assertEquals(0, native.inferCalls.get())
+
+        val after = assertIs<ModelEngineInferenceResult.Succeeded>(
+            session.infer(ModelEngineInferenceRequest("private", maxOutputChars = 8))
+        )
+        assertEquals("again", after.output)
+        assertEquals(1, native.inferCalls.get())
+    }
+
+    @Test
+    fun streaming_stop_is_cancelled_and_session_remains_live() {
+        val native = FakeNativePort().apply {
+            streamChunks = listOf("one", "two", "three")
+            streamResult = LlamaCppNativeInferenceResult.Succeeded("must-not-return")
+            inferResult = LlamaCppNativeInferenceResult.Succeeded("reused")
+        }
+        val session = session(native)
+        val delivered = mutableListOf<String>()
+
+        val cancelled = assertIs<ModelEngineInferenceResult.Rejected>(
+            session.stream(
+                ModelEngineInferenceRequest("private", maxOutputChars = 8),
+                ModelEngineStreamingSink { chunk ->
+                    delivered += chunk.text
+                    if (chunk.sequence == 2L) {
+                        ModelEngineStreamControl.STOP
+                    } else {
+                        ModelEngineStreamControl.CONTINUE
+                    }
+                }
+            )
+        )
+
+        assertEquals(ModelEngineInferenceFailure.CANCELLED, cancelled.reason)
+        assertEquals(listOf("one", "two"), delivered)
+        assertEquals(1, native.streamCalls.get())
+
+        val reused = assertIs<ModelEngineInferenceResult.Succeeded>(
+            session.infer(ModelEngineInferenceRequest("private", maxOutputChars = 8))
+        )
+        assertEquals("reused", reused.output)
     }
 
     @Test
@@ -230,10 +299,14 @@ class LlamaCppSessionOwnershipContractTest {
 
     private class FakeNativePort : LlamaCppNativeSessionPort {
         val inferCalls = AtomicInteger(0)
+        val streamCalls = AtomicInteger(0)
         val closeCalls = AtomicInteger(0)
         val closeResults = ArrayDeque<LlamaCppNativeCloseResult>()
         var inferResult: LlamaCppNativeInferenceResult =
             LlamaCppNativeInferenceResult.Succeeded("ok")
+        var streamChunks: List<String> = emptyList()
+        var streamResult: LlamaCppNativeInferenceResult =
+            LlamaCppNativeInferenceResult.Succeeded("")
         var inferThrowable: Throwable? = null
         var closeThrowable: Throwable? = null
         var onInfer: (() -> Unit)? = null
@@ -254,6 +327,23 @@ class LlamaCppSessionOwnershipContractTest {
             onInfer?.invoke()
             inferThrowable?.let { throw it }
             return inferResult
+        }
+
+        override fun stream(
+            nativeSessionId: Long,
+            promptUtf8: ByteArray,
+            maxOutputChars: Int,
+            sink: LlamaCppNativeStreamingSink
+        ): LlamaCppNativeInferenceResult {
+            streamCalls.incrementAndGet()
+            for (chunk in streamChunks) {
+                if (!sink.onChunk(chunk.encodeToByteArray())) {
+                    return LlamaCppNativeInferenceResult.Rejected(
+                        ModelEngineInferenceFailure.CANCELLED
+                    )
+                }
+            }
+            return streamResult
         }
 
         override fun close(nativeSessionId: Long): LlamaCppNativeCloseResult {
