@@ -131,6 +131,7 @@ jobs:
           profile: pixel_6
           disable-animations: true
           script: |
+            bash <<'BASH'
             set -euo pipefail
             gradle :android-offline-semantic-provider:connectedDebugAndroidTest \
               -Pandroid.testInstrumentationRunnerArguments.semanticFixtureSha256="$SELF_REPRODUCED_SHA256" \
@@ -158,6 +159,7 @@ jobs:
             done
             test "$evidence_found" -eq 1
             test -s "$RUNNER_TEMP/hosted-semantic-startup-baseline.json"
+            BASH
 
       - name: Validate and classify hosted evidence
         env:
