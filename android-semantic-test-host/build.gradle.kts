@@ -1,3 +1,5 @@
+import org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile
+
 plugins {
     id("com.android.application")
 }
@@ -47,4 +49,22 @@ dependencies {
     androidTestImplementation(kotlin("test"))
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test:runner:1.6.2")
+}
+
+
+val providerCompileDebugKotlin =
+    project(":android-offline-semantic-provider")
+        .tasks
+        .named<KotlinJvmCompile>("compileDebugKotlin")
+
+tasks.named<KotlinJvmCompile>("compileDebugAndroidTestKotlin") {
+    dependsOn(providerCompileDebugKotlin)
+
+    compilerOptions {
+        freeCompilerArgs.add(
+            providerCompileDebugKotlin
+                .flatMap { it.destinationDirectory }
+                .map { "-Xfriend-paths=${it.asFile.absolutePath}" }
+        )
+    }
 }
