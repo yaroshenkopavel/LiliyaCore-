@@ -1,3 +1,5 @@
+import org.gradle.jvm.tasks.Jar
+
 plugins {
     id("com.android.library")
 }
@@ -102,4 +104,13 @@ tasks.register("reportSemanticRuntimeFootprint") {
         println("SEMANTIC_RUNTIME_FOOTPRINT_REPORT=${report.absolutePath}")
         println(json)
     }
+}
+
+
+val firebaseI8AndroidTestClassesJar by tasks.registering(Jar::class) {
+    dependsOn("compileDebugAndroidTestKotlin")
+    archiveBaseName.set("firebase-i8-android-test-classes")
+    archiveClassifier.set("debug")
+
+    from(layout.buildDirectory.dir("tmp/kotlin-classes/debugAndroidTest"))
 }

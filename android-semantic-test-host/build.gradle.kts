@@ -21,7 +21,6 @@ android {
 
     sourceSets {
         getByName("androidTest") {
-            java.srcDir("../android-offline-semantic-provider/src/androidTest/kotlin")
             assets.srcDir("../android-offline-semantic-provider/src/androidTest/assets")
         }
     }
@@ -37,11 +36,19 @@ repositories {
     mavenCentral()
 }
 
+
+val providerFirebaseI8TestJar =
+    project(":android-offline-semantic-provider")
+        .tasks
+        .named("firebaseI8AndroidTestClassesJar")
+
+
 dependencies {
     implementation(project(":android-offline-semantic-provider"))
 
     androidTestImplementation(project(":core"))
     androidTestImplementation(project(":android-offline-semantic-provider"))
+    androidTestImplementation(files(providerFirebaseI8TestJar))
     androidTestImplementation(project(":android-llama-cpp-engine"))
     androidTestImplementation(project(":android-protected-model-staging"))
     androidTestImplementation(kotlin("test"))
