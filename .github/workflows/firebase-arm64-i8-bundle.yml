@@ -220,6 +220,10 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
+      - name: Syntax-check Firebase APK pair preflight
+        shell: bash
+        run: bash -n .github/scripts/verify-firebase-i8-apk-pair.sh
+
       - name: Verify target package, instrumentation contract and ARM64 ABI
         shell: bash
         run: bash .github/scripts/verify-firebase-i8-apk-pair.sh
