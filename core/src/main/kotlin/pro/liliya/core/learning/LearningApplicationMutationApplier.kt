@@ -63,10 +63,10 @@ class LearningApplicationMutationApplier(
     private val authorizationGate: LearningApplicationMutationAuthorizationGate,
     private val memory: MemoryComposition,
     private val knowledge: KnowledgeComposition
-) {
+) : LearningApplicationMutationApplicationPort {
     private val foundation = mutations.foundation
 
-    fun apply(
+    override fun apply(
         reference: LearningApplicationMutationReference
     ): LearningApplicationMutationApplicationResult {
         val root = foundation.rootContext(
