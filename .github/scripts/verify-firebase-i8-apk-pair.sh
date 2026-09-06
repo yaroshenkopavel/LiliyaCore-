@@ -37,6 +37,16 @@ echo "testArm64NativeEntries=$test_arm64_count"
 echo "appOtherAbiNativeEntries=$app_other_abi_count"
 echo "testOtherAbiNativeEntries=$test_other_abi_count"
 
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
 test "$app_arm64_count" -gt 0
 test "$test_arm64_count" -gt 0
 test "$app_other_abi_count" -eq 0
