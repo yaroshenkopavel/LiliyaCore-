@@ -6,7 +6,10 @@ import pro.liliya.core.foundation.FoundationComposition
 import pro.liliya.core.learning.LearningApplicationComposition
 import pro.liliya.core.learning.LearningApplicationDownstreamReference
 import pro.liliya.core.learning.LearningApplicationMutationApplier
+import pro.liliya.core.learning.LearningApplicationMutationApplicationPort
 import pro.liliya.core.learning.LearningApplicationMutationComposition
+import pro.liliya.core.learning.LearningApplicationMutationPreparationPort
+import pro.liliya.core.learning.preparationPort
 import pro.liliya.core.learning.LearningApplicationTarget
 import pro.liliya.core.learning.LearningComposition
 import pro.liliya.core.learning.LearningDecisionComposition
@@ -30,14 +33,50 @@ class CognitiveGovernedLearningComposition(
     decisions: LearningDecisionComposition,
     materialization: CognitiveLearningApplicationMaterializationPort,
     applications: LearningApplicationComposition,
-    mutations: LearningApplicationMutationComposition,
-    mutationApplier: LearningApplicationMutationApplier,
+    mutations: LearningApplicationMutationPreparationPort,
+    mutationApplier: LearningApplicationMutationApplicationPort,
     principal: AuthorityPrincipal,
     allowedTargets: List<LearningApplicationTarget>,
     artifactIds: CognitiveArtifactIdSource,
     timestamps: CognitiveTimestampSource,
     limits: CognitiveRuntimeLimits = CognitiveRuntimeLimits()
 ) {
+    constructor(
+        foundation: FoundationComposition,
+        scope: CognitiveRuntimeScopeId,
+        learning: LearningComposition,
+        policies: LearningPolicyComposition,
+        policyReference: LearningPolicyReference,
+        governance: CognitiveLearningGovernancePort,
+        decisions: LearningDecisionComposition,
+        materialization: CognitiveLearningApplicationMaterializationPort,
+        applications: LearningApplicationComposition,
+        mutations: LearningApplicationMutationComposition,
+        mutationApplier: LearningApplicationMutationApplier,
+        principal: AuthorityPrincipal,
+        allowedTargets: List<LearningApplicationTarget>,
+        artifactIds: CognitiveArtifactIdSource,
+        timestamps: CognitiveTimestampSource,
+        limits: CognitiveRuntimeLimits = CognitiveRuntimeLimits()
+    ) : this(
+        foundation = foundation,
+        scope = scope,
+        learning = learning,
+        policies = policies,
+        policyReference = policyReference,
+        governance = governance,
+        decisions = decisions,
+        materialization = materialization,
+        applications = applications,
+        mutations = mutations.preparationPort(),
+        mutationApplier = mutationApplier,
+        principal = principal,
+        allowedTargets = allowedTargets,
+        artifactIds = artifactIds,
+        timestamps = timestamps,
+        limits = limits
+    )
+
     private val coordinator = CognitiveGovernedLearningCoordinator(
         scope = scope,
         learning = learning,
