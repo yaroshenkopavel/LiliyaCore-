@@ -27,14 +27,22 @@ test -n "$runner"
 app_files="$(apkanalyzer files list "$app")"
 test_files="$(apkanalyzer files list "$test_apk")"
 
-app_arm64_count="$(printf '%s\n' "$app_files" | grep -Ec '^/lib/arm64-v8a/[^/]+$' || true)"
-test_arm64_count="$(printf '%s\n' "$test_files" | grep -Ec '^/lib/arm64-v8a/[^/]+$' || true)"
+app_arm64_count="$(
+  printf '%s\n' "$app_files" |
+    awk '/^\/lib\/arm64-v8a\/[^/]+$/ { count++ } END { print count + 0 }'
+)"
+test_arm64_count="$(
+  printf '%s\n' "$test_files" |
+    awk '/^\/lib\/arm64-v8a\/[^/]+$/ { count++ } END { print count + 0 }'
+)"
 
 app_other_abi_count="$(
-  printf '%s\n' "$app_files"     | grep -E '^/lib/[^/]+/[^/]+$'     | grep -Ev '^/lib/arm64-v8a/[^/]+$'     | wc -l     | tr -d ' '
+  printf '%s\n' "$app_files" |
+    awk '/^\/lib\/[^/]+\/[^/]+$/ && $0 !~ /^\/lib\/arm64-v8a\/[^/]+$/ { count++ } END { print count + 0 }'
 )"
 test_other_abi_count="$(
-  printf '%s\n' "$test_files"     | grep -E '^/lib/[^/]+/[^/]+$'     | grep -Ev '^/lib/arm64-v8a/[^/]+$'     | wc -l     | tr -d ' '
+  printf '%s\n' "$test_files" |
+    awk '/^\/lib\/[^/]+\/[^/]+$/ && $0 !~ /^\/lib\/arm64-v8a\/[^/]+$/ { count++ } END { print count + 0 }'
 )"
 
 echo "appArm64NativeEntries=$app_arm64_count"
@@ -43,15 +51,20 @@ echo "appOtherAbiNativeEntries=$app_other_abi_count"
 echo "testOtherAbiNativeEntries=$test_other_abi_count"
 
 echo "appNativeEntries:"
-printf '%s\n' "$app_files" | grep -E '^/lib/[^/]+/[^/]+$' || true
+printf '%s\n' "$app_files" |
+  awk '/^\/lib\/[^/]+\/[^/]+$/ { print }'
+
 echo "testNativeEntries:"
-printf '%s\n' "$test_files" | grep -E '^/lib/[^/]+/[^/]+$' || true
+printf '%s\n' "$test_files" |
+  awk '/^\/lib\/[^/]+\/[^/]+$/ { print }'
 
 echo "appUnexpectedNativeEntries:"
-printf '%s\n' "$app_files"   | grep -E '^/lib/[^/]+/[^/]+$'   | grep -Ev '^/lib/arm64-v8a/[^/]+$'   || true
+printf '%s\n' "$app_files" |
+  awk '/^\/lib\/[^/]+\/[^/]+$/ && $0 !~ /^\/lib\/arm64-v8a\/[^/]+$/ { print }'
 
 echo "testUnexpectedNativeEntries:"
-printf '%s\n' "$test_files"   | grep -E '^/lib/[^/]+/[^/]+$'   | grep -Ev '^/lib/arm64-v8a/[^/]+$'   || true
+printf '%s\n' "$test_files" |
+  awk '/^\/lib\/[^/]+\/[^/]+$/ && $0 !~ /^\/lib\/arm64-v8a\/[^/]+$/ { print }'
 
 test "$app_arm64_count" -gt 0
 test "$test_arm64_count" -gt 0
