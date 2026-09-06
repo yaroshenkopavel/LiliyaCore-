@@ -21,7 +21,7 @@ android {
 
     sourceSets {
         getByName("androidTest") {
-            java.srcDir("../android-offline-semantic-provider/src/androidTest/kotlin")
+            kotlin.srcDir("../android-offline-semantic-provider/src/androidTest/kotlin")
             assets.srcDir("../android-offline-semantic-provider/src/androidTest/assets")
         }
     }
