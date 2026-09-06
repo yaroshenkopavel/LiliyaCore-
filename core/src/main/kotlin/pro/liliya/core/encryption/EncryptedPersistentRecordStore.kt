@@ -13,6 +13,7 @@ import pro.liliya.core.persistence.PersistentPayload
 import pro.liliya.core.persistence.PersistentRecord
 import pro.liliya.core.persistence.PersistentRecordOwnership
 import pro.liliya.core.persistence.PersistentRecordStore
+import pro.liliya.core.persistence.PersistentRecordTransitionResult
 import pro.liliya.core.persistence.PersistentSchemaId
 import pro.liliya.core.persistence.PersistentSchemaVersion
 
@@ -27,6 +28,17 @@ data class CognitivePersistentRecordDraft(
     val schemaVersion: PersistentSchemaVersion,
     val plaintext: CognitivePlaintext,
     val createdAt: Instant,
+    val dek: CognitiveDekReference
+)
+
+data class CognitivePersistentRecordTransitionDraft(
+    val sourceId: PersistentEntityId,
+    val sourceGeneration: PersistentGeneration,
+    val replacementId: PersistentEntityId,
+    val replacementSchemaId: PersistentSchemaId,
+    val replacementSchemaVersion: PersistentSchemaVersion,
+    val replacementPlaintext: CognitivePlaintext,
+    val replacementCreatedAt: Instant,
     val dek: CognitiveDekReference
 )
 
@@ -117,6 +129,98 @@ class EncryptedPersistentRecordStore(
                     CognitiveEncryptionFailureCategory.PERSISTENCE_FAILED,
                     installed.throwable
                 )
+            }
+        }
+
+    fun transitionExact(
+        draft: CognitivePersistentRecordTransitionDraft
+    ): CognitiveEncryptionResult<PersistentRecordOwnership> =
+        synchronized(store) {
+            val current = store.inspect(draft.sourceId)
+                ?: return@synchronized CognitiveEncryptionResult.Rejected(
+                    CognitiveEncryptionFailureCategory.PERSISTENCE_CONFLICT
+                )
+            if (current.generation != draft.sourceGeneration) {
+                return@synchronized CognitiveEncryptionResult.Rejected(
+                    CognitiveEncryptionFailureCategory.PERSISTENCE_CONFLICT
+                )
+            }
+
+            val binding = CognitivePayloadBinding(
+                storeId = store.storeId,
+                entityId = draft.replacementId,
+                entityGeneration = draft.sourceGeneration,
+                schemaId = draft.replacementSchemaId,
+                schemaVersion = draft.replacementSchemaVersion,
+                dek = draft.dek
+            )
+
+            val dek = when (val resolved = dekResolver.resolve(draft.dek)) {
+                is CognitiveEncryptionResult.Success -> resolved.value
+                is CognitiveEncryptionResult.Rejected -> return@synchronized resolved
+                is CognitiveEncryptionResult.Failed -> return@synchronized resolved
+            }
+            val nonce = when (val generated = nonceSource.next(profile)) {
+                is CognitiveEncryptionResult.Success -> generated.value
+                is CognitiveEncryptionResult.Rejected -> return@synchronized generated
+                is CognitiveEncryptionResult.Failed -> return@synchronized generated
+            }
+            val aad = CognitiveAssociatedDataEncoder.encode(envelopeVersion, profile, binding)
+            val sealed = when (
+                val result = aead.seal(
+                    profile,
+                    dek,
+                    nonce,
+                    aad,
+                    draft.replacementPlaintext
+                )
+            ) {
+                is CognitiveEncryptionResult.Success -> result.value
+                is CognitiveEncryptionResult.Rejected -> return@synchronized result
+                is CognitiveEncryptionResult.Failed -> return@synchronized result
+            }
+
+            val envelope = EncryptedCognitivePayloadEnvelope(
+                version = envelopeVersion,
+                profile = profile,
+                binding = binding,
+                nonce = nonce.copyBytes(),
+                ciphertext = sealed.copyCiphertext(),
+                authenticationTag = sealed.copyAuthenticationTag()
+            )
+            val replacement = PersistentRecord(
+                id = draft.replacementId,
+                schemaId = draft.replacementSchemaId,
+                schemaVersion = draft.replacementSchemaVersion,
+                payload = PersistentPayload(CognitivePersistentEnvelopeCodec.encode(envelope)),
+                createdAt = draft.replacementCreatedAt
+            )
+
+            when (
+                val transitioned = store.transitionExact(
+                    sourceId = draft.sourceId,
+                    sourceGeneration = draft.sourceGeneration,
+                    replacement = replacement
+                )
+            ) {
+                is PersistentRecordTransitionResult.Committed -> {
+                    if (transitioned.ownership.generation != draft.sourceGeneration) {
+                        CognitiveEncryptionResult.Failed(
+                            CognitiveEncryptionFailureCategory.PERSISTENCE_CONFLICT
+                        )
+                    } else {
+                        CognitiveEncryptionResult.Success(transitioned.ownership)
+                    }
+                }
+                is PersistentRecordTransitionResult.Rejected ->
+                    CognitiveEncryptionResult.Rejected(
+                        CognitiveEncryptionFailureCategory.PERSISTENCE_CONFLICT
+                    )
+                is PersistentRecordTransitionResult.Failed ->
+                    CognitiveEncryptionResult.Failed(
+                        CognitiveEncryptionFailureCategory.PERSISTENCE_FAILED,
+                        transitioned.throwable
+                    )
             }
         }
 

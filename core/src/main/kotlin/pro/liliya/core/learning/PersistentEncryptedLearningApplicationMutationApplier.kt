@@ -20,11 +20,39 @@ import pro.liliya.core.memory.PersistentMemoryRememberResult
  */
 class PersistentEncryptedLearningApplicationMutationApplier(
     private val foundation: FoundationComposition,
-    private val mutations: PersistentLearningApplicationMutationComposition,
+    private val mutationClaims: PersistentLearningApplicationMutationClaimPort,
     private val authorizationGate: LearningApplicationMutationAuthorizationGate,
     private val memory: EncryptedPersistentMemoryComposition,
     private val knowledge: EncryptedPersistentKnowledgeComposition
 ) : LearningApplicationMutationApplicationPort {
+
+    constructor(
+        foundation: FoundationComposition,
+        mutations: PersistentLearningApplicationMutationComposition,
+        authorizationGate: LearningApplicationMutationAuthorizationGate,
+        memory: EncryptedPersistentMemoryComposition,
+        knowledge: EncryptedPersistentKnowledgeComposition
+    ) : this(
+        foundation = foundation,
+        mutationClaims = mutations.claimPort(),
+        authorizationGate = authorizationGate,
+        memory = memory,
+        knowledge = knowledge
+    )
+
+    constructor(
+        foundation: FoundationComposition,
+        mutations: EncryptedPersistentLearningApplicationMutationComposition,
+        authorizationGate: LearningApplicationMutationAuthorizationGate,
+        memory: EncryptedPersistentMemoryComposition,
+        knowledge: EncryptedPersistentKnowledgeComposition
+    ) : this(
+        foundation = foundation,
+        mutationClaims = mutations.claimPort(),
+        authorizationGate = authorizationGate,
+        memory = memory,
+        knowledge = knowledge
+    )
 
     override fun apply(
         reference: LearningApplicationMutationReference
@@ -41,7 +69,7 @@ class PersistentEncryptedLearningApplicationMutationApplier(
             context = root
         )
 
-        val claim = when (val result = mutations.claim(reference)) {
+        val claim = when (val result = mutationClaims.claim(reference)) {
             is PersistentLearningApplicationMutationClaimResult.Claimed -> result.claim
             is PersistentLearningApplicationMutationClaimResult.Rejected ->
                 return observeResult(

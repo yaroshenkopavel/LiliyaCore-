@@ -39,6 +39,12 @@ fun interface LearningApplicationMutationApplicationPort {
     ): LearningApplicationMutationApplicationResult
 }
 
+fun interface PersistentLearningApplicationMutationClaimPort {
+    fun claim(
+        reference: LearningApplicationMutationReference
+    ): PersistentLearningApplicationMutationClaimResult
+}
+
 /**
  * Process-local compatibility adapters. They preserve the existing store and ownership semantics.
  */
@@ -92,6 +98,43 @@ fun PersistentLearningApplicationMutationComposition.preparationPort():
 fun PersistentLearningApplicationMutationComposition.inspectionPort():
     LearningApplicationMutationInspectionPort =
     LearningApplicationMutationInspectionPort { id -> inspect(id) }
+
+fun PersistentLearningApplicationMutationComposition.claimPort():
+    PersistentLearningApplicationMutationClaimPort =
+    PersistentLearningApplicationMutationClaimPort { reference -> claim(reference) }
+
+fun EncryptedPersistentLearningApplicationMutationComposition.preparationPort():
+    LearningApplicationMutationPreparationPort =
+    LearningApplicationMutationPreparationPort { plan ->
+        when (val result = prepare(plan)) {
+            is PersistentLearningApplicationMutationPrepareResult.Prepared ->
+                LearningApplicationMutationPreparationResult.Prepared(
+                    object : LearningApplicationMutationPreparedOwnership {
+                        override val plan = result.ownership.plan
+                        override val generation = result.ownership.generation
+                        override fun remove(): Boolean =
+                            result.ownership.remove() is
+                                PersistentLearningApplicationMutationResult.Committed
+                    }
+                )
+            is PersistentLearningApplicationMutationPrepareResult.AlreadyCompleted ->
+                LearningApplicationMutationPreparationResult.AlreadyCompleted(
+                    result.receipt
+                )
+            is PersistentLearningApplicationMutationPrepareResult.Rejected ->
+                LearningApplicationMutationPreparationResult.Rejected(result.reason)
+            is PersistentLearningApplicationMutationPrepareResult.Failed ->
+                LearningApplicationMutationPreparationResult.Failed(result.reason)
+        }
+    }
+
+fun EncryptedPersistentLearningApplicationMutationComposition.inspectionPort():
+    LearningApplicationMutationInspectionPort =
+    LearningApplicationMutationInspectionPort { id -> inspect(id) }
+
+fun EncryptedPersistentLearningApplicationMutationComposition.claimPort():
+    PersistentLearningApplicationMutationClaimPort =
+    PersistentLearningApplicationMutationClaimPort { reference -> claim(reference) }
 
 internal fun LearningApplicationMutationInspectionPort.inspectExact(
     reference: LearningApplicationMutationReference

@@ -29,6 +29,7 @@ import pro.liliya.core.cognitive.MemoryRetrievalPort
 import pro.liliya.core.encryption.CognitiveDekReference
 import pro.liliya.core.foundation.FoundationComposition
 import pro.liliya.core.knowledge.EncryptedPersistentKnowledgeComposition
+import pro.liliya.core.learning.EncryptedPersistentLearningApplicationMutationComposition
 import pro.liliya.core.learning.LearningApplicationMutationApplicationPort
 import pro.liliya.core.learning.LearningApplicationMutationAuthorizationGate
 import pro.liliya.core.learning.PersistentEncryptedLearningApplicationMutationApplier
@@ -127,6 +128,26 @@ class AndroidHeartRuntimeAssembly private constructor(
     fun runtime(): CognitiveRuntimeComposition? =
         if (startup.state() == HeartRuntimeState.READY) cognitiveRuntime else null
 
+    fun learningMutationApplicationPort(
+        foundation: FoundationComposition,
+        mutations: EncryptedPersistentLearningApplicationMutationComposition,
+        authorizationGate: LearningApplicationMutationAuthorizationGate
+    ): LearningApplicationMutationApplicationPort? {
+        if (startup.state() != HeartRuntimeState.READY) return null
+        val activeMemory = memory ?: return null
+        val activeKnowledge = knowledge ?: return null
+        return PersistentEncryptedLearningApplicationMutationApplier(
+            foundation = foundation,
+            mutations = mutations,
+            authorizationGate = authorizationGate,
+            memory = activeMemory,
+            knowledge = activeKnowledge
+        )
+    }
+
+    @Deprecated(
+        message = "Use encrypted persistent learning mutation lifecycle for production heart wiring"
+    )
     fun learningMutationApplicationPort(
         foundation: FoundationComposition,
         mutations: PersistentLearningApplicationMutationComposition,

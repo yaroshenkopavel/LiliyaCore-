@@ -28,6 +28,8 @@ import pro.liliya.core.knowledge.EncryptedPersistentKnowledgeComposition
 import pro.liliya.core.knowledge.EncryptedPersistentKnowledgeOpenResult
 import pro.liliya.core.memory.EncryptedPersistentMemoryComposition
 import pro.liliya.core.memory.EncryptedPersistentMemoryOpenResult
+import pro.liliya.core.learning.EncryptedPersistentLearningApplicationMutationComposition
+import pro.liliya.core.learning.EncryptedPersistentLearningApplicationMutationOpenResult
 import pro.liliya.core.persistence.PersistentRecordStore
 import pro.liliya.core.persistence.PersistentStoreId
 import pro.liliya.core.persistence.PersistentStoreOpenResult
@@ -69,6 +71,19 @@ sealed interface AndroidEncryptedKnowledgeOpenResult {
         val category: CognitiveEncryptionFailureCategory
     ) : AndroidEncryptedKnowledgeOpenResult
     data class Failed(val reason: String) : AndroidEncryptedKnowledgeOpenResult
+}
+
+sealed interface AndroidEncryptedLearningMutationOpenResult {
+    data class Opened(
+        val composition: EncryptedPersistentLearningApplicationMutationComposition
+    ) : AndroidEncryptedLearningMutationOpenResult
+
+    data object Corrupt : AndroidEncryptedLearningMutationOpenResult
+    data class Incompatible(val reason: String) : AndroidEncryptedLearningMutationOpenResult
+    data class EncryptionUnavailable(
+        val category: CognitiveEncryptionFailureCategory
+    ) : AndroidEncryptedLearningMutationOpenResult
+    data class Failed(val reason: String) : AndroidEncryptedLearningMutationOpenResult
 }
 
 sealed interface AndroidEncryptedRecordStoreOpenResult {
@@ -163,6 +178,54 @@ class AndroidCognitiveStorageAssembly private constructor(
                 AndroidEncryptedKnowledgeOpenResult.Incompatible(encrypted.reason)
             is AndroidEncryptedRecordStoreOpenResult.Failed ->
                 AndroidEncryptedKnowledgeOpenResult.Failed(encrypted.reason)
+        }
+
+    fun openEncryptedLearningMutations(
+        storeId: PersistentStoreId,
+        activeDek: pro.liliya.core.encryption.CognitiveDekReference
+    ): AndroidEncryptedLearningMutationOpenResult =
+        when (val encrypted = openEncryptedRecordStore(storeId)) {
+            is AndroidEncryptedRecordStoreOpenResult.Opened ->
+                when (
+                    val opened =
+                        EncryptedPersistentLearningApplicationMutationComposition.open(
+                            foundation = foundation,
+                            encryptedStore = encrypted.store,
+                            activeDek = activeDek
+                        )
+                ) {
+                    is EncryptedPersistentLearningApplicationMutationOpenResult.Opened ->
+                        AndroidEncryptedLearningMutationOpenResult.Opened(
+                            opened.composition
+                        )
+
+                    EncryptedPersistentLearningApplicationMutationOpenResult.Corrupt ->
+                        AndroidEncryptedLearningMutationOpenResult.Corrupt
+
+                    is EncryptedPersistentLearningApplicationMutationOpenResult.Incompatible ->
+                        AndroidEncryptedLearningMutationOpenResult.Incompatible(
+                            opened.reason
+                        )
+
+                    is EncryptedPersistentLearningApplicationMutationOpenResult.EncryptionUnavailable ->
+                        AndroidEncryptedLearningMutationOpenResult.EncryptionUnavailable(
+                            opened.category
+                        )
+
+                    is EncryptedPersistentLearningApplicationMutationOpenResult.RestorationFailed ->
+                        AndroidEncryptedLearningMutationOpenResult.Failed(opened.reason)
+                }
+
+            AndroidEncryptedRecordStoreOpenResult.Corrupt ->
+                AndroidEncryptedLearningMutationOpenResult.Corrupt
+
+            is AndroidEncryptedRecordStoreOpenResult.Incompatible ->
+                AndroidEncryptedLearningMutationOpenResult.Incompatible(
+                    encrypted.reason
+                )
+
+            is AndroidEncryptedRecordStoreOpenResult.Failed ->
+                AndroidEncryptedLearningMutationOpenResult.Failed(encrypted.reason)
         }
 
     fun openEncryptedRecordStore(
