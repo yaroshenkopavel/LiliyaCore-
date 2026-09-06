@@ -52,19 +52,22 @@ dependencies {
 }
 
 
-val providerCompileDebugKotlin =
+val providerDebugKotlinClasses =
     project(":android-offline-semantic-provider")
-        .tasks
-        .named<KotlinJvmCompile>("compileDebugKotlin")
+        .layout
+        .buildDirectory
+        .dir("tmp/kotlin-classes/debug")
 
-tasks.named<KotlinJvmCompile>("compileDebugAndroidTestKotlin") {
-    dependsOn(providerCompileDebugKotlin)
+tasks.withType<KotlinJvmCompile>().configureEach {
+    if (name == "compileDebugAndroidTestKotlin") {
+        dependsOn(":android-offline-semantic-provider:compileDebugKotlin")
 
-    compilerOptions {
-        freeCompilerArgs.add(
-            providerCompileDebugKotlin
-                .flatMap { it.destinationDirectory }
-                .map { "-Xfriend-paths=${it.asFile.absolutePath}" }
-        )
+        compilerOptions {
+            freeCompilerArgs.add(
+                providerDebugKotlinClasses.map {
+                    "-Xfriend-paths=${it.asFile.absolutePath}"
+                }
+            )
+        }
     }
 }
