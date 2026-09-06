@@ -78,7 +78,7 @@ class AndroidHeartRuntimeAssembly private constructor(
     private val activeDek: CognitiveDekReference,
     private val semanticRoot: File,
     private val semanticEncoderFile: File,
-    private val semanticAssembly: AndroidOfflineSemanticProviderAssembly,
+    private var semanticAssembly: AndroidOfflineSemanticProviderAssembly,
     private val llamaAssembly: AndroidLlamaCppCognitiveModelAssembly,
     private val stagedModel: LargeProtectedModelStagedSourceOwnership,
     private val maxCandidatesPerSource: Int,
@@ -206,31 +206,139 @@ class AndroidHeartRuntimeAssembly private constructor(
         val activeMemory = memory ?: return AndroidHeartSemanticRecoveryResult.Failed
         val activeKnowledge = knowledge ?: return AndroidHeartSemanticRecoveryResult.Failed
 
-        return when (
-            val rebuilt = semanticAssembly.rebuild(
-                memory = activeMemory.snapshotEntries(),
-                knowledge = activeKnowledge.snapshotEntries()
-            )
-        ) {
-            is AndroidOfflineSemanticProviderRebuildResult.Ready -> {
-                if (!startup.markReadyAfterExplicitRecovery()) {
-                    AndroidHeartSemanticRecoveryResult.Failed
-                } else {
-                    semanticRecoveryRequired = false
-                    AndroidHeartSemanticRecoveryResult.Recovered(rebuilt.entryCount)
+        val entryCount = when (semanticAssembly.state()) {
+            pro.liliya.android.semanticprovider.AndroidOfflineSemanticProviderState.LOADED,
+            pro.liliya.android.semanticprovider.AndroidOfflineSemanticProviderState.READY -> {
+                when (
+                    val rebuilt = semanticAssembly.rebuild(
+                        memory = activeMemory.snapshotEntries(),
+                        knowledge = activeKnowledge.snapshotEntries()
+                    )
+                ) {
+                    is AndroidOfflineSemanticProviderRebuildResult.Ready -> rebuilt.entryCount
+                    AndroidOfflineSemanticProviderRebuildResult.Busy ->
+                        return AndroidHeartSemanticRecoveryResult.Busy
+                    AndroidOfflineSemanticProviderRebuildResult.NotLoaded,
+                    AndroidOfflineSemanticProviderRebuildResult.Failed ->
+                        return AndroidHeartSemanticRecoveryResult.Failed
                 }
             }
 
-            AndroidOfflineSemanticProviderRebuildResult.Busy ->
-                AndroidHeartSemanticRecoveryResult.Busy
+            pro.liliya.android.semanticprovider.AndroidOfflineSemanticProviderState.FAILED -> {
+                val oldCoordinator = semanticStartup
+                val close = if (oldCoordinator != null) {
+                    oldCoordinator.close()
+                } else {
+                    semanticAssembly.close()
+                }
+                when (close) {
+                    AndroidOfflineSemanticProviderCloseResult.Closed,
+                    AndroidOfflineSemanticProviderCloseResult.AlreadyClosed -> Unit
+                    AndroidOfflineSemanticProviderCloseResult.Busy ->
+                        return AndroidHeartSemanticRecoveryResult.Busy
+                    AndroidOfflineSemanticProviderCloseResult.ProviderFailed ->
+                        return AndroidHeartSemanticRecoveryResult.Failed
+                }
 
-            AndroidOfflineSemanticProviderRebuildResult.NotLoaded,
-            AndroidOfflineSemanticProviderRebuildResult.Failed ->
-                AndroidHeartSemanticRecoveryResult.Failed
+                val replacement = AndroidOfflineSemanticProviderAssembly.create()
+                val replacementStartup = AndroidOfflineSemanticStartupCoordinator.create(
+                    assembly = replacement,
+                    authoritativeSnapshots = {
+                        AndroidOfflineSemanticAuthoritativeSnapshot(
+                            memory = activeMemory.snapshotEntries(),
+                            knowledge = activeKnowledge.snapshotEntries()
+                        )
+                    }
+                )
+                val started = replacementStartup.start(semanticRoot, semanticEncoderFile)
+                val recoveredEntries = when (started) {
+                    is AndroidOfflineSemanticStartupResult.Ready -> started.entryCount
+                    AndroidOfflineSemanticStartupResult.Busy ->
+                        return AndroidHeartSemanticRecoveryResult.Busy
+                    AndroidOfflineSemanticStartupResult.ArtifactMissing,
+                    AndroidOfflineSemanticStartupResult.ArtifactRejected,
+                    AndroidOfflineSemanticStartupResult.ResourceRejected,
+                    AndroidOfflineSemanticStartupResult.Unsupported,
+                    AndroidOfflineSemanticStartupResult.ProviderFailed,
+                    AndroidOfflineSemanticStartupResult.AuthoritativeSnapshotFailed,
+                    AndroidOfflineSemanticStartupResult.RebuildFailed ->
+                        return AndroidHeartSemanticRecoveryResult.Failed
+                }
+                semanticAssembly = replacement
+                semanticStartup = replacementStartup
+
+                if (!recreateRetrievalAndRuntime(activeMemory, activeKnowledge)) {
+                    return AndroidHeartSemanticRecoveryResult.Failed
+                }
+                recoveredEntries
+            }
+
+            else -> return AndroidHeartSemanticRecoveryResult.Failed
         }
+
+        if (!startup.markReadyAfterExplicitRecovery()) {
+            return AndroidHeartSemanticRecoveryResult.Failed
+        }
+        semanticRecoveryRequired = false
+        return AndroidHeartSemanticRecoveryResult.Recovered(entryCount)
     }
 
     fun close(): HeartRuntimeCloseResult = startup.close()
+
+    private fun recreateRetrievalAndRuntime(
+        activeMemory: EncryptedPersistentMemoryComposition,
+        activeKnowledge: EncryptedPersistentKnowledgeComposition
+    ): Boolean {
+        val memoryResolver = MemoryAuthoritativeResolverPort { candidate ->
+            val current = activeMemory.inspect(candidate.recordId)
+            if (
+                current != null &&
+                current.record.id == candidate.recordId &&
+                current.generation == candidate.generation
+            ) {
+                MemoryAuthoritativeResolutionResult.Resolved(current)
+            } else {
+                MemoryAuthoritativeResolutionResult.Stale
+            }
+        }
+        val knowledgeResolver = KnowledgeAuthoritativeResolverPort { candidate ->
+            val current = activeKnowledge.inspect(candidate.itemId)
+            if (
+                current != null &&
+                current.item.id == candidate.itemId &&
+                current.generation == candidate.generation
+            ) {
+                KnowledgeAuthoritativeResolutionResult.Resolved(current)
+            } else {
+                KnowledgeAuthoritativeResolutionResult.Stale
+            }
+        }
+
+        val replacementRetrieval = try {
+            AndroidOfflineSemanticCognitiveRetrievalAssembly.create(
+                semantic = semanticAssembly,
+                memoryResolver = memoryResolver,
+                knowledgeResolver = knowledgeResolver,
+                maxCandidatesPerSource = maxCandidatesPerSource
+            )
+        } catch (_: Throwable) {
+            return false
+        }
+        val replacementRuntime = try {
+            cognitiveRuntimeFactory.create(
+                memoryRetrieval = replacementRetrieval.memoryRetrieval,
+                knowledgeRetrieval = replacementRetrieval.knowledgeRetrieval,
+                inference = llamaAssembly.inferencePort,
+                streamingInference = llamaAssembly.streamingInferencePort
+            )
+        } catch (_: Throwable) {
+            return false
+        }
+
+        retrieval = replacementRetrieval
+        cognitiveRuntime = replacementRuntime
+        return true
+    }
 
     private fun startStorage(): HeartDependencyStartResult {
         val openedMemory = when (
