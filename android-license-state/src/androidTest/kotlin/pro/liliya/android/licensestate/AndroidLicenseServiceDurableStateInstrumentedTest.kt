@@ -145,6 +145,73 @@ class AndroidLicenseServiceDurableStateInstrumentedTest {
     }
 
     @Test
+    fun failed_temp_write_never_publishes_candidate() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext
+        val directory = "license-state-backend-failed-write-test"
+        val root = File(context.filesDir, directory)
+        root.deleteRecursively()
+        val storeId = LicenseServiceDurableStoreId("license-test-failed-write")
+        val protector = AndroidLicenseServiceDurableStateProtector()
+        protector.deleteForTest(storeId)
+
+        try {
+            val reference = assertIs<LicenseServiceDurableProtectorInitializationResult.Fresh>(
+                protector.prepareInitialization(storeId)
+            ).reference
+            val payload = sealedPayload(protector, storeId, reference, revision = 1L)
+            val backend = AndroidLicenseServiceDurableBackend.create(context, storeId, directory)
+            val target = backend.publishedFileForTest()
+            val blockedTemp = File(target.parentFile, target.name + ".tmp")
+            assertTrue(blockedTemp.mkdir())
+
+            assertIs<LicenseServiceDurableBackendCommitResult.Failed>(
+                backend.commit(LicenseServiceDurableExpectedRevision(0), payload)
+            )
+            assertTrue(!target.exists())
+            assertIs<LicenseServiceDurableBackendLoadResult.Missing>(backend.load())
+        } finally {
+            root.deleteRecursively()
+            protector.deleteForTest(storeId)
+        }
+    }
+
+    @Test
+    fun backend_rejects_revision_substitution_without_publication() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext
+        val directory = "license-state-backend-revision-substitution-test"
+        val root = File(context.filesDir, directory)
+        root.deleteRecursively()
+        val storeId = LicenseServiceDurableStoreId("license-test-revision-substitution")
+        val protector = AndroidLicenseServiceDurableStateProtector()
+        protector.deleteForTest(storeId)
+
+        try {
+            val reference = assertIs<LicenseServiceDurableProtectorInitializationResult.Fresh>(
+                protector.prepareInitialization(storeId)
+            ).reference
+            val wrongRevisionPayload = sealedPayload(
+                protector = protector,
+                storeId = storeId,
+                reference = reference,
+                revision = 2L
+            )
+            val backend = AndroidLicenseServiceDurableBackend.create(context, storeId, directory)
+
+            assertIs<LicenseServiceDurableBackendCommitResult.Failed>(
+                backend.commit(
+                    LicenseServiceDurableExpectedRevision(0),
+                    wrongRevisionPayload
+                )
+            )
+            assertTrue(!backend.publishedFileForTest().exists())
+            assertIs<LicenseServiceDurableBackendLoadResult.Missing>(backend.load())
+        } finally {
+            root.deleteRecursively()
+            protector.deleteForTest(storeId)
+        }
+    }
+
+    @Test
     fun two_backend_instances_share_process_cas_boundary() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext
         val directory = "license-state-backend-race-test"
