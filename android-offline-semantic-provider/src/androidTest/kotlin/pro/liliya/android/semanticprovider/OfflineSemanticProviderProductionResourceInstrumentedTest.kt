@@ -16,6 +16,12 @@ import kotlin.test.assertTrue
 import org.json.JSONObject
 import org.junit.Test
 import org.junit.runner.RunWith
+import pro.liliya.core.knowledge.KnowledgeGeneration
+import pro.liliya.core.knowledge.KnowledgeItem
+import pro.liliya.core.knowledge.KnowledgeItemId
+import pro.liliya.core.knowledge.KnowledgeItemSnapshot
+import pro.liliya.core.knowledge.KnowledgeOrigin
+import pro.liliya.core.knowledge.KnowledgeSourceId
 import pro.liliya.core.memory.MemoryGeneration
 import pro.liliya.core.memory.MemoryProvenance
 import pro.liliya.core.memory.MemoryRecord
@@ -70,14 +76,16 @@ class OfflineSemanticProviderProductionResourceInstrumentedTest {
             try {
                 for (count in rebuildTiers) {
                     writeProgress("rebuild-$count-start")
-                    val snapshots = memorySnapshots(count)
+                    val tier = authoritativeSnapshots(count)
+                    evidence["realRebuild${count}MemoryEntries"] = tier.memory.size.toString()
+                    evidence["realRebuild${count}KnowledgeEntries"] = tier.knowledge.size.toString()
                     forceGc()
                     val beforePss = processPssBytes()
                     val beforeNative = Debug.getNativeHeapAllocatedSize()
                     val sample = samplePeakPss {
                         val rebuildStarted = SystemClock.elapsedRealtimeNanos()
                         val rebuilt = assertIs<AndroidOfflineSemanticProviderRebuildResult.Ready>(
-                            semantic.rebuild(memory = snapshots, knowledge = emptyList())
+                            semantic.rebuild(memory = tier.memory, knowledge = tier.knowledge)
                         )
                         assertEquals(count, rebuilt.entryCount)
                         elapsedMillis(rebuildStarted)
@@ -141,6 +149,16 @@ class OfflineSemanticProviderProductionResourceInstrumentedTest {
         }
     }
 
+    private fun authoritativeSnapshots(count: Int): TierSnapshots {
+        require(count in 1..MAX_TOTAL_ENTRIES)
+        val memoryCount = minOf(count, MAX_MEMORY_ENTRIES)
+        val knowledgeCount = count - memoryCount
+        return TierSnapshots(
+            memory = memorySnapshots(memoryCount),
+            knowledge = knowledgeSnapshots(knowledgeCount)
+        )
+    }
+
     private fun memorySnapshots(count: Int): List<MemoryRecordSnapshot> =
         List(count) { index ->
             val ordinal = index + 1
@@ -152,6 +170,22 @@ class OfflineSemanticProviderProductionResourceInstrumentedTest {
                     createdAt = BASE.plusSeconds(ordinal.toLong())
                 ),
                 generation = MemoryGeneration(ordinal.toLong())
+            )
+        }
+
+    private fun knowledgeSnapshots(count: Int): List<KnowledgeItemSnapshot> =
+        List(count) { index ->
+            val ordinal = index + 1
+            KnowledgeItemSnapshot(
+                item = KnowledgeItem(
+                    id = KnowledgeItemId("resource-real-knowledge-$ordinal"),
+                    origin = KnowledgeOrigin.Declared(
+                        sourceId = KnowledgeSourceId("resource-real-rebuild")
+                    ),
+                    content = "Reference knowledge entry $ordinal about household notes, travel plans, keys, schedules and reminders.",
+                    createdAt = BASE.plusSeconds((MAX_MEMORY_ENTRIES + ordinal).toLong())
+                ),
+                generation = KnowledgeGeneration(ordinal.toLong())
             )
         }
 
@@ -278,6 +312,11 @@ class OfflineSemanticProviderProductionResourceInstrumentedTest {
         }
     }
 
+    private data class TierSnapshots(
+        val memory: List<MemoryRecordSnapshot>,
+        val knowledge: List<KnowledgeItemSnapshot>
+    )
+
     private data class PeakSample<T>(
         val value: T,
         val peakPssBytes: Long
@@ -286,6 +325,8 @@ class OfflineSemanticProviderProductionResourceInstrumentedTest {
     private companion object {
         val ARM64_REBUILD_TIERS = intArrayOf(1_000, 5_000, 10_000, 20_000)
         val HOSTED_REBUILD_TIERS = intArrayOf(1_000)
+        const val MAX_MEMORY_ENTRIES = 10_000
+        const val MAX_TOTAL_ENTRIES = 20_000
         const val PEAK_SAMPLE_INTERVAL_MS = 25L
         const val RESOURCE_EVIDENCE_FILE_NAME = "post-onnx-production-resource-evidence.json"
         const val RESOURCE_PROGRESS_FILE_NAME = "post-onnx-production-resource-progress.txt"
