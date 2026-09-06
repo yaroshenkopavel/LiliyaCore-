@@ -395,6 +395,16 @@ class ProductionGenerationCandidateCombinedResourceInstrumentedTest {
             appendedBytes += segment.size.toLong()
             segment.fill(0)
             segmentIndex += 1
+            if (
+                appendedBytes == totalBytes ||
+                appendedBytes / STAGE_PROGRESS_BYTES !=
+                (appendedBytes - wanted) / STAGE_PROGRESS_BYTES
+            ) {
+                println(
+                    "PRODUCTION_GENERATION_CANDIDATE_STAGE_PROGRESS bytes=" +
+                        appendedBytes + "/" + totalBytes
+                )
+            }
         }
         assertEquals(totalBytes, appendedBytes)
         assertEquals(-1, input.read())
@@ -533,6 +543,7 @@ class ProductionGenerationCandidateCombinedResourceInstrumentedTest {
                 QWEN_REVISION + "/" + QWEN_FILE_NAME + "?download=true"
         const val SEGMENT_BYTES = 4 * 1024 * 1024
         const val DOWNLOAD_BUFFER_BYTES = 1024 * 1024
+        const val STAGE_PROGRESS_BYTES = 64L * 1024L * 1024L
         const val REPEATED_INFERENCE_COUNT = 3
         const val MAX_OUTPUT_CHARS = 4096
         const val MAX_MODEL_PROMPT_CHARS = 8192
