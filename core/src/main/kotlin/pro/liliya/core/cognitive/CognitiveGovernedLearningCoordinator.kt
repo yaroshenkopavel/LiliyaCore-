@@ -11,14 +11,14 @@ import pro.liliya.core.learning.LearningApplicationId
 import pro.liliya.core.learning.LearningApplicationInstallResult
 import pro.liliya.core.learning.LearningApplicationIntent
 import pro.liliya.core.learning.LearningApplicationIntentReference
-import pro.liliya.core.learning.LearningApplicationMutationApplier
 import pro.liliya.core.learning.LearningApplicationMutationApplicationResult
-import pro.liliya.core.learning.LearningApplicationMutationComposition
 import pro.liliya.core.learning.LearningApplicationMutationId
 import pro.liliya.core.learning.LearningApplicationMutationPayload
 import pro.liliya.core.learning.LearningApplicationMutationPlan
-import pro.liliya.core.learning.LearningApplicationMutationPrepareResult
 import pro.liliya.core.learning.LearningApplicationMutationReference
+import pro.liliya.core.learning.LearningApplicationMutationApplicationPort
+import pro.liliya.core.learning.LearningApplicationMutationPreparationPort
+import pro.liliya.core.learning.LearningApplicationMutationPreparationResult
 import pro.liliya.core.learning.LearningApplicationIdempotencyKey
 import pro.liliya.core.learning.LearningApplicationTarget
 import pro.liliya.core.learning.LearningCandidateReference
@@ -112,8 +112,8 @@ internal class CognitiveGovernedLearningCoordinator(
     private val decisions: LearningDecisionComposition,
     private val materialization: CognitiveLearningApplicationMaterializationPort,
     private val applications: LearningApplicationComposition,
-    private val mutations: LearningApplicationMutationComposition,
-    private val mutationApplier: LearningApplicationMutationApplier,
+    private val mutationPreparation: LearningApplicationMutationPreparationPort,
+    private val mutationApplication: LearningApplicationMutationApplicationPort,
     private val principal: AuthorityPrincipal,
     allowedTargets: List<LearningApplicationTarget>,
     private val artifactIds: CognitiveArtifactIdSource,
@@ -374,7 +374,7 @@ internal class CognitiveGovernedLearningCoordinator(
         }
 
         val mutationOwnership = when (
-            val preparedMutation = mutations.prepare(
+            val preparedMutation = mutationPreparation.prepare(
                 LearningApplicationMutationPlan(
                     id = prepared.mutationId,
                     application = applicationReference,
@@ -386,9 +386,10 @@ internal class CognitiveGovernedLearningCoordinator(
                 )
             )
         ) {
-            is LearningApplicationMutationPrepareResult.Prepared -> preparedMutation.ownership
-            is LearningApplicationMutationPrepareResult.AlreadyCompleted,
-            is LearningApplicationMutationPrepareResult.Rejected -> {
+            is LearningApplicationMutationPreparationResult.Prepared -> preparedMutation.ownership
+            is LearningApplicationMutationPreparationResult.AlreadyCompleted,
+            is LearningApplicationMutationPreparationResult.Rejected,
+            is LearningApplicationMutationPreparationResult.Failed -> {
                 return compensateApplicationAndDecision(
                     applicationOwnership,
                     decisionOwnership,
@@ -402,7 +403,7 @@ internal class CognitiveGovernedLearningCoordinator(
             mutationOwnership.generation
         )
 
-        return when (val applied = mutationApplier.apply(mutationReference)) {
+        return when (val applied = mutationApplication.apply(mutationReference)) {
             is LearningApplicationMutationApplicationResult.Applied ->
                 CognitiveGovernedLearningResult.Applied(
                     decision = decisionReference,
