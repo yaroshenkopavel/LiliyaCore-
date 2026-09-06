@@ -40,6 +40,12 @@ import pro.liliya.core.foundation.FoundationComposition
 import pro.liliya.core.logging.CorrelationIdGenerator
 import pro.liliya.core.logging.InMemoryLogWriter
 import pro.liliya.core.logging.StructuredLogger
+import pro.liliya.core.knowledge.KnowledgeGeneration
+import pro.liliya.core.knowledge.KnowledgeItem
+import pro.liliya.core.knowledge.KnowledgeItemId
+import pro.liliya.core.knowledge.KnowledgeItemSnapshot
+import pro.liliya.core.knowledge.KnowledgeOrigin
+import pro.liliya.core.knowledge.KnowledgeSourceId
 import pro.liliya.core.memory.MemoryGeneration
 import pro.liliya.core.memory.MemoryProvenance
 import pro.liliya.core.memory.MemoryRecord
@@ -109,9 +115,13 @@ class OfflineSemanticProviderCombinedEngineResourceInstrumentedTest {
                     encoderFile = File(semanticRoot, SemanticModelProfileV01.ONNX_FILE_NAME)
                 )
             )
+            val semanticMemory = memorySnapshots(SEMANTIC_MEMORY_ENTRY_COUNT)
+            val semanticKnowledge = knowledgeSnapshots(SEMANTIC_KNOWLEDGE_ENTRY_COUNT)
+            evidence["semanticMemoryEntryCount"] = semanticMemory.size.toString()
+            evidence["semanticKnowledgeEntryCount"] = semanticKnowledge.size.toString()
             assertEquals(
                 AndroidOfflineSemanticProviderRebuildResult.Ready(SEMANTIC_ENTRY_COUNT),
-                semantic.rebuild(memorySnapshots(SEMANTIC_ENTRY_COUNT), emptyList())
+                semantic.rebuild(semanticMemory, semanticKnowledge)
             )
 
             forceGc()
@@ -241,6 +251,22 @@ class OfflineSemanticProviderCombinedEngineResourceInstrumentedTest {
                     createdAt = BASE.plusSeconds(ordinal.toLong())
                 ),
                 generation = MemoryGeneration(ordinal.toLong())
+            )
+        }
+
+    private fun knowledgeSnapshots(count: Int): List<KnowledgeItemSnapshot> =
+        List(count) { index ->
+            val ordinal = index + 1
+            KnowledgeItemSnapshot(
+                item = KnowledgeItem(
+                    id = KnowledgeItemId("combined-resource-knowledge-$ordinal"),
+                    origin = KnowledgeOrigin.Declared(
+                        sourceId = KnowledgeSourceId("combined-resource")
+                    ),
+                    content = "Local semantic knowledge $ordinal for combined engine residency evidence.",
+                    createdAt = BASE.plusSeconds((SEMANTIC_MEMORY_ENTRY_COUNT + ordinal).toLong())
+                ),
+                generation = KnowledgeGeneration(ordinal.toLong())
             )
         }
 
@@ -391,7 +417,9 @@ class OfflineSemanticProviderCombinedEngineResourceInstrumentedTest {
     }
 
     private companion object {
-        const val SEMANTIC_ENTRY_COUNT = 20_000
+        const val SEMANTIC_MEMORY_ENTRY_COUNT = 10_000
+        const val SEMANTIC_KNOWLEDGE_ENTRY_COUNT = 10_000
+        const val SEMANTIC_ENTRY_COUNT = SEMANTIC_MEMORY_ENTRY_COUNT + SEMANTIC_KNOWLEDGE_ENTRY_COUNT
         const val STORIES_15M_ASSET = "stories15M-q4_0.gguf"
         const val STORIES_15M_BYTES = 19_077_344L
         const val SEGMENT_BYTES = 256 * 1024
