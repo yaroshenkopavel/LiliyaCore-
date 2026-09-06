@@ -17,6 +17,9 @@ import pro.liliya.core.learning.LearningApplicationMutationPayload
 import pro.liliya.core.learning.LearningApplicationMutationPlan
 import pro.liliya.core.learning.LearningApplicationMutationReference
 import pro.liliya.core.learning.LearningApplicationMutationApplicationPort
+import pro.liliya.core.learning.LearningApplicationMutationApplier
+import pro.liliya.core.learning.LearningApplicationMutationComposition
+import pro.liliya.core.learning.preparationPort
 import pro.liliya.core.learning.LearningApplicationMutationPreparationPort
 import pro.liliya.core.learning.LearningApplicationMutationPreparationResult
 import pro.liliya.core.learning.LearningApplicationMutationPreparedOwnership
@@ -121,6 +124,40 @@ internal class CognitiveGovernedLearningCoordinator(
     private val timestamps: CognitiveTimestampSource,
     private val limits: CognitiveRuntimeLimits
 ) {
+    constructor(
+        scope: CognitiveRuntimeScopeId,
+        learning: LearningComposition,
+        policies: LearningPolicyComposition,
+        policyReference: LearningPolicyReference,
+        governance: CognitiveLearningGovernancePort,
+        decisions: LearningDecisionComposition,
+        materialization: CognitiveLearningApplicationMaterializationPort,
+        applications: LearningApplicationComposition,
+        mutations: LearningApplicationMutationComposition,
+        mutationApplier: LearningApplicationMutationApplier,
+        principal: AuthorityPrincipal,
+        allowedTargets: List<LearningApplicationTarget>,
+        artifactIds: CognitiveArtifactIdSource,
+        timestamps: CognitiveTimestampSource,
+        limits: CognitiveRuntimeLimits
+    ) : this(
+        scope = scope,
+        learning = learning,
+        policies = policies,
+        policyReference = policyReference,
+        governance = governance,
+        decisions = decisions,
+        materialization = materialization,
+        applications = applications,
+        mutationPreparation = mutations.preparationPort(),
+        mutationApplication = mutationApplier,
+        principal = principal,
+        allowedTargets = allowedTargets,
+        artifactIds = artifactIds,
+        timestamps = timestamps,
+        limits = limits
+    )
+
     private val allowedTargets = allowedTargets.distinct().toList()
     private val gate = Any()
     private val inProgress = mutableSetOf<LearningCandidateReference>()
