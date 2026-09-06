@@ -1,5 +1,3 @@
-import org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile
-
 plugins {
     id("com.android.application")
 }
@@ -23,7 +21,6 @@ android {
 
     sourceSets {
         getByName("androidTest") {
-            kotlin.srcDir("../android-offline-semantic-provider/src/androidTest/kotlin")
             assets.srcDir("../android-offline-semantic-provider/src/androidTest/assets")
         }
     }
@@ -39,35 +36,22 @@ repositories {
     mavenCentral()
 }
 
+
+val providerFirebaseI8TestJar =
+    project(":android-offline-semantic-provider")
+        .tasks
+        .named("firebaseI8AndroidTestClassesJar")
+
+
 dependencies {
     implementation(project(":android-offline-semantic-provider"))
 
     androidTestImplementation(project(":core"))
     androidTestImplementation(project(":android-offline-semantic-provider"))
+    androidTestImplementation(files(providerFirebaseI8TestJar))
     androidTestImplementation(project(":android-llama-cpp-engine"))
     androidTestImplementation(project(":android-protected-model-staging"))
     androidTestImplementation(kotlin("test"))
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test:runner:1.6.2")
-}
-
-
-val providerDebugKotlinClasses =
-    project(":android-offline-semantic-provider")
-        .layout
-        .buildDirectory
-        .dir("tmp/kotlin-classes/debug")
-
-tasks.withType<KotlinJvmCompile>().configureEach {
-    if (name == "compileDebugAndroidTestKotlin") {
-        dependsOn(":android-offline-semantic-provider:compileDebugKotlin")
-
-        compilerOptions {
-            freeCompilerArgs.add(
-                providerDebugKotlinClasses.map {
-                    "-Xfriend-paths=${it.asFile.absolutePath}"
-                }
-            )
-        }
-    }
 }
