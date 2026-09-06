@@ -38,9 +38,12 @@ repositories {
 
 
 val providerFirebaseI8TestJar =
-    project(":android-offline-semantic-provider")
-        .tasks
-        .named("firebaseI8AndroidTestClassesJar")
+    files(
+        project(":android-offline-semantic-provider")
+            .layout
+            .buildDirectory
+            .file("libs/firebase-i8-android-test-classes-debug.jar")
+    ).builtBy(":android-offline-semantic-provider:firebaseI8AndroidTestClassesJar")
 
 
 dependencies {
