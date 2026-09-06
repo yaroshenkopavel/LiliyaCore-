@@ -9,7 +9,6 @@ import pro.liliya.core.learning.LearningApplicationMutationApplier
 import pro.liliya.core.learning.LearningApplicationMutationApplicationPort
 import pro.liliya.core.learning.LearningApplicationMutationComposition
 import pro.liliya.core.learning.LearningApplicationMutationPreparationPort
-import pro.liliya.core.learning.preparationPort
 import pro.liliya.core.learning.LearningApplicationTarget
 import pro.liliya.core.learning.LearningComposition
 import pro.liliya.core.learning.LearningDecisionComposition
@@ -86,7 +85,7 @@ class CognitiveGovernedLearningComposition(
         decisions = decisions,
         materialization = materialization,
         applications = applications,
-        mutationPreparation = mutations.preparationPort(),
+        mutationPreparation = mutations,
         mutationApplication = mutationApplier,
         principal = principal,
         allowedTargets = allowedTargets,
