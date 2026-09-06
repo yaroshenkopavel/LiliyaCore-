@@ -11,6 +11,7 @@ on:
       - 'android-offline-semantic-provider/src/androidTest/**'
       - 'android-offline-semantic-provider/build.gradle.kts'
       - 'android-semantic-test-host/**'
+      - 'android-runtime/**'
       - 'android-llama-cpp-engine/**'
   pull_request:
     branches:
@@ -22,6 +23,7 @@ on:
       - 'android-offline-semantic-provider/src/androidTest/**'
       - 'android-offline-semantic-provider/build.gradle.kts'
       - 'android-semantic-test-host/**'
+      - 'android-runtime/**'
       - 'android-llama-cpp-engine/**'
   workflow_dispatch:
     inputs:
