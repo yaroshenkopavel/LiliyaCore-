@@ -126,6 +126,21 @@ class HeartRuntimeStartupCoordinatorContractTest {
     }
 
     @Test
+    fun ready_can_enter_failed_and_return_ready_only_through_explicit_recovery_hook() {
+        val events = mutableListOf<String>()
+        val coordinator = coordinator(events)
+
+        assertEquals(HeartRuntimeStartResult.Ready, coordinator.start())
+        assertEquals(true, coordinator.markFailedFromReady())
+        assertEquals(HeartRuntimeState.FAILED, coordinator.state())
+        assertEquals(false, coordinator.markFailedFromReady())
+
+        assertEquals(true, coordinator.markReadyAfterExplicitRecovery())
+        assertEquals(HeartRuntimeState.READY, coordinator.state())
+        assertEquals(false, coordinator.markReadyAfterExplicitRecovery())
+    }
+
+    @Test
     fun repeated_start_is_rejected_without_replaying_dependencies() {
         val events = mutableListOf<String>()
         val coordinator = coordinator(events)

@@ -100,6 +100,20 @@ class HeartRuntimeStartupCoordinator(
     fun state(): HeartRuntimeState = currentState
 
     @Synchronized
+    internal fun markFailedFromReady(): Boolean {
+        if (currentState != HeartRuntimeState.READY) return false
+        currentState = HeartRuntimeState.FAILED
+        return true
+    }
+
+    @Synchronized
+    internal fun markReadyAfterExplicitRecovery(): Boolean {
+        if (currentState != HeartRuntimeState.FAILED) return false
+        currentState = HeartRuntimeState.READY
+        return true
+    }
+
+    @Synchronized
     fun start(): HeartRuntimeStartResult {
         if (currentState != HeartRuntimeState.IDLE) {
             return HeartRuntimeStartResult.Busy(currentState)
