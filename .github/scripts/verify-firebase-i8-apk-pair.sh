@@ -24,14 +24,23 @@ test "$target_pkg" = "$app_id"
 test -n "$test_id"
 test -n "$runner"
 
-adb install -r "$app"
-adb install -r "$test_apk"
+app_files="$(apkanalyzer files list "$app")"
+test_files="$(apkanalyzer files list "$test_apk")"
 
-instrumentation_list="$(adb shell pm list instrumentation | tr -d '\r')"
-echo "$instrumentation_list"
-echo "$instrumentation_list" | grep -F "target=$app_id"
+app_arm64_count="$(printf '%s\n' "$app_files" | grep -c '^/lib/arm64-v8a/' || true)"
+test_arm64_count="$(printf '%s\n' "$test_files" | grep -c '^/lib/arm64-v8a/' || true)"
+app_other_abi_count="$(printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' | wc -l | tr -d ' ')"
+test_other_abi_count="$(printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' | wc -l | tr -d ' ')"
 
-adb shell pm path "$app_id"
-adb shell pm path "$test_id"
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
 
-echo "Firebase APK pair preflight passed"
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
