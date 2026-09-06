@@ -1,5 +1,6 @@
 package pro.liliya.android.semanticprovider
 
+import android.app.ActivityManager
 import android.content.Context
 import android.os.Build
 import android.os.Bundle
@@ -102,6 +103,10 @@ class ProductionGenerationCandidateCombinedResourceInstrumentedTest {
     @Test
     fun records_onnx_20k_plus_exact_qwen3_candidate_residency_and_repeated_inference() =
         withCleanRoots { targetContext, testContext ->
+            val memoryInfo = ActivityManager.MemoryInfo().also { info ->
+                val manager = targetContext.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+                manager.getMemoryInfo(info)
+            }
             val evidence = linkedMapOf<String, String>(
                 "evidenceClass" to "production-generation-candidate-combined-physical",
                 "primaryAbi" to primaryRuntimeAbi(),
@@ -114,7 +119,9 @@ class ProductionGenerationCandidateCombinedResourceInstrumentedTest {
                 "generationModelBytes" to QWEN_BYTES.toString(),
                 "generationModelSha256" to QWEN_SHA256,
                 "generationFixtureClass" to "production-candidate",
-                "targetProductionLlmEvidence" to "true"
+                "targetProductionLlmEvidence" to "true",
+                "deviceTotalRamBytes" to memoryInfo.totalMem.toString(),
+                "deviceAvailableRamBeforeBytes" to memoryInfo.availMem.toString()
             )
 
             val semanticRoot = File(targetContext.filesDir, SEMANTIC_ROOT).apply {
