@@ -150,11 +150,44 @@ class AndroidHeartRuntimeAssembly private constructor(
         if (startup.state() != HeartRuntimeState.READY) return null
         val activeMemory = memory ?: return null
         val activeKnowledge = knowledge ?: return null
+        val semanticSynchronizer =
+            AndroidOfflineSemanticMutationSynchronizer.create(semanticAssembly)
+
         return AndroidHeartGovernedLearningComposition(
-            governed = composition,
-            memory = activeMemory,
-            knowledge = activeKnowledge,
-            semantic = AndroidOfflineSemanticMutationSynchronizer.create(semanticAssembly),
+            governed = AndroidHeartGovernedLearningPort { reference ->
+                composition.process(reference)
+            },
+            semantic = AndroidHeartAppliedSemanticSyncPort { applied ->
+                val sync = when (val downstream = applied.receipt.downstream) {
+                    is pro.liliya.core.learning.LearningApplicationDownstreamReference.Memory -> {
+                        val snapshot = activeMemory.inspect(downstream.recordId)
+                        if (snapshot == null || snapshot.generation != downstream.generation) {
+                            null
+                        } else {
+                            semanticSynchronizer.addMemory(snapshot)
+                        }
+                    }
+
+                    is pro.liliya.core.learning.LearningApplicationDownstreamReference.Knowledge -> {
+                        val snapshot = activeKnowledge.inspect(downstream.itemId)
+                        if (snapshot == null || snapshot.generation != downstream.generation) {
+                            null
+                        } else {
+                            semanticSynchronizer.addKnowledge(snapshot)
+                        }
+                    }
+                }
+
+                when (sync) {
+                    pro.liliya.android.semanticprovider.AndroidOfflineSemanticMutationSyncResult.Synchronized,
+                    pro.liliya.android.semanticprovider.AndroidOfflineSemanticMutationSyncResult.AlreadySynchronized ->
+                        AndroidHeartSemanticLearningSyncStatus.SYNCHRONIZED
+
+                    pro.liliya.android.semanticprovider.AndroidOfflineSemanticMutationSyncResult.RebuildRequired,
+                    pro.liliya.android.semanticprovider.AndroidOfflineSemanticMutationSyncResult.NotReady,
+                    null -> AndroidHeartSemanticLearningSyncStatus.REBUILD_REQUIRED
+                }
+            },
             onSemanticUnavailable = {
                 semanticRecoveryRequired = true
                 startup.markFailedFromReady()
