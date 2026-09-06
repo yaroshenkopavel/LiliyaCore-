@@ -39,6 +39,13 @@ fun interface LearningApplicationMutationApplicationPort {
     ): LearningApplicationMutationApplicationResult
 }
 
+fun interface PersistentLearningApplicationMutationClaimPort {
+    fun claim(
+        reference: LearningApplicationMutationReference
+    ): PersistentLearningApplicationMutationClaimResult
+}
+
+
 /**
  * Process-local compatibility adapters. They preserve the existing store and ownership semantics.
  */
@@ -97,3 +104,8 @@ internal fun LearningApplicationMutationInspectionPort.inspectExact(
     reference: LearningApplicationMutationReference
 ): LearningApplicationMutationSnapshot? =
     inspect(reference.mutationId)?.takeIf { it.generation == reference.generation }
+
+
+fun PersistentLearningApplicationMutationComposition.claimPort():
+    PersistentLearningApplicationMutationClaimPort =
+    PersistentLearningApplicationMutationClaimPort { reference -> claim(reference) }
