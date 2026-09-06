@@ -93,7 +93,8 @@ class OfflineSemanticProviderThreadCountBenchmarkInstrumentedTest {
                 }
 
                 forceGc()
-                val pssBeforeThroughput = processPssBytes()
+                val pssReadyBytes = processPssBytes()
+                val pssBeforeThroughput = pssReadyBytes
                 var peakPss = pssBeforeThroughput
                 val throughputStarted = SystemClock.elapsedRealtimeNanos()
                 repeat(THROUGHPUT_EMBED_COUNT) { index ->
@@ -119,7 +120,7 @@ class OfflineSemanticProviderThreadCountBenchmarkInstrumentedTest {
                     "fixtureBytes" to selection.identity.expectedSizeBytes.toString(),
                     "loadMs" to loadMs.toString(),
                     "pssBeforeLoadBytes" to pssBeforeLoad.toString(),
-                    "pssReadyBytes" to processPssBytes().toString(),
+                    "pssReadyBytes" to pssReadyBytes.toString(),
                     "shortMedianMicros" to median(shortSamples).toString(),
                     "shortP95Micros" to percentile95(shortSamples).toString(),
                     "paragraphMedianMicros" to median(paragraphSamples).toString(),
@@ -140,7 +141,8 @@ class OfflineSemanticProviderThreadCountBenchmarkInstrumentedTest {
                 assertTrue(loadMs > 0L)
                 assertTrue(throughputMs > 0L)
 
-                writeEvidence(root, evidence)
+                val evidenceJson = writeEvidence(root, evidence)
+                println("POST_ONNX_I9_EVIDENCE=$evidenceJson")
                 recordEvidence(evidence)
             } finally {
                 assertIs<SemanticEmbeddingCloseResult.Closed>(ownership.close())
@@ -189,10 +191,12 @@ class OfflineSemanticProviderThreadCountBenchmarkInstrumentedTest {
         InstrumentationRegistry.getInstrumentation().sendStatus(2, bundle)
     }
 
-    private fun writeEvidence(root: File, values: Map<String, String>) {
+    private fun writeEvidence(root: File, values: Map<String, String>): String {
         val json = JSONObject()
         values.forEach { (key, value) -> json.put(key, value) }
+        val rendered = json.toString()
         File(root, EVIDENCE_FILE_NAME).writeText(json.toString(2) + "\n", Charsets.UTF_8)
+        return rendered
     }
 
     private companion object {
