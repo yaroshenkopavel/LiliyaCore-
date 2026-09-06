@@ -47,9 +47,14 @@ sealed interface LearningApplicationMutationAuthorizationResult {
 }
 
 class LearningApplicationMutationAuthorizationGate(
-    private val mutations: LearningApplicationMutationComposition,
+    private val mutations: LearningApplicationMutationInspectionPort,
     private val authorizer: LearningApplicationAuthorizer
 ) {
+    constructor(
+        mutations: LearningApplicationMutationComposition,
+        authorizer: LearningApplicationAuthorizer
+    ) : this(mutations.inspectionPort(), authorizer)
+
     fun authorize(
         reference: LearningApplicationMutationReference
     ): LearningApplicationMutationAuthorizationResult = authorizeInternal(reference, null)
