@@ -20,11 +20,39 @@ import pro.liliya.core.memory.PersistentMemoryRememberResult
  */
 class PersistentEncryptedLearningApplicationMutationApplier(
     private val foundation: FoundationComposition,
-    private val mutations: PersistentLearningApplicationMutationComposition,
+    private val mutations: PersistentLearningApplicationMutationClaimPort,
     private val authorizationGate: LearningApplicationMutationAuthorizationGate,
     private val memory: EncryptedPersistentMemoryComposition,
     private val knowledge: EncryptedPersistentKnowledgeComposition
 ) : LearningApplicationMutationApplicationPort {
+    constructor(
+        foundation: FoundationComposition,
+        mutations: PersistentLearningApplicationMutationComposition,
+        authorizationGate: LearningApplicationMutationAuthorizationGate,
+        memory: EncryptedPersistentMemoryComposition,
+        knowledge: EncryptedPersistentKnowledgeComposition
+    ) : this(
+        foundation = foundation,
+        mutations = mutations.claimPort(),
+        authorizationGate = authorizationGate,
+        memory = memory,
+        knowledge = knowledge
+    )
+
+    constructor(
+        foundation: FoundationComposition,
+        mutations: EncryptedPersistentLearningApplicationMutationComposition,
+        authorizationGate: LearningApplicationMutationAuthorizationGate,
+        memory: EncryptedPersistentMemoryComposition,
+        knowledge: EncryptedPersistentKnowledgeComposition
+    ) : this(
+        foundation = foundation,
+        mutations = mutations.claimPort(),
+        authorizationGate = authorizationGate,
+        memory = memory,
+        knowledge = knowledge
+    )
+
 
     override fun apply(
         reference: LearningApplicationMutationReference
