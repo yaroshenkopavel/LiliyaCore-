@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - '.github/workflows/firebase-arm64-i8-bundle.yml'
+      - '.github/scripts/verify-firebase-i8-apk-pair.sh'
       - 'android-offline-semantic-provider/ci/run_firebase_full_i8_acceptance.sh'
       - 'android-offline-semantic-provider/src/androidTest/**'
       - 'android-offline-semantic-provider/build.gradle.kts'
@@ -121,7 +122,7 @@ jobs:
         run: |
           gradle \
             :android-semantic-test-host:assembleDebug \
-            :android-offline-semantic-provider:assembleDebugAndroidTest \
+            :android-semantic-test-host:assembleDebugAndroidTest \
             --console=plain
 
       - name: Collect exact APK bundle and manifest
@@ -135,7 +136,7 @@ jobs:
           mkdir -p "$out"
 
           app_apk="android-semantic-test-host/build/outputs/apk/debug/android-semantic-test-host-debug.apk"
-          test_apk="android-offline-semantic-provider/build/outputs/apk/androidTest/debug/android-offline-semantic-provider-debug-androidTest.apk"
+          test_apk="android-semantic-test-host/build/outputs/apk/androidTest/debug/android-semantic-test-host-debug-androidTest.apk"
 
           test -f "$app_apk"
           test -f "$test_apk"
@@ -191,3 +192,38 @@ jobs:
           path: ${{ runner.temp }}/firebase-arm64-i8-bundle
           if-no-files-found: error
           retention-days: 30
+
+  verify-firebase-apk-pair:
+    name: Verify Firebase APK pair on hosted emulator
+    needs: build-firebase-arm64-i8-bundle
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Download exact Firebase ARM64 I8 bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: firebase-arm64-i8-bundle-${{ github.event.pull_request.head.sha || github.sha }}
+          path: ${{ runner.temp }}/firebase-arm64-i8-bundle
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Syntax-check Firebase APK pair preflight
+        shell: bash
+        run: bash -n .github/scripts/verify-firebase-i8-apk-pair.sh
+
+      - name: Verify target package, instrumentation contract and ARM64 ABI
+        shell: bash
+        run: bash .github/scripts/verify-firebase-i8-apk-pair.sh
