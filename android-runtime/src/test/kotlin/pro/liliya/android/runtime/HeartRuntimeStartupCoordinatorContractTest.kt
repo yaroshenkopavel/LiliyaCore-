@@ -16,6 +16,22 @@ class HeartRuntimeStartupCoordinatorContractTest {
     }
 
     @Test
+    fun storage_failure_blocks_later_startup_and_compensates_storage_attempt() {
+        val events = mutableListOf<String>()
+        val coordinator = coordinator(
+            events = events,
+            storageResult = HeartDependencyStartResult.Failed
+        )
+
+        assertEquals(
+            HeartRuntimeStartResult.Failed(HeartRuntimePhase.STORAGE),
+            coordinator.start()
+        )
+        assertEquals(listOf("storage-start", "storage-close"), events)
+        assertEquals(HeartRuntimeState.FAILED, coordinator.state())
+    }
+
+    @Test
     fun semantic_failure_blocks_generation_and_compensates_reverse() {
         val events = mutableListOf<String>()
         val coordinator = coordinator(
@@ -44,6 +60,36 @@ class HeartRuntimeStartupCoordinatorContractTest {
 
         assertEquals(
             HeartRuntimeStartResult.Failed(HeartRuntimePhase.GENERATION),
+            coordinator.start()
+        )
+        assertEquals(
+            listOf(
+                "storage-start",
+                "semantic-start",
+                "generation-start",
+                "generation-close",
+                "semantic-close",
+                "storage-close"
+            ),
+            events
+        )
+        assertEquals(HeartRuntimeState.FAILED, coordinator.state())
+    }
+
+    @Test
+    fun cleanup_attempts_all_lower_phases_even_when_generation_close_fails() {
+        val events = mutableListOf<String>()
+        val coordinator = coordinator(
+            events = events,
+            generationResult = HeartDependencyStartResult.Failed,
+            generationCloseResult = HeartDependencyCloseResult.Failed
+        )
+
+        assertEquals(
+            HeartRuntimeStartResult.CleanupFailed(
+                failedPhase = HeartRuntimePhase.GENERATION,
+                cleanupPhase = HeartRuntimePhase.GENERATION
+            ),
             coordinator.start()
         )
         assertEquals(
