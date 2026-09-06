@@ -71,10 +71,14 @@ test "$test_arm64_count" -gt 0
 test "$app_other_abi_count" -eq 0
 test "$test_other_abi_count" -eq 0
 
-echo "testDexRequiredClass:"
+echo "testDexRequiredClasses:"
 test_dex_packages="$(apkanalyzer dex packages "$test_apk")"
-printf '%s\n' "$test_dex_packages" |
-  grep -F "pro.liliya.android.semanticprovider.OfflineSemanticProviderResourceInstrumentedTest"
+for required_class in \
+  "pro.liliya.android.semanticprovider.OfflineSemanticProviderResourceInstrumentedTest" \
+  "pro.liliya.android.semanticprovider.ProductionGenerationCandidateCombinedResourceInstrumentedTest"
+do
+  printf '%s\n' "$test_dex_packages" | grep -F "$required_class"
+done
 
 echo "Firebase APK pair metadata/ABI/class preflight passed"
 echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
