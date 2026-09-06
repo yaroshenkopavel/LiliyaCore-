@@ -20,3 +20,4 @@ include(":android-license-state")
 include(":android-cognitive-storage")
 
 include(":android-semantic-test-host")
+include(":android-runtime")
