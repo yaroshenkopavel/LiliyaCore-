@@ -152,7 +152,10 @@ class HeartRuntimeStartupCoordinator(
     }
 
     private fun startupFailure(failedPhase: HeartRuntimePhase): HeartRuntimeStartResult {
-        val cleanupFailure = closeGeneration() ?: closeSemantic() ?: closeStorage()
+        val generationFailure = closeGeneration()
+        val semanticFailure = closeSemantic()
+        val storageFailure = closeStorage()
+        val cleanupFailure = generationFailure ?: semanticFailure ?: storageFailure
         currentState = HeartRuntimeState.FAILED
         return if (cleanupFailure == null) {
             HeartRuntimeStartResult.Failed(failedPhase)
