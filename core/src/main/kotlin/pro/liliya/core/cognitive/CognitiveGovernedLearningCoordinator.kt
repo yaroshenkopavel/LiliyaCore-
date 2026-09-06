@@ -19,6 +19,7 @@ import pro.liliya.core.learning.LearningApplicationMutationReference
 import pro.liliya.core.learning.LearningApplicationMutationApplicationPort
 import pro.liliya.core.learning.LearningApplicationMutationPreparationPort
 import pro.liliya.core.learning.LearningApplicationMutationPreparationResult
+import pro.liliya.core.learning.LearningApplicationMutationPreparedOwnership
 import pro.liliya.core.learning.LearningApplicationIdempotencyKey
 import pro.liliya.core.learning.LearningApplicationTarget
 import pro.liliya.core.learning.LearningCandidateReference
@@ -538,7 +539,7 @@ internal class CognitiveGovernedLearningCoordinator(
     }
 
     private fun compensateMutationApplicationAndDecision(
-        mutation: pro.liliya.core.learning.LearningApplicationMutationOwnership,
+        mutation: LearningApplicationMutationPreparedOwnership,
         application: pro.liliya.core.learning.LearningApplicationOwnership,
         decision: pro.liliya.core.learning.LearningDecisionOwnership,
         failure: CognitiveGovernedLearningFailure
