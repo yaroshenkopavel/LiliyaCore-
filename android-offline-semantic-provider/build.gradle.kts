@@ -1,4 +1,5 @@
 import org.gradle.jvm.tasks.Jar
+import org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile
 
 plugins {
     id("com.android.library")
@@ -108,9 +109,14 @@ tasks.register("reportSemanticRuntimeFootprint") {
 
 
 val firebaseI8AndroidTestClassesJar by tasks.registering(Jar::class) {
-    dependsOn("compileDebugAndroidTestKotlin")
+    val androidTestCompile =
+        tasks.withType<KotlinJvmCompile>()
+            .matching { it.name == "compileDebugAndroidTestKotlin" }
+
+    dependsOn(androidTestCompile)
     archiveBaseName.set("firebase-i8-android-test-classes")
+    archiveVersion.set("")
     archiveClassifier.set("debug")
 
-    from(layout.buildDirectory.dir("tmp/kotlin-classes/debugAndroidTest"))
+    from(androidTestCompile.map { it.destinationDirectory })
 }
