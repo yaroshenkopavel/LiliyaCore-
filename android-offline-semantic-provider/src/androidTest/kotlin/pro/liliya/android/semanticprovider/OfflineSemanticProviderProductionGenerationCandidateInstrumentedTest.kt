@@ -306,9 +306,7 @@ class OfflineSemanticProviderProductionGenerationCandidateInstrumentedTest {
         }
         val compiler = CognitiveModelRequestCompilerPort {
             CognitiveModelRequestCompilerResult.Compiled(
-                CognitiveCompiledModelRequest(
-                    "Answer briefly and clearly in the language of the user. What is two plus two?"
-                )
+                CognitiveCompiledModelRequest(QWEN_NON_THINKING_PROMPT)
             )
         }
         return AndroidLlamaCppCognitiveModelAssembly.create(
@@ -324,14 +322,14 @@ class OfflineSemanticProviderProductionGenerationCandidateInstrumentedTest {
             llamaPolicy = LlamaCppEnginePolicy(
                 contextTokens = 2048,
                 maxPromptTokens = 1536,
-                maxGeneratedTokens = 256,
+                maxGeneratedTokens = 64,
                 batchTokens = 256,
                 microBatchTokens = 64,
                 threadCount = 4,
                 maxPromptChars = 8192,
                 maxPromptUtf8Bytes = 32768,
-                maxOutputChars = 4096,
-                maxOutputUtf8Bytes = 16384,
+                maxOutputChars = 512,
+                maxOutputUtf8Bytes = 2048,
                 useMmap = true
             ),
             foundation = foundation,
@@ -342,7 +340,7 @@ class OfflineSemanticProviderProductionGenerationCandidateInstrumentedTest {
                 RuntimeModelSessionId("g3-qwen-" + ids.incrementAndGet())
             },
             limits = CognitiveRuntimeLimits(
-                maxInferenceOutputChars = 4096,
+                maxInferenceOutputChars = 512,
                 maxModelPromptChars = 8192
             )
         )
@@ -357,7 +355,7 @@ class OfflineSemanticProviderProductionGenerationCandidateInstrumentedTest {
             turn = turn,
             input = CognitiveInput("What is two plus two?"),
             context = CognitiveContextSnapshot(turn, emptyList()),
-            maxOutputChars = 4096
+            maxOutputChars = 512
         )
     }
 
@@ -470,6 +468,12 @@ class OfflineSemanticProviderProductionGenerationCandidateInstrumentedTest {
         const val QWEN_URL =
             "https://huggingface.co/ggml-org/Qwen3-1.7B-GGUF/resolve/" +
                 QWEN_REVISION + "/" + QWEN_FILE_NAME + "?download=true"
+
+        const val QWEN_NON_THINKING_PROMPT =
+            "<|im_start|>system\n" +
+                "You are Liliya, a concise local assistant. Answer directly and briefly.<|im_end|>\n" +
+                "<|im_start|>user\nWhat is two plus two? /no_think<|im_end|>\n" +
+                "<|im_start|>assistant\n<think>\n\n</think>\n\n"
 
         const val SEGMENT_BYTES = 4 * 1024 * 1024
         const val CONNECT_TIMEOUT_MS = 30_000
