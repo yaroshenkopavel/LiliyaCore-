@@ -1,6 +1,17 @@
 name: Firebase ARM64 I8 Bundle
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/firebase-arm64-i8-bundle.yml'
+      - '.github/scripts/verify-firebase-i8-apk-pair.sh'
+      - 'android-offline-semantic-provider/ci/run_firebase_full_i8_acceptance.sh'
+      - 'android-offline-semantic-provider/src/androidTest/**'
+      - 'android-offline-semantic-provider/build.gradle.kts'
+      - 'android-semantic-test-host/**'
+      - 'android-llama-cpp-engine/**'
   pull_request:
     branches:
       - main
@@ -194,7 +205,7 @@ jobs:
           retention-days: 30
 
   verify-firebase-apk-pair:
-    name: Verify Firebase APK pair on hosted emulator
+    name: Verify Firebase ARM64 APK pair metadata
     needs: build-firebase-arm64-i8-bundle
     runs-on: ubuntu-latest
     timeout-minutes: 30
