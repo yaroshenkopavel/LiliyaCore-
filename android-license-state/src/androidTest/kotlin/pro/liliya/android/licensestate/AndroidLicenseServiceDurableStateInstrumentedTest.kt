@@ -103,6 +103,42 @@ class AndroidLicenseServiceDurableStateInstrumentedTest {
     }
 
     @Test
+    fun strongbox_requirement_never_silently_downgrades() {
+        val storeId = LicenseServiceDurableStoreId("license-test-strongbox")
+        val protector = AndroidLicenseServiceDurableStateProtector(
+            AndroidLicenseServiceDurableProtectorSecurityRequirement.STRONGBOX
+        )
+        protector.deleteForTest(storeId)
+
+        try {
+            when (val prepared = protector.prepareInitialization(storeId)) {
+                is LicenseServiceDurableProtectorInitializationResult.Fresh -> {
+                    val sealed = assertIs<LicenseServiceDurableProtectorSealResult.Sealed>(
+                        protector.seal(
+                            binding(storeId, prepared.reference, revision = 1L),
+                            LicenseServiceDurableStatePayload.of("strongbox-state".encodeToByteArray())
+                        )
+                    )
+                    assertIs<LicenseServiceDurableProtectorOpenResult.Opened>(
+                        protector.open(sealed.envelope)
+                    )
+                }
+                is LicenseServiceDurableProtectorInitializationResult.Rejected -> {
+                    assertEquals(
+                        LicenseServiceDurableProtectorFailure.REQUIRED_SECURITY_LEVEL_UNAVAILABLE,
+                        prepared.reason
+                    )
+                }
+                is LicenseServiceDurableProtectorInitializationResult.Existing -> {
+                    error("test begins from deleted StrongBox alias")
+                }
+            }
+        } finally {
+            protector.deleteForTest(storeId)
+        }
+    }
+
+    @Test
     fun backend_reopens_exact_revision_rejects_stale_cas_and_detects_corruption() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext
         val directory = "license-state-backend-reopen-test"
