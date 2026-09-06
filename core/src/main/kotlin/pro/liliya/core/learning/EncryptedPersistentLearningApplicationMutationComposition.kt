@@ -360,10 +360,9 @@ class EncryptedPersistentLearningApplicationMutationComposition private construc
                         generation
                     )
                     if (reference in activeClaims) {
-                        return@synchronized
-                            PersistentLearningApplicationMutationResult.Rejected(
-                                "encrypted persistent learning mutation is actively claimed"
-                            )
+                        return@synchronized PersistentLearningApplicationMutationResult.Rejected(
+                            "encrypted persistent learning mutation is actively claimed"
+                        )
                     }
 
                     when (val durable = persistentOwnership.remove()) {
