@@ -7,7 +7,7 @@ import java.nio.charset.StandardCharsets
 internal data class SemanticEmbeddingPolicy(
     val contextTokens: Int = 512,
     val batchTokens: Int = 512,
-    val threadCount: Int = 1,
+    val threadCount: Int = 2,
     val maxInputUtf8Bytes: Int = SemanticTextProfile.MAX_PREPARED_UTF8_BYTES
 ) {
     init {
