@@ -12,6 +12,7 @@ import pro.liliya.core.learning.LearningComposition
 import pro.liliya.core.learning.LearningDecisionComposition
 import pro.liliya.core.learning.LearningPolicyComposition
 import pro.liliya.core.learning.LearningPolicyReference
+import pro.liliya.core.learning.preparationPort
 
 /**
  * Public Cognitive Runtime boundary for governed learning application.
@@ -46,8 +47,8 @@ class CognitiveGovernedLearningComposition(
         decisions = decisions,
         materialization = materialization,
         applications = applications,
-        mutations = mutations,
-        mutationApplier = mutationApplier,
+        mutationPreparation = mutations.preparationPort(),
+        mutationApplication = mutationApplier,
         principal = principal,
         allowedTargets = allowedTargets,
         artifactIds = artifactIds,
