@@ -1,6 +1,6 @@
 package pro.liliya.android.runtime
 
-import kotlin.test.Test
+import org.junit.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import pro.liliya.core.cognitive.CognitiveGovernedLearningResult
