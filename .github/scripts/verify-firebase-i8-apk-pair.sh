@@ -27,10 +27,5797 @@ test -n "$runner"
 app_files="$(apkanalyzer files list "$app")"
 test_files="$(apkanalyzer files list "$test_apk")"
 
-app_arm64_count="$(printf '%s\n' "$app_files" | grep -c '^/lib/arm64-v8a/' || true)"
-test_arm64_count="$(printf '%s\n' "$test_files" | grep -c '^/lib/arm64-v8a/' || true)"
-app_other_abi_count="$(printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' | wc -l | tr -d ' ')"
-test_other_abi_count="$(printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' | wc -l | tr -d ' ')"
+app_arm64_count="$(printf '%s\n' "$app_files" | grep -Ec '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep -E '^/lib/[^/]+/[^/]+
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep -E '^/lib/[^/]+/[^/]+
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep -E '^/lib/[^/]+/[^/]+
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+test_arm64_count="$(printf '%s\n' "$test_files" | grep -Ec '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+app_other_abi_count="$(printf '%s\n' "$app_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+test_other_abi_count="$(printf '%s\n' "$test_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+test_arm64_count="$(printf '%s\n' "$test_files" | grep -Ec '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+app_other_abi_count="$(printf '%s\n' "$app_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+test_other_abi_count="$(printf '%s\n' "$test_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+test_arm64_count="$(printf '%s\n' "$test_files" | grep -Ec '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+app_other_abi_count="$(printf '%s\n' "$app_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+test_other_abi_count="$(printf '%s\n' "$test_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+test_arm64_count="$(printf '%s\n' "$test_files" | grep -Ec '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+app_other_abi_count="$(printf '%s\n' "$app_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+test_other_abi_count="$(printf '%s\n' "$test_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+test_arm64_count="$(printf '%s\n' "$test_files" | grep -Ec '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+app_other_abi_count="$(printf '%s\n' "$app_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+test_other_abi_count="$(printf '%s\n' "$test_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+test_arm64_count="$(printf '%s\n' "$test_files" | grep -Ec '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+app_other_abi_count="$(printf '%s\n' "$app_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+test_other_abi_count="$(printf '%s\n' "$test_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+test_arm64_count="$(printf '%s\n' "$test_files" | grep -Ec '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+app_other_abi_count="$(printf '%s\n' "$app_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+test_other_abi_count="$(printf '%s\n' "$test_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+test_arm64_count="$(printf '%s\n' "$test_files" | grep -Ec '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+app_other_abi_count="$(printf '%s\n' "$app_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+test_other_abi_count="$(printf '%s\n' "$test_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+test_arm64_count="$(printf '%s\n' "$test_files" | grep -Ec '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+app_other_abi_count="$(printf '%s\n' "$app_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+test_other_abi_count="$(printf '%s\n' "$test_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+test_arm64_count="$(printf '%s\n' "$test_files" | grep -Ec '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+app_other_abi_count="$(printf '%s\n' "$app_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+test_other_abi_count="$(printf '%s\n' "$test_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+test_arm64_count="$(printf '%s\n' "$test_files" | grep -Ec '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+app_other_abi_count="$(printf '%s\n' "$app_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+test_other_abi_count="$(printf '%s\n' "$test_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+test_arm64_count="$(printf '%s\n' "$test_files" | grep -Ec '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+app_other_abi_count="$(printf '%s\n' "$app_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+test_other_abi_count="$(printf '%s\n' "$test_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+test_arm64_count="$(printf '%s\n' "$test_files" | grep -Ec '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+app_other_abi_count="$(printf '%s\n' "$app_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+test_other_abi_count="$(printf '%s\n' "$test_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+test_arm64_count="$(printf '%s\n' "$test_files" | grep -Ec '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+app_other_abi_count="$(printf '%s\n' "$app_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+test_other_abi_count="$(printf '%s\n' "$test_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+test_arm64_count="$(printf '%s\n' "$test_files" | grep -Ec '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+app_other_abi_count="$(printf '%s\n' "$app_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+test_other_abi_count="$(printf '%s\n' "$test_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+test_arm64_count="$(printf '%s\n' "$test_files" | grep -Ec '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+app_other_abi_count="$(printf '%s\n' "$app_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+test_other_abi_count="$(printf '%s\n' "$test_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+test_arm64_count="$(printf '%s\n' "$test_files" | grep -Ec '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+app_other_abi_count="$(printf '%s\n' "$app_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+test_other_abi_count="$(printf '%s\n' "$test_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+test_arm64_count="$(printf '%s\n' "$test_files" | grep -Ec '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+app_other_abi_count="$(printf '%s\n' "$app_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+test_other_abi_count="$(printf '%s\n' "$test_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+test_arm64_count="$(printf '%s\n' "$test_files" | grep -Ec '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+app_other_abi_count="$(printf '%s\n' "$app_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+test_other_abi_count="$(printf '%s\n' "$test_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+test_arm64_count="$(printf '%s\n' "$test_files" | grep -Ec '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+app_other_abi_count="$(printf '%s\n' "$app_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+test_other_abi_count="$(printf '%s\n' "$test_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+test_arm64_count="$(printf '%s\n' "$test_files" | grep -Ec '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+app_other_abi_count="$(printf '%s\n' "$app_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+test_other_abi_count="$(printf '%s\n' "$test_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+test_arm64_count="$(printf '%s\n' "$test_files" | grep -Ec '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+app_other_abi_count="$(printf '%s\n' "$app_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+test_other_abi_count="$(printf '%s\n' "$test_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+test_arm64_count="$(printf '%s\n' "$test_files" | grep -Ec '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+app_other_abi_count="$(printf '%s\n' "$app_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+test_other_abi_count="$(printf '%s\n' "$test_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+test_arm64_count="$(printf '%s\n' "$test_files" | grep -Ec '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+app_other_abi_count="$(printf '%s\n' "$app_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+test_other_abi_count="$(printf '%s\n' "$test_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+test_arm64_count="$(printf '%s\n' "$test_files" | grep -Ec '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+app_other_abi_count="$(printf '%s\n' "$app_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+test_other_abi_count="$(printf '%s\n' "$test_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+test_arm64_count="$(printf '%s\n' "$test_files" | grep -Ec '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+app_other_abi_count="$(printf '%s\n' "$app_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+test_other_abi_count="$(printf '%s\n' "$test_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+test_arm64_count="$(printf '%s\n' "$test_files" | grep -Ec '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+app_other_abi_count="$(printf '%s\n' "$app_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+test_other_abi_count="$(printf '%s\n' "$test_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+test_arm64_count="$(printf '%s\n' "$test_files" | grep -Ec '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+app_other_abi_count="$(printf '%s\n' "$app_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+test_other_abi_count="$(printf '%s\n' "$test_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+test_arm64_count="$(printf '%s\n' "$test_files" | grep -Ec '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+app_other_abi_count="$(printf '%s\n' "$app_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+test_other_abi_count="$(printf '%s\n' "$test_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+test_arm64_count="$(printf '%s\n' "$test_files" | grep -Ec '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+app_other_abi_count="$(printf '%s\n' "$app_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+test_other_abi_count="$(printf '%s\n' "$test_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+test_arm64_count="$(printf '%s\n' "$test_files" | grep -Ec '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+app_other_abi_count="$(printf '%s\n' "$app_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+test_other_abi_count="$(printf '%s\n' "$test_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+test_arm64_count="$(printf '%s\n' "$test_files" | grep -Ec '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+app_other_abi_count="$(printf '%s\n' "$app_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+test_other_abi_count="$(printf '%s\n' "$test_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+test_arm64_count="$(printf '%s\n' "$test_files" | grep -Ec '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+app_other_abi_count="$(printf '%s\n' "$app_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+test_other_abi_count="$(printf '%s\n' "$test_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+test_arm64_count="$(printf '%s\n' "$test_files" | grep -Ec '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+app_other_abi_count="$(printf '%s\n' "$app_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+test_other_abi_count="$(printf '%s\n' "$test_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+test_arm64_count="$(printf '%s\n' "$test_files" | grep -Ec '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+app_other_abi_count="$(printf '%s\n' "$app_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+test_other_abi_count="$(printf '%s\n' "$test_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+test_arm64_count="$(printf '%s\n' "$test_files" | grep -Ec '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ || true)"
+app_other_abi_count="$(printf '%s\n' "$app_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
+test_other_abi_count="$(printf '%s\n' "$test_files" | grep -E '^/lib/[^/]+/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | grep -Ev '^/lib/arm64-v8a/[^/]+
+
+echo "appArm64NativeEntries=$app_arm64_count"
+echo "testArm64NativeEntries=$test_arm64_count"
+echo "appOtherAbiNativeEntries=$app_other_abi_count"
+echo "testOtherAbiNativeEntries=$test_other_abi_count"
+
+echo "appNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' || true
+echo "testNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' || true
+
+echo "appUnexpectedNativeEntries:"
+printf '%s\n' "$app_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+echo "testUnexpectedNativeEntries:"
+printf '%s\n' "$test_files" | grep '^/lib/' | grep -Ev '^/lib/arm64-v8a/' || true
+
+test "$app_arm64_count" -gt 0
+test "$test_arm64_count" -gt 0
+test "$app_other_abi_count" -eq 0
+test "$test_other_abi_count" -eq 0
+
+echo "Firebase APK pair metadata/ABI preflight passed"
+echo "Physical installation remains intentionally deferred to Firebase ARM64 device execution."
+ | wc -l | tr -d ' ')"
 
 echo "appArm64NativeEntries=$app_arm64_count"
 echo "testArm64NativeEntries=$test_arm64_count"
