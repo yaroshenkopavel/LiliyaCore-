@@ -96,6 +96,26 @@ class CognitiveRuntimeCompositionContractTest {
     }
 
     @Test
+    fun exact_abort_releases_current_turn_and_stale_abort_cannot_affect_replacement() {
+        val f = fixture("abort")
+        val first = assertIs<CognitiveTurnRegistrationResult.Registered>(
+            f.composition.beginTurn(CognitiveTurnId("first"), CognitiveInput("one"))
+        ).turn.reference
+
+        assertEquals(CognitiveTurnAbortResult.Aborted, f.composition.abortTurn(first))
+        assertEquals(null, f.composition.currentReference())
+
+        val second = assertIs<CognitiveTurnRegistrationResult.Registered>(
+            f.composition.beginTurn(CognitiveTurnId("second"), CognitiveInput("two"))
+        ).turn.reference
+
+        assertEquals(CognitiveTurnAbortResult.Stale, f.composition.abortTurn(first))
+        assertEquals(second, f.composition.currentReference())
+        assertEquals(CognitiveTurnAbortResult.Aborted, f.composition.abortTurn(second))
+        assertEquals(null, f.composition.currentReference())
+    }
+
+    @Test
     fun public_turn_handle_is_read_only_and_cannot_publish_or_terminate() {
         val methods = CognitiveTurnHandle::class.java.methods.map { it.name }.toSet()
 
