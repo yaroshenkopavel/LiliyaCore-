@@ -17,6 +17,41 @@ import pro.liliya.android.cognitivestorage.AndroidCognitiveStorageAssembly
 import pro.liliya.android.cognitivestorage.AndroidCognitiveStorageOpenResult
 import pro.liliya.android.cognitivestorage.AndroidEncryptedKnowledgeOpenResult
 import pro.liliya.android.cognitivestorage.AndroidEncryptedMemoryOpenResult
+import pro.liliya.android.cognitivestorage.AndroidEncryptedLearningMutationOpenResult
+import pro.liliya.android.runtime.AndroidHeartSemanticLearningSyncStatus
+import pro.liliya.core.authority.AuthorityPrincipal
+import pro.liliya.core.authority.CapabilityAuthorityComposition
+import pro.liliya.core.authority.CapabilityOwnershipResult
+import pro.liliya.core.authority.DirectAuthorityGrant
+import pro.liliya.core.authority.DirectAuthorityGrantOwnershipResult
+import pro.liliya.core.capability.CapabilityDescriptor
+import pro.liliya.core.capability.CapabilityProviderId
+import pro.liliya.core.cognitive.CognitiveFinalizationResult
+import pro.liliya.core.cognitive.CognitiveGovernedLearningComposition
+import pro.liliya.core.cognitive.CognitiveGovernedLearningResult
+import pro.liliya.core.cognitive.CognitiveLearningApplicationMaterializationPort
+import pro.liliya.core.cognitive.CognitiveLearningApplicationMaterializationResult
+import pro.liliya.core.cognitive.CognitiveLearningGovernancePort
+import pro.liliya.core.cognitive.CognitiveLearningGovernanceResult
+import pro.liliya.core.cognitive.CognitiveOutcomeCandidate
+import pro.liliya.core.cognitive.CognitiveOutcomeMaterializationPort
+import pro.liliya.core.cognitive.CognitiveOutcomeMaterializationResult
+import pro.liliya.core.learning.LearningApplicationAuthorityContract
+import pro.liliya.core.learning.LearningApplicationComposition
+import pro.liliya.core.learning.LearningApplicationMutationAuthorizationGate
+import pro.liliya.core.learning.LearningApplicationPreflightValidator
+import pro.liliya.core.learning.LearningApplicationAuthorizer
+import pro.liliya.core.learning.LearningApplicationTarget
+import pro.liliya.core.learning.LearningComposition
+import pro.liliya.core.learning.LearningDecisionComposition
+import pro.liliya.core.learning.LearningPolicy
+import pro.liliya.core.learning.LearningPolicyComposition
+import pro.liliya.core.learning.LearningPolicyId
+import pro.liliya.core.learning.LearningPolicyInstallResult
+import pro.liliya.core.learning.LearningPolicyReference
+import pro.liliya.core.learning.inspectionPort
+import pro.liliya.core.learning.preparationPort
+import pro.liliya.core.reflection.ReflectionComposition
 import pro.liliya.android.llamacppengine.AndroidLlamaCppCognitiveModelAssembly
 import pro.liliya.android.llamacppengine.LlamaCppEnginePolicy
 import pro.liliya.android.protectedmodel.staging.AndroidProtectedModelStagingPolicy
@@ -263,11 +298,369 @@ class AndroidHeartRuntimeColdStartInstrumentedTest {
         )
     }
 
+    @Test
+    fun governed_learning_survives_turn_b_and_full_heart_restart() {
+        compilerSawMemory = false
+        compilerSawKnowledge = false
+        compilerSawLearned = false
+
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val targetContext = instrumentation.targetContext
+        val testContext = instrumentation.context
+        val foundation = foundation()
+
+        File(targetContext.filesDir, STORAGE_DIRECTORY_H4D).deleteRecursively()
+        File(targetContext.filesDir, SEMANTIC_ROOT_H4D).deleteRecursively()
+
+        val first = assertIs<AndroidCognitiveStorageOpenResult.Ready>(
+            AndroidCognitiveStorageAssembly.open(
+                context = targetContext,
+                foundation = foundation,
+                directoryName = STORAGE_DIRECTORY_H4D
+            )
+        ).assembly
+
+        val descriptor = assertIs<CognitiveEncryptionResult.Success<CognitiveKeyProtectorDescriptor>>(
+            first.keyProtector.create(
+                CognitiveKeyProtectorCreationRequest(
+                    id = CognitiveKeyProtectorId("heart-h4d-" + System.nanoTime()),
+                    generation = CognitiveKeyProtectorGeneration(1),
+                    requestedSecurityLevel = CognitiveKeyProtectorSecurityLevel.SOFTWARE
+                )
+            )
+        ).value
+        val dek = assertIs<PersistentCognitiveDekRegistrationResult.Registered>(
+            first.dekStore.register(CognitiveDekId("heart-h4d-dek"), descriptor)
+        ).ownership.reference
+
+        val memoryStoreId = PersistentStoreId("heart-h4d-memory")
+        val knowledgeStoreId = PersistentStoreId("heart-h4d-knowledge")
+        val mutationStoreId = PersistentStoreId("heart-h4d-learning-mutations")
+
+        val memory = assertIs<AndroidEncryptedMemoryOpenResult.Opened>(
+            first.openEncryptedMemory(memoryStoreId, dek)
+        ).composition
+        val knowledge = assertIs<AndroidEncryptedKnowledgeOpenResult.Opened>(
+            first.openEncryptedKnowledge(knowledgeStoreId, dek)
+        ).composition
+
+        assertIs<PersistentMemoryRememberResult.Remembered>(
+            memory.remember(
+                MemoryRecord(
+                    id = MemoryRecordId("memory-keys"),
+                    provenance = MemoryProvenance(MemorySourceId("heart-h4d")),
+                    content = RELEVANT_MEMORY,
+                    createdAt = BASE
+                )
+            )
+        )
+        assertIs<PersistentKnowledgeCreateResult.Created>(
+            knowledge.create(
+                KnowledgeItem(
+                    id = KnowledgeItemId("knowledge-bus"),
+                    origin = KnowledgeOrigin.Declared(KnowledgeSourceId("heart-h4d")),
+                    content = RELEVANT_KNOWLEDGE,
+                    createdAt = BASE.plusSeconds(1)
+                )
+            )
+        )
+
+        val reconstructed = assertIs<AndroidCognitiveStorageOpenResult.Ready>(
+            AndroidCognitiveStorageAssembly.open(
+                context = targetContext,
+                foundation = foundation,
+                directoryName = STORAGE_DIRECTORY_H4D
+            )
+        ).assembly
+        val encryptedMutations = assertIs<AndroidEncryptedLearningMutationOpenResult.Opened>(
+            reconstructed.openEncryptedLearningMutations(mutationStoreId, dek)
+        ).composition
+
+        val semanticRoot = File(targetContext.filesDir, SEMANTIC_ROOT_H4D).apply {
+            deleteRecursively()
+            check(mkdirs())
+        }
+        copyAsset(testContext, ENCODER_ASSET, semanticRoot)
+        copyAsset(testContext, TOKENIZER_ASSET, semanticRoot)
+
+        val model = ProtectedModelReference(
+            packageId = ProtectedModelPackageId("heart-h4d-stories15m"),
+            generation = ProtectedModelGeneration(1)
+        )
+        val protectedOwnership = ProtectedModelRuntimeOwnership().also { it.replaceTarget(model) }
+        val llama = llamaAssembly(targetContext, foundation, protectedOwnership)
+        val staged = testContext.assets.open(STORIES_ASSET).use { input ->
+            publishSegmented(llama.stagingCoordinator, input, model)
+        }
+
+        val learning = LearningComposition(foundation)
+        val reflection = ReflectionComposition(foundation)
+        val ids = AtomicInteger(0)
+        val heart = AndroidHeartRuntimeAssembly.create(
+            cognitiveStorage = reconstructed,
+            memoryStoreId = memoryStoreId,
+            knowledgeStoreId = knowledgeStoreId,
+            activeDek = dek,
+            semanticRoot = semanticRoot,
+            semanticEncoderFile = File(semanticRoot, ENCODER_ASSET),
+            llamaAssembly = llama,
+            stagedModel = staged,
+            maxCandidatesPerSource = 4,
+            cognitiveRuntimeFactory = AndroidHeartCognitiveRuntimeFactory {
+                    memoryRetrieval,
+                    knowledgeRetrieval,
+                    inference,
+                    streamingInference ->
+                CognitiveRuntimeComposition(
+                    foundation = foundation,
+                    scope = CognitiveRuntimeScopeId("heart-h4d-runtime"),
+                    memoryRetrieval = memoryRetrieval,
+                    knowledgeRetrieval = knowledgeRetrieval,
+                    selfSnapshots = { null },
+                    personalitySnapshots = { emptyList() },
+                    inference = inference,
+                    streamingInference = streamingInference,
+                    limits = cognitiveLimits(),
+                    materialization = CognitiveMaterializationPort {
+                        CognitiveMaterializationResult.Succeeded(materializationCandidate())
+                    },
+                    planning = PlanningComposition(foundation),
+                    reasoning = ReasoningComposition(foundation),
+                    decision = DecisionComposition(foundation),
+                    artifactIds = CognitiveArtifactIdSource { kind ->
+                        "heart-h4d-" + kind.name.lowercase() + "-" + ids.incrementAndGet()
+                    },
+                    timestamps = CognitiveTimestampSource { BASE.plusSeconds(10) },
+                    outcomeMaterialization = CognitiveOutcomeMaterializationPort {
+                        CognitiveOutcomeMaterializationResult.Succeeded(
+                            CognitiveOutcomeCandidate(
+                                resultContent = "turn a result",
+                                reflectionContent = "turn a reflection",
+                                learningProposal = "learn emergency code word"
+                            )
+                        )
+                    },
+                    reflection = reflection,
+                    learning = learning
+                )
+            }
+        )
+
+        assertEquals(HeartRuntimeStartResult.Ready, heart.start())
+
+        val runtime = assertNotNull(heart.runtime())
+        val turnA = assertIs<CognitiveTurnRegistrationResult.Registered>(
+            runtime.beginTurn(
+                CognitiveTurnId("heart-h4d-turn-a"),
+                CognitiveInput("Please remember my emergency code word.")
+            )
+        ).turn
+        assertIs<CognitiveContextAssemblyResult.Published>(runtime.assembleContext(turnA.reference))
+        assertIs<CognitiveGenerationResult.Succeeded>(runtime.generateCognition(turnA.reference))
+        val finalizedA = assertIs<CognitiveFinalizationResult.Completed>(
+            runtime.finalizeCognition(turnA.reference)
+        )
+
+        val policies = LearningPolicyComposition(foundation)
+        val policy = assertIs<LearningPolicyInstallResult.Installed>(
+            policies.install(
+                LearningPolicy(
+                    id = LearningPolicyId("heart-h4d-policy"),
+                    rule = "allow governed Memory learning for physical Heart Loop",
+                    createdAt = BASE.plusSeconds(11)
+                )
+            )
+        ).ownership
+        val learningDecisions = LearningDecisionComposition(foundation)
+        val applications = LearningApplicationComposition(foundation)
+        val authority = CapabilityAuthorityComposition(foundation)
+        val principal = AuthorityPrincipal("heart-h4d-learning-system")
+
+        assertIs<CapabilityOwnershipResult.Registered>(
+            authority.registerCapability(
+                CapabilityDescriptor(
+                    id = LearningApplicationAuthorityContract.capability,
+                    providerId = CapabilityProviderId("heart-h4d-learning")
+                )
+            )
+        )
+        assertIs<DirectAuthorityGrantOwnershipResult.Registered>(
+            authority.registerDirectGrant(
+                DirectAuthorityGrant(
+                    principal = principal,
+                    capability = LearningApplicationAuthorityContract.capability,
+                    scope = LearningApplicationAuthorityContract.scopeFor(
+                        LearningApplicationTarget.MEMORY
+                    )
+                )
+            )
+        )
+
+        val preflight = LearningApplicationPreflightValidator(
+            applications,
+            learningDecisions,
+            learning,
+            policies
+        )
+        val authorizer = LearningApplicationAuthorizer(preflight, authority)
+        val gate = LearningApplicationMutationAuthorizationGate(
+            encryptedMutations.inspectionPort(),
+            authorizer
+        )
+        val mutationApplication = assertNotNull(
+            heart.learningMutationApplicationPort(
+                foundation = foundation,
+                mutations = encryptedMutations,
+                authorizationGate = gate
+            )
+        )
+
+        val governedCore = CognitiveGovernedLearningComposition(
+            foundation = foundation,
+            scope = CognitiveRuntimeScopeId("heart-h4d-runtime"),
+            learning = learning,
+            policies = policies,
+            policyReference = LearningPolicyReference(policy.policy.id, policy.generation),
+            governance = CognitiveLearningGovernancePort {
+                CognitiveLearningGovernanceResult.Approved(
+                    target = LearningApplicationTarget.MEMORY,
+                    rationale = "physical trusted approval"
+                )
+            },
+            decisions = learningDecisions,
+            materialization = CognitiveLearningApplicationMaterializationPort {
+                CognitiveLearningApplicationMaterializationResult.Succeeded(LEARNED_EVIDENCE)
+            },
+            applications = applications,
+            mutations = encryptedMutations.preparationPort(),
+            mutationApplier = mutationApplication,
+            principal = principal,
+            allowedTargets = listOf(LearningApplicationTarget.MEMORY),
+            artifactIds = CognitiveArtifactIdSource { kind ->
+                "heart-h4d-learning-" + kind.name.lowercase() + "-" + ids.incrementAndGet()
+            },
+            timestamps = CognitiveTimestampSource { BASE.plusSeconds(12) },
+            limits = cognitiveLimits()
+        )
+        val governed = assertNotNull(heart.governedLearning(governedCore))
+        val learned = governed.process(finalizedA.learning)
+        assertIs<CognitiveGovernedLearningResult.Applied>(learned.governed)
+        assertEquals(
+            AndroidHeartSemanticLearningSyncStatus.SYNCHRONIZED,
+            learned.semanticSync
+        )
+
+        val turnB = assertIs<CognitiveTurnRegistrationResult.Registered>(
+            runtime.beginTurn(
+                CognitiveTurnId("heart-h4d-turn-b"),
+                CognitiveInput("What is my emergency code word?")
+            )
+        ).turn
+        assertIs<CognitiveContextAssemblyResult.Published>(runtime.assembleContext(turnB.reference))
+        assertIs<CognitiveGenerationResult.Succeeded>(runtime.generateCognition(turnB.reference))
+        assertTrue(compilerSawLearned)
+
+        val applied = assertIs<CognitiveGovernedLearningResult.Applied>(learned.governed)
+        val learnedMemory = assertIs<pro.liliya.core.learning.LearningApplicationDownstreamReference.Memory>(
+            applied.receipt.downstream
+        )
+
+        assertEquals(HeartRuntimeCloseResult.Closed, heart.close())
+
+        val secondStorage = assertIs<AndroidCognitiveStorageOpenResult.Ready>(
+            AndroidCognitiveStorageAssembly.open(
+                context = targetContext,
+                foundation = foundation,
+                directoryName = STORAGE_DIRECTORY_H4D
+            )
+        ).assembly
+        val reopenedMemory = assertIs<AndroidEncryptedMemoryOpenResult.Opened>(
+            secondStorage.openEncryptedMemory(memoryStoreId, dek)
+        ).composition
+        val restored = assertNotNull(reopenedMemory.inspect(learnedMemory.recordId))
+        assertEquals(LEARNED_EVIDENCE, restored.record.content)
+        assertEquals(learnedMemory.generation, restored.generation)
+
+        val reopenedMutations = assertIs<AndroidEncryptedLearningMutationOpenResult.Opened>(
+            secondStorage.openEncryptedLearningMutations(mutationStoreId, dek)
+        ).composition
+        assertEquals(
+            applied.receipt,
+            reopenedMutations.completedOutcomeByMutationId(applied.mutation.mutationId)
+        )
+
+        compilerSawLearned = false
+        val secondHeart = AndroidHeartRuntimeAssembly.create(
+            cognitiveStorage = secondStorage,
+            memoryStoreId = memoryStoreId,
+            knowledgeStoreId = knowledgeStoreId,
+            activeDek = dek,
+            semanticRoot = semanticRoot,
+            semanticEncoderFile = File(semanticRoot, ENCODER_ASSET),
+            llamaAssembly = llama,
+            stagedModel = staged,
+            maxCandidatesPerSource = 4,
+            cognitiveRuntimeFactory = AndroidHeartCognitiveRuntimeFactory {
+                    memoryRetrieval,
+                    knowledgeRetrieval,
+                    inference,
+                    streamingInference ->
+                CognitiveRuntimeComposition(
+                    foundation = foundation,
+                    scope = CognitiveRuntimeScopeId("heart-h4d-runtime-restart"),
+                    memoryRetrieval = memoryRetrieval,
+                    knowledgeRetrieval = knowledgeRetrieval,
+                    selfSnapshots = { null },
+                    personalitySnapshots = { emptyList() },
+                    inference = inference,
+                    streamingInference = streamingInference,
+                    limits = cognitiveLimits(),
+                    materialization = CognitiveMaterializationPort {
+                        CognitiveMaterializationResult.Succeeded(materializationCandidate())
+                    },
+                    planning = PlanningComposition(foundation),
+                    reasoning = ReasoningComposition(foundation),
+                    decision = DecisionComposition(foundation),
+                    artifactIds = CognitiveArtifactIdSource { kind ->
+                        "heart-h4d-restart-" + kind.name.lowercase() + "-" + ids.incrementAndGet()
+                    },
+                    timestamps = CognitiveTimestampSource { BASE.plusSeconds(20) }
+                )
+            }
+        )
+        assertEquals(HeartRuntimeStartResult.Ready, secondHeart.start())
+        val runtime2 = assertNotNull(secondHeart.runtime())
+        val turnC = assertIs<CognitiveTurnRegistrationResult.Registered>(
+            runtime2.beginTurn(
+                CognitiveTurnId("heart-h4d-turn-c"),
+                CognitiveInput("What is my emergency code word?")
+            )
+        ).turn
+        assertIs<CognitiveContextAssemblyResult.Published>(runtime2.assembleContext(turnC.reference))
+        assertIs<CognitiveGenerationResult.Succeeded>(runtime2.generateCognition(turnC.reference))
+        assertTrue(compilerSawLearned)
+
+        assertEquals(HeartRuntimeCloseResult.Closed, secondHeart.close())
+        assertIs<LargeProtectedModelStagingRetireResult.Retired>(staged.retire())
+        assertIs<CognitiveEncryptionResult.Success<Unit>>(first.keyProtector.retire(descriptor))
+
+        println(
+            "HEART_H4D_EVIDENCE=" +
+                "{\"heartReady\":true,\"turnALearning\":true," +
+                "\"encryptedDurableCommit\":true,\"semanticSync\":true," +
+                "\"turnBObservedLearning\":true,\"restartObservedLearning\":true," +
+                "\"realLlamaInference\":true,\"shutdownClosed\":true}"
+        )
+    }
+
     @Volatile
     private var compilerSawMemory = false
 
     @Volatile
     private var compilerSawKnowledge = false
+
+    @Volatile
+    private var compilerSawLearned = false
 
     private fun llamaAssembly(
         context: Context,
@@ -293,6 +686,9 @@ class AndroidHeartRuntimeColdStartInstrumentedTest {
             val contents = request.inference.context.items.map { it.content }
             compilerSawMemory = contents.contains(RELEVANT_MEMORY)
             compilerSawKnowledge = contents.contains(RELEVANT_KNOWLEDGE)
+            if (contents.contains(LEARNED_EVIDENCE)) {
+                compilerSawLearned = true
+            }
             check(compilerSawMemory)
             check(compilerSawKnowledge)
             CognitiveModelRequestCompilerResult.Compiled(
@@ -445,6 +841,10 @@ class AndroidHeartRuntimeColdStartInstrumentedTest {
         ((totalBytes + SEGMENT_BYTES - 1L) / SEGMENT_BYTES).toInt()
 
     private companion object {
+        const val STORAGE_DIRECTORY_H4D = "heart-h4d-storage"
+        const val SEMANTIC_ROOT_H4D = "heart-h4d-semantic"
+        const val LEARNED_EVIDENCE = "The emergency code word is violet."
+
         const val STORAGE_DIRECTORY = "heart-h3-storage"
         const val SEMANTIC_ROOT = "heart-h3-semantic"
         const val ENCODER_ASSET = "multilingual-e5-small-liliya-v0.1.onnx"
