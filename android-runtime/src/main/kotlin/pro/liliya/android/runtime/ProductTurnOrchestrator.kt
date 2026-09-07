@@ -117,16 +117,30 @@ fun interface ProductTurnHeartStateProvider {
     fun state(): HeartRuntimeState
 }
 
+internal fun interface ProductTurnRuntimePortProvider {
+    fun current(): ProductTurnRuntimePort?
+}
+
 /**
  * Thin host-facing sequencer for one complete local product turn.
  *
  * This class owns ordering only. Cognitive turn state, model sessions, Runtime Hardening,
  * Memory/Knowledge, Learning, License, Authority and Execution remain owned elsewhere.
  */
-class ProductTurnOrchestrator(
+class ProductTurnOrchestrator internal constructor(
     private val heartState: ProductTurnHeartStateProvider,
-    private val runtimeProvider: ProductTurnRuntimeProvider
+    private val runtimePorts: ProductTurnRuntimePortProvider
 ) {
+    constructor(
+        heartState: ProductTurnHeartStateProvider,
+        runtimeProvider: ProductTurnRuntimeProvider
+    ) : this(
+        heartState = heartState,
+        runtimePorts = ProductTurnRuntimePortProvider {
+            runtimeProvider.current()?.let(::CognitiveProductTurnRuntimePort)
+        }
+    )
+
     fun run(
         request: ProductTurnRequest,
         streamingSink: CognitiveStreamingSink? = null
@@ -135,9 +149,8 @@ class ProductTurnOrchestrator(
             return rejected(ProductTurnFailure.HEART_NOT_READY)
         }
 
-        val runtime = runtimeProvider.current()
+        val port = runtimePorts.current()
             ?: return rejected(ProductTurnFailure.HEART_NOT_READY)
-        val port = CognitiveProductTurnRuntimePort(runtime)
 
         val registration = try {
             port.beginTurn(request.turnId, request.input)
@@ -181,10 +194,8 @@ class ProductTurnOrchestrator(
                         reference,
                         CognitiveStreamingSink { chunk ->
                             val control = downstream.onChunk(chunk)
-                            if (control == CognitiveStreamControl.CONTINUE) {
-                                streamedChunkCount += 1
-                                streamedCharacterCount += chunk.text.length
-                            }
+                            streamedChunkCount += 1
+                            streamedCharacterCount += chunk.text.length
                             control
                         }
                     )
@@ -235,7 +246,7 @@ class ProductTurnOrchestrator(
     }
 
     override fun toString(): String =
-        "ProductTurnOrchestrator(heartState=<redacted>,runtimeProvider=<redacted>)"
+        "ProductTurnOrchestrator(heartState=<redacted>,runtime=<redacted>)"
 
     private fun abortQuietly(
         runtime: ProductTurnRuntimePort,
