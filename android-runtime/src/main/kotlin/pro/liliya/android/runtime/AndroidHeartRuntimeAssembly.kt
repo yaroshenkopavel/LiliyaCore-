@@ -128,6 +128,16 @@ class AndroidHeartRuntimeAssembly private constructor(
     fun runtime(): CognitiveRuntimeComposition? =
         if (startup.state() == HeartRuntimeState.READY) cognitiveRuntime else null
 
+    fun productTurns(): ProductTurnOrchestrator? {
+        if (startup.state() != HeartRuntimeState.READY || cognitiveRuntime == null) {
+            return null
+        }
+        return ProductTurnOrchestrator(
+            heartState = ProductTurnHeartStateProvider { startup.state() },
+            runtimeProvider = ProductTurnRuntimeProvider { runtime() }
+        )
+    }
+
     fun learningMutationApplicationPort(
         foundation: FoundationComposition,
         mutations: PersistentLearningApplicationMutationComposition,
