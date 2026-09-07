@@ -8,6 +8,11 @@ import pro.liliya.core.planning.PlanningComposition
 import pro.liliya.core.reasoning.ReasoningComposition
 import pro.liliya.core.reflection.ReflectionComposition
 
+sealed interface CognitiveTurnAbortResult {
+    data object Aborted : CognitiveTurnAbortResult
+    data object Stale : CognitiveTurnAbortResult
+}
+
 class CognitiveRuntimeComposition(
     private val foundation: FoundationComposition,
     private val scope: CognitiveRuntimeScopeId,
@@ -331,6 +336,13 @@ class CognitiveRuntimeComposition(
         }
         return result
     }
+
+    fun abortTurn(reference: CognitiveTurnReference): CognitiveTurnAbortResult =
+        when (turns.failIfCurrent(reference, CognitiveTurnFailure.TURN_FAILED)) {
+            is CognitiveTurnTransitionResult.Failed -> CognitiveTurnAbortResult.Aborted
+            CognitiveTurnTransitionResult.Stale,
+            CognitiveTurnTransitionResult.Transitioned -> CognitiveTurnAbortResult.Stale
+        }
 
     fun currentReference(): CognitiveTurnReference? = turns.currentReference()
     fun currentLifecycle(): CognitiveTurnLifecycle? = turns.currentLifecycle()
