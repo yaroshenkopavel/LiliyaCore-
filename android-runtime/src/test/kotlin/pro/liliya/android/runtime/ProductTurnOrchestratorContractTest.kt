@@ -299,6 +299,24 @@ class ProductTurnOrchestratorContractTest {
     }
 
     @Test
+    fun abort_exception_is_internal_failure_without_retry() {
+        val port = FakeRuntimePort(
+            context = CognitiveContextAssemblyResult.Rejected(
+                CognitiveContextAssemblyFailure.MEMORY_PROVIDER_FAILED
+            ),
+            throwOnAbort = true
+        )
+
+        val result = assertIs<ProductTurnResult.Rejected>(
+            ready(port).run(request(ProductTurnGenerationMode.ONE_SHOT))
+        )
+
+        assertEquals(ProductTurnFailure.INTERNAL_FAILURE, result.reason)
+        assertEquals(1, port.abortCalls)
+        assertEquals(listOf("begin", "context", "abort"), port.events)
+    }
+
+    @Test
     fun request_and_completed_rendering_do_not_expose_private_content() {
         val privateInput = "PRIVATE-PRODUCT-TURN-INPUT"
         val request = ProductTurnRequest(
@@ -338,7 +356,8 @@ class ProductTurnOrchestratorContractTest {
         private val finalization: CognitiveFinalizationResult? = null,
         private val streamingChunks: List<String> = listOf("stream"),
         private val cancelWhenSinkStops: Boolean = false,
-        private val throwOnContext: Boolean = false
+        private val throwOnContext: Boolean = false,
+        private val throwOnAbort: Boolean = false
     ) : ProductTurnRuntimePort {
         val reference = CognitiveTurnReference(
             CognitiveTurnId("turn-1"),
@@ -418,6 +437,7 @@ class ProductTurnOrchestratorContractTest {
             events += "abort"
             abortCalls += 1
             lastAborted = reference
+            if (throwOnAbort) error("PRIVATE-ABORT-EXCEPTION")
             return CognitiveTurnAbortResult.Aborted
         }
 
