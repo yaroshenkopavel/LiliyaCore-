@@ -77,17 +77,18 @@ class UrlConnectionLicenseHttpEngine : LicenseHttpEngine {
         var cancellationRegistration: AutoCloseable? = null
 
         return try {
-            connection = request.endpoint.openConnection() as HttpURLConnection
-            connection.requestMethod = "POST"
-            connection.connectTimeout = request.connectTimeoutMillis
-            connection.readTimeout = request.readTimeoutMillis
-            connection.instanceFollowRedirects = false
-            connection.doOutput = true
-            connection.setRequestProperty("Content-Type", "application/json")
-            connection.setRequestProperty("Accept", "application/json")
+            val activeConnection = request.endpoint.openConnection() as HttpURLConnection
+            connection = activeConnection
+            activeConnection.requestMethod = "POST"
+            activeConnection.connectTimeout = request.connectTimeoutMillis
+            activeConnection.readTimeout = request.readTimeoutMillis
+            activeConnection.instanceFollowRedirects = false
+            activeConnection.doOutput = true
+            activeConnection.setRequestProperty("Content-Type", "application/json")
+            activeConnection.setRequestProperty("Accept", "application/json")
 
             cancellationRegistration = cancellation.register {
-                connection.disconnect()
+                activeConnection.disconnect()
             }
 
             if (cancellation.isCancelled()) {
@@ -96,7 +97,7 @@ class UrlConnectionLicenseHttpEngine : LicenseHttpEngine {
                 )
             }
 
-            connection.outputStream.use { output ->
+            activeConnection.outputStream.use { output ->
                 output.write(request.body)
                 output.flush()
             }
@@ -107,11 +108,11 @@ class UrlConnectionLicenseHttpEngine : LicenseHttpEngine {
                 )
             }
 
-            val status = connection.responseCode
+            val status = activeConnection.responseCode
             val stream = if (status in 200..399) {
-                connection.inputStream
+                activeConnection.inputStream
             } else {
-                connection.errorStream
+                activeConnection.errorStream
             }
             val body = stream?.use { it.readBytes() } ?: byteArrayOf()
 
