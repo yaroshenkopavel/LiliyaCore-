@@ -171,12 +171,18 @@ class ProductTurnOrchestrator internal constructor(
             when (port.assembleContext(reference)) {
                 is CognitiveContextAssemblyResult.Published -> Unit
                 CognitiveContextAssemblyResult.Stale -> {
-                    abortQuietly(port, reference)
-                    return rejected(ProductTurnFailure.STALE)
+                    return rejectedAfterAbort(
+                        port,
+                        reference,
+                        ProductTurnFailure.STALE
+                    )
                 }
                 is CognitiveContextAssemblyResult.Rejected -> {
-                    abortQuietly(port, reference)
-                    return rejected(ProductTurnFailure.CONTEXT_REJECTED)
+                    return rejectedAfterAbort(
+                        port,
+                        reference,
+                        ProductTurnFailure.CONTEXT_REJECTED
+                    )
                 }
             }
 
@@ -187,8 +193,11 @@ class ProductTurnOrchestrator internal constructor(
                 ProductTurnGenerationMode.STREAMING -> {
                     val downstream = streamingSink
                     if (downstream == null) {
-                        abortQuietly(port, reference)
-                        return rejected(ProductTurnFailure.MISSING_STREAMING_SINK)
+                        return rejectedAfterAbort(
+                            port,
+                            reference,
+                            ProductTurnFailure.MISSING_STREAMING_SINK
+                        )
                     }
                     port.generateStreaming(
                         reference,
@@ -205,12 +214,16 @@ class ProductTurnOrchestrator internal constructor(
             when (generation) {
                 is CognitiveGenerationResult.Succeeded -> Unit
                 CognitiveGenerationResult.Stale -> {
-                    abortQuietly(port, reference)
-                    return rejected(ProductTurnFailure.STALE)
+                    return rejectedAfterAbort(
+                        port,
+                        reference,
+                        ProductTurnFailure.STALE
+                    )
                 }
                 is CognitiveGenerationResult.Rejected -> {
-                    abortQuietly(port, reference)
-                    return rejected(
+                    return rejectedAfterAbort(
+                        port,
+                        reference,
                         if (generation.reason == CognitiveGenerationFailure.INFERENCE_CANCELLED) {
                             ProductTurnFailure.CANCELLED
                         } else {
@@ -229,18 +242,22 @@ class ProductTurnOrchestrator internal constructor(
                         streamedCharacterCount = streamedCharacterCount
                     )
 
-                CognitiveFinalizationResult.Stale -> {
-                    abortQuietly(port, reference)
-                    rejected(ProductTurnFailure.STALE)
-                }
+                CognitiveFinalizationResult.Stale ->
+                    rejectedAfterAbort(
+                        port,
+                        reference,
+                        ProductTurnFailure.STALE
+                    )
 
-                is CognitiveFinalizationResult.Rejected -> {
-                    abortQuietly(port, reference)
-                    rejected(ProductTurnFailure.FINALIZATION_REJECTED)
-                }
+                is CognitiveFinalizationResult.Rejected ->
+                    rejectedAfterAbort(
+                        port,
+                        reference,
+                        ProductTurnFailure.FINALIZATION_REJECTED
+                    )
             }
         } catch (_: Exception) {
-            abortQuietly(port, reference)
+            abortTerminally(port, reference)
             return rejected(ProductTurnFailure.INTERNAL_FAILURE)
         }
     }
@@ -248,16 +265,29 @@ class ProductTurnOrchestrator internal constructor(
     override fun toString(): String =
         "ProductTurnOrchestrator(heartState=<redacted>,runtime=<redacted>)"
 
-    private fun abortQuietly(
+    private fun rejectedAfterAbort(
+        runtime: ProductTurnRuntimePort,
+        reference: CognitiveTurnReference,
+        reason: ProductTurnFailure
+    ): ProductTurnResult.Rejected =
+        if (abortTerminally(runtime, reference)) {
+            rejected(reason)
+        } else {
+            rejected(ProductTurnFailure.INTERNAL_FAILURE)
+        }
+
+    private fun abortTerminally(
         runtime: ProductTurnRuntimePort,
         reference: CognitiveTurnReference
-    ) {
+    ): Boolean =
         try {
-            runtime.abort(reference)
+            when (runtime.abort(reference)) {
+                CognitiveTurnAbortResult.Aborted,
+                CognitiveTurnAbortResult.Stale -> true
+            }
         } catch (_: Exception) {
-            // Product result remains fail-closed. There is no retry/reconciliation here.
+            false
         }
-    }
 
     private fun rejected(reason: ProductTurnFailure): ProductTurnResult.Rejected =
         ProductTurnResult.Rejected(reason)
