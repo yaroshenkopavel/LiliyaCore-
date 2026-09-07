@@ -40,8 +40,17 @@ jobs:
       - name: Install Android API 35
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
 
-      - name: Run core tests
-        run: gradle :core:test --console=plain
+      - name: Run core and License transport tests
+        run: gradle :core:test :license-transport-client:test --console=plain
+
+      - name: License transport architecture guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -R -n -E 'OpenBao|X-Vault-Token|transit/keys|RuntimeAuthority|ExecutionPermission|AuthorityComposition'             --include='*.kt' license-transport-client/src/main; then
+            echo "Provider-specific or Authority/Execution semantic leaked into client transport"
+            exit 1
+          fi
 
   android-heart-runtime-unit:
     name: Android Heart Runtime Unit
