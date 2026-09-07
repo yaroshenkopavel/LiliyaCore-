@@ -79,7 +79,7 @@ class ProductTurnOrchestratorContractTest {
         assertEquals(0, result.streamedChunkCount)
         assertEquals(0, result.streamedCharacterCount)
         assertEquals(port.reference, result.turn)
-        assertEquals("learning-1", result.finalization.learning.id.value)
+        assertEquals("learning-private", result.finalization.learning.id.value)
     }
 
     @Test
