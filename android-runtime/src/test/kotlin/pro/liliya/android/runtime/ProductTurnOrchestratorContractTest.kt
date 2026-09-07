@@ -234,6 +234,71 @@ class ProductTurnOrchestratorContractTest {
     }
 
     @Test
+    fun previously_obtained_orchestrator_rechecks_live_heart_state_for_each_turn() {
+        var state = HeartRuntimeState.READY
+        var runtimeCalls = 0
+        val port = FakeRuntimePort()
+        val orchestrator = ProductTurnOrchestrator(
+            heartState = ProductTurnHeartStateProvider { state },
+            runtimePorts = ProductTurnRuntimePortProvider {
+                runtimeCalls += 1
+                port
+            }
+        )
+
+        assertIs<ProductTurnResult.Completed>(
+            orchestrator.run(request(ProductTurnGenerationMode.ONE_SHOT))
+        )
+        state = HeartRuntimeState.FAILED
+
+        val rejected = assertIs<ProductTurnResult.Rejected>(
+            orchestrator.run(
+                ProductTurnRequest(
+                    turnId = CognitiveTurnId("turn-after-heart-failure"),
+                    input = CognitiveInput("private second input"),
+                    mode = ProductTurnGenerationMode.ONE_SHOT
+                )
+            )
+        )
+
+        assertEquals(ProductTurnFailure.HEART_NOT_READY, rejected.reason)
+        assertEquals(1, runtimeCalls)
+    }
+
+    @Test
+    fun finalization_stale_aborts_and_never_becomes_success() {
+        val port = FakeRuntimePort(
+            finalization = CognitiveFinalizationResult.Stale
+        )
+
+        val result = assertIs<ProductTurnResult.Rejected>(
+            ready(port).run(request(ProductTurnGenerationMode.ONE_SHOT))
+        )
+
+        assertEquals(ProductTurnFailure.STALE, result.reason)
+        assertEquals(
+            listOf("begin", "context", "one-shot", "finalize", "abort"),
+            port.events
+        )
+    }
+
+    @Test
+    fun unexpected_stream_sink_exception_is_contained_and_aborts_exact_turn() {
+        val port = FakeRuntimePort(streamingChunks = listOf("private-chunk"))
+
+        val result = assertIs<ProductTurnResult.Rejected>(
+            ready(port).run(
+                request(ProductTurnGenerationMode.STREAMING),
+                CognitiveStreamingSink { error("PRIVATE-SINK-EXCEPTION") }
+            )
+        )
+
+        assertEquals(ProductTurnFailure.INTERNAL_FAILURE, result.reason)
+        assertEquals(listOf("begin", "context", "stream", "abort"), port.events)
+        assertEquals(port.reference, port.lastAborted)
+    }
+
+    @Test
     fun request_and_completed_rendering_do_not_expose_private_content() {
         val privateInput = "PRIVATE-PRODUCT-TURN-INPUT"
         val request = ProductTurnRequest(
