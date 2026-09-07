@@ -170,7 +170,7 @@ class LicenseS6IssueTransportCompatibilityTest {
 
         assertEquals(verified.entitlement.id, decision.receipt.licenseId)
 
-        println(
+        val evidence =
             "LICENSING_S6_4_ISSUE_EVIDENCE=" +
                 "{\"realHttp\":true," +
                 "\"backendIssuedEnvelope\":true," +
@@ -180,7 +180,16 @@ class LicenseS6IssueTransportCompatibilityTest {
                 "\"policyContext\":true," +
                 "\"licensePolicy\":true," +
                 "\"stoppedBeforeAuthority\":true}"
-        )
+
+        println(evidence)
+
+        System.getenv("LIVE_S6_EVIDENCE_PATH")
+            ?.takeIf { it.isNotBlank() }
+            ?.let { rawPath ->
+                val target = Path.of(rawPath)
+                target.parent?.let(Files::createDirectories)
+                Files.writeString(target, evidence + "\n")
+            }
     }
 
     private fun foundation(): FoundationComposition {
