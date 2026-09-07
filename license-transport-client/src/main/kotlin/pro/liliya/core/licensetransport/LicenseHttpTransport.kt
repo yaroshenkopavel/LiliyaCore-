@@ -33,9 +33,12 @@ data class LicenseHttpTransportConfig(
     val attemptLimit: Int = 1
 
     override fun toString(): String =
-        "LicenseHttpTransportConfig(endpoint=${endpoint.protocol}://${endpoint.host}${endpoint.path}," +
-            "connectTimeoutMillis=$connectTimeoutMillis,readTimeoutMillis=$readTimeoutMillis," +
-            "attemptLimit=$attemptLimit,developmentAllowInsecureHttp=$developmentAllowInsecureHttp)"
+        "LicenseHttpTransportConfig(endpoint=" +
+            endpoint.protocol + "://" + endpoint.host + "/<redacted-path>" +
+            ",connectTimeoutMillis=" + connectTimeoutMillis +
+            ",readTimeoutMillis=" + readTimeoutMillis +
+            ",attemptLimit=" + attemptLimit +
+            ",developmentAllowInsecureHttp=" + developmentAllowInsecureHttp + ")"
 }
 
 data class LicenseHttpEngineRequest(
@@ -43,12 +46,22 @@ data class LicenseHttpEngineRequest(
     val connectTimeoutMillis: Int,
     val readTimeoutMillis: Int,
     val body: ByteArray
-)
+) {
+    override fun toString(): String =
+        "LicenseHttpEngineRequest(endpoint=" +
+            endpoint.protocol + "://" + endpoint.host + "/<redacted-path>" +
+            ",connectTimeoutMillis=" + connectTimeoutMillis +
+            ",readTimeoutMillis=" + readTimeoutMillis +
+            ",body=<redacted>)"
+}
 
 data class LicenseHttpEngineResponse(
     val status: Int,
     val body: ByteArray
-)
+) {
+    override fun toString(): String =
+        "LicenseHttpEngineResponse(status=" + status + ",body=<redacted>)"
+}
 
 sealed interface LicenseHttpEngineResult {
     data class Response(val response: LicenseHttpEngineResponse) : LicenseHttpEngineResult
