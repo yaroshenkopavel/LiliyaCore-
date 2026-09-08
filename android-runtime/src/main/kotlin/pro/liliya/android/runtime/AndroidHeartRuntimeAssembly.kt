@@ -148,6 +148,25 @@ class AndroidHeartRuntimeAssembly private constructor(
         )
     }
 
+    fun conversation(
+        maxRetainedMessages: Int,
+        maxRetainedCharacters: Int,
+        maxMessageCharacters: Int
+    ): ProductConversationHost? {
+        val activeRuntime = runtime() ?: return null
+        val turns = productTurns() ?: return null
+        return ProductConversationHost.production(
+            maxInputChars = activeRuntime.limits.maxInputChars,
+            maxTurnIdChars = activeRuntime.limits.maxTurnIdChars,
+            maxContextItems = activeRuntime.limits.maxContextItems,
+            maxContextItemChars = activeRuntime.limits.maxContextItemChars,
+            maxRetainedMessages = maxRetainedMessages,
+            maxRetainedCharacters = maxRetainedCharacters,
+            maxMessageCharacters = maxMessageCharacters,
+            turns = turns
+        )
+    }
+
     fun learningMutationApplicationPort(
         foundation: FoundationComposition,
         mutations: PersistentLearningApplicationMutationComposition,
