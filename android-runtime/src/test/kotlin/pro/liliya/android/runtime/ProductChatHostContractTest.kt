@@ -218,6 +218,26 @@ class ProductChatHostContractTest {
     }
 
     @Test
+    fun generated_id_over_actual_runtime_limit_fails_before_product_turn() {
+        var turnCalls = 0
+        val host = ProductChatHost(
+            maxInputChars = 16,
+            maxTurnIdChars = 8,
+            turnIds = ProductChatTurnIdSource { "123456789" },
+            turns = ProductChatTurnRunner { _, _ ->
+                turnCalls += 1
+                completed("unused")
+            }
+        )
+
+        val result = assertIs<ProductChatResult.Rejected>(
+            host.send(ProductChatRequest("hello", ProductChatGenerationMode.ONE_SHOT))
+        )
+
+        assertEquals(ProductChatFailure.INTERNAL_FAILURE, result.reason)
+        assertEquals(0, turnCalls)
+    }
+    @Test
     fun public_rendering_redacts_request_chunk_reply_and_turn_source() {
         val request = ProductChatRequest("PRIVATE REQUEST", ProductChatGenerationMode.ONE_SHOT)
         val chunk = ProductChatChunk(1, "PRIVATE CHUNK")
@@ -234,7 +254,7 @@ class ProductChatHostContractTest {
         maxInputChars: Int = 16,
         turnIds: ProductChatTurnIdSource = ProductChatTurnIdSource { "chat-fixed" },
         runner: ProductChatTurnRunner = ProductChatTurnRunner { _, _ -> completed("reply") }
-    ): ProductChatHost = ProductChatHost(maxInputChars, turnIds, runner)
+    ): ProductChatHost = ProductChatHost(maxInputChars, 64, turnIds, runner)
 
     private fun reference(): CognitiveTurnReference =
         CognitiveTurnReference(CognitiveTurnId("chat-fixed"), CognitiveTurnGeneration(1))
