@@ -263,6 +263,77 @@ class AndroidProductRuntimeAssemblyContractTest {
     }
 
     @Test
+    fun semantic_recovery_rebinds_governed_learning_with_exact_shared_learning_owner() {
+        val foundation = foundation()
+        val learning = LearningComposition(foundation)
+        val heart = FakeHeart()
+        val received = mutableListOf<LearningComposition>()
+        val runtime = AndroidProductRuntimeAssembly(
+            heart = heart,
+            learning = learning,
+            governedLearningFactory = AndroidProductRuntimeGovernedLearningFactory {
+                received += it
+                readyGoverned(heart)
+            }
+        )
+
+        assertEquals(AndroidProductRuntimeStartResult.Ready, runtime.start())
+        assertEquals(1, received.size)
+        assertSame(learning, received.single())
+
+        heart.forceState(HeartRuntimeState.FAILED)
+        heart.recoveryResult = AndroidHeartSemanticRecoveryResult.Recovered(5)
+        heart.readyAfterRecovery = true
+
+        assertEquals(
+            AndroidProductRuntimeSemanticRecoveryResult.Recovered(5),
+            runtime.recoverSemantic()
+        )
+        assertEquals(2, received.size)
+        assertSame(learning, received[0])
+        assertSame(learning, received[1])
+        assertNotNull(runtime.learningFollowUp())
+    }
+
+    @Test
+    fun semantic_recovery_rebind_failure_closes_recovered_heart_fail_closed() {
+        val foundation = foundation()
+        val heart = FakeHeart()
+        var factoryCalls = 0
+        val runtime = AndroidProductRuntimeAssembly(
+            heart = heart,
+            learning = LearningComposition(foundation),
+            governedLearningFactory = AndroidProductRuntimeGovernedLearningFactory {
+                factoryCalls += 1
+                if (factoryCalls == 1) {
+                    readyGoverned(heart)
+                } else {
+                    AndroidHeartProductionGovernedLearningCreateResult.Rejected(
+                        AndroidHeartProductionGovernedLearningCreateFailure
+                            .MUTATION_APPLICATION_UNAVAILABLE
+                    )
+                }
+            }
+        )
+
+        assertEquals(AndroidProductRuntimeStartResult.Ready, runtime.start())
+        heart.forceState(HeartRuntimeState.FAILED)
+        heart.recoveryResult = AndroidHeartSemanticRecoveryResult.Recovered(8)
+        heart.readyAfterRecovery = true
+
+        assertEquals(
+            AndroidProductRuntimeSemanticRecoveryResult.InternalFailure,
+            runtime.recoverSemantic()
+        )
+        assertEquals(2, factoryCalls)
+        assertEquals(1, heart.closeCalls)
+        assertEquals(HeartRuntimeState.CLOSED, runtime.state())
+        assertNull(runtime.chat())
+        assertNull(runtime.conversation(4, 512, 128))
+        assertNull(runtime.learningFollowUp())
+    }
+
+    @Test
     fun semantic_recovery_exception_is_bounded_without_private_text() {
         val foundation = foundation()
         val heart = object : AndroidProductRuntimeHeartBridge {
