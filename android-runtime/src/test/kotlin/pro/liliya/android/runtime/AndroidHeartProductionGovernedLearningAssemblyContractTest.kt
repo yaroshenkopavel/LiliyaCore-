@@ -172,6 +172,101 @@ class AndroidHeartProductionGovernedLearningAssemblyContractTest {
     }
 
     @Test
+    fun replacement_learning_store_cannot_resolve_finalized_candidate_reference() {
+        val fixture = fixture()
+        val sourceLearning = LearningComposition(fixture.foundation)
+        val installed = installCandidate(sourceLearning, "candidate-wrong-store")
+        var governanceCalls = 0
+        var mutationCalls = 0
+        val bridge = bridge {
+            LearningApplicationMutationApplicationPort {
+                mutationCalls += 1
+                error("mutation must not run for missing candidate")
+            }
+        }
+
+        val composition = assertIs<AndroidHeartProductionGovernedLearningCreateResult.Ready>(
+            createInternal(
+                fixture = fixture,
+                bridge = bridge,
+                governance = CognitiveLearningGovernancePort {
+                    governanceCalls += 1
+                    CognitiveLearningGovernanceResult.Approved(
+                        LearningApplicationTarget.MEMORY,
+                        "should never be consulted"
+                    )
+                }
+            )
+        ).composition
+
+        val processed = assertIs<AndroidHeartProductionGovernedLearningProcessResult.Processed>(
+            composition.process(
+                CognitiveLearningReference(
+                    installed.candidate.id,
+                    installed.generation
+                )
+            )
+        )
+        val rejected = assertIs<CognitiveGovernedLearningResult.Rejected>(
+            processed.result.governed
+        )
+
+        assertEquals(
+            CognitiveGovernedLearningFailure.CANDIDATE_MISSING_OR_MISMATCH,
+            rejected.reason
+        )
+        assertEquals(0, governanceCalls)
+        assertEquals(0, mutationCalls)
+        assertEquals(AndroidHeartSemanticLearningSyncStatus.NOT_APPLICABLE, processed.result.semanticSync)
+    }
+
+    @Test
+    fun governance_cannot_select_knowledge_in_memory_only_v0_1() {
+        val fixture = fixture()
+        val installed = installCandidate(fixture.learning, "candidate-knowledge-rejected")
+        var mutationCalls = 0
+        val bridge = bridge {
+            LearningApplicationMutationApplicationPort {
+                mutationCalls += 1
+                error("mutation must not run for disallowed target")
+            }
+        }
+
+        val composition = assertIs<AndroidHeartProductionGovernedLearningCreateResult.Ready>(
+            createInternal(
+                fixture = fixture,
+                bridge = bridge,
+                governance = CognitiveLearningGovernancePort {
+                    assertEquals(listOf(LearningApplicationTarget.MEMORY), it.allowedTargets)
+                    CognitiveLearningGovernanceResult.Approved(
+                        LearningApplicationTarget.KNOWLEDGE,
+                        "attempt disallowed target"
+                    )
+                }
+            )
+        ).composition
+
+        val processed = assertIs<AndroidHeartProductionGovernedLearningProcessResult.Processed>(
+            composition.process(
+                CognitiveLearningReference(
+                    installed.candidate.id,
+                    installed.generation
+                )
+            )
+        )
+        val rejected = assertIs<CognitiveGovernedLearningResult.Rejected>(
+            processed.result.governed
+        )
+
+        assertEquals(
+            CognitiveGovernedLearningFailure.GOVERNANCE_TARGET_REJECTED,
+            rejected.reason
+        )
+        assertEquals(0, mutationCalls)
+        assertEquals(AndroidHeartSemanticLearningSyncStatus.NOT_APPLICABLE, processed.result.semanticSync)
+    }
+
+    @Test
     fun governance_approval_cannot_bypass_missing_authority_grant() {
         val fixture = fixture()
         val installed = installCandidate(fixture.learning, "candidate-authority-denied")
