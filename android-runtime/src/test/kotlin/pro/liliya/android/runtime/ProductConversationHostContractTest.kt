@@ -4,6 +4,7 @@ import java.time.Instant
 import org.junit.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import pro.liliya.core.cognitive.CognitiveConversationContextSnapshot
@@ -33,6 +34,58 @@ import pro.liliya.core.reflection.ReflectionGeneration
 import pro.liliya.core.reflection.ReflectionRecordId
 
 class ProductConversationHostContractTest {
+
+    @Test
+    fun constructor_rejects_non_positive_bounds() {
+        assertFailsWith<IllegalArgumentException> {
+            ProductConversationHost(
+                sessionId = CognitiveConversationSessionId("session"),
+                maxInputChars = 0,
+                maxTurnIdChars = 64,
+                maxRetainedMessages = 2,
+                maxRetainedCharacters = 32,
+                maxMessageCharacters = 16,
+                turnIds = ProductConversationTurnIdSource { "turn" },
+                turns = ProductConversationTurnRunner { _, _, _ -> completed("reply") }
+            )
+        }
+        assertFailsWith<IllegalArgumentException> {
+            ProductConversationHost(
+                sessionId = CognitiveConversationSessionId("session"),
+                maxInputChars = 16,
+                maxTurnIdChars = 64,
+                maxRetainedMessages = 0,
+                maxRetainedCharacters = 32,
+                maxMessageCharacters = 16,
+                turnIds = ProductConversationTurnIdSource { "turn" },
+                turns = ProductConversationTurnRunner { _, _, _ -> completed("reply") }
+            )
+        }
+        assertFailsWith<IllegalArgumentException> {
+            ProductConversationHost(
+                sessionId = CognitiveConversationSessionId("session"),
+                maxInputChars = 16,
+                maxTurnIdChars = 64,
+                maxRetainedMessages = 2,
+                maxRetainedCharacters = 0,
+                maxMessageCharacters = 16,
+                turnIds = ProductConversationTurnIdSource { "turn" },
+                turns = ProductConversationTurnRunner { _, _, _ -> completed("reply") }
+            )
+        }
+        assertFailsWith<IllegalArgumentException> {
+            ProductConversationHost(
+                sessionId = CognitiveConversationSessionId("session"),
+                maxInputChars = 16,
+                maxTurnIdChars = 64,
+                maxRetainedMessages = 2,
+                maxRetainedCharacters = 32,
+                maxMessageCharacters = 0,
+                turnIds = ProductConversationTurnIdSource { "turn" },
+                turns = ProductConversationTurnRunner { _, _, _ -> completed("reply") }
+            )
+        }
+    }
 
     @Test
     fun first_success_uses_empty_context_and_second_success_sees_exact_committed_pair() {
