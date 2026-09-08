@@ -57,9 +57,9 @@ import pro.liliya.android.llamacppengine.LlamaCppEnginePolicy
 import pro.liliya.android.protectedmodel.staging.AndroidProtectedModelStagingPolicy
 import pro.liliya.android.runtime.AndroidHeartCognitiveRuntimeFactory
 import pro.liliya.android.runtime.AndroidHeartRuntimeAssembly
-import pro.liliya.android.runtime.AndroidHeartProductionGovernedLearningComposition
-import pro.liliya.android.runtime.AndroidHeartProductionGovernedLearningCreationResult
-import pro.liliya.android.runtime.AndroidHeartProductionGovernedLearningResult
+import pro.liliya.android.runtime.AndroidHeartProductionGovernedLearningAssembly
+import pro.liliya.android.runtime.AndroidHeartProductionGovernedLearningCreateResult
+import pro.liliya.android.runtime.AndroidHeartProductionGovernedLearningProcessResult
 import pro.liliya.android.runtime.HeartRuntimeCloseResult
 import pro.liliya.android.runtime.HeartRuntimeStartResult
 import pro.liliya.android.runtime.HeartRuntimeState
@@ -499,8 +499,8 @@ class AndroidHeartRuntimeColdStartInstrumentedTest {
             )
         )
 
-        val governed = assertIs<AndroidHeartProductionGovernedLearningCreationResult.Ready>(
-            AndroidHeartProductionGovernedLearningComposition.create(
+        val governed = assertIs<AndroidHeartProductionGovernedLearningCreateResult.Ready>(
+            AndroidHeartProductionGovernedLearningAssembly.create(
                 heart = heart,
                 foundation = foundation,
                 scope = CognitiveRuntimeScopeId("heart-h4d-runtime"),
@@ -526,7 +526,7 @@ class AndroidHeartRuntimeColdStartInstrumentedTest {
                 limits = cognitiveLimits()
             )
         ).composition
-        val learned = assertIs<AndroidHeartProductionGovernedLearningResult.Completed>(
+        val learned = assertIs<AndroidHeartProductionGovernedLearningProcessResult.Processed>(
             governed.process(finalizedA.learning)
         ).result
         assertIs<CognitiveGovernedLearningResult.Applied>(learned.governed)
