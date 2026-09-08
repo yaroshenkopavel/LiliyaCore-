@@ -583,3 +583,52 @@ jobs:
           path: ${{ runner.temp }}/liliyaco​re-gradle-min-cache.tar.gz
           if-no-files-found: error
           retention-days: 1
+
+
+  local-jvm-offline-cache:
+    name: Local JVM Offline Cache Artifact
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle 9.6.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.1'
+
+      - name: Warm JVM project cache with configuration on demand
+        run: gradle :core:test :license-transport-client:test --configure-on-demand --console=plain
+
+      - name: Verify JVM project works offline without Android SDK
+        run: gradle :core:test :license-transport-client:test --configure-on-demand --offline --console=plain
+
+      - name: Measure and pack JVM offline cache
+        shell: bash
+        run: |
+          set -euo pipefail
+          for p in             "$HOME/.gradle/caches/modules-2"             "$HOME/.gradle/caches/9.6.1/generated-gradle-jars"
+          do
+            if [ -e "$p" ]; then du -sh "$p"; fi
+          done
+          mkdir -p "$RUNNER_TEMP/jvm-cache/caches/9.6.1"
+          cp -a "$HOME/.gradle/caches/modules-2" "$RUNNER_TEMP/jvm-cache/caches/"
+          if [ -d "$HOME/.gradle/caches/9.6.1/generated-gradle-jars" ]; then
+            cp -a "$HOME/.gradle/caches/9.6.1/generated-gradle-jars" "$RUNNER_TEMP/jvm-cache/caches/9.6.1/"
+          fi
+          tar -C "$RUNNER_TEMP/jvm-cache" -czf "$RUNNER_TEMP/liliyaco​re-jvm-offline-cache.tar.gz" caches
+
+      - name: Upload JVM offline cache
+        uses: actions/upload-artifact@v4
+        with:
+          name: liliyaco​re-jvm-offline-cache
+          path: ${{ runner.temp }}/liliyaco​re-jvm-offline-cache.tar.gz
+          if-no-files-found: error
+          retention-days: 1
