@@ -68,7 +68,8 @@ internal fun interface ProductProtectedModelSignedManifestDecodePort {
  */
 class ProductProtectedModelLocalImport internal constructor(
     private val decodePort: ProductProtectedModelSignedManifestDecodePort,
-    private val budgets: ProductProtectedModelLocalImportBudgets
+    private val budgets: ProductProtectedModelLocalImportBudgets,
+    private val maxCanonicalSignedManifestBytes: Long
 ) {
     constructor(
         resourceBudgets: LargeProtectedModelResourceBudgets,
@@ -82,7 +83,8 @@ class ProductProtectedModelLocalImport internal constructor(
                 packageBudgets = packageBudgets
             )
         },
-        budgets = budgets
+        budgets = budgets,
+        maxCanonicalSignedManifestBytes = packageBudgets.maxCanonicalSignedManifestBytes
     )
 
     fun open(file: File): ProductProtectedModelLocalImportResult {
@@ -91,15 +93,16 @@ class ProductProtectedModelLocalImport internal constructor(
         } catch (_: IOException) {
             return rejected(ProductProtectedModelLocalImportFailure.FILE_REJECTED)
         }
-        val initialLength = try {
-            canonical.length()
+        val fileState = try {
+            Triple(canonical.isFile, canonical.length(), canonical.lastModified())
         } catch (_: SecurityException) {
             return rejected(ProductProtectedModelLocalImportFailure.FILE_REJECTED)
         }
-        if (!canonical.isFile || initialLength <= 0L || initialLength > budgets.maxContainerBytes) {
+        val initialLength = fileState.second
+        if (!fileState.first || initialLength <= 0L || initialLength > budgets.maxContainerBytes) {
             return rejected(ProductProtectedModelLocalImportFailure.FILE_REJECTED)
         }
-        val initialModified = canonical.lastModified()
+        val initialModified = fileState.third
 
         return try {
             RandomAccessFile(canonical, "r").use { input ->
@@ -109,7 +112,11 @@ class ProductProtectedModelLocalImport internal constructor(
 
                 val manifestBytes = readBoundedBytes(
                     input = input,
-                    maxBytes = minOf(budgets.maxContainerBytes, Int.MAX_VALUE.toLong())
+                    maxBytes = minOf(
+                        budgets.maxContainerBytes,
+                        maxCanonicalSignedManifestBytes,
+                        Int.MAX_VALUE.toLong()
+                    )
                 ) ?: return rejected(
                     ProductProtectedModelLocalImportFailure.RESOURCE_LIMIT_REJECTED
                 )
