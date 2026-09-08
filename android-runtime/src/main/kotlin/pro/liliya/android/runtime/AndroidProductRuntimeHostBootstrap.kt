@@ -87,13 +87,16 @@ internal fun interface AndroidProductRuntimeHostCreateFactory {
 object AndroidProductRuntimeHostBootstrap {
 
     fun start(
-        inputs: AndroidProductRuntimeHostPreparedInputs
-    ): AndroidProductRuntimeHostBootstrapResult =
-        start(
+        inputs: AndroidProductRuntimeHostPreparedInputs,
+        admission: AndroidProductRuntimeAdmissionResult.Admitted
+    ): AndroidProductRuntimeHostBootstrapResult {
+        admission.ownership
+        return start(
             AndroidProductRuntimeHostCreateFactory {
                 createProductionRuntime(inputs)
             }
         )
+    }
 
     internal fun start(
         factory: AndroidProductRuntimeHostCreateFactory
