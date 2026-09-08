@@ -156,26 +156,51 @@ class AndroidProductRuntimeAssembly internal constructor(
     fun learningFollowUp(): ProductLearningFollowUpHost? =
         if (heart.state() == HeartRuntimeState.READY) learningFollowUpHost else null
 
-    fun recoverSemantic(): AndroidProductRuntimeSemanticRecoveryResult =
-        try {
-            when (val result = heart.recoverSemantic()) {
-                is AndroidHeartSemanticRecoveryResult.Recovered ->
-                    AndroidProductRuntimeSemanticRecoveryResult.Recovered(
-                        result.entryCount
-                    )
-
-                AndroidHeartSemanticRecoveryResult.NotRequired ->
-                    AndroidProductRuntimeSemanticRecoveryResult.NotRequired
-
-                AndroidHeartSemanticRecoveryResult.Busy ->
-                    AndroidProductRuntimeSemanticRecoveryResult.Busy
-
-                AndroidHeartSemanticRecoveryResult.Failed ->
-                    AndroidProductRuntimeSemanticRecoveryResult.Failed
-            }
+    @Synchronized
+    fun recoverSemantic(): AndroidProductRuntimeSemanticRecoveryResult {
+        val recovered = try {
+            heart.recoverSemantic()
         } catch (_: Exception) {
-            AndroidProductRuntimeSemanticRecoveryResult.InternalFailure
+            return AndroidProductRuntimeSemanticRecoveryResult.InternalFailure
         }
+
+        return when (recovered) {
+            is AndroidHeartSemanticRecoveryResult.Recovered -> {
+                val rebound = try {
+                    governedLearningFactory.create(learning)
+                } catch (_: Exception) {
+                    learningFollowUpHost = null
+                    safeClose()
+                    return AndroidProductRuntimeSemanticRecoveryResult.InternalFailure
+                }
+                when (rebound) {
+                    is AndroidHeartProductionGovernedLearningCreateResult.Ready -> {
+                        learningFollowUpHost = ProductLearningFollowUpHost(
+                            rebound.composition
+                        )
+                        AndroidProductRuntimeSemanticRecoveryResult.Recovered(
+                            recovered.entryCount
+                        )
+                    }
+
+                    is AndroidHeartProductionGovernedLearningCreateResult.Rejected -> {
+                        learningFollowUpHost = null
+                        safeClose()
+                        AndroidProductRuntimeSemanticRecoveryResult.InternalFailure
+                    }
+                }
+            }
+
+            AndroidHeartSemanticRecoveryResult.NotRequired ->
+                AndroidProductRuntimeSemanticRecoveryResult.NotRequired
+
+            AndroidHeartSemanticRecoveryResult.Busy ->
+                AndroidProductRuntimeSemanticRecoveryResult.Busy
+
+            AndroidHeartSemanticRecoveryResult.Failed ->
+                AndroidProductRuntimeSemanticRecoveryResult.Failed
+        }
+    }
 
     @Synchronized
     fun close(): HeartRuntimeCloseResult {
