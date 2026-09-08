@@ -103,6 +103,17 @@ class CognitiveRuntimeComposition(
     fun beginTurn(
         id: CognitiveTurnId,
         input: CognitiveInput
+    ): CognitiveTurnRegistrationResult =
+        beginTurn(
+            id = id,
+            input = input,
+            conversationContext = null
+        )
+
+    fun beginTurn(
+        id: CognitiveTurnId,
+        input: CognitiveInput,
+        conversationContext: CognitiveConversationContextSnapshot?
     ): CognitiveTurnRegistrationResult {
         val requestFingerprint = requestFingerprintMetadata(id)
         val context = foundation.rootContext(
@@ -110,7 +121,7 @@ class CognitiveRuntimeComposition(
             component = "CognitiveRuntime",
             metadata = mapOf("cognitiveTurnRequestFingerprint" to requestFingerprint)
         )
-        val result = turns.register(id, input)
+        val result = turns.register(id, input, conversationContext)
         when (result) {
             is CognitiveTurnRegistrationResult.Registered -> {
                 val token = CognitiveProvenance.turnToken(scope, result.turn.reference).value
