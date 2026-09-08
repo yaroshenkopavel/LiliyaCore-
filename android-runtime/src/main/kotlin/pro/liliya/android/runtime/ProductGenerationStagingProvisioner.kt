@@ -8,6 +8,7 @@ import pro.liliya.core.protectedmodel.LargeProtectedModelStagedSourceOwnership
 import pro.liliya.core.protectedmodel.LargeProtectedModelStagingAbortResult
 import pro.liliya.core.protectedmodel.LargeProtectedModelStagingAppendResult
 import pro.liliya.core.protectedmodel.LargeProtectedModelStagingCleanupOutcome
+import pro.liliya.core.protectedmodel.LargeProtectedModelStagingCleanupStatus
 import pro.liliya.core.protectedmodel.LargeProtectedModelStagingCoordinator
 import pro.liliya.core.protectedmodel.LargeProtectedModelStagingPublishResult
 import pro.liliya.core.protectedmodel.LargeProtectedModelStagingRequest
@@ -206,8 +207,9 @@ class ProductGenerationStagingProvisioner internal constructor(
                     )
             }
         } catch (_: Exception) {
-            ProductGenerationStagingProvisionResult.Rejected(
-                ProductGenerationStagingProvisionFailure.INTERNAL_FAILURE
+            rejectWithAbort(
+                session = session,
+                reason = ProductGenerationStagingProvisionFailure.INTERNAL_FAILURE
             )
         }
     }
@@ -219,10 +221,15 @@ class ProductGenerationStagingProvisioner internal constructor(
         val cleanup = try {
             when (val aborted = session.abort()) {
                 is LargeProtectedModelStagingAbortResult.Aborted -> aborted.cleanup
-                is LargeProtectedModelStagingAbortResult.Rejected -> null
+                is LargeProtectedModelStagingAbortResult.Rejected ->
+                    LargeProtectedModelStagingCleanupOutcome(
+                        LargeProtectedModelStagingCleanupStatus.REJECTED
+                    )
             }
         } catch (_: Exception) {
-            null
+            LargeProtectedModelStagingCleanupOutcome(
+                LargeProtectedModelStagingCleanupStatus.FAILED
+            )
         }
         return ProductGenerationStagingProvisionResult.Rejected(
             reason = reason,
