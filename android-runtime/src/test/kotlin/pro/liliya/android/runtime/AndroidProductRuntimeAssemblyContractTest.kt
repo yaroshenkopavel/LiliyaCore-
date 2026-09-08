@@ -90,6 +90,62 @@ class AndroidProductRuntimeAssemblyContractTest {
     }
 
     @Test
+    fun thrown_heart_start_is_bounded_without_governed_learning_call() {
+        val foundation = foundation()
+        val learning = LearningComposition(foundation)
+        var governedCalls = 0
+        val heart = object : AndroidProductRuntimeHeartBridge {
+            override fun state(): HeartRuntimeState = HeartRuntimeState.IDLE
+            override fun start(): HeartRuntimeStartResult = error("private start failure")
+            override fun chat(): ProductChatHost? = null
+            override fun conversation(
+                maxRetainedMessages: Int,
+                maxRetainedCharacters: Int,
+                maxMessageCharacters: Int
+            ): ProductConversationHost? = null
+            override fun close(): HeartRuntimeCloseResult =
+                error("close must not run when start throws before READY")
+        }
+        val runtime = AndroidProductRuntimeAssembly(
+            heart = heart,
+            learning = learning,
+            governedLearningFactory = AndroidProductRuntimeGovernedLearningFactory {
+                governedCalls += 1
+                error("governed must not run")
+            }
+        )
+
+        assertEquals(
+            AndroidProductRuntimeStartResult.InternalFailure(cleanup = null),
+            runtime.start()
+        )
+        assertEquals(0, governedCalls)
+    }
+
+    @Test
+    fun thrown_governed_factory_is_bounded_and_attempts_cleanup() {
+        val foundation = foundation()
+        val learning = LearningComposition(foundation)
+        val heart = FakeHeart()
+        val runtime = AndroidProductRuntimeAssembly(
+            heart = heart,
+            learning = learning,
+            governedLearningFactory = AndroidProductRuntimeGovernedLearningFactory {
+                error("private governed failure")
+            }
+        )
+
+        assertEquals(
+            AndroidProductRuntimeStartResult.InternalFailure(
+                cleanup = HeartRuntimeCloseResult.Closed
+            ),
+            runtime.start()
+        )
+        assertEquals(1, heart.closeCalls)
+        assertEquals(HeartRuntimeState.CLOSED, heart.state())
+    }
+
+    @Test
     fun heart_start_failure_never_touches_governed_learning() {
         val foundation = foundation()
         val learning = LearningComposition(foundation)
