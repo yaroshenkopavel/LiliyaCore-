@@ -63,7 +63,7 @@ enum class AndroidProductRuntimeHostBootstrapFailure {
 
 sealed interface AndroidProductRuntimeHostBootstrapResult {
     data class Ready(
-        val runtime: AndroidProductRuntimeAssembly
+        val session: AndroidProductRuntimeHostSession
     ) : AndroidProductRuntimeHostBootstrapResult
 
     data class Rejected(
@@ -131,7 +131,29 @@ object AndroidProductRuntimeHostBootstrap {
             )
         }
 
-        return AndroidProductRuntimeHostBootstrapResult.Ready(runtime)
+        return AndroidProductRuntimeHostBootstrapResult.Ready(
+            AndroidProductRuntimeHostSession(
+                object : AndroidProductRuntimeHostSessionBridge {
+                    override fun state(): HeartRuntimeState = runtime.state()
+                    override fun chat(): ProductChatHost? = runtime.chat()
+                    override fun conversation(
+                        maxRetainedMessages: Int,
+                        maxRetainedCharacters: Int,
+                        maxMessageCharacters: Int
+                    ): ProductConversationHost? =
+                        runtime.conversation(
+                            maxRetainedMessages = maxRetainedMessages,
+                            maxRetainedCharacters = maxRetainedCharacters,
+                            maxMessageCharacters = maxMessageCharacters
+                        )
+                    override fun learningFollowUp(): ProductLearningFollowUpHost? =
+                        runtime.learningFollowUp()
+                    override fun recoverSemantic(): AndroidProductRuntimeSemanticRecoveryResult =
+                        runtime.recoverSemantic()
+                    override fun close(): HeartRuntimeCloseResult = runtime.close()
+                }
+            )
+        )
     }
 
     private fun createProductionRuntime(
