@@ -308,12 +308,9 @@ class AndroidProductRuntimeAssemblyContractTest {
             maxInputChars = 256,
             maxTurnIdChars = 64,
             turnIds = ProductChatTurnIdSource { "turn" },
-            turns = ProductChatTurnRunner { request, _ ->
+            turns = ProductChatTurnRunner { _, _ ->
                 ProductTurnResult.Rejected(
-                    request = request,
-                    reason = ProductTurnFailure.HEART_NOT_READY,
-                    streamedChunkCount = 0,
-                    streamedCharacterCount = 0
+                    reason = ProductTurnFailure.HEART_NOT_READY
                 )
             }
         )
