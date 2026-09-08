@@ -487,3 +487,47 @@ jobs:
           path: ${{ runner.temp }}/gradle-9.6.1-runtime.tar.gz
           if-no-files-found: error
           retention-days: 1
+
+
+  local-gradle-cache:
+    name: Local Gradle Dependency Cache Artifact
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle 9.6.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.1'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android API 35
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
+
+      - name: Warm exact project dependency cache
+        run: gradle :core:test :license-transport-client:test --console=plain
+
+      - name: Pack Gradle dependency cache
+        shell: bash
+        run: |
+          set -euo pipefail
+          du -sh "$HOME/.gradle/caches" || true
+          tar -C "$HOME/.gradle" -czf "$RUNNER_TEMP/liliyaco​re-gradle-cache.tar.gz" caches
+
+      - name: Upload Gradle dependency cache
+        uses: actions/upload-artifact@v4
+        with:
+          name: liliyaco​re-gradle-cache
+          path: ${{ runner.temp }}/liliyaco​re-gradle-cache.tar.gz
+          if-no-files-found: error
+          retention-days: 1
