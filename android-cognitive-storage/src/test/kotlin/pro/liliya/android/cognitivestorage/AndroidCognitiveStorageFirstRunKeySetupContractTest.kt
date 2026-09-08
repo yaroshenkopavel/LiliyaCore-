@@ -4,6 +4,9 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import org.junit.Test
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import pro.liliya.core.encryption.*
 
 class AndroidCognitiveStorageFirstRunKeySetupContractTest {
@@ -85,6 +88,45 @@ class AndroidCognitiveStorageFirstRunKeySetupContractTest {
         assertEquals(1, port.createCalls)
         assertEquals(0, port.registerCalls)
         assertEquals(1, port.retireCalls)
+    }
+
+    @Test
+    fun create_once_is_serialized_across_setup_instances_sharing_one_durable_registry() {
+        val descriptor = descriptor(
+            "first-run-protector",
+            1,
+            CognitiveKeyProtectorSecurityLevel.TRUSTED_ENVIRONMENT
+        )
+        val registered = dek("first-run-dek", 21)
+        val port = FakePort().apply {
+            createdProtector = CognitiveEncryptionResult.Success(descriptor)
+            registration = PersistentCognitiveDekRegistrationResult.Registered(ownership(registered))
+            createDelayMillis = 75
+            persistRegisteredReference = true
+        }
+        val first = AndroidCognitiveStorageFirstRunKeySetup(port)
+        val second = AndroidCognitiveStorageFirstRunKeySetup(port)
+        val start = CountDownLatch(1)
+        val pool = Executors.newFixedThreadPool(2)
+        try {
+            val futures = listOf(first, second).map { setup ->
+                pool.submit<AndroidCognitiveStorageFirstRunKeySetupResult> {
+                    start.await()
+                    setup.prepare(createRequest(CognitiveKeyProtectorSecurityLevel.TRUSTED_ENVIRONMENT))
+                }
+            }
+            start.countDown()
+            val results = futures.map { it.get(5, TimeUnit.SECONDS) }
+            assertEquals(1, results.count { it is AndroidCognitiveStorageFirstRunKeySetupResult.Ready })
+            val rejected = assertIs<AndroidCognitiveStorageFirstRunKeySetupResult.Rejected>(
+                results.single { it is AndroidCognitiveStorageFirstRunKeySetupResult.Rejected }
+            )
+            assertEquals(AndroidCognitiveStorageFirstRunKeySetupFailure.EXISTING_DEK_PRESENT, rejected.reason)
+            assertEquals(1, port.createCalls)
+            assertEquals(1, port.registerCalls)
+        } finally {
+            pool.shutdownNow()
+        }
     }
 
     @Test
@@ -203,6 +245,7 @@ class AndroidCognitiveStorageFirstRunKeySetupContractTest {
     }
 
     private class FakePort : AndroidCognitiveStorageFirstRunKeySetupPort {
+        override val coordinationLock: Any = Any()
         val references = mutableListOf<CognitiveDekReference>()
         val envelopes = mutableMapOf<CognitiveDekReference, WrappedCognitiveDekEnvelope>()
         var createdProtector: CognitiveEncryptionResult<CognitiveKeyProtectorDescriptor> =
@@ -220,6 +263,8 @@ class AndroidCognitiveStorageFirstRunKeySetupContractTest {
         var lastCreateRequest: CognitiveKeyProtectorCreationRequest? = null
         var lastDekId: CognitiveDekId? = null
         var referenceToAddOnCreate: CognitiveDekReference? = null
+        var createDelayMillis: Long = 0
+        var persistRegisteredReference = false
 
         override fun snapshotReferences() = references.toList()
         override fun inspectDek(reference: CognitiveDekReference): WrappedCognitiveDekEnvelope? {
@@ -229,6 +274,7 @@ class AndroidCognitiveStorageFirstRunKeySetupContractTest {
         override fun createProtector(request: CognitiveKeyProtectorCreationRequest): CognitiveEncryptionResult<CognitiveKeyProtectorDescriptor> {
             createCalls += 1
             lastCreateRequest = request
+            if (createDelayMillis > 0) Thread.sleep(createDelayMillis)
             referenceToAddOnCreate?.let { references += it }
             return createdProtector
         }
@@ -239,7 +285,11 @@ class AndroidCognitiveStorageFirstRunKeySetupContractTest {
         override fun registerDek(id: CognitiveDekId, descriptor: CognitiveKeyProtectorDescriptor): PersistentCognitiveDekRegistrationResult {
             registerCalls += 1
             lastDekId = id
-            return registration
+            val result = registration
+            if (persistRegisteredReference && result is PersistentCognitiveDekRegistrationResult.Registered) {
+                if (result.ownership.reference !in references) references += result.ownership.reference
+            }
+            return result
         }
         override fun retireProtector(descriptor: CognitiveKeyProtectorDescriptor): CognitiveEncryptionResult<Unit> {
             retireCalls += 1
