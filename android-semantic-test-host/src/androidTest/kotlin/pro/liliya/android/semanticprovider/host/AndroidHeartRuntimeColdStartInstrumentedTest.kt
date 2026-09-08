@@ -62,6 +62,7 @@ import pro.liliya.android.runtime.AndroidProductRuntimeCreateResult
 import pro.liliya.android.runtime.AndroidProductRuntimeStartResult
 import pro.liliya.android.runtime.ProductLearningFollowUpResult
 import pro.liliya.android.runtime.ProductLearningSemanticStatus
+import pro.liliya.android.runtime.learningFollowUpReference
 import pro.liliya.android.runtime.AndroidHeartProductionPersonaDefinition
 import pro.liliya.android.runtime.AndroidHeartProductionPersonaRuntimeFactory
 import pro.liliya.android.runtime.AndroidHeartProductionPersonaRuntimeFactoryCreateResult
@@ -1152,6 +1153,11 @@ class AndroidHeartRuntimeColdStartInstrumentedTest {
         ((totalBytes + SEGMENT_BYTES - 1L) / SEGMENT_BYTES).toInt()
 
     private companion object {
+        const val STORAGE_DIRECTORY_PRODUCT_RUNTIME = "product-runtime-storage"
+        const val SEMANTIC_ROOT_PRODUCT_RUNTIME = "product-runtime-semantic"
+        const val PRODUCT_RUNTIME_LEARNED_EVIDENCE =
+            "Product Runtime explicit learning evidence."
+
         const val STORAGE_DIRECTORY_H4D = "heart-h4d-storage"
         const val SEMANTIC_ROOT_H4D = "heart-h4d-semantic"
         const val LEARNED_EVIDENCE = "The emergency code word is violet."
