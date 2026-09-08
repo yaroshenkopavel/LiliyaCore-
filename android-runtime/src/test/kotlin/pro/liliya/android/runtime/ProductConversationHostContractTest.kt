@@ -122,6 +122,38 @@ class ProductConversationHostContractTest {
     }
 
     @Test
+    fun third_turn_sees_two_completed_pairs_in_exact_chronological_order() {
+        val snapshots = mutableListOf<CognitiveConversationContextSnapshot>()
+        var call = 0
+        val host = host(
+            runner = ProductConversationTurnRunner { _, conversation, _ ->
+                snapshots += conversation
+                call += 1
+                completed("reply-$call")
+            }
+        )
+
+        host.send(ProductChatRequest("user-1", ProductChatGenerationMode.ONE_SHOT))
+        host.send(ProductChatRequest("user-2", ProductChatGenerationMode.ONE_SHOT))
+        host.send(ProductChatRequest("user-3", ProductChatGenerationMode.ONE_SHOT))
+
+        assertEquals(
+            listOf("user-1", "reply-1", "user-2", "reply-2"),
+            snapshots[2].messages.map { it.content }
+        )
+        assertEquals(
+            listOf(
+                CognitiveConversationRole.USER,
+                CognitiveConversationRole.ASSISTANT,
+                CognitiveConversationRole.USER,
+                CognitiveConversationRole.ASSISTANT
+            ),
+            snapshots[2].messages.map { it.role }
+        )
+        assertEquals(listOf(1L, 2L, 3L, 4L), snapshots[2].messages.map { it.sequence.value })
+    }
+
+    @Test
     fun rejected_turn_and_stream_cancellation_commit_nothing() {
         val snapshots = mutableListOf<CognitiveConversationContextSnapshot>()
         var call = 0
