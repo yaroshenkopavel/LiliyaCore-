@@ -273,6 +273,79 @@ class ProductConversationHostContractTest {
     }
 
     @Test
+    fun over_per_message_limit_returns_success_without_partial_retention() {
+        val snapshots = mutableListOf<CognitiveConversationContextSnapshot>()
+        var call = 0
+        val host = host(
+            maxRetainedMessages = 4,
+            maxRetainedCharacters = 64,
+            maxMessageCharacters = 4,
+            runner = ProductConversationTurnRunner { _, conversation, _ ->
+                snapshots += conversation
+                call += 1
+                if (call == 1) completed("12345") else completed("ok")
+            }
+        )
+
+        val first = assertIs<ProductConversationResult.Completed>(
+            host.send(ProductChatRequest("user", ProductChatGenerationMode.ONE_SHOT))
+        )
+        assertEquals(
+            ProductConversationCommitStatus.NOT_RETAINED_RESOURCE_LIMIT,
+            first.conversationCommit
+        )
+
+        host.send(ProductChatRequest("next", ProductChatGenerationMode.ONE_SHOT))
+        assertTrue(snapshots.last().messages.isEmpty())
+    }
+
+    @Test
+    fun every_bounded_product_turn_rejection_preserves_prior_committed_transcript() {
+        val failures = listOf(
+            ProductTurnFailure.HEART_NOT_READY,
+            ProductTurnFailure.TURN_REGISTRATION_REJECTED,
+            ProductTurnFailure.CONTEXT_REJECTED,
+            ProductTurnFailure.GENERATION_REJECTED,
+            ProductTurnFailure.CANCELLED,
+            ProductTurnFailure.FINALIZATION_REJECTED,
+            ProductTurnFailure.STALE,
+            ProductTurnFailure.INTERNAL_FAILURE
+        )
+
+        for (failure in failures) {
+            val snapshots = mutableListOf<CognitiveConversationContextSnapshot>()
+            var call = 0
+            val host = host(
+                runner = ProductConversationTurnRunner { _, conversation, _ ->
+                    snapshots += conversation
+                    call += 1
+                    when (call) {
+                        1 -> completed("baseline reply")
+                        2 -> ProductTurnResult.Rejected(failure)
+                        else -> completed("next reply")
+                    }
+                }
+            )
+
+            assertIs<ProductConversationResult.Completed>(
+                host.send(ProductChatRequest("baseline", ProductChatGenerationMode.ONE_SHOT))
+            )
+            assertIs<ProductConversationResult.Rejected>(
+                host.send(ProductChatRequest("must not commit", ProductChatGenerationMode.ONE_SHOT))
+            )
+            assertIs<ProductConversationResult.Completed>(
+                host.send(ProductChatRequest("next", ProductChatGenerationMode.ONE_SHOT))
+            )
+
+            assertEquals(
+                listOf("baseline", "baseline reply"),
+                snapshots.last().messages.map { it.content },
+                "failure=$failure must not mutate committed conversation"
+            )
+        }
+    }
+
+    @Test
     fun clear_removes_only_ephemeral_transcript_for_next_turn() {
         val snapshots = mutableListOf<CognitiveConversationContextSnapshot>()
         val host = host(
