@@ -4,7 +4,6 @@ import pro.liliya.core.license.LicenseAuthorityComposition
 import pro.liliya.core.license.LicenseAuthorityDecision
 import pro.liliya.core.license.LicenseAuthorityRequest
 import pro.liliya.core.license.LicenseDenialReason
-import pro.liliya.core.license.LicenseDecisionReceipt
 import pro.liliya.core.license.LicensePolicyContext
 import pro.liliya.core.license.LicensePolicyRequest
 import pro.liliya.core.license.LicenseVerificationResult
@@ -23,13 +22,11 @@ sealed interface AndroidProductRuntimeAdmissionResult {
         val reason: AndroidProductRuntimeAdmissionFailure
     ) : AndroidProductRuntimeAdmissionResult
 
-    data class Admitted internal constructor(
-        internal val ownership: AndroidProductRuntimeAdmissionOwnership,
-        val licenseReceipt: LicenseDecisionReceipt
+    class Admitted internal constructor(
+        internal val ownership: AndroidProductRuntimeAdmissionOwnership
     ) : AndroidProductRuntimeAdmissionResult {
         override fun toString(): String =
-            "AndroidProductRuntimeAdmissionResult.Admitted(" +
-                "ownership=<redacted>,licenseReceipt=<redacted>)"
+            "AndroidProductRuntimeAdmissionResult.Admitted(ownership=<redacted>)"
     }
 }
 
@@ -45,6 +42,19 @@ class AndroidProductRuntimeAdmissionOwnership internal constructor() {
     override fun toString(): String = "AndroidProductRuntimeAdmissionOwnership(<redacted>)"
 }
 
+internal sealed interface AndroidProductRuntimeAdmissionDecision {
+    data class LicenseDenied(
+        val reason: LicenseDenialReason
+    ) : AndroidProductRuntimeAdmissionDecision
+
+    data object AuthorityDenied : AndroidProductRuntimeAdmissionDecision
+    data object Authorized : AndroidProductRuntimeAdmissionDecision
+}
+
+internal fun interface AndroidProductRuntimeAdmissionDecisionPort {
+    fun decide(): AndroidProductRuntimeAdmissionDecision
+}
+
 /**
  * Product-level admission boundary over the already-authoritative LicenseAuthorityComposition.
  *
@@ -58,14 +68,34 @@ object AndroidProductRuntimeAdmissionGate {
         licenseRequest: LicensePolicyRequest,
         policyContext: LicensePolicyContext,
         authorityRequest: LicenseAuthorityRequest
+    ): AndroidProductRuntimeAdmissionResult =
+        admit(
+            AndroidProductRuntimeAdmissionDecisionPort {
+                when (
+                    val decision = composition.authorize(
+                        verified = verified,
+                        licenseRequest = licenseRequest,
+                        policyContext = policyContext,
+                        authorityRequest = authorityRequest
+                    )
+                ) {
+                    is LicenseAuthorityDecision.LicenseDenied ->
+                        AndroidProductRuntimeAdmissionDecision.LicenseDenied(decision.reason)
+
+                    LicenseAuthorityDecision.AuthorityDenied ->
+                        AndroidProductRuntimeAdmissionDecision.AuthorityDenied
+
+                    is LicenseAuthorityDecision.Authorized ->
+                        AndroidProductRuntimeAdmissionDecision.Authorized
+                }
+            }
+        )
+
+    internal fun admit(
+        decisionPort: AndroidProductRuntimeAdmissionDecisionPort
     ): AndroidProductRuntimeAdmissionResult {
         val decision = try {
-            composition.authorize(
-                verified = verified,
-                licenseRequest = licenseRequest,
-                policyContext = policyContext,
-                authorityRequest = authorityRequest
-            )
+            decisionPort.decide()
         } catch (_: Exception) {
             return AndroidProductRuntimeAdmissionResult.Rejected(
                 AndroidProductRuntimeAdmissionFailure.INTERNAL_FAILURE
@@ -73,18 +103,17 @@ object AndroidProductRuntimeAdmissionGate {
         }
 
         return when (decision) {
-            is LicenseAuthorityDecision.LicenseDenied ->
+            is AndroidProductRuntimeAdmissionDecision.LicenseDenied ->
                 AndroidProductRuntimeAdmissionResult.LicenseDenied(decision.reason)
 
-            LicenseAuthorityDecision.AuthorityDenied ->
+            AndroidProductRuntimeAdmissionDecision.AuthorityDenied ->
                 AndroidProductRuntimeAdmissionResult.Rejected(
                     AndroidProductRuntimeAdmissionFailure.AUTHORITY_DENIED
                 )
 
-            is LicenseAuthorityDecision.Authorized ->
+            AndroidProductRuntimeAdmissionDecision.Authorized ->
                 AndroidProductRuntimeAdmissionResult.Admitted(
-                    ownership = AndroidProductRuntimeAdmissionOwnership(),
-                    licenseReceipt = decision.licenseReceipt
+                    AndroidProductRuntimeAdmissionOwnership()
                 )
         }
     }
