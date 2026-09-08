@@ -3,7 +3,6 @@ package pro.liliya.android.runtime
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
-import kotlin.test.assertSame
 import org.junit.Test
 import pro.liliya.core.diagnostics.DiagnosticRecorder
 import pro.liliya.core.diagnostics.InMemoryDiagnosticSink
@@ -17,7 +16,7 @@ import pro.liliya.core.observability.LoggerProvider
 class AndroidProductRuntimeHostBootstrapContractTest {
 
     @Test
-    fun ready_returns_the_exact_canonical_runtime() {
+    fun ready_returns_a_session_over_the_exact_started_runtime() {
         val runtime = runtime(FakeHeart())
         val result = AndroidProductRuntimeHostBootstrap.start(
             AndroidProductRuntimeHostCreateFactory {
@@ -26,8 +25,10 @@ class AndroidProductRuntimeHostBootstrapContractTest {
         )
 
         val ready = assertIs<AndroidProductRuntimeHostBootstrapResult.Ready>(result)
-        assertSame(runtime, ready.runtime)
+        assertEquals(HeartRuntimeState.READY, ready.session.state())
         assertEquals(HeartRuntimeState.READY, runtime.state())
+        assertEquals(HeartRuntimeCloseResult.Closed, ready.session.close())
+        assertEquals(HeartRuntimeState.CLOSED, runtime.state())
     }
 
     @Test
