@@ -7,6 +7,11 @@ import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import pro.liliya.core.cognitive.CognitiveContextAssemblyFailure
+import pro.liliya.core.cognitive.CognitiveConversationContextMessage
+import pro.liliya.core.cognitive.CognitiveConversationContextSnapshot
+import pro.liliya.core.cognitive.CognitiveConversationRole
+import pro.liliya.core.cognitive.CognitiveConversationSequence
+import pro.liliya.core.cognitive.CognitiveConversationSessionId
 import pro.liliya.core.cognitive.CognitiveContextAssemblyResult
 import pro.liliya.core.cognitive.CognitiveFinalizationFailure
 import pro.liliya.core.cognitive.CognitiveFinalizationResult
@@ -60,6 +65,35 @@ class ProductTurnOrchestratorContractTest {
 
         assertEquals(ProductTurnFailure.HEART_NOT_READY, result.reason)
         assertEquals(0, runtimeCalls)
+    }
+
+    @Test
+    fun basic_run_uses_no_conversation_and_conversation_run_passes_exact_snapshot() {
+        val basicPort = FakeRuntimePort()
+        assertIs<ProductTurnResult.Completed>(
+            ready(basicPort).run(request(ProductTurnGenerationMode.ONE_SHOT))
+        )
+        assertEquals(null, basicPort.lastConversationContext)
+
+        val conversationPort = FakeRuntimePort()
+        val snapshot = CognitiveConversationContextSnapshot(
+            sessionId = CognitiveConversationSessionId("PRIVATE-SESSION"),
+            messages = listOf(
+                CognitiveConversationContextMessage(
+                    sequence = CognitiveConversationSequence(1),
+                    role = CognitiveConversationRole.USER,
+                    content = "prior message"
+                )
+            )
+        )
+        assertIs<ProductTurnResult.Completed>(
+            ready(conversationPort).runWithConversationContext(
+                request = request(ProductTurnGenerationMode.ONE_SHOT),
+                conversationContext = snapshot
+            )
+        )
+
+        assertEquals(snapshot, conversationPort.lastConversationContext)
     }
 
     @Test
@@ -366,12 +400,15 @@ class ProductTurnOrchestratorContractTest {
         val events = mutableListOf<String>()
         var abortCalls = 0
         var lastAborted: CognitiveTurnReference? = null
+        var lastConversationContext: CognitiveConversationContextSnapshot? = null
 
         override fun beginTurn(
             id: CognitiveTurnId,
-            input: CognitiveInput
+            input: CognitiveInput,
+            conversationContext: CognitiveConversationContextSnapshot?
         ): CognitiveTurnRegistrationResult {
             events += "begin"
+            lastConversationContext = conversationContext
             return registration ?: CognitiveTurnRegistrationResult.Registered(
                 object : CognitiveTurnHandle {
                     override val reference = this@FakeRuntimePort.reference
