@@ -125,17 +125,11 @@ class AndroidHeartProductionPersonaComposition internal constructor(
     val installedPersonality: PersonalityProfileSnapshot
 ) {
     val selfSnapshots: SelfSnapshotPort = SelfSnapshotPort {
-        self.inspect()?.takeIf {
-            it.identity.id == installedSelf.identity.id &&
-                it.generation == installedSelf.generation
-        }
+        self.inspect()?.takeIf { it == installedSelf }
     }
 
     val personalitySnapshots: PersonalitySnapshotPort = PersonalitySnapshotPort {
-        personality.snapshotEntries().filter {
-            it.profile.id == installedPersonality.profile.id &&
-                it.generation == installedPersonality.generation
-        }
+        personality.snapshotEntries().filter { it == installedPersonality }
     }
 
     override fun toString(): String =
