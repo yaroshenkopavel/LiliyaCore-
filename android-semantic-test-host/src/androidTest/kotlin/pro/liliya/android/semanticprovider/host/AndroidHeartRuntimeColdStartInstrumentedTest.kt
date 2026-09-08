@@ -63,6 +63,10 @@ import pro.liliya.android.runtime.AndroidHeartProductionGovernedLearningProcessR
 import pro.liliya.android.runtime.HeartRuntimeCloseResult
 import pro.liliya.android.runtime.HeartRuntimeStartResult
 import pro.liliya.android.runtime.HeartRuntimeState
+import pro.liliya.android.runtime.ProductChatFailure
+import pro.liliya.android.runtime.ProductChatGenerationMode
+import pro.liliya.android.runtime.ProductChatRequest
+import pro.liliya.android.runtime.ProductConversationResult
 import pro.liliya.core.cognitive.CognitiveArtifactIdSource
 import pro.liliya.core.cognitive.CognitiveCompiledModelRequest
 import pro.liliya.core.cognitive.CognitiveContextAssemblyResult
@@ -266,9 +270,24 @@ class AndroidHeartRuntimeColdStartInstrumentedTest {
             }
         )
 
+        assertEquals(
+            null,
+            heart.conversation(
+                maxRetainedMessages = 4,
+                maxRetainedCharacters = 512,
+                maxMessageCharacters = 128
+            )
+        )
         assertEquals(HeartRuntimeStartResult.Ready, heart.start())
         assertEquals(HeartRuntimeState.READY, heart.state())
 
+        val conversationHost = assertNotNull(
+            heart.conversation(
+                maxRetainedMessages = 4,
+                maxRetainedCharacters = 512,
+                maxMessageCharacters = 128
+            )
+        )
         val runtime = assertNotNull(heart.runtime())
         val turn = assertIs<CognitiveTurnRegistrationResult.Registered>(
             runtime.beginTurn(
@@ -288,6 +307,17 @@ class AndroidHeartRuntimeColdStartInstrumentedTest {
 
         assertEquals(HeartRuntimeCloseResult.Closed, heart.close())
         assertEquals(HeartRuntimeState.CLOSED, heart.state())
+        assertEquals(
+            ProductChatFailure.HEART_NOT_READY,
+            assertIs<ProductConversationResult.Rejected>(
+                conversationHost.send(
+                    ProductChatRequest(
+                        "must not bypass closed heart",
+                        ProductChatGenerationMode.ONE_SHOT
+                    )
+                )
+            ).reason
+        )
         assertIs<LargeProtectedModelStagingRetireResult.Retired>(staged.retire())
         assertIs<CognitiveEncryptionResult.Success<Unit>>(
             first.keyProtector.retire(descriptor)

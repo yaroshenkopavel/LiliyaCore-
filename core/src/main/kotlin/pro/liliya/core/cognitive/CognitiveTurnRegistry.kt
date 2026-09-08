@@ -50,6 +50,7 @@ class CognitiveTurnRegistry internal constructor(
     private data class Entry(
         val reference: CognitiveTurnReference,
         val input: CognitiveInput,
+        val conversationContext: CognitiveConversationContextSnapshot? = null,
         var lifecycle: CognitiveTurnLifecycle = CognitiveTurnLifecycle.CREATED,
         var context: CognitiveContextSnapshot? = null,
         var inference: CognitiveInferenceResult.Succeeded? = null,
@@ -64,6 +65,13 @@ class CognitiveTurnRegistry internal constructor(
     fun register(
         id: CognitiveTurnId,
         input: CognitiveInput
+    ): CognitiveTurnRegistrationResult =
+        register(id = id, input = input, conversationContext = null)
+
+    fun register(
+        id: CognitiveTurnId,
+        input: CognitiveInput,
+        conversationContext: CognitiveConversationContextSnapshot?
     ): CognitiveTurnRegistrationResult = synchronized(lock) {
         check(current?.publicationInProgress != true) {
             "cognitive turn registration is not allowed from inside publication"
@@ -91,9 +99,16 @@ class CognitiveTurnRegistry internal constructor(
             )
         }
 
+        val detachedConversation = conversationContext?.let { snapshot ->
+            CognitiveConversationContextSnapshot(
+                sessionId = snapshot.sessionId,
+                messages = snapshot.messages
+            )
+        }
         val entry = Entry(
             reference = CognitiveTurnReference(id, CognitiveTurnGeneration(nextValue)),
-            input = input
+            input = input,
+            conversationContext = detachedConversation
         )
         current = entry
         CognitiveTurnRegistrationResult.Registered(handle(entry))
@@ -112,6 +127,12 @@ class CognitiveTurnRegistry internal constructor(
 
     internal fun inputIfCurrent(reference: CognitiveTurnReference): CognitiveInput? = synchronized(lock) {
         current?.takeIf { it.reference == reference }?.input
+    }
+
+    internal fun conversationIfCurrent(
+        reference: CognitiveTurnReference
+    ): CognitiveConversationContextSnapshot? = synchronized(lock) {
+        current?.takeIf { it.reference == reference }?.conversationContext
     }
 
     internal fun contextIfCurrent(reference: CognitiveTurnReference): CognitiveContextSnapshot? = synchronized(lock) {
