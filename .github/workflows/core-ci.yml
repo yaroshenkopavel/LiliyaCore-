@@ -449,3 +449,41 @@ jobs:
           profile: pixel_6
           disable-animations: true
           script: gradle :android-llama-cpp-engine:connectedDebugAndroidTest --console=plain
+
+
+  local-gradle-tooling:
+    name: Local Gradle Tooling Artifact
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle 9.6.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.1'
+
+      - name: Pack Gradle runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --version
+          GRADLE_BIN="$(readlink -f "$(command -v gradle)")"
+          GRADLE_HOME="$(cd "$(dirname "$GRADLE_BIN")/.." && pwd)"
+          echo "GRADLE_HOME=$GRADLE_HOME"
+          tar -C "$(dirname "$GRADLE_HOME")" -czf "$RUNNER_TEMP/gradle-9.6.1-runtime.tar.gz" "$(basename "$GRADLE_HOME")"
+
+      - name: Upload Gradle runtime
+        uses: actions/upload-artifact@v4
+        with:
+          name: gradle-9.6.1-runtime
+          path: ${{ runner.temp }}/gradle-9.6.1-runtime.tar.gz
+          if-no-files-found: error
+          retention-days: 1
