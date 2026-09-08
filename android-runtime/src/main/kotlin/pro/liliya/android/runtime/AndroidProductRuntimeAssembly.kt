@@ -51,7 +51,7 @@ sealed interface AndroidProductRuntimeStartResult {
 
     data class GovernedLearningRejected(
         val reason: AndroidHeartProductionGovernedLearningCreateFailure,
-        val cleanup: HeartRuntimeCloseResult
+        val cleanup: HeartRuntimeCloseResult?
     ) : AndroidProductRuntimeStartResult
 
     data class InternalFailure(
@@ -151,11 +151,11 @@ class AndroidProductRuntimeAssembly internal constructor(
         return result
     }
 
-    private fun safeClose(): HeartRuntimeCloseResult =
+    private fun safeClose(): HeartRuntimeCloseResult? =
         try {
             heart.close()
         } catch (_: Exception) {
-            HeartRuntimeCloseResult.Failed(HeartRuntimePhase.GENERATION)
+            null
         }
 
     override fun toString(): String =
