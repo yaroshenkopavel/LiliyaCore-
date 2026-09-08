@@ -61,6 +61,18 @@ internal fun interface AndroidProductRuntimeGovernedLearningFactory {
     ): AndroidHeartProductionGovernedLearningCreateResult
 }
 
+internal interface AndroidProductRuntimeHeartBridge {
+    fun state(): HeartRuntimeState
+    fun start(): HeartRuntimeStartResult
+    fun chat(): ProductChatHost?
+    fun conversation(
+        maxRetainedMessages: Int,
+        maxRetainedCharacters: Int,
+        maxMessageCharacters: Int
+    ): ProductConversationHost?
+    fun close(): HeartRuntimeCloseResult
+}
+
 /**
  * Canonical product composition over already-authoritative production owners.
  *
@@ -68,7 +80,7 @@ internal fun interface AndroidProductRuntimeGovernedLearningFactory {
  * learning. It does not provision a DEK/model, mint License/Authority, auto-learn or own Execution.
  */
 class AndroidProductRuntimeAssembly internal constructor(
-    private val heart: AndroidHeartRuntimeAssembly,
+    private val heart: AndroidProductRuntimeHeartBridge,
     private val learning: LearningComposition,
     private val governedLearningFactory: AndroidProductRuntimeGovernedLearningFactory
 ) {
@@ -224,9 +236,26 @@ class AndroidProductRuntimeAssembly internal constructor(
                     )
                 }
 
+                val heartBridge = object : AndroidProductRuntimeHeartBridge {
+                    override fun state(): HeartRuntimeState = heart.state()
+                    override fun start(): HeartRuntimeStartResult = heart.start()
+                    override fun chat(): ProductChatHost? = heart.chat()
+                    override fun conversation(
+                        maxRetainedMessages: Int,
+                        maxRetainedCharacters: Int,
+                        maxMessageCharacters: Int
+                    ): ProductConversationHost? =
+                        heart.conversation(
+                            maxRetainedMessages = maxRetainedMessages,
+                            maxRetainedCharacters = maxRetainedCharacters,
+                            maxMessageCharacters = maxMessageCharacters
+                        )
+                    override fun close(): HeartRuntimeCloseResult = heart.close()
+                }
+
                 AndroidProductRuntimeCreateResult.Ready(
                     AndroidProductRuntimeAssembly(
-                        heart = heart,
+                        heart = heartBridge,
                         learning = learning,
                         governedLearningFactory = governedFactory
                     )
