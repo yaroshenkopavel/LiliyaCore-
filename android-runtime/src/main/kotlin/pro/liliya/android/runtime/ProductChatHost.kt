@@ -96,11 +96,13 @@ internal fun interface ProductChatTurnRunner {
  */
 class ProductChatHost internal constructor(
     private val maxInputChars: Int,
+    private val maxTurnIdChars: Int,
     private val turnIds: ProductChatTurnIdSource,
     private val turns: ProductChatTurnRunner
 ) {
     init {
         require(maxInputChars > 0) { "product chat input limit must be positive" }
+        require(maxTurnIdChars > 0) { "product chat turn-id limit must be positive" }
     }
 
     fun send(
@@ -116,7 +118,7 @@ class ProductChatHost internal constructor(
 
         val turnId = try {
             val raw = turnIds.next()
-            if (raw.isBlank() || raw.length > MAX_GENERATED_TURN_ID_CHARS) {
+            if (raw.isBlank() || raw.length > maxTurnIdChars) {
                 return rejected(ProductChatFailure.INTERNAL_FAILURE)
             }
             CognitiveTurnId(raw)
@@ -173,7 +175,7 @@ class ProductChatHost internal constructor(
     }
 
     override fun toString(): String =
-        "ProductChatHost(maxInputChars=" + maxInputChars + ",turnIds=<redacted>,turns=<redacted>)"
+        "ProductChatHost(maxInputChars=" + maxInputChars + ",maxTurnIdChars=" + maxTurnIdChars + ",turnIds=<redacted>,turns=<redacted>)"
 
     private fun mapFailure(reason: ProductTurnFailure): ProductChatFailure =
         when (reason) {
@@ -192,20 +194,24 @@ class ProductChatHost internal constructor(
         ProductChatResult.Rejected(reason)
 
     companion object {
-        internal const val MAX_GENERATED_TURN_ID_CHARS = 64
+        internal const val MIN_PRODUCTION_TURN_ID_CHARS = 16
 
         internal fun production(
             maxInputChars: Int,
+            maxTurnIdChars: Int,
             turns: ProductTurnOrchestrator
-        ): ProductChatHost =
-            ProductChatHost(
+        ): ProductChatHost? {
+            if (maxTurnIdChars < MIN_PRODUCTION_TURN_ID_CHARS) return null
+            return ProductChatHost(
                 maxInputChars = maxInputChars,
+                maxTurnIdChars = maxTurnIdChars,
                 turnIds = ProductChatTurnIdSource {
-                    "chat-" + UUID.randomUUID().toString()
+                    UUID.randomUUID().toString().replace("-", "").take(maxTurnIdChars)
                 },
                 turns = ProductChatTurnRunner { request, sink ->
                     turns.run(request, sink)
                 }
             )
+        }
     }
 }
