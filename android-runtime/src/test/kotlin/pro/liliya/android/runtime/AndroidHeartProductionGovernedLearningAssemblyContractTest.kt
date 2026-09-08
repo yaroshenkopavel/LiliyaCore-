@@ -139,9 +139,11 @@ class AndroidHeartProductionGovernedLearningAssemblyContractTest {
         val installed = installCandidate(fixture.learning, "candidate-exact")
         var allowedTargets: List<LearningApplicationTarget>? = null
         var governanceCalls = 0
-        val bridge = bridge(
-            mutationApplication = { error("mutation must not run after governance rejection") }
-        )
+        val bridge = bridge {
+            LearningApplicationMutationApplicationPort {
+                error("mutation must not run after governance rejection")
+            }
+        }
 
         val result = assertIs<AndroidHeartProductionGovernedLearningCreateResult.Ready>(
             createInternal(
