@@ -99,6 +99,16 @@ import pro.liliya.core.encryption.CognitiveKeyProtectorId
 import pro.liliya.core.encryption.CognitiveKeyProtectorSecurityLevel
 import pro.liliya.core.encryption.PersistentCognitiveDekRegistrationResult
 import pro.liliya.core.foundation.FoundationComposition
+import pro.liliya.core.identity.SelfIdentityId
+import pro.liliya.core.identity.SelfName
+import pro.liliya.core.identity.SelfSourceId
+import pro.liliya.core.identity.SelfSourceReference
+import pro.liliya.core.personality.PersonalityAttribute
+import pro.liliya.core.personality.PersonalityAttributeKey
+import pro.liliya.core.personality.PersonalityAttributeValue
+import pro.liliya.core.personality.PersonalityProfileId
+import pro.liliya.core.personality.PersonalitySourceId
+import pro.liliya.core.personality.PersonalitySourceReference
 import pro.liliya.core.knowledge.KnowledgeItem
 import pro.liliya.core.knowledge.KnowledgeItemId
 import pro.liliya.core.knowledge.KnowledgeOrigin
