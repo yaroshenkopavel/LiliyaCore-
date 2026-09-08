@@ -72,6 +72,7 @@ class AndroidCognitiveStorageFirstRunKeySetupContractTest {
         assertEquals(0, port.retireCalls)
     }
 
+
     @Test
     fun create_once_rechecks_durable_state_after_protector_creation() {
         val descriptor = descriptor("first-run-protector", 1, CognitiveKeyProtectorSecurityLevel.TRUSTED_ENVIRONMENT)
@@ -89,6 +90,7 @@ class AndroidCognitiveStorageFirstRunKeySetupContractTest {
         assertEquals(0, port.registerCalls)
         assertEquals(1, port.retireCalls)
     }
+
 
     @Test
     fun create_once_is_serialized_across_setup_instances_sharing_one_durable_registry() {
