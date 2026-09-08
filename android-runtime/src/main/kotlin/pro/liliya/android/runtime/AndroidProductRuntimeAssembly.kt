@@ -53,6 +53,10 @@ sealed interface AndroidProductRuntimeStartResult {
         val reason: AndroidHeartProductionGovernedLearningCreateFailure,
         val cleanup: HeartRuntimeCloseResult
     ) : AndroidProductRuntimeStartResult
+
+    data class InternalFailure(
+        val cleanup: HeartRuntimeCloseResult?
+    ) : AndroidProductRuntimeStartResult
 }
 
 internal fun interface AndroidProductRuntimeGovernedLearningFactory {
@@ -91,20 +95,28 @@ class AndroidProductRuntimeAssembly internal constructor(
 
     @Synchronized
     fun start(): AndroidProductRuntimeStartResult {
-        val heartResult = heart.start()
+        val heartResult = try {
+            heart.start()
+        } catch (_: Exception) {
+            return AndroidProductRuntimeStartResult.InternalFailure(cleanup = null)
+        }
         if (heartResult != HeartRuntimeStartResult.Ready) {
             return AndroidProductRuntimeStartResult.HeartRejected(heartResult)
         }
 
-        val governed = when (val result = governedLearningFactory.create(learning)) {
-            is AndroidHeartProductionGovernedLearningCreateResult.Ready -> result.composition
-            is AndroidHeartProductionGovernedLearningCreateResult.Rejected -> {
-                val cleanup = heart.close()
-                return AndroidProductRuntimeStartResult.GovernedLearningRejected(
-                    reason = result.reason,
-                    cleanup = cleanup
-                )
+        val governed = try {
+            when (val result = governedLearningFactory.create(learning)) {
+                is AndroidHeartProductionGovernedLearningCreateResult.Ready -> result.composition
+                is AndroidHeartProductionGovernedLearningCreateResult.Rejected -> {
+                    val cleanup = safeClose()
+                    return AndroidProductRuntimeStartResult.GovernedLearningRejected(
+                        reason = result.reason,
+                        cleanup = cleanup
+                    )
+                }
             }
+        } catch (_: Exception) {
+            return AndroidProductRuntimeStartResult.InternalFailure(cleanup = safeClose())
         }
 
         learningFollowUpHost = ProductLearningFollowUpHost(governed)
@@ -138,6 +150,13 @@ class AndroidProductRuntimeAssembly internal constructor(
         learningFollowUpHost = null
         return result
     }
+
+    private fun safeClose(): HeartRuntimeCloseResult =
+        try {
+            heart.close()
+        } catch (_: Exception) {
+            HeartRuntimeCloseResult.Failed(HeartRuntimePhase.GENERATION)
+        }
 
     override fun toString(): String =
         "AndroidProductRuntimeAssembly(" +
@@ -260,7 +279,7 @@ class AndroidProductRuntimeAssembly internal constructor(
                         governedLearningFactory = governedFactory
                     )
                 )
-            } catch (_: IllegalArgumentException) {
+            } catch (_: Exception) {
                 AndroidProductRuntimeCreateResult.Rejected(
                     AndroidProductRuntimeCreateFailure.COMPOSITION_REJECTED
                 )
