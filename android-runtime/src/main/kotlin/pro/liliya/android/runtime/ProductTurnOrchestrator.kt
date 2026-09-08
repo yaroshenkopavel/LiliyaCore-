@@ -1,6 +1,7 @@
 package pro.liliya.android.runtime
 
 import pro.liliya.core.cognitive.CognitiveContextAssemblyResult
+import pro.liliya.core.cognitive.CognitiveConversationContextSnapshot
 import pro.liliya.core.cognitive.CognitiveFinalizationResult
 import pro.liliya.core.cognitive.CognitiveGenerationFailure
 import pro.liliya.core.cognitive.CognitiveGenerationResult
@@ -60,7 +61,8 @@ sealed interface ProductTurnResult {
 internal interface ProductTurnRuntimePort {
     fun beginTurn(
         id: CognitiveTurnId,
-        input: CognitiveInput
+        input: CognitiveInput,
+        conversationContext: CognitiveConversationContextSnapshot?
     ): CognitiveTurnRegistrationResult
 
     fun assembleContext(reference: CognitiveTurnReference): CognitiveContextAssemblyResult
@@ -82,8 +84,10 @@ internal class CognitiveProductTurnRuntimePort(
 ) : ProductTurnRuntimePort {
     override fun beginTurn(
         id: CognitiveTurnId,
-        input: CognitiveInput
-    ): CognitiveTurnRegistrationResult = runtime.beginTurn(id, input)
+        input: CognitiveInput,
+        conversationContext: CognitiveConversationContextSnapshot?
+    ): CognitiveTurnRegistrationResult =
+        runtime.beginTurn(id, input, conversationContext)
 
     override fun assembleContext(
         reference: CognitiveTurnReference
@@ -144,6 +148,28 @@ class ProductTurnOrchestrator internal constructor(
     fun run(
         request: ProductTurnRequest,
         streamingSink: CognitiveStreamingSink? = null
+    ): ProductTurnResult =
+        runInternal(
+            request = request,
+            conversationContext = null,
+            streamingSink = streamingSink
+        )
+
+    internal fun runWithConversationContext(
+        request: ProductTurnRequest,
+        conversationContext: CognitiveConversationContextSnapshot,
+        streamingSink: CognitiveStreamingSink? = null
+    ): ProductTurnResult =
+        runInternal(
+            request = request,
+            conversationContext = conversationContext,
+            streamingSink = streamingSink
+        )
+
+    private fun runInternal(
+        request: ProductTurnRequest,
+        conversationContext: CognitiveConversationContextSnapshot?,
+        streamingSink: CognitiveStreamingSink?
     ): ProductTurnResult {
         if (heartState.state() != HeartRuntimeState.READY) {
             return rejected(ProductTurnFailure.HEART_NOT_READY)
@@ -153,7 +179,11 @@ class ProductTurnOrchestrator internal constructor(
             ?: return rejected(ProductTurnFailure.HEART_NOT_READY)
 
         val registration = try {
-            port.beginTurn(request.turnId, request.input)
+            port.beginTurn(
+                id = request.turnId,
+                input = request.input,
+                conversationContext = conversationContext
+            )
         } catch (_: Exception) {
             return rejected(ProductTurnFailure.INTERNAL_FAILURE)
         }
