@@ -138,6 +138,15 @@ class AndroidHeartRuntimeAssembly private constructor(
         )
     }
 
+    fun chat(): ProductChatHost? {
+        val activeRuntime = runtime() ?: return null
+        val turns = productTurns() ?: return null
+        return ProductChatHost.production(
+            maxInputChars = activeRuntime.limits.maxInputChars,
+            turns = turns
+        )
+    }
+
     fun learningMutationApplicationPort(
         foundation: FoundationComposition,
         mutations: PersistentLearningApplicationMutationComposition,
