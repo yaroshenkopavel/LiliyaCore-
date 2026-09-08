@@ -57,6 +57,11 @@ import pro.liliya.android.llamacppengine.LlamaCppEnginePolicy
 import pro.liliya.android.protectedmodel.staging.AndroidProtectedModelStagingPolicy
 import pro.liliya.android.runtime.AndroidHeartCognitiveRuntimeFactory
 import pro.liliya.android.runtime.AndroidHeartRuntimeAssembly
+import pro.liliya.android.runtime.AndroidProductRuntimeAssembly
+import pro.liliya.android.runtime.AndroidProductRuntimeCreateResult
+import pro.liliya.android.runtime.AndroidProductRuntimeStartResult
+import pro.liliya.android.runtime.ProductLearningFollowUpResult
+import pro.liliya.android.runtime.ProductLearningSemanticStatus
 import pro.liliya.android.runtime.AndroidHeartProductionPersonaDefinition
 import pro.liliya.android.runtime.AndroidHeartProductionPersonaRuntimeFactory
 import pro.liliya.android.runtime.AndroidHeartProductionPersonaRuntimeFactoryCreateResult
@@ -347,6 +352,243 @@ class AndroidHeartRuntimeColdStartInstrumentedTest {
                 "{\"heartReady\":true,\"durableReopen\":true," +
                 "\"semanticContext\":true,\"realLlamaInference\":true," +
                 "\"shutdownClosed\":true}"
+        )
+    }
+
+    @Test
+    fun product_runtime_assembly_routes_conversation_evidence_to_explicit_governed_learning() {
+        compilerSawMemory = false
+        compilerSawKnowledge = false
+        compilerSawSelf = false
+        compilerSawPersonality = false
+
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val targetContext = instrumentation.targetContext
+        val testContext = instrumentation.context
+        val foundation = foundation()
+
+        File(targetContext.filesDir, STORAGE_DIRECTORY_PRODUCT_RUNTIME).deleteRecursively()
+        File(targetContext.filesDir, SEMANTIC_ROOT_PRODUCT_RUNTIME).deleteRecursively()
+
+        val storage = assertIs<AndroidCognitiveStorageOpenResult.Ready>(
+            AndroidCognitiveStorageAssembly.open(
+                context = targetContext,
+                foundation = foundation,
+                directoryName = STORAGE_DIRECTORY_PRODUCT_RUNTIME
+            )
+        ).assembly
+
+        val descriptor = assertIs<CognitiveEncryptionResult.Success<CognitiveKeyProtectorDescriptor>>(
+            storage.keyProtector.create(
+                CognitiveKeyProtectorCreationRequest(
+                    id = CognitiveKeyProtectorId("product-runtime-" + System.nanoTime()),
+                    generation = CognitiveKeyProtectorGeneration(1),
+                    requestedSecurityLevel = CognitiveKeyProtectorSecurityLevel.SOFTWARE
+                )
+            )
+        ).value
+        val dek = assertIs<PersistentCognitiveDekRegistrationResult.Registered>(
+            storage.dekStore.register(CognitiveDekId("product-runtime-dek"), descriptor)
+        ).ownership.reference
+
+        val memoryStoreId = PersistentStoreId("product-runtime-memory")
+        val knowledgeStoreId = PersistentStoreId("product-runtime-knowledge")
+        val mutationStoreId = PersistentStoreId("product-runtime-learning-mutations")
+
+        val memory = assertIs<AndroidEncryptedMemoryOpenResult.Opened>(
+            storage.openEncryptedMemory(memoryStoreId, dek)
+        ).composition
+        val knowledge = assertIs<AndroidEncryptedKnowledgeOpenResult.Opened>(
+            storage.openEncryptedKnowledge(knowledgeStoreId, dek)
+        ).composition
+
+        assertIs<PersistentMemoryRememberResult.Remembered>(
+            memory.remember(
+                MemoryRecord(
+                    id = MemoryRecordId("product-runtime-memory-seed"),
+                    provenance = MemoryProvenance(MemorySourceId("product-runtime")),
+                    content = RELEVANT_MEMORY,
+                    createdAt = BASE
+                )
+            )
+        )
+        assertIs<PersistentKnowledgeCreateResult.Created>(
+            knowledge.create(
+                KnowledgeItem(
+                    id = KnowledgeItemId("product-runtime-knowledge-seed"),
+                    origin = KnowledgeOrigin.Declared(KnowledgeSourceId("product-runtime")),
+                    content = RELEVANT_KNOWLEDGE,
+                    createdAt = BASE.plusSeconds(1)
+                )
+            )
+        )
+
+        val reconstructed = assertIs<AndroidCognitiveStorageOpenResult.Ready>(
+            AndroidCognitiveStorageAssembly.open(
+                context = targetContext,
+                foundation = foundation,
+                directoryName = STORAGE_DIRECTORY_PRODUCT_RUNTIME
+            )
+        ).assembly
+        val encryptedMutations = assertIs<AndroidEncryptedLearningMutationOpenResult.Opened>(
+            reconstructed.openEncryptedLearningMutations(mutationStoreId, dek)
+        ).composition
+
+        val semanticRoot = File(targetContext.filesDir, SEMANTIC_ROOT_PRODUCT_RUNTIME).apply {
+            deleteRecursively()
+            check(mkdirs())
+        }
+        copyAsset(testContext, ENCODER_ASSET, semanticRoot)
+        copyAsset(testContext, TOKENIZER_ASSET, semanticRoot)
+
+        val model = ProtectedModelReference(
+            packageId = ProtectedModelPackageId("product-runtime-stories15m"),
+            generation = ProtectedModelGeneration(1)
+        )
+        val protectedOwnership = ProtectedModelRuntimeOwnership().also { it.replaceTarget(model) }
+        val llama = llamaAssembly(targetContext, foundation, protectedOwnership)
+        val staged = testContext.assets.open(STORIES_ASSET).use { input ->
+            publishSegmented(llama.stagingCoordinator, input, model)
+        }
+
+        val policies = LearningPolicyComposition(foundation)
+        val policy = assertIs<LearningPolicyInstallResult.Installed>(
+            policies.install(
+                LearningPolicy(
+                    id = LearningPolicyId("product-runtime-policy"),
+                    rule = "allow explicit governed product runtime memory learning",
+                    createdAt = BASE.plusSeconds(2)
+                )
+            )
+        ).ownership
+        val authority = CapabilityAuthorityComposition(foundation)
+        val principal = AuthorityPrincipal("product-runtime-learning-system")
+        assertIs<CapabilityOwnershipResult.Registered>(
+            authority.registerCapability(
+                CapabilityDescriptor(
+                    id = LearningApplicationAuthorityContract.capability,
+                    providerId = CapabilityProviderId("product-runtime-learning")
+                )
+            )
+        )
+        assertIs<DirectAuthorityGrantOwnershipResult.Registered>(
+            authority.registerDirectGrant(
+                DirectAuthorityGrant(
+                    principal = principal,
+                    capability = LearningApplicationAuthorityContract.capability,
+                    scope = LearningApplicationAuthorityContract.scopeFor(
+                        LearningApplicationTarget.MEMORY
+                    )
+                )
+            )
+        )
+
+        val ids = AtomicInteger(0)
+        val product = assertIs<AndroidProductRuntimeCreateResult.Ready>(
+            AndroidProductRuntimeAssembly.create(
+                foundation = foundation,
+                cognitiveStorage = reconstructed,
+                memoryStoreId = memoryStoreId,
+                knowledgeStoreId = knowledgeStoreId,
+                activeDek = dek,
+                semanticRoot = semanticRoot,
+                semanticEncoderFile = File(semanticRoot, ENCODER_ASSET),
+                llamaAssembly = llama,
+                stagedModel = staged,
+                maxCandidatesPerSource = 4,
+                personaDefinition = productionPersonaDefinition(),
+                scope = CognitiveRuntimeScopeId("product-runtime"),
+                cognitiveMaterialization = CognitiveMaterializationPort {
+                    CognitiveMaterializationResult.Succeeded(materializationCandidate())
+                },
+                outcomeMaterialization = CognitiveOutcomeMaterializationPort {
+                    CognitiveOutcomeMaterializationResult.Succeeded(
+                        CognitiveOutcomeCandidate(
+                            resultContent = "product runtime reply",
+                            reflectionContent = "product runtime reflection",
+                            learningProposal = "learn product runtime evidence"
+                        )
+                    )
+                },
+                policies = policies,
+                policyReference = LearningPolicyReference(policy.policy.id, policy.generation),
+                authority = authority,
+                principal = principal,
+                governance = CognitiveLearningGovernancePort {
+                    CognitiveLearningGovernanceResult.Approved(
+                        target = LearningApplicationTarget.MEMORY,
+                        rationale = "explicit trusted product runtime approval"
+                    )
+                },
+                learningMaterialization = CognitiveLearningApplicationMaterializationPort {
+                    CognitiveLearningApplicationMaterializationResult.Succeeded(
+                        PRODUCT_RUNTIME_LEARNED_EVIDENCE
+                    )
+                },
+                mutations = encryptedMutations,
+                artifactIds = CognitiveArtifactIdSource { kind ->
+                    "product-runtime-" + kind.name.lowercase() + "-" + ids.incrementAndGet()
+                },
+                timestamps = CognitiveTimestampSource { BASE.plusSeconds(3) },
+                limits = cognitiveLimits()
+            )
+        ).runtime
+
+        assertEquals(AndroidProductRuntimeStartResult.Ready, product.start())
+
+        val conversation = assertNotNull(
+            product.conversation(
+                maxRetainedMessages = 4,
+                maxRetainedCharacters = 512,
+                maxMessageCharacters = 128
+            )
+        )
+        val completed = assertIs<ProductConversationResult.Completed>(
+            conversation.send(
+                ProductChatRequest(
+                    "Remember this through the explicit learning path.",
+                    ProductChatGenerationMode.ONE_SHOT
+                )
+            )
+        )
+        val evidence = assertNotNull(completed.learningFollowUpReference())
+        val followUp = assertNotNull(product.learningFollowUp())
+        val applied = assertIs<ProductLearningFollowUpResult.Applied>(
+            followUp.process(evidence)
+        )
+        assertEquals(ProductLearningSemanticStatus.SYNCHRONIZED, applied.semantic)
+
+        assertTrue(compilerSawSelf)
+        assertTrue(compilerSawPersonality)
+        assertTrue(compilerSawMemory)
+        assertTrue(compilerSawKnowledge)
+
+        assertEquals(HeartRuntimeCloseResult.Closed, product.close())
+
+        val reopenedStorage = assertIs<AndroidCognitiveStorageOpenResult.Ready>(
+            AndroidCognitiveStorageAssembly.open(
+                context = targetContext,
+                foundation = foundation,
+                directoryName = STORAGE_DIRECTORY_PRODUCT_RUNTIME
+            )
+        ).assembly
+        val reopenedMemory = assertIs<AndroidEncryptedMemoryOpenResult.Opened>(
+            reopenedStorage.openEncryptedMemory(memoryStoreId, dek)
+        ).composition
+        assertTrue(
+            reopenedMemory.snapshotEntries().any {
+                it.record.content == PRODUCT_RUNTIME_LEARNED_EVIDENCE
+            }
+        )
+
+        assertIs<LargeProtectedModelStagingRetireResult.Retired>(staged.retire())
+        assertIs<CognitiveEncryptionResult.Success<Unit>>(storage.keyProtector.retire(descriptor))
+
+        println(
+            "PRODUCT_RUNTIME_EVIDENCE=" +
+                "{\"ready\":true,\"persona\":true,\"conversation\":true," +
+                "\"explicitLearning\":true,\"semanticSync\":true," +
+                "\"durableMemory\":true,\"realLlamaInference\":true}"
         )
     }
 
