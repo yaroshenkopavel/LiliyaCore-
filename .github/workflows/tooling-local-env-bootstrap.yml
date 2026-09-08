@@ -1,0 +1,65 @@
+name: Local Env Bootstrap
+
+on:
+  push:
+    branches:
+      - foundation/tooling-local-env-bootstrap
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  jvm-offline-home:
+    name: Fresh JVM Offline Gradle Home
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle 9.6.1 without shared cache
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.1'
+          cache-disabled: true
+
+      - name: Warm fresh project-only JVM dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          LILIYA_GRADLE_HOME="$RUNNER_TEMP/liliya-gradle-home"
+          rm -rf "$LILIYA_GRADLE_HOME"
+          mkdir -p "$LILIYA_GRADLE_HOME"
+          GRADLE_USER_HOME="$LILIYA_GRADLE_HOME"             gradle :core:test :license-transport-client:test             --configure-on-demand --console=plain
+
+      - name: Verify the same fresh home works offline
+        shell: bash
+        run: |
+          set -euo pipefail
+          LILIYA_GRADLE_HOME="$RUNNER_TEMP/liliya-gradle-home"
+          GRADLE_USER_HOME="$LILIYA_GRADLE_HOME"             gradle :core:test :license-transport-client:test             --configure-on-demand --offline --console=plain
+
+      - name: Pack fresh project-only Gradle home
+        shell: bash
+        run: |
+          set -euo pipefail
+          LILIYA_GRADLE_HOME="$RUNNER_TEMP/liliya-gradle-home"
+          du -sh "$LILIYA_GRADLE_HOME"
+          du -sh "$LILIYA_GRADLE_HOME/caches/modules-2" || true
+          tar -C "$RUNNER_TEMP"             -czf "$RUNNER_TEMP/liliyacore-jvm-fresh-home.tar.gz"             "liliya-gradle-home"
+
+      - name: Upload fresh project-only Gradle home
+        uses: actions/upload-artifact@v4
+        with:
+          name: liliyacore-jvm-fresh-home
+          path: ${{ runner.temp }}/liliyacore-jvm-fresh-home.tar.gz
+          if-no-files-found: error
+          retention-days: 1
