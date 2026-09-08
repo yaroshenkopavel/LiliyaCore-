@@ -55,6 +55,7 @@ sealed interface AndroidCognitiveStorageFirstRunKeySetupResult {
 }
 
 internal interface AndroidCognitiveStorageFirstRunKeySetupPort {
+    val coordinationLock: Any
     fun snapshotReferences(): List<CognitiveDekReference>
     fun inspectDek(reference: CognitiveDekReference): WrappedCognitiveDekEnvelope?
     fun createProtector(
@@ -86,6 +87,8 @@ class AndroidCognitiveStorageFirstRunKeySetup internal constructor(
 ) {
     constructor(storage: AndroidCognitiveStorageAssembly) : this(
         object : AndroidCognitiveStorageFirstRunKeySetupPort {
+            override val coordinationLock: Any = storage.dekStore
+
             override fun snapshotReferences(): List<CognitiveDekReference> =
                 storage.dekStore.snapshotReferences()
 
@@ -115,12 +118,13 @@ class AndroidCognitiveStorageFirstRunKeySetup internal constructor(
         }
     )
 
-    @Synchronized
     fun prepare(
         request: AndroidCognitiveStorageFirstRunKeySetupRequest
-    ): AndroidCognitiveStorageFirstRunKeySetupResult = when (request) {
-        is AndroidCognitiveStorageFirstRunKeySetupRequest.RestoreExact -> restore(request)
-        is AndroidCognitiveStorageFirstRunKeySetupRequest.CreateOnce -> createOnce(request)
+    ): AndroidCognitiveStorageFirstRunKeySetupResult = synchronized(port.coordinationLock) {
+        when (request) {
+            is AndroidCognitiveStorageFirstRunKeySetupRequest.RestoreExact -> restore(request)
+            is AndroidCognitiveStorageFirstRunKeySetupRequest.CreateOnce -> createOnce(request)
+        }
     }
 
     private fun restore(
