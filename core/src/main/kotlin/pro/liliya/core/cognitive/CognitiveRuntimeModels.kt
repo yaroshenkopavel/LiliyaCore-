@@ -32,6 +32,72 @@ data class CognitiveTurnReference(
     val generation: CognitiveTurnGeneration
 )
 
+@JvmInline
+value class CognitiveConversationSessionId(val value: String) {
+    init { require(value.isNotBlank()) { "cognitive conversation session id must not be blank" } }
+    override fun toString(): String = "CognitiveConversationSessionId([redacted])"
+}
+
+@JvmInline
+value class CognitiveConversationSequence(val value: Long) {
+    init { require(value > 0L) { "cognitive conversation sequence must be positive" } }
+    override fun toString(): String = value.toString()
+}
+
+enum class CognitiveConversationRole {
+    USER,
+    ASSISTANT
+}
+
+class CognitiveConversationContextMessage(
+    val sequence: CognitiveConversationSequence,
+    val role: CognitiveConversationRole,
+    val content: String
+) {
+    init { require(content.isNotBlank()) { "cognitive conversation content must not be blank" } }
+
+    override fun equals(other: Any?): Boolean =
+        other is CognitiveConversationContextMessage &&
+            sequence == other.sequence &&
+            role == other.role &&
+            content == other.content
+
+    override fun hashCode(): Int {
+        var result = sequence.hashCode()
+        result = 31 * result + role.hashCode()
+        result = 31 * result + content.hashCode()
+        return result
+    }
+
+    override fun toString(): String =
+        "CognitiveConversationContextMessage(sequence=$sequence,role=$role,content=<redacted:${content.length}>)"
+}
+
+class CognitiveConversationContextSnapshot(
+    val sessionId: CognitiveConversationSessionId,
+    messages: List<CognitiveConversationContextMessage>
+) {
+    val messages: List<CognitiveConversationContextMessage> = messages.toList()
+
+    init {
+        require(
+            this.messages.zipWithNext().all { (first, second) ->
+                first.sequence.value < second.sequence.value
+            }
+        ) { "cognitive conversation messages must be strictly ordered" }
+    }
+
+    override fun equals(other: Any?): Boolean =
+        other is CognitiveConversationContextSnapshot &&
+            sessionId == other.sessionId &&
+            messages == other.messages
+
+    override fun hashCode(): Int = 31 * sessionId.hashCode() + messages.hashCode()
+
+    override fun toString(): String =
+        "CognitiveConversationContextSnapshot(sessionId=<redacted>,messages=<redacted:${messages.size}>)"
+}
+
 enum class CognitiveTurnLifecycle {
     CREATED,
     CONTEXT_READY,
@@ -124,6 +190,12 @@ class CognitiveInput(
 }
 
 sealed interface CognitiveContextSourceReference {
+    data class Conversation(
+        val sessionId: CognitiveConversationSessionId,
+        val sequence: CognitiveConversationSequence,
+        val role: CognitiveConversationRole
+    ) : CognitiveContextSourceReference
+
     data class Memory(
         val recordId: MemoryRecordId,
         val generation: MemoryGeneration
