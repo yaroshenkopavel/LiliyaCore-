@@ -7,6 +7,15 @@ import kotlin.test.assertIs
 import kotlin.test.assertNotSame
 import kotlin.test.assertTrue
 import org.junit.Test
+import pro.liliya.core.cognitive.CognitiveArtifactIdSource
+import pro.liliya.core.cognitive.CognitiveMaterializationPort
+import pro.liliya.core.cognitive.CognitiveMaterializationResult
+import pro.liliya.core.cognitive.CognitiveOutcomeMaterializationPort
+import pro.liliya.core.cognitive.CognitiveOutcomeMaterializationResult
+import pro.liliya.core.cognitive.CognitiveRuntimeLimits
+import pro.liliya.core.cognitive.CognitiveRuntimeScopeId
+import pro.liliya.core.cognitive.CognitiveTimestampSource
+import pro.liliya.core.decision.DecisionComposition
 import pro.liliya.core.diagnostics.DiagnosticRecorder
 import pro.liliya.core.diagnostics.InMemoryDiagnosticSink
 import pro.liliya.core.foundation.FoundationComposition
@@ -20,10 +29,14 @@ import pro.liliya.core.identity.SelfOrigin
 import pro.liliya.core.identity.SelfOwnership
 import pro.liliya.core.identity.SelfSourceId
 import pro.liliya.core.identity.SelfSourceReference
+import pro.liliya.core.learning.LearningComposition
 import pro.liliya.core.logging.CorrelationIdGenerator
 import pro.liliya.core.logging.InMemoryLogWriter
 import pro.liliya.core.logging.StructuredLogger
 import pro.liliya.core.observability.LoggerProvider
+import pro.liliya.core.planning.PlanningComposition
+import pro.liliya.core.reasoning.ReasoningComposition
+import pro.liliya.core.reflection.ReflectionComposition
 import pro.liliya.core.personality.PersonalityAttribute
 import pro.liliya.core.personality.PersonalityAttributeKey
 import pro.liliya.core.personality.PersonalityAttributeValue
@@ -38,6 +51,44 @@ import pro.liliya.core.personality.PersonalitySourceReference
 import pro.liliya.core.personality.PersonalityTarget
 
 class AndroidHeartProductionPersonaBootstrapContractTest {
+
+    @Test
+    fun persona_runtime_factory_is_not_created_when_persona_bootstrap_rejects() {
+        val foundation = foundation()
+        val result = assertIs<AndroidHeartProductionPersonaRuntimeFactoryCreateResult.Rejected>(
+            AndroidHeartProductionPersonaRuntimeFactory.create(
+                foundation = foundation,
+                personaDefinition = definition(selfName = "Liliya"),
+                scope = CognitiveRuntimeScopeId("persona-runtime"),
+                materialization = CognitiveMaterializationPort {
+                    error("materialization must not run")
+                },
+                planning = PlanningComposition(foundation),
+                reasoning = ReasoningComposition(foundation),
+                decision = DecisionComposition(foundation),
+                artifactIds = CognitiveArtifactIdSource { "unused-id" },
+                timestamps = CognitiveTimestampSource {
+                    Instant.parse("2026-09-08T00:00:10Z")
+                },
+                outcomeMaterialization = CognitiveOutcomeMaterializationPort {
+                    error("outcome materialization must not run")
+                },
+                reflection = ReflectionComposition(foundation),
+                learning = LearningComposition(foundation),
+                limits = CognitiveRuntimeLimits(),
+                personaLimits = AndroidHeartProductionPersonaLimits(maxSelfNameChars = 3)
+            )
+        )
+
+        assertEquals(
+            AndroidHeartProductionPersonaRuntimeFactoryCreateFailure.PERSONA_REJECTED,
+            result.reason
+        )
+        assertEquals(
+            AndroidHeartProductionPersonaCreateFailure.DEFINITION_REJECTED,
+            result.personaFailure
+        )
+    }
 
     @Test
     fun successful_bootstrap_installs_exact_self_then_personality_targeting_fresh_self() {
