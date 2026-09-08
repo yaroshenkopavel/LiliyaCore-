@@ -57,6 +57,9 @@ import pro.liliya.android.llamacppengine.LlamaCppEnginePolicy
 import pro.liliya.android.protectedmodel.staging.AndroidProtectedModelStagingPolicy
 import pro.liliya.android.runtime.AndroidHeartCognitiveRuntimeFactory
 import pro.liliya.android.runtime.AndroidHeartRuntimeAssembly
+import pro.liliya.android.runtime.AndroidHeartProductionGovernedLearningComposition
+import pro.liliya.android.runtime.AndroidHeartProductionGovernedLearningCreationResult
+import pro.liliya.android.runtime.AndroidHeartProductionGovernedLearningResult
 import pro.liliya.android.runtime.HeartRuntimeCloseResult
 import pro.liliya.android.runtime.HeartRuntimeStartResult
 import pro.liliya.android.runtime.HeartRuntimeState
@@ -496,54 +499,36 @@ class AndroidHeartRuntimeColdStartInstrumentedTest {
             )
         )
 
-        val preflight = LearningApplicationPreflightValidator(
-            applications,
-            learningDecisions,
-            learning,
-            policies
-        )
-        val authorizer = LearningApplicationAuthorizer(preflight, authority)
-        val gate = LearningApplicationMutationAuthorizationGate(
-            encryptedMutations.inspectionPort(),
-            authorizer
-        )
-        val mutationApplication = assertNotNull(
-            heart.learningMutationApplicationPort(
+        val governed = assertIs<AndroidHeartProductionGovernedLearningCreationResult.Ready>(
+            AndroidHeartProductionGovernedLearningComposition.create(
+                heart = heart,
                 foundation = foundation,
+                scope = CognitiveRuntimeScopeId("heart-h4d-runtime"),
+                learning = learning,
+                policies = policies,
+                policyReference = LearningPolicyReference(policy.policy.id, policy.generation),
+                authority = authority,
+                principal = principal,
+                governance = CognitiveLearningGovernancePort {
+                    CognitiveLearningGovernanceResult.Approved(
+                        target = LearningApplicationTarget.MEMORY,
+                        rationale = "physical trusted approval"
+                    )
+                },
+                materialization = CognitiveLearningApplicationMaterializationPort {
+                    CognitiveLearningApplicationMaterializationResult.Succeeded(LEARNED_EVIDENCE)
+                },
                 mutations = encryptedMutations,
-                authorizationGate = gate
+                artifactIds = CognitiveArtifactIdSource { kind ->
+                    "heart-h4d-learning-" + kind.name.lowercase() + "-" + ids.incrementAndGet()
+                },
+                timestamps = CognitiveTimestampSource { BASE.plusSeconds(12) },
+                limits = cognitiveLimits()
             )
-        )
-
-        val governedCore = CognitiveGovernedLearningComposition(
-            foundation = foundation,
-            scope = CognitiveRuntimeScopeId("heart-h4d-runtime"),
-            learning = learning,
-            policies = policies,
-            policyReference = LearningPolicyReference(policy.policy.id, policy.generation),
-            governance = CognitiveLearningGovernancePort {
-                CognitiveLearningGovernanceResult.Approved(
-                    target = LearningApplicationTarget.MEMORY,
-                    rationale = "physical trusted approval"
-                )
-            },
-            decisions = learningDecisions,
-            materialization = CognitiveLearningApplicationMaterializationPort {
-                CognitiveLearningApplicationMaterializationResult.Succeeded(LEARNED_EVIDENCE)
-            },
-            applications = applications,
-            mutations = encryptedMutations.preparationPort(),
-            mutationApplier = mutationApplication,
-            principal = principal,
-            allowedTargets = listOf(LearningApplicationTarget.MEMORY),
-            artifactIds = CognitiveArtifactIdSource { kind ->
-                "heart-h4d-learning-" + kind.name.lowercase() + "-" + ids.incrementAndGet()
-            },
-            timestamps = CognitiveTimestampSource { BASE.plusSeconds(12) },
-            limits = cognitiveLimits()
-        )
-        val governed = assertNotNull(heart.governedLearning(governedCore))
-        val learned = governed.process(finalizedA.learning)
+        ).composition
+        val learned = assertIs<AndroidHeartProductionGovernedLearningResult.Completed>(
+            governed.process(finalizedA.learning)
+        ).result
         assertIs<CognitiveGovernedLearningResult.Applied>(learned.governed)
         assertEquals(
             AndroidHeartSemanticLearningSyncStatus.SYNCHRONIZED,
