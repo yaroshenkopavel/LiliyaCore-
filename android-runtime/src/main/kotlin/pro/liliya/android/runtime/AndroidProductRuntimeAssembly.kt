@@ -42,6 +42,17 @@ sealed interface AndroidProductRuntimeCreateResult {
     ) : AndroidProductRuntimeCreateResult
 }
 
+sealed interface AndroidProductRuntimeSemanticRecoveryResult {
+    data class Recovered(
+        val entryCount: Int
+    ) : AndroidProductRuntimeSemanticRecoveryResult
+
+    data object NotRequired : AndroidProductRuntimeSemanticRecoveryResult
+    data object Busy : AndroidProductRuntimeSemanticRecoveryResult
+    data object Failed : AndroidProductRuntimeSemanticRecoveryResult
+    data object InternalFailure : AndroidProductRuntimeSemanticRecoveryResult
+}
+
 sealed interface AndroidProductRuntimeStartResult {
     data object Ready : AndroidProductRuntimeStartResult
 
@@ -68,6 +79,7 @@ internal fun interface AndroidProductRuntimeGovernedLearningFactory {
 internal interface AndroidProductRuntimeHeartBridge {
     fun state(): HeartRuntimeState
     fun start(): HeartRuntimeStartResult
+    fun recoverSemantic(): AndroidHeartSemanticRecoveryResult
     fun chat(): ProductChatHost?
     fun conversation(
         maxRetainedMessages: Int,
@@ -143,6 +155,52 @@ class AndroidProductRuntimeAssembly internal constructor(
 
     fun learningFollowUp(): ProductLearningFollowUpHost? =
         if (heart.state() == HeartRuntimeState.READY) learningFollowUpHost else null
+
+    @Synchronized
+    fun recoverSemantic(): AndroidProductRuntimeSemanticRecoveryResult {
+        val recovered = try {
+            heart.recoverSemantic()
+        } catch (_: Exception) {
+            return AndroidProductRuntimeSemanticRecoveryResult.InternalFailure
+        }
+
+        return when (recovered) {
+            is AndroidHeartSemanticRecoveryResult.Recovered -> {
+                val rebound = try {
+                    governedLearningFactory.create(learning)
+                } catch (_: Exception) {
+                    learningFollowUpHost = null
+                    safeClose()
+                    return AndroidProductRuntimeSemanticRecoveryResult.InternalFailure
+                }
+                when (rebound) {
+                    is AndroidHeartProductionGovernedLearningCreateResult.Ready -> {
+                        learningFollowUpHost = ProductLearningFollowUpHost(
+                            rebound.composition
+                        )
+                        AndroidProductRuntimeSemanticRecoveryResult.Recovered(
+                            recovered.entryCount
+                        )
+                    }
+
+                    is AndroidHeartProductionGovernedLearningCreateResult.Rejected -> {
+                        learningFollowUpHost = null
+                        safeClose()
+                        AndroidProductRuntimeSemanticRecoveryResult.InternalFailure
+                    }
+                }
+            }
+
+            AndroidHeartSemanticRecoveryResult.NotRequired ->
+                AndroidProductRuntimeSemanticRecoveryResult.NotRequired
+
+            AndroidHeartSemanticRecoveryResult.Busy ->
+                AndroidProductRuntimeSemanticRecoveryResult.Busy
+
+            AndroidHeartSemanticRecoveryResult.Failed ->
+                AndroidProductRuntimeSemanticRecoveryResult.Failed
+        }
+    }
 
     @Synchronized
     fun close(): HeartRuntimeCloseResult {
@@ -258,6 +316,8 @@ class AndroidProductRuntimeAssembly internal constructor(
                 val heartBridge = object : AndroidProductRuntimeHeartBridge {
                     override fun state(): HeartRuntimeState = heart.state()
                     override fun start(): HeartRuntimeStartResult = heart.start()
+                    override fun recoverSemantic(): AndroidHeartSemanticRecoveryResult =
+                        heart.recoverSemantic()
                     override fun chat(): ProductChatHost? = heart.chat()
                     override fun conversation(
                         maxRetainedMessages: Int,

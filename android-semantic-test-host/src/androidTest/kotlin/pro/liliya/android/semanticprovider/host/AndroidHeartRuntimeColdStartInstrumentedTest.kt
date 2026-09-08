@@ -10,6 +10,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -18,6 +19,7 @@ import pro.liliya.android.cognitivestorage.AndroidCognitiveStorageOpenResult
 import pro.liliya.android.cognitivestorage.AndroidEncryptedKnowledgeOpenResult
 import pro.liliya.android.cognitivestorage.AndroidEncryptedMemoryOpenResult
 import pro.liliya.android.cognitivestorage.AndroidEncryptedLearningMutationOpenResult
+import pro.liliya.android.semanticprovider.AndroidOfflineSemanticProviderState
 import pro.liliya.android.runtime.AndroidHeartSemanticLearningSyncStatus
 import pro.liliya.core.authority.AuthorityPrincipal
 import pro.liliya.core.authority.CapabilityAuthorityComposition
@@ -60,6 +62,7 @@ import pro.liliya.android.runtime.AndroidHeartRuntimeAssembly
 import pro.liliya.android.runtime.AndroidProductRuntimeAssembly
 import pro.liliya.android.runtime.AndroidProductRuntimeCreateResult
 import pro.liliya.android.runtime.AndroidProductRuntimeStartResult
+import pro.liliya.android.runtime.AndroidProductRuntimeSemanticRecoveryResult
 import pro.liliya.android.runtime.ProductLearningFollowUpResult
 import pro.liliya.android.runtime.ProductLearningSemanticStatus
 import pro.liliya.android.runtime.learningFollowUpReference
@@ -559,6 +562,62 @@ class AndroidHeartRuntimeColdStartInstrumentedTest {
         )
         assertEquals(ProductLearningSemanticStatus.SYNCHRONIZED, applied.semantic)
 
+        val secondCompleted = assertIs<ProductConversationResult.Completed>(
+            conversation.send(
+                ProductChatRequest(
+                    "Remember this again before semantic recovery.",
+                    ProductChatGenerationMode.ONE_SHOT
+                )
+            )
+        )
+        val secondEvidence = assertNotNull(secondCompleted.learningFollowUpReference())
+
+        forceProductRuntimeSemanticProviderFailed(product)
+
+        val recoveryRequired = assertIs<ProductLearningFollowUpResult.Applied>(
+            followUp.process(secondEvidence)
+        )
+        assertEquals(
+            ProductLearningSemanticStatus.RECOVERY_REQUIRED,
+            recoveryRequired.semantic
+        )
+        assertEquals(HeartRuntimeState.FAILED, product.state())
+        assertNull(product.chat())
+        assertNull(product.conversation(4, 512, 128))
+        assertNull(product.learningFollowUp())
+
+        val recovered = assertIs<AndroidProductRuntimeSemanticRecoveryResult.Recovered>(
+            product.recoverSemantic()
+        )
+        assertTrue(recovered.entryCount >= 4)
+        assertEquals(HeartRuntimeState.READY, product.state())
+
+        val recoveredConversation = assertNotNull(
+            product.conversation(
+                maxRetainedMessages = 4,
+                maxRetainedCharacters = 512,
+                maxMessageCharacters = 128
+            )
+        )
+        val afterRecoveryCompleted = assertIs<ProductConversationResult.Completed>(
+            recoveredConversation.send(
+                ProductChatRequest(
+                    "Continue after explicit semantic recovery.",
+                    ProductChatGenerationMode.ONE_SHOT
+                )
+            )
+        )
+        val afterRecoveryEvidence =
+            assertNotNull(afterRecoveryCompleted.learningFollowUpReference())
+        val reboundFollowUp = assertNotNull(product.learningFollowUp())
+        val reboundApplied = assertIs<ProductLearningFollowUpResult.Applied>(
+            reboundFollowUp.process(afterRecoveryEvidence)
+        )
+        assertEquals(
+            ProductLearningSemanticStatus.SYNCHRONIZED,
+            reboundApplied.semantic
+        )
+
         assertTrue(compilerSawSelf)
         assertTrue(compilerSawPersonality)
         assertTrue(compilerSawMemory)
@@ -1001,6 +1060,38 @@ class AndroidHeartRuntimeColdStartInstrumentedTest {
                 RuntimeModelSessionId("heart-h3-" + sessionIds.incrementAndGet())
             },
             limits = cognitiveLimits()
+        )
+    }
+
+    private fun forceProductRuntimeSemanticProviderFailed(
+        product: AndroidProductRuntimeAssembly
+    ) {
+        val productHeartField =
+            AndroidProductRuntimeAssembly::class.java.getDeclaredField("heart").apply {
+                isAccessible = true
+            }
+        val heartBridge = productHeartField.get(product)
+        val capturedHeartField = heartBridge.javaClass.declaredFields
+            .firstOrNull {
+                AndroidHeartRuntimeAssembly::class.java.isAssignableFrom(it.type)
+            }
+            ?: error("product runtime Heart bridge does not capture AndroidHeartRuntimeAssembly")
+        capturedHeartField.isAccessible = true
+        val heart = capturedHeartField.get(heartBridge) as AndroidHeartRuntimeAssembly
+
+        val semanticAssemblyField =
+            AndroidHeartRuntimeAssembly::class.java
+                .getDeclaredField("semanticAssembly")
+                .apply { isAccessible = true }
+        val semanticAssembly = semanticAssemblyField.get(heart)
+
+        val publicStateField =
+            semanticAssembly.javaClass
+                .getDeclaredField("publicState")
+                .apply { isAccessible = true }
+        publicStateField.set(
+            semanticAssembly,
+            AndroidOfflineSemanticProviderState.FAILED
         )
     }
 
