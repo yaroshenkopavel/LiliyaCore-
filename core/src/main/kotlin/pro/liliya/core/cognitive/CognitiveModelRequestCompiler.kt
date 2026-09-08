@@ -171,6 +171,11 @@ class DeterministicCognitiveModelRequestCompiler : CognitiveModelRequestCompiler
     }
 
     private fun sourceKind(source: CognitiveContextSourceReference): String = when (source) {
+        is CognitiveContextSourceReference.Conversation ->
+            when (source.role) {
+                CognitiveConversationRole.USER -> "CONVERSATION_USER"
+                CognitiveConversationRole.ASSISTANT -> "CONVERSATION_ASSISTANT"
+            }
         is CognitiveContextSourceReference.Memory -> "MEMORY"
         is CognitiveContextSourceReference.Knowledge -> "KNOWLEDGE"
         is CognitiveContextSourceReference.Self -> "SELF"
