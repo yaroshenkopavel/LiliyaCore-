@@ -632,3 +632,56 @@ jobs:
           path: ${{ runner.temp }}/liliyaco​re-jvm-offline-cache.tar.gz
           if-no-files-found: error
           retention-days: 1
+
+
+  local-jvm-fresh-offline-cache:
+    name: Local JVM Fresh Offline Cache Artifact
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      LILIYA_GRADLE_HOME: ${{ runner.temp }}/liliya-gradle-home
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle 9.6.1 without shared dependency cache
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.1'
+          cache-disabled: true
+
+      - name: Warm fresh project-only JVM dependency cache
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf "$LILIYA_GRADLE_HOME"
+          mkdir -p "$LILIYA_GRADLE_HOME"
+          GRADLE_USER_HOME="$LILIYA_GRADLE_HOME"             gradle :core:test :license-transport-client:test             --configure-on-demand --console=plain
+
+      - name: Verify fresh cache works offline
+        shell: bash
+        run: |
+          set -euo pipefail
+          GRADLE_USER_HOME="$LILIYA_GRADLE_HOME"             gradle :core:test :license-transport-client:test             --configure-on-demand --offline --console=plain
+
+      - name: Pack exact fresh Gradle home
+        shell: bash
+        run: |
+          set -euo pipefail
+          du -sh "$LILIYA_GRADLE_HOME"
+          du -sh "$LILIYA_GRADLE_HOME/caches/modules-2" || true
+          tar -C "$(dirname "$LILIYA_GRADLE_HOME")"             -czf "$RUNNER_TEMP/liliyaco​re-jvm-fresh-home.tar.gz"             "$(basename "$LILIYA_GRADLE_HOME")"
+
+      - name: Upload fresh project-only Gradle home
+        uses: actions/upload-artifact@v4
+        with:
+          name: liliyaco​re-jvm-fresh-home
+          path: ${{ runner.temp }}/liliyaco​re-jvm-fresh-home.tar.gz
+          if-no-files-found: error
+          retention-days: 1
