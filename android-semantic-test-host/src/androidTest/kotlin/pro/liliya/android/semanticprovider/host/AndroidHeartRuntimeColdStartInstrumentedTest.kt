@@ -57,6 +57,9 @@ import pro.liliya.android.llamacppengine.LlamaCppEnginePolicy
 import pro.liliya.android.protectedmodel.staging.AndroidProtectedModelStagingPolicy
 import pro.liliya.android.runtime.AndroidHeartCognitiveRuntimeFactory
 import pro.liliya.android.runtime.AndroidHeartRuntimeAssembly
+import pro.liliya.android.runtime.AndroidHeartProductionPersonaDefinition
+import pro.liliya.android.runtime.AndroidHeartProductionPersonaRuntimeFactory
+import pro.liliya.android.runtime.AndroidHeartProductionPersonaRuntimeFactoryCreateResult
 import pro.liliya.android.runtime.AndroidHeartProductionGovernedLearningAssembly
 import pro.liliya.android.runtime.AndroidHeartProductionGovernedLearningCreateResult
 import pro.liliya.android.runtime.AndroidHeartProductionGovernedLearningProcessResult
@@ -96,6 +99,16 @@ import pro.liliya.core.encryption.CognitiveKeyProtectorId
 import pro.liliya.core.encryption.CognitiveKeyProtectorSecurityLevel
 import pro.liliya.core.encryption.PersistentCognitiveDekRegistrationResult
 import pro.liliya.core.foundation.FoundationComposition
+import pro.liliya.core.identity.SelfIdentityId
+import pro.liliya.core.identity.SelfName
+import pro.liliya.core.identity.SelfSourceId
+import pro.liliya.core.identity.SelfSourceReference
+import pro.liliya.core.personality.PersonalityAttribute
+import pro.liliya.core.personality.PersonalityAttributeKey
+import pro.liliya.core.personality.PersonalityAttributeValue
+import pro.liliya.core.personality.PersonalityProfileId
+import pro.liliya.core.personality.PersonalitySourceId
+import pro.liliya.core.personality.PersonalitySourceReference
 import pro.liliya.core.knowledge.KnowledgeItem
 import pro.liliya.core.knowledge.KnowledgeItemId
 import pro.liliya.core.knowledge.KnowledgeOrigin
@@ -231,6 +244,36 @@ class AndroidHeartRuntimeColdStartInstrumentedTest {
         }
 
         val ids = AtomicInteger(0)
+        val personaRuntimeFactory =
+            assertIs<AndroidHeartProductionPersonaRuntimeFactoryCreateResult.Ready>(
+                AndroidHeartProductionPersonaRuntimeFactory.create(
+                    foundation = foundation,
+                    personaDefinition = productionPersonaDefinition(),
+                    scope = CognitiveRuntimeScopeId("heart-h3-runtime"),
+                    materialization = CognitiveMaterializationPort {
+                        CognitiveMaterializationResult.Succeeded(materializationCandidate())
+                    },
+                    planning = PlanningComposition(foundation),
+                    reasoning = ReasoningComposition(foundation),
+                    decision = DecisionComposition(foundation),
+                    artifactIds = CognitiveArtifactIdSource { kind ->
+                        "heart-" + kind.name.lowercase() + "-" + ids.incrementAndGet()
+                    },
+                    timestamps = CognitiveTimestampSource { BASE.plusSeconds(2) },
+                    outcomeMaterialization = CognitiveOutcomeMaterializationPort {
+                        CognitiveOutcomeMaterializationResult.Succeeded(
+                            CognitiveOutcomeCandidate(
+                                resultContent = "persona runtime result",
+                                reflectionContent = "persona runtime reflection",
+                                learningProposal = "persona runtime learning candidate"
+                            )
+                        )
+                    },
+                    reflection = ReflectionComposition(foundation),
+                    learning = LearningComposition(foundation),
+                    limits = cognitiveLimits()
+                )
+            )
         val heart = AndroidHeartRuntimeAssembly.create(
             cognitiveStorage = reconstructed,
             memoryStoreId = memoryStoreId,
@@ -241,33 +284,7 @@ class AndroidHeartRuntimeColdStartInstrumentedTest {
             llamaAssembly = llama,
             stagedModel = staged,
             maxCandidatesPerSource = 4,
-            cognitiveRuntimeFactory = AndroidHeartCognitiveRuntimeFactory {
-                    memoryRetrieval,
-                    knowledgeRetrieval,
-                    inference,
-                    streamingInference ->
-                CognitiveRuntimeComposition(
-                    foundation = foundation,
-                    scope = CognitiveRuntimeScopeId("heart-h3-runtime"),
-                    memoryRetrieval = memoryRetrieval,
-                    knowledgeRetrieval = knowledgeRetrieval,
-                    selfSnapshots = { null },
-                    personalitySnapshots = { emptyList() },
-                    inference = inference,
-                    streamingInference = streamingInference,
-                    limits = cognitiveLimits(),
-                    materialization = CognitiveMaterializationPort {
-                        CognitiveMaterializationResult.Succeeded(materializationCandidate())
-                    },
-                    planning = PlanningComposition(foundation),
-                    reasoning = ReasoningComposition(foundation),
-                    decision = DecisionComposition(foundation),
-                    artifactIds = CognitiveArtifactIdSource { kind ->
-                        "heart-" + kind.name.lowercase() + "-" + ids.incrementAndGet()
-                    },
-                    timestamps = CognitiveTimestampSource { BASE.plusSeconds(2) }
-                )
-            }
+            cognitiveRuntimeFactory = personaRuntimeFactory.factory
         )
 
         assertEquals(
@@ -304,6 +321,8 @@ class AndroidHeartRuntimeColdStartInstrumentedTest {
 
         assertTrue(compilerSawMemory)
         assertTrue(compilerSawKnowledge)
+        assertTrue(compilerSawSelf)
+        assertTrue(compilerSawPersonality)
 
         assertEquals(HeartRuntimeCloseResult.Closed, heart.close())
         assertEquals(HeartRuntimeState.CLOSED, heart.state())
@@ -677,6 +696,12 @@ class AndroidHeartRuntimeColdStartInstrumentedTest {
     @Volatile
     private var compilerSawLearned = false
 
+    @Volatile
+    private var compilerSawSelf = false
+
+    @Volatile
+    private var compilerSawPersonality = false
+
     private fun llamaAssembly(
         context: Context,
         foundation: FoundationComposition,
@@ -701,6 +726,12 @@ class AndroidHeartRuntimeColdStartInstrumentedTest {
             val contents = request.inference.context.items.map { it.content }
             compilerSawMemory = contents.contains(RELEVANT_MEMORY)
             compilerSawKnowledge = contents.contains(RELEVANT_KNOWLEDGE)
+            if (contents.contains(PERSONA_SELF_NAME)) {
+                compilerSawSelf = true
+            }
+            if (contents.contains(PERSONA_CONTEXT)) {
+                compilerSawPersonality = true
+            }
             if (contents.contains(LEARNED_EVIDENCE)) {
                 compilerSawLearned = true
             }
@@ -729,6 +760,29 @@ class AndroidHeartRuntimeColdStartInstrumentedTest {
             limits = cognitiveLimits()
         )
     }
+
+    private fun productionPersonaDefinition(): AndroidHeartProductionPersonaDefinition =
+        AndroidHeartProductionPersonaDefinition(
+            selfIdentityId = SelfIdentityId("liliya-production-self"),
+            selfName = SelfName(PERSONA_SELF_NAME),
+            selfSourceId = SelfSourceId("liliya-product"),
+            selfSourceReference = SelfSourceReference("persona-v0.1"),
+            selfCreatedAt = BASE.minusSeconds(2),
+            personalityProfileId = PersonalityProfileId("liliya-production-personality"),
+            personalityAttributes = listOf(
+                PersonalityAttribute(
+                    PersonalityAttributeKey("tone"),
+                    PersonalityAttributeValue("warm and concise")
+                ),
+                PersonalityAttribute(
+                    PersonalityAttributeKey("identity"),
+                    PersonalityAttributeValue("single coherent assistant persona")
+                )
+            ),
+            personalitySourceId = PersonalitySourceId("liliya-product"),
+            personalitySourceReference = PersonalitySourceReference("persona-v0.1"),
+            personalityCreatedAt = BASE.minusSeconds(1)
+        )
 
     private fun foundation(): FoundationComposition {
         val writer = InMemoryLogWriter()
@@ -870,6 +924,9 @@ class AndroidHeartRuntimeColdStartInstrumentedTest {
         const val MAX_MODEL_PROMPT_CHARS = 384
         const val MAX_OUTPUT_CHARS = 64
 
+        const val PERSONA_SELF_NAME = "Liliya"
+        const val PERSONA_CONTEXT =
+            "tone=warm and concise\nidentity=single coherent assistant persona"
         const val RELEVANT_MEMORY = "The keys are on the kitchen table."
         const val RELEVANT_KNOWLEDGE = "Bus twelve goes to the railway station."
         val BASE: Instant = Instant.parse("2026-09-07T00:00:00Z")
