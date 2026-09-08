@@ -62,14 +62,22 @@ sealed interface AndroidHeartProductionGovernedLearningResult {
  * authoritative Memory, semantic index and Learning semantics remain owned by their existing
  * compositions.
  */
-class AndroidHeartProductionGovernedLearningComposition private constructor(
-    private val heart: AndroidHeartRuntimeAssembly,
-    private val governed: AndroidHeartGovernedLearningComposition
+internal fun interface AndroidHeartProductionGovernedLearningProcessPort {
+    fun process(reference: CognitiveLearningReference): AndroidHeartGovernedLearningResult
+}
+
+internal fun interface AndroidHeartProductionGovernedLearningStatePort {
+    fun state(): HeartRuntimeState
+}
+
+class AndroidHeartProductionGovernedLearningComposition internal constructor(
+    private val heartState: AndroidHeartProductionGovernedLearningStatePort,
+    private val governed: AndroidHeartProductionGovernedLearningProcessPort
 ) {
     fun process(
         reference: CognitiveLearningReference
     ): AndroidHeartProductionGovernedLearningResult {
-        if (heart.state() != HeartRuntimeState.READY) {
+        if (heartState.state() != HeartRuntimeState.READY) {
             return AndroidHeartProductionGovernedLearningResult.Rejected(
                 AndroidHeartProductionGovernedLearningFailure.HEART_NOT_READY
             )
@@ -87,7 +95,7 @@ class AndroidHeartProductionGovernedLearningComposition private constructor(
     }
 
     override fun toString(): String =
-        "AndroidHeartProductionGovernedLearningComposition(heart=<redacted>,governed=<redacted>)"
+        "AndroidHeartProductionGovernedLearningComposition(heartState=<redacted>,governed=<redacted>)"
 
     companion object {
         fun create(
@@ -169,8 +177,10 @@ class AndroidHeartProductionGovernedLearningComposition private constructor(
 
             return AndroidHeartProductionGovernedLearningCreationResult.Ready(
                 AndroidHeartProductionGovernedLearningComposition(
-                    heart = heart,
-                    governed = governed
+                    heartState = AndroidHeartProductionGovernedLearningStatePort { heart.state() },
+                    governed = AndroidHeartProductionGovernedLearningProcessPort { reference ->
+                        governed.process(reference)
+                    }
                 )
             )
         }
