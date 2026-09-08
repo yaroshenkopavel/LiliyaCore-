@@ -203,6 +203,74 @@ class ProductConversationHostContractTest {
     }
 
     @Test
+    fun transcript_eviction_does_not_invalidate_already_returned_learning_evidence() {
+        var call = 0
+        val host = host(
+            maxRetainedMessages = 2,
+            maxRetainedCharacters = 64,
+            maxMessageCharacters = 16,
+            runner = ProductConversationTurnRunner { _, _, _ ->
+                call += 1
+                completed(
+                    reply = "r$call",
+                    candidateId = "candidate-$call",
+                    learningGeneration = call.toLong()
+                )
+            }
+        )
+
+        val first = assertIs<ProductConversationResult.Completed>(
+            host.send(ProductChatRequest("u1", ProductChatGenerationMode.ONE_SHOT))
+        )
+        val firstEvidence = requireNotNull(first.learningFollowUpReference())
+
+        host.send(ProductChatRequest("u2", ProductChatGenerationMode.ONE_SHOT))
+        host.send(ProductChatRequest("u3", ProductChatGenerationMode.ONE_SHOT))
+
+        assertEquals("candidate-1", firstEvidence.cognitive.id.value)
+        assertEquals(1L, firstEvidence.generation)
+    }
+
+    @Test
+    fun returned_evidence_can_be_processed_only_by_explicit_existing_follow_up_host_call() {
+        var processedCalls = 0
+        var seen: CognitiveLearningReference? = null
+        val conversation = host(
+            runner = ProductConversationTurnRunner { _, _, _ ->
+                completed(
+                    reply = "reply",
+                    candidateId = "explicit-follow-up",
+                    learningGeneration = 11
+                )
+            }
+        )
+
+        val completed = assertIs<ProductConversationResult.Completed>(
+            conversation.send(
+                ProductChatRequest("hello", ProductChatGenerationMode.ONE_SHOT)
+            )
+        )
+
+        assertEquals(0, processedCalls)
+
+        val followUp = ProductLearningFollowUpHost(
+            ProductLearningFollowUpPort { reference ->
+                processedCalls += 1
+                seen = reference
+                AndroidHeartProductionGovernedLearningProcessResult.NotReady
+            }
+        )
+
+        assertEquals(
+            ProductLearningFollowUpResult.NotReady,
+            followUp.process(requireNotNull(completed.learningFollowUpReference()))
+        )
+        assertEquals(1, processedCalls)
+        assertEquals("explicit-follow-up", seen?.id?.value)
+        assertEquals(11L, seen?.generation?.value)
+    }
+
+    @Test
     fun first_success_uses_empty_context_and_second_success_sees_exact_committed_pair() {
         val snapshots = mutableListOf<CognitiveConversationContextSnapshot>()
         var calls = 0
