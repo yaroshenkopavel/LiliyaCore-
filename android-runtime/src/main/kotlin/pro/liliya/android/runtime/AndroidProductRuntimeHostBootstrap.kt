@@ -73,9 +73,7 @@ sealed interface AndroidProductRuntimeHostBootstrapResult {
 }
 
 internal fun interface AndroidProductRuntimeHostCreateFactory {
-    fun create(
-        inputs: AndroidProductRuntimeHostPreparedInputs
-    ): AndroidProductRuntimeCreateResult
+    fun create(): AndroidProductRuntimeCreateResult
 }
 
 /**
@@ -91,14 +89,17 @@ object AndroidProductRuntimeHostBootstrap {
     fun start(
         inputs: AndroidProductRuntimeHostPreparedInputs
     ): AndroidProductRuntimeHostBootstrapResult =
-        start(inputs, AndroidProductRuntimeHostCreateFactory(::createProductionRuntime))
+        start(
+            AndroidProductRuntimeHostCreateFactory {
+                createProductionRuntime(inputs)
+            }
+        )
 
     internal fun start(
-        inputs: AndroidProductRuntimeHostPreparedInputs,
         factory: AndroidProductRuntimeHostCreateFactory
     ): AndroidProductRuntimeHostBootstrapResult {
         val runtime = try {
-            when (val created = factory.create(inputs)) {
+            when (val created = factory.create()) {
                 is AndroidProductRuntimeCreateResult.Ready -> created.runtime
                 is AndroidProductRuntimeCreateResult.Rejected ->
                     return AndroidProductRuntimeHostBootstrapResult.Rejected(
