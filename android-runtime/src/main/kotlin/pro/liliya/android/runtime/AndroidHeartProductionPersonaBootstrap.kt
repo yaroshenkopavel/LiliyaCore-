@@ -107,9 +107,20 @@ sealed interface AndroidHeartProductionPersonaCreateResult {
  * This is not durable generation identity and not Authority. Cognitive Runtime receives only
  * read-only snapshot ports over the exact owned Self/Personality compositions.
  */
+internal interface AndroidHeartProductionPersonaSelfPort {
+    fun install(identity: SelfIdentity): SelfInstallResult
+    fun inspect(): SelfIdentitySnapshot?
+}
+
+internal interface AndroidHeartProductionPersonaPersonalityPort {
+    fun install(profile: PersonalityProfile): PersonalityInstallResult
+    fun inspect(id: PersonalityProfileId): PersonalityProfileSnapshot?
+    fun snapshotEntries(): List<PersonalityProfileSnapshot>
+}
+
 class AndroidHeartProductionPersonaComposition internal constructor(
-    private val self: SelfComposition,
-    private val personality: PersonalityComposition,
+    private val self: AndroidHeartProductionPersonaSelfPort,
+    private val personality: AndroidHeartProductionPersonaPersonalityPort,
     val installedSelf: SelfIdentitySnapshot,
     val installedPersonality: PersonalityProfileSnapshot
 ) {
@@ -140,11 +151,37 @@ object AndroidHeartProductionPersonaBootstrap {
         definition: AndroidHeartProductionPersonaDefinition,
         limits: AndroidHeartProductionPersonaLimits = AndroidHeartProductionPersonaLimits()
     ): AndroidHeartProductionPersonaCreateResult {
+        val selfComposition = SelfComposition(foundation)
+        val personalityComposition = PersonalityComposition(foundation)
+        return createInternal(
+            definition = definition,
+            limits = limits,
+            self = object : AndroidHeartProductionPersonaSelfPort {
+                override fun install(identity: SelfIdentity): SelfInstallResult =
+                    selfComposition.install(identity)
+                override fun inspect(): SelfIdentitySnapshot? = selfComposition.inspect()
+            },
+            personality = object : AndroidHeartProductionPersonaPersonalityPort {
+                override fun install(profile: PersonalityProfile): PersonalityInstallResult =
+                    personalityComposition.install(profile)
+                override fun inspect(id: PersonalityProfileId): PersonalityProfileSnapshot? =
+                    personalityComposition.inspect(id)
+                override fun snapshotEntries(): List<PersonalityProfileSnapshot> =
+                    personalityComposition.snapshotEntries()
+            }
+        )
+    }
+
+    internal fun createInternal(
+        definition: AndroidHeartProductionPersonaDefinition,
+        limits: AndroidHeartProductionPersonaLimits = AndroidHeartProductionPersonaLimits(),
+        self: AndroidHeartProductionPersonaSelfPort,
+        personality: AndroidHeartProductionPersonaPersonalityPort
+    ): AndroidHeartProductionPersonaCreateResult {
         if (!definitionWithinLimits(definition, limits)) {
             return rejected(AndroidHeartProductionPersonaCreateFailure.DEFINITION_REJECTED)
         }
 
-        val self = SelfComposition(foundation)
         val installedSelf = when (
             val result = self.install(
                 SelfIdentity(
@@ -178,7 +215,6 @@ object AndroidHeartProductionPersonaBootstrap {
                 return rejected(AndroidHeartProductionPersonaCreateFailure.SELF_INSTALL_REJECTED)
         }
 
-        val personality = PersonalityComposition(foundation)
         val expectedProfile = try {
             PersonalityProfile(
                 id = definition.personalityProfileId,
