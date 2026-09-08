@@ -143,6 +143,7 @@ class AndroidHeartRuntimeAssembly private constructor(
         val turns = productTurns() ?: return null
         return ProductChatHost.production(
             maxInputChars = activeRuntime.limits.maxInputChars,
+            maxTurnIdChars = activeRuntime.limits.maxTurnIdChars,
             turns = turns
         )
     }
