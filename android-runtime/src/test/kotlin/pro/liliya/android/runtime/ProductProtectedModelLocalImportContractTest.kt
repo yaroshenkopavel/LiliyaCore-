@@ -82,6 +82,38 @@ class ProductProtectedModelLocalImportContractTest {
     }
 
     @Test
+    fun oversized_manifest_framing_rejects_before_decoder_call() {
+        val fixture = fixture()
+        var decodeCalls = 0
+        val importer = ProductProtectedModelLocalImport(
+            decodePort = ProductProtectedModelSignedManifestDecodePort {
+                decodeCalls += 1
+                LargeProtectedModelCanonicalDecodeResult.Decoded(fixture.manifest)
+            },
+            budgets = ProductProtectedModelLocalImportBudgets(
+                maxContainerBytes = 1024 * 1024,
+                maxSignatureBytes = 1024
+            ),
+            maxCanonicalSignedManifestBytes = 2
+        )
+        val file = writeContainer(
+            manifestBytes = byteArrayOf(7, 8, 9),
+            signature = byteArrayOf(1),
+            bodies = listOf(ByteArray(4), ByteArray(4)),
+            tags = listOf(ByteArray(16), ByteArray(16))
+        )
+
+        val rejected = assertIs<ProductProtectedModelLocalImportResult.Rejected>(
+            importer.open(file)
+        )
+        assertEquals(
+            ProductProtectedModelLocalImportFailure.RESOURCE_LIMIT_REJECTED,
+            rejected.reason
+        )
+        assertEquals(0, decodeCalls)
+    }
+
+    @Test
     fun file_mutation_after_open_invalidates_segment_source() {
         val fixture = fixture()
         val file = writeContainer(
@@ -134,7 +166,8 @@ class ProductProtectedModelLocalImportContractTest {
         budgets = ProductProtectedModelLocalImportBudgets(
             maxContainerBytes = 1024 * 1024,
             maxSignatureBytes = 1024
-        )
+        ),
+        maxCanonicalSignedManifestBytes = 64 * 1024
     )
 
     private fun fixture(): Fixture {
