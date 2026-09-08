@@ -17,12 +17,26 @@ enum class ProductConversationCommitStatus {
 }
 
 sealed interface ProductConversationResult {
-    class Completed(
+    class Completed internal constructor(
         val reply: String,
         val streamedChunkCount: Int,
         val streamedCharacterCount: Int,
-        val conversationCommit: ProductConversationCommitStatus
+        val conversationCommit: ProductConversationCommitStatus,
+        internal val learningFollowUpEvidence: ProductLearningFollowUpReference?
     ) : ProductConversationResult {
+        constructor(
+            reply: String,
+            streamedChunkCount: Int,
+            streamedCharacterCount: Int,
+            conversationCommit: ProductConversationCommitStatus
+        ) : this(
+            reply = reply,
+            streamedChunkCount = streamedChunkCount,
+            streamedCharacterCount = streamedCharacterCount,
+            conversationCommit = conversationCommit,
+            learningFollowUpEvidence = null
+        )
+
         init {
             require(reply.isNotBlank()) { "product conversation reply must not be blank" }
             require(streamedChunkCount >= 0)
@@ -33,13 +47,18 @@ sealed interface ProductConversationResult {
             "Completed(reply=<redacted:" + reply.length + ">," +
                 "streamedChunkCount=" + streamedChunkCount + "," +
                 "streamedCharacterCount=" + streamedCharacterCount + "," +
-                "conversationCommit=" + conversationCommit + ")"
+                "conversationCommit=" + conversationCommit + "," +
+                "learningFollowUpEvidence=" +
+                if (learningFollowUpEvidence == null) "<absent>)" else "<redacted>)"
     }
 
     data class Rejected(
         val reason: ProductChatFailure
     ) : ProductConversationResult
 }
+
+fun ProductConversationResult.Completed.learningFollowUpReference():
+    ProductLearningFollowUpReference? = learningFollowUpEvidence
 
 sealed interface ProductConversationClearResult {
     data object Cleared : ProductConversationClearResult
@@ -168,7 +187,8 @@ class ProductConversationHost internal constructor(
                         reply = reply,
                         streamedChunkCount = result.streamedChunkCount,
                         streamedCharacterCount = result.streamedCharacterCount,
-                        conversationCommit = commit
+                        conversationCommit = commit,
+                        learningFollowUpEvidence = result.learningFollowUpReference()
                     )
                 }
 

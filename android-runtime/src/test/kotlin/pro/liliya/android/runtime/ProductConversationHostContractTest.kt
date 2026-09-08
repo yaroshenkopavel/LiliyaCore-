@@ -88,6 +88,121 @@ class ProductConversationHostContractTest {
     }
 
     @Test
+    fun legacy_completed_constructor_remains_available_and_has_no_fabricated_learning_evidence() {
+        val completed = ProductConversationResult.Completed(
+            reply = "legacy reply",
+            streamedChunkCount = 0,
+            streamedCharacterCount = 0,
+            conversationCommit = ProductConversationCommitStatus.COMMITTED
+        )
+
+        assertEquals(null, completed.learningFollowUpReference())
+    }
+
+    @Test
+    fun one_shot_success_exposes_exact_opaque_learning_follow_up_evidence() {
+        val host = host(
+            runner = ProductConversationTurnRunner { _, _, _ ->
+                completed(
+                    reply = "reply",
+                    candidateId = "PRIVATE-EXACT-CANDIDATE",
+                    learningGeneration = 7
+                )
+            }
+        )
+
+        val result = assertIs<ProductConversationResult.Completed>(
+            host.send(ProductChatRequest("hello", ProductChatGenerationMode.ONE_SHOT))
+        )
+        val evidence = requireNotNull(result.learningFollowUpReference())
+
+        assertEquals("PRIVATE-EXACT-CANDIDATE", evidence.cognitive.id.value)
+        assertEquals(7L, evidence.cognitive.generation.value)
+        assertFalse("PRIVATE-EXACT-CANDIDATE" in evidence.toString())
+        assertFalse("PRIVATE-EXACT-CANDIDATE" in result.toString())
+    }
+
+    @Test
+    fun streaming_success_exposes_exact_finalization_learning_evidence() {
+        val host = host(
+            runner = ProductConversationTurnRunner { _, _, sink ->
+                requireNotNull(sink).onChunk(CognitiveInferenceChunk(reference(), 1, "partial"))
+                completed(
+                    reply = "final",
+                    chunks = 1,
+                    chars = 7,
+                    candidateId = "stream-candidate",
+                    learningGeneration = 3
+                )
+            }
+        )
+
+        val result = assertIs<ProductConversationResult.Completed>(
+            host.send(
+                ProductChatRequest("hello", ProductChatGenerationMode.STREAMING),
+                ProductChatStreamingSink { ProductChatStreamControl.CONTINUE }
+            )
+        )
+        val evidence = requireNotNull(result.learningFollowUpReference())
+
+        assertEquals("stream-candidate", evidence.cognitive.id.value)
+        assertEquals(3L, evidence.generation)
+    }
+
+    @Test
+    fun successful_non_retained_pair_still_exposes_exact_learning_evidence() {
+        val host = host(
+            maxRetainedMessages = 2,
+            maxRetainedCharacters = 3,
+            maxMessageCharacters = 8,
+            runner = ProductConversationTurnRunner { _, _, _ ->
+                completed(
+                    reply = "reply",
+                    candidateId = "non-retained-candidate",
+                    learningGeneration = 5
+                )
+            }
+        )
+
+        val result = assertIs<ProductConversationResult.Completed>(
+            host.send(ProductChatRequest("user", ProductChatGenerationMode.ONE_SHOT))
+        )
+
+        assertEquals(
+            ProductConversationCommitStatus.NOT_RETAINED_RESOURCE_LIMIT,
+            result.conversationCommit
+        )
+        assertEquals(
+            "non-retained-candidate",
+            requireNotNull(result.learningFollowUpReference()).cognitive.id.value
+        )
+    }
+
+    @Test
+    fun clear_does_not_erase_already_returned_learning_evidence() {
+        val host = host(
+            runner = ProductConversationTurnRunner { _, _, _ ->
+                completed(
+                    reply = "reply",
+                    candidateId = "clear-independent-candidate",
+                    learningGeneration = 9
+                )
+            }
+        )
+
+        val result = assertIs<ProductConversationResult.Completed>(
+            host.send(ProductChatRequest("hello", ProductChatGenerationMode.ONE_SHOT))
+        )
+        val beforeClear = requireNotNull(result.learningFollowUpReference())
+
+        assertEquals(ProductConversationClearResult.Cleared, host.clear())
+
+        val afterClear = requireNotNull(result.learningFollowUpReference())
+        assertEquals(beforeClear.cognitive, afterClear.cognitive)
+        assertEquals(9L, afterClear.generation)
+    }
+
+    @Test
     fun first_success_uses_empty_context_and_second_success_sees_exact_committed_pair() {
         val snapshots = mutableListOf<CognitiveConversationContextSnapshot>()
         var calls = 0
@@ -455,7 +570,9 @@ class ProductConversationHostContractTest {
     private fun completed(
         reply: String,
         chunks: Int = 0,
-        chars: Int = 0
+        chars: Int = 0,
+        candidateId: String = "learning",
+        learningGeneration: Long = 1
     ): ProductTurnResult.Completed {
         val turn = reference()
         val planning = PlanningReference(PlanningProposalId("planning"), PlanningGeneration(1))
@@ -475,8 +592,8 @@ class ProductConversationHostContractTest {
                 ReflectionGeneration(1)
             ),
             learning = CognitiveLearningReference(
-                LearningCandidateId("learning"),
-                LearningGeneration(1)
+                LearningCandidateId(candidateId),
+                LearningGeneration(learningGeneration)
             )
         )
         return ProductTurnResult.Completed(turn, finalization, chunks, chars)
