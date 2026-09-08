@@ -32,6 +32,10 @@ internal class CognitiveContextAssembler(
         if (!turns.isCurrentAt(reference, CognitiveTurnLifecycle.CREATED)) {
             return CognitiveContextAssemblyResult.Stale
         }
+        val conversation = turns.conversationIfCurrent(reference)
+        if (!turns.isCurrentAt(reference, CognitiveTurnLifecycle.CREATED)) {
+            return CognitiveContextAssemblyResult.Stale
+        }
 
         val self = try {
             selfSnapshots.current()
@@ -102,6 +106,20 @@ internal class CognitiveContextAssembler(
         }
 
         val items = mutableListOf<CognitiveContextItem>()
+
+        conversation?.messages?.forEach { message ->
+            if (!items.addBounded(
+                    source = CognitiveContextSourceReference.Conversation(
+                        sessionId = conversation.sessionId,
+                        sequence = message.sequence,
+                        role = message.role
+                    ),
+                    content = message.content
+                )
+            ) {
+                return contextLimitRejected()
+            }
+        }
 
         if (self != null) {
             if (!items.addBounded(
