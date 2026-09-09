@@ -27,7 +27,7 @@ class LiliyaActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(buildContent())
-        renderState(app.startRuntime())
+        renderStartupOutcome(app.startApplicationRuntime())
     }
 
     override fun onDestroy() {
@@ -92,6 +92,24 @@ class LiliyaActivity : Activity() {
         root.addView(send)
 
         return root
+    }
+
+    private fun renderStartupOutcome(outcome: ProductionAndroidAppStartupOutcome) {
+        when (outcome) {
+            ProductionAndroidAppStartupOutcome.ConfigurationRequired ->
+                renderState(ProductionAndroidAppRuntimeState.CONFIGURATION_REQUIRED)
+            is ProductionAndroidAppStartupOutcome.Runtime -> renderState(outcome.state)
+            is ProductionAndroidAppStartupOutcome.SourceRejected -> {
+                status.text = "Конфигурация запуска отклонена"
+                input.isEnabled = false
+                send.isEnabled = false
+            }
+            is ProductionAndroidAppStartupOutcome.ProvisioningRejected -> {
+                status.text = "Подготовка запуска отклонена"
+                input.isEnabled = false
+                send.isEnabled = false
+            }
+        }
     }
 
     private fun renderState(state: ProductionAndroidAppRuntimeState) {
