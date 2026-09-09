@@ -1,0 +1,35 @@
+name: Tooling Pinned Llama Source Bridge
+
+on:
+  push:
+    branches:
+      - foundation/tooling-local-snapshot
+    paths:
+      - .github/workflows/tooling-pinned-llama-source.yml
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch exact pinned llama.cpp source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone https://github.com/ggml-org/llama.cpp.git llama_cpp-src
+          cd llama_cpp-src
+          git checkout 0f3a71be15af836d277c9f918adfafb45732677e
+          test "$(git rev-parse HEAD)" = "0f3a71be15af836d277c9f918adfafb45732677e"
+          cd ..
+          tar --exclude='.git' -czf llama_cpp-src-0f3a71be15af836d277c9f918adfafb45732677e.tar.gz llama_cpp-src
+          printf '%s\n' 0f3a71be15af836d277c9f918adfafb45732677e > LLAMA_HEAD.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pinned-llama-cpp-source
+          path: |
+            llama_cpp-src-0f3a71be15af836d277c9f918adfafb45732677e.tar.gz
+            LLAMA_HEAD.txt
+          if-no-files-found: error
+          retention-days: 1
