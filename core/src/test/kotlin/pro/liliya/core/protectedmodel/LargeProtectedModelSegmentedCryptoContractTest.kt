@@ -12,7 +12,6 @@ import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
-import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 class LargeProtectedModelSegmentedCryptoContractTest {
@@ -320,9 +319,10 @@ class LargeProtectedModelSegmentedCryptoContractTest {
         assertTrue(detached.toString().contains("<redacted:"))
         assertTrue(fixture.envelope.toString().contains("signature=<redacted:"))
 
+        val originalSignature = fixture.envelope.copySignature()
         val signatureCopy = fixture.envelope.copySignature()
         signatureCopy.fill(0)
-        assertNotEquals(0, fixture.envelope.copySignature().first().toInt())
+        assertContentEquals(originalSignature, fixture.envelope.copySignature())
     }
 
     @Test
