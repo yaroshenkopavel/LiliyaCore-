@@ -3,6 +3,7 @@ package pro.liliya.app
 import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
+import android.text.InputType
 import android.view.Gravity
 import android.view.View
 import android.view.inputmethod.EditorInfo
@@ -12,7 +13,10 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import java.io.File
+import java.util.UUID
 import java.util.concurrent.Executors
+import pro.liliya.android.runtime.AndroidProductRuntimeFirstRunKeyChoice
+import pro.liliya.android.runtime.AndroidProductRuntimeFirstRunKeySecurity
 import pro.liliya.android.runtime.ProductChatResult
 
 class LiliyaActivity : Activity() {
@@ -23,6 +27,9 @@ class LiliyaActivity : Activity() {
     private lateinit var input: EditText
     private lateinit var send: Button
     private lateinit var selectModel: Button
+    private lateinit var keyControls: LinearLayout
+    private lateinit var restoreDekId: EditText
+    private lateinit var restoreDekGeneration: EditText
 
     private val app: LiliyaApplication
         get() = application as LiliyaApplication
@@ -67,7 +74,7 @@ class LiliyaActivity : Activity() {
                 when (result) {
                     is ProductionAndroidLocalModelSelectionResult.Selected -> {
                         selectModel.text = "Выбрать другую модель"
-                        status.text = "Модель выбрана. Требуются остальные параметры запуска"
+                        refreshConfigurationStatus()
                     }
                     ProductionAndroidLocalModelSelectionResult.EmptyDocument ->
                         status.text = "Выбранный файл модели пуст"
@@ -109,6 +116,56 @@ class LiliyaActivity : Activity() {
             setOnClickListener { launchLocalModelPicker() }
         }
         root.addView(selectModel)
+
+        keyControls = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+        }
+
+        keyControls.addView(TextView(this).apply {
+            text = "Ключ памяти: выберите способ явно"
+        })
+
+        keyControls.addView(Button(this).apply {
+            text = "Создать: StrongBox"
+            setOnClickListener {
+                selectCreateOnceKey(AndroidProductRuntimeFirstRunKeySecurity.STRONGBOX)
+            }
+        })
+        keyControls.addView(Button(this).apply {
+            text = "Создать: защищённая среда (TEE)"
+            setOnClickListener {
+                selectCreateOnceKey(
+                    AndroidProductRuntimeFirstRunKeySecurity.TRUSTED_ENVIRONMENT
+                )
+            }
+        })
+        keyControls.addView(Button(this).apply {
+            text = "Создать: программный уровень"
+            setOnClickListener {
+                selectCreateOnceKey(AndroidProductRuntimeFirstRunKeySecurity.SOFTWARE)
+            }
+        })
+
+        restoreDekId = EditText(this).apply {
+            hint = "Exact DEK id для восстановления"
+            setSingleLine(true)
+        }
+        keyControls.addView(restoreDekId)
+
+        restoreDekGeneration = EditText(this).apply {
+            hint = "Exact DEK generation"
+            inputType = InputType.TYPE_CLASS_NUMBER
+            setSingleLine(true)
+        }
+        keyControls.addView(restoreDekGeneration)
+
+        keyControls.addView(Button(this).apply {
+            text = "Восстановить exact DEK"
+            setOnClickListener { selectRestoreExactKey() }
+        })
+
+        root.addView(keyControls)
 
         transcript = TextView(this).apply {
             textSize = 16f
@@ -157,6 +214,70 @@ class LiliyaActivity : Activity() {
         startActivityForResult(intent, LOCAL_MODEL_DOCUMENT_REQUEST)
     }
 
+    private fun selectCreateOnceKey(
+        security: AndroidProductRuntimeFirstRunKeySecurity
+    ) {
+        val identity = UUID.randomUUID().toString()
+        val result = ProductionAndroidFirstRunKeySelection.select(
+            AndroidProductRuntimeFirstRunKeyChoice.CreateOnce(
+                dekId = "first-run-$identity",
+                protectorId = "first-run-protector-$identity",
+                protectorGeneration = 1L,
+                security = security
+            )
+        )
+        renderKeySelectionResult(result)
+    }
+
+    private fun selectRestoreExactKey() {
+        val dekId = restoreDekId.text?.toString()?.trim().orEmpty()
+        val generation = restoreDekGeneration.text?.toString()?.trim()?.toLongOrNull()
+        if (dekId.isBlank() || generation == null) {
+            status.text = "Укажите exact DEK id и generation"
+            return
+        }
+
+        val result = ProductionAndroidFirstRunKeySelection.select(
+            AndroidProductRuntimeFirstRunKeyChoice.RestoreExact(
+                dekId = dekId,
+                dekGeneration = generation
+            )
+        )
+        renderKeySelectionResult(result)
+    }
+
+    private fun renderKeySelectionResult(
+        result: ProductionAndroidFirstRunKeySelectionResult
+    ) {
+        when (result) {
+            is ProductionAndroidFirstRunKeySelectionResult.Selected ->
+                refreshConfigurationStatus()
+            ProductionAndroidFirstRunKeySelectionResult.AlreadySelected ->
+                status.text = "Выбор ключа уже зафиксирован для этого запуска"
+            ProductionAndroidFirstRunKeySelectionResult.Rejected ->
+                status.text = "Выбор ключа отклонён"
+        }
+    }
+
+    private fun refreshConfigurationStatus() {
+        val modelSelected = ProductionAndroidLocalModelSelection.current() != null
+        val keySelected = ProductionAndroidFirstRunKeySelection.current() != null
+        status.text = when {
+            !modelSelected && !keySelected ->
+                "Требуется доверенная конфигурация запуска"
+            modelSelected && !keySelected ->
+                "Модель выбрана. Требуется явный выбор ключа памяти"
+            !modelSelected && keySelected ->
+                "Ключ памяти выбран. Требуется локальная модель"
+            else ->
+                "Модель и ключ выбраны. Требуются остальные параметры запуска"
+        }
+        keyControls.isEnabled = !keySelected
+        for (index in 0 until keyControls.childCount) {
+            keyControls.getChildAt(index).isEnabled = !keySelected
+        }
+    }
+
     private fun renderStartupOutcome(outcome: ProductionAndroidAppStartupOutcome) {
         when (outcome) {
             ProductionAndroidAppStartupOutcome.ConfigurationRequired ->
@@ -165,12 +286,14 @@ class LiliyaActivity : Activity() {
             is ProductionAndroidAppStartupOutcome.SourceRejected -> {
                 status.text = "Конфигурация запуска отклонена"
                 selectModel.visibility = View.GONE
+                keyControls.visibility = View.GONE
                 input.isEnabled = false
                 send.isEnabled = false
             }
             is ProductionAndroidAppStartupOutcome.ProvisioningRejected -> {
                 status.text = "Подготовка запуска отклонена"
                 selectModel.visibility = View.GONE
+                keyControls.visibility = View.GONE
                 input.isEnabled = false
                 send.isEnabled = false
             }
@@ -179,21 +302,22 @@ class LiliyaActivity : Activity() {
 
     private fun renderState(state: ProductionAndroidAppRuntimeState) {
         status.text = when (state) {
-            ProductionAndroidAppRuntimeState.CONFIGURATION_REQUIRED ->
-                if (ProductionAndroidLocalModelSelection.current() == null) {
-                    "Требуется доверенная конфигурация запуска"
-                } else {
-                    "Модель выбрана. Требуются остальные параметры запуска"
-                }
+            ProductionAndroidAppRuntimeState.CONFIGURATION_REQUIRED -> ""
             ProductionAndroidAppRuntimeState.STARTING -> "Запуск…"
             ProductionAndroidAppRuntimeState.READY -> "Готова"
             ProductionAndroidAppRuntimeState.FAILED -> "Запуск отклонён"
             ProductionAndroidAppRuntimeState.CLOSED -> "Остановлена"
         }
+
+        val configurationRequired =
+            state == ProductionAndroidAppRuntimeState.CONFIGURATION_REQUIRED
+        selectModel.visibility = if (configurationRequired) View.VISIBLE else View.GONE
+        keyControls.visibility = if (configurationRequired) View.VISIBLE else View.GONE
+        if (configurationRequired) {
+            refreshConfigurationStatus()
+        }
+
         val ready = state == ProductionAndroidAppRuntimeState.READY
-        selectModel.visibility =
-            if (state == ProductionAndroidAppRuntimeState.CONFIGURATION_REQUIRED) View.VISIBLE
-            else View.GONE
         input.isEnabled = ready
         send.isEnabled = ready
     }
