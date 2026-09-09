@@ -1,6 +1,7 @@
 package pro.liliya.app
 
 import android.app.Application
+import pro.liliya.android.runtime.AndroidProductRuntimeStartupCompositionRequest
 import pro.liliya.android.runtime.AndroidProductRuntimeStartupProvisioningPorts
 
 class LiliyaApplication : Application() {
@@ -13,6 +14,11 @@ class LiliyaApplication : Application() {
         ports: AndroidProductRuntimeStartupProvisioningPorts
     ): ProductionAndroidRuntimeStartupInstallResult =
         ProductionAndroidRuntimeStartupInstall.prepareAndInstall(ports)
+
+    fun provisionRuntime(
+        request: AndroidProductRuntimeStartupCompositionRequest
+    ): ProductionAndroidRuntimeStartupInstallResult =
+        ProductionAndroidRuntimeStartupCompositionInstall.prepareAndInstall(request)
 
     fun startRuntime(): ProductionAndroidAppRuntimeState {
         ProductionAndroidRuntimeConfigurationInstaller.ensureTrustedWiringInstalled()
