@@ -235,3 +235,39 @@ class AndroidProductRuntimeStartupLocalModelAdapter internal constructor(
         }
     }
 }
+
+internal fun interface AndroidProductRuntimeStartupSemanticResolvePort {
+    fun resolve(): pro.liliya.android.semanticprovider.AndroidOfflineSemanticProvisionedLocationResult
+}
+
+class AndroidProductRuntimeStartupSemanticAdapter internal constructor(
+    private val resolvePort: AndroidProductRuntimeStartupSemanticResolvePort
+) : AndroidProductRuntimeStartupSemanticPort {
+    constructor(
+        context: android.content.Context,
+        provisioner: pro.liliya.android.semanticprovider.AndroidOfflineSemanticArtifactProvisioner,
+        directoryName: String = pro.liliya.android.semanticprovider.AndroidOfflineSemanticArtifactProvisioner.DEFAULT_DIRECTORY
+    ) : this(
+        AndroidProductRuntimeStartupSemanticResolvePort {
+            provisioner.resolveProvisioned(context, directoryName)
+        }
+    )
+
+    override fun prepare(): AndroidProductRuntimeStartupPreparationResult<AndroidProductRuntimeSemanticArtifacts> =
+        when (val result = try {
+            resolvePort.resolve()
+        } catch (_: Exception) {
+            return AndroidProductRuntimeStartupPreparationResult.Rejected
+        }) {
+            is pro.liliya.android.semanticprovider.AndroidOfflineSemanticProvisionedLocationResult.Ready ->
+                AndroidProductRuntimeStartupPreparationResult.Ready(
+                    AndroidProductRuntimeSemanticArtifacts(
+                        root = result.root,
+                        encoderFile = result.encoderFile
+                    )
+                )
+            pro.liliya.android.semanticprovider.AndroidOfflineSemanticProvisionedLocationResult.MissingOrRejected,
+            pro.liliya.android.semanticprovider.AndroidOfflineSemanticProvisionedLocationResult.Failed ->
+                AndroidProductRuntimeStartupPreparationResult.Rejected
+        }
+}
