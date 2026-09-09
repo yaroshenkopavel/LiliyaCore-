@@ -14,7 +14,6 @@ import pro.liliya.core.cognitive.CognitiveRuntimeScopeId
 import pro.liliya.core.cognitive.CognitiveTimestampSource
 import pro.liliya.core.encryption.CognitiveDekReference
 import pro.liliya.core.foundation.FoundationComposition
-import pro.liliya.core.learning.EncryptedPersistentLearningApplicationMutationComposition
 import pro.liliya.core.learning.LearningPolicyComposition
 import pro.liliya.core.learning.LearningPolicyReference
 import pro.liliya.core.persistence.PersistentStoreId
@@ -43,13 +42,40 @@ data class AndroidProductRuntimeStartupPreparedInputOwners(
     val principal: AuthorityPrincipal,
     val governance: CognitiveLearningGovernancePort,
     val learningMaterialization: CognitiveLearningApplicationMaterializationPort,
-    val mutations: EncryptedPersistentLearningApplicationMutationComposition,
+    val learningMutationStoreId: PersistentStoreId,
     val artifactIds: CognitiveArtifactIdSource,
     val timestamps: CognitiveTimestampSource,
     val limits: CognitiveRuntimeLimits = CognitiveRuntimeLimits(),
     val personaLimits: AndroidHeartProductionPersonaLimits =
         AndroidHeartProductionPersonaLimits()
 )
+
+
+internal fun interface AndroidProductRuntimeStartupLearningMutationsOpenPort {
+    fun open(
+        storeId: PersistentStoreId,
+        activeDek: CognitiveDekReference
+    ): pro.liliya.android.cognitivestorage.AndroidEncryptedLearningMutationOpenResult
+}
+
+internal fun resolveStartupLearningMutations(
+    storeId: PersistentStoreId,
+    activeDek: CognitiveDekReference,
+    openPort: AndroidProductRuntimeStartupLearningMutationsOpenPort
+): AndroidProductRuntimeStartupPreparationResult<pro.liliya.core.learning.EncryptedPersistentLearningApplicationMutationComposition> =
+    when (val opened = try {
+        openPort.open(storeId, activeDek)
+    } catch (_: Exception) {
+        return AndroidProductRuntimeStartupPreparationResult.Rejected
+    }) {
+        is pro.liliya.android.cognitivestorage.AndroidEncryptedLearningMutationOpenResult.Opened ->
+            AndroidProductRuntimeStartupPreparationResult.Ready(opened.composition)
+        pro.liliya.android.cognitivestorage.AndroidEncryptedLearningMutationOpenResult.Corrupt,
+        is pro.liliya.android.cognitivestorage.AndroidEncryptedLearningMutationOpenResult.Incompatible,
+        is pro.liliya.android.cognitivestorage.AndroidEncryptedLearningMutationOpenResult.EncryptionUnavailable,
+        is pro.liliya.android.cognitivestorage.AndroidEncryptedLearningMutationOpenResult.Failed ->
+            AndroidProductRuntimeStartupPreparationResult.Rejected
+    }
 
 internal fun interface AndroidProductRuntimeStartupPreparedInputsBuildPort {
     fun build(
@@ -66,6 +92,20 @@ class AndroidProductRuntimeStartupPreparedInputsAdapter internal constructor(
         owners: AndroidProductRuntimeStartupPreparedInputOwners
     ) : this(
         AndroidProductRuntimeStartupPreparedInputsBuildPort { activeDek, semantic, stagedModel ->
+            val mutations = when (
+                val resolved = resolveStartupLearningMutations(
+                    storeId = owners.learningMutationStoreId,
+                    activeDek = activeDek,
+                    openPort = AndroidProductRuntimeStartupLearningMutationsOpenPort { storeId, dek ->
+                        owners.cognitiveStorage.openEncryptedLearningMutations(storeId, dek)
+                    }
+                )
+            ) {
+                is AndroidProductRuntimeStartupPreparationResult.Ready -> resolved.value
+                AndroidProductRuntimeStartupPreparationResult.Rejected ->
+                    return@AndroidProductRuntimeStartupPreparedInputsBuildPort AndroidProductRuntimeStartupPreparationResult.Rejected
+            }
+
             AndroidProductRuntimeStartupPreparationResult.Ready(
                 AndroidProductRuntimeHostPreparedInputs(
                     foundation = owners.foundation,
@@ -88,7 +128,7 @@ class AndroidProductRuntimeStartupPreparedInputsAdapter internal constructor(
                     principal = owners.principal,
                     governance = owners.governance,
                     learningMaterialization = owners.learningMaterialization,
-                    mutations = owners.mutations,
+                    mutations = mutations,
                     artifactIds = owners.artifactIds,
                     timestamps = owners.timestamps,
                     limits = owners.limits,
