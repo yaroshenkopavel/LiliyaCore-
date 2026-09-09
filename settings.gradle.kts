@@ -22,3 +22,4 @@ include(":android-cognitive-storage")
 
 include(":android-semantic-test-host")
 include(":android-runtime")
+include(":android-app")
