@@ -23,13 +23,13 @@ jobs:
           git checkout 0f3a71be15af836d277c9f918adfafb45732677e
           test "$(git rev-parse HEAD)" = "0f3a71be15af836d277c9f918adfafb45732677e"
           cd ..
-          tar --exclude='.git' -czf llama_cpp-src-0f3a71be15af836d277c9f918adfafb45732677e.tar.gz llama_cpp-src
+          tar -czf llama_cpp-repo-0f3a71be15af836d277c9f918adfafb45732677e.tar.gz llama_cpp-src
           printf '%s\n' 0f3a71be15af836d277c9f918adfafb45732677e > LLAMA_HEAD.txt
       - uses: actions/upload-artifact@v4
         with:
           name: pinned-llama-cpp-source
           path: |
-            llama_cpp-src-0f3a71be15af836d277c9f918adfafb45732677e.tar.gz
+            llama_cpp-repo-0f3a71be15af836d277c9f918adfafb45732677e.tar.gz
             LLAMA_HEAD.txt
           if-no-files-found: error
           retention-days: 1
