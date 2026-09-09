@@ -193,6 +193,43 @@ class AndroidProductRuntimeStartupProvisioningContractTest {
         assertIs<AndroidProductRuntimeStartupPreparationResult.Rejected>(failed.prepare())
     }
 
+
+
+    @Test
+    fun semantic_adapter_preserves_exact_resolved_location() {
+        val root = File("semantic-root")
+        val encoder = File(root, "encoder.onnx")
+        val adapter = AndroidProductRuntimeStartupSemanticAdapter(
+            AndroidProductRuntimeStartupSemanticResolvePort {
+                pro.liliya.android.semanticprovider.AndroidOfflineSemanticProvisionedLocationResult.Ready(
+                    root = root,
+                    encoderFile = encoder
+                )
+            }
+        )
+
+        val result = adapter.prepare()
+
+        val ready = assertIs<AndroidProductRuntimeStartupPreparationResult.Ready<AndroidProductRuntimeSemanticArtifacts>>(result)
+        assertEquals(root, ready.value.root)
+        assertEquals(encoder, ready.value.encoderFile)
+    }
+
+    @Test
+    fun semantic_adapter_maps_rejection_and_exception_to_bounded_rejection() {
+        val rejected = AndroidProductRuntimeStartupSemanticAdapter(
+            AndroidProductRuntimeStartupSemanticResolvePort {
+                pro.liliya.android.semanticprovider.AndroidOfflineSemanticProvisionedLocationResult.MissingOrRejected
+            }
+        )
+        val failed = AndroidProductRuntimeStartupSemanticAdapter(
+            AndroidProductRuntimeStartupSemanticResolvePort { error("private semantic resolver failure") }
+        )
+
+        assertIs<AndroidProductRuntimeStartupPreparationResult.Rejected>(rejected.prepare())
+        assertIs<AndroidProductRuntimeStartupPreparationResult.Rejected>(failed.prepare())
+    }
+
     @Test
     fun local_model_adapter_stops_before_staging_when_local_package_is_rejected() {
         var stagingCalls = 0

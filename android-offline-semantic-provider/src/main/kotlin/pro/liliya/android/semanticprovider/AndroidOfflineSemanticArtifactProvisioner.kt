@@ -23,6 +23,16 @@ sealed interface AndroidOfflineSemanticArtifactProvisionResult {
     data object PublicationFailed : AndroidOfflineSemanticArtifactProvisionResult
 }
 
+sealed interface AndroidOfflineSemanticProvisionedLocationResult {
+    data class Ready(
+        val root: File,
+        val encoderFile: File
+    ) : AndroidOfflineSemanticProvisionedLocationResult
+
+    data object MissingOrRejected : AndroidOfflineSemanticProvisionedLocationResult
+    data object Failed : AndroidOfflineSemanticProvisionedLocationResult
+}
+
 /**
  * Blocking local provisioner for the exact repository-approved semantic ONNX bundle.
  *
@@ -30,6 +40,60 @@ sealed interface AndroidOfflineSemanticArtifactProvisionResult {
  * Provisioning must be scheduled off the Android main/UI thread.
  */
 class AndroidOfflineSemanticArtifactProvisioner {
+
+    fun resolveProvisioned(
+        context: Context,
+        directoryName: String = DEFAULT_DIRECTORY
+    ): AndroidOfflineSemanticProvisionedLocationResult {
+        if (
+            directoryName.isBlank() ||
+            directoryName.contains('/') ||
+            directoryName.contains('\\')
+        ) {
+            return AndroidOfflineSemanticProvisionedLocationResult.Failed
+        }
+        val appRoot = try {
+            context.applicationContext.filesDir.canonicalFile
+        } catch (_: IOException) {
+            return AndroidOfflineSemanticProvisionedLocationResult.Failed
+        }
+        val root = try {
+            File(appRoot, directoryName).canonicalFile
+        } catch (_: IOException) {
+            return AndroidOfflineSemanticProvisionedLocationResult.Failed
+        }
+        if (root.parentFile != appRoot) {
+            return AndroidOfflineSemanticProvisionedLocationResult.Failed
+        }
+
+        val identity = productionSemanticModelIdentity()
+        val encoderFile = File(root, identity.modelFileName)
+        return when (
+            SemanticModelArtifactValidator(
+                appPrivateRoot = root,
+                trustedIdentity = identity
+            ).validate(
+                candidate = encoderFile,
+                spec = SemanticModelArtifactSpec(identity)
+            )
+        ) {
+            is SemanticModelArtifactValidationResult.Validated ->
+                AndroidOfflineSemanticProvisionedLocationResult.Ready(root, encoderFile)
+            SemanticModelArtifactValidationResult.Missing,
+            SemanticModelArtifactValidationResult.OutsideAppPrivateRoot,
+            SemanticModelArtifactValidationResult.NotRegularFile,
+            SemanticModelArtifactValidationResult.FileNameMismatch,
+            SemanticModelArtifactValidationResult.ProfileMismatch,
+            SemanticModelArtifactValidationResult.ArtifactIdentityMismatch,
+            SemanticModelArtifactValidationResult.IncompleteConversionProvenance,
+            SemanticModelArtifactValidationResult.ArtifactTooLarge,
+            SemanticModelArtifactValidationResult.SizeMismatch,
+            SemanticModelArtifactValidationResult.DigestMismatch ->
+                AndroidOfflineSemanticProvisionedLocationResult.MissingOrRejected
+            is SemanticModelArtifactValidationResult.Failed ->
+                AndroidOfflineSemanticProvisionedLocationResult.Failed
+        }
+    }
 
     fun provision(
         context: Context,
