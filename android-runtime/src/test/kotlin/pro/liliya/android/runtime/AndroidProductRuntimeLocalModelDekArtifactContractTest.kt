@@ -110,6 +110,49 @@ class AndroidProductRuntimeLocalModelDekArtifactContractTest {
     }
 
     @Test
+    fun unsupported_version_and_malformed_utf8_fail_closed() {
+        val model = model("package", 1)
+        val dek = dek("dek", 1)
+        val exact = artifact(model, dek, ByteArray(32) { 4 })
+
+        val wrongVersion = exact.copyOf().also { bytes ->
+            bytes[5] = 0
+            bytes[6] = 0
+            bytes[7] = 0
+            bytes[8] = 2
+        }
+        val versionResult =
+            assertIs<AndroidProductRuntimeLocalModelDekArtifactResult.Rejected>(
+                AndroidProductRuntimeLocalModelDekArtifact.parse(
+                    ByteArrayInputStream(wrongVersion)
+                )
+            )
+        assertEquals(
+            AndroidProductRuntimeLocalModelDekArtifactFailure.UNSUPPORTED_VERSION,
+            versionResult.reason
+        )
+
+        val malformed = exact.copyOf()
+        val firstStringStart = 5 + 4 + 4
+        malformed[firstStringStart] = 0xC3.toByte()
+        malformed[firstStringStart + 1] = 0x28
+        val malformedResult =
+            assertIs<AndroidProductRuntimeLocalModelDekArtifactResult.Rejected>(
+                AndroidProductRuntimeLocalModelDekArtifact.parse(
+                    ByteArrayInputStream(malformed)
+                )
+            )
+        assertEquals(
+            AndroidProductRuntimeLocalModelDekArtifactFailure.MALFORMED,
+            malformedResult.reason
+        )
+
+        exact.fill(0)
+        wrongVersion.fill(0)
+        malformed.fill(0)
+    }
+
+    @Test
     fun provider_rendering_redacts_material() {
         val model = model("package", 1)
         val dek = dek("dek", 1)
