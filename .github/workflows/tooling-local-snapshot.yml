@@ -1,0 +1,38 @@
+name: Tooling Local Snapshot Bridge
+
+on:
+  push:
+    branches:
+      - foundation/tooling-local-snapshot
+    paths:
+      - .github/workflows/tooling-local-snapshot.yml
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Package exact source snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          tar \
+            --exclude='.git' \
+            --exclude='**/build' \
+            --exclude='.gradle' \
+            --exclude='out' \
+            -czf out/LiliyaCore-source-${GITHUB_SHA}.tar.gz .
+          git rev-parse HEAD > out/HEAD.txt
+          git rev-parse HEAD^{tree} > out/TREE.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LiliyaCore-source-snapshot
+          path: out/
+          if-no-files-found: error
+          retention-days: 1
