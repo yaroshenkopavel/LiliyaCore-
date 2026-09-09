@@ -9,6 +9,13 @@ import pro.liliya.android.runtime.AndroidProductRuntimeStartupInputAssemblyInput
 class LiliyaApplication : Application() {
     val runtimeOwner: ProductionAndroidAppRuntimeOwner = ProductionAndroidAppRuntimeOwner()
     private val startupCoordinator = ProductionAndroidRuntimeStartupCoordinator()
+    private lateinit var observability: ProductionAndroidAppObservability
+
+    override fun onCreate() {
+        super.onCreate()
+        observability = ProductionAndroidAppObservability.create(this)
+        observability.installLoggerWriter()
+    }
 
     fun configureRuntime(sources: ProductionAndroidRuntimeWiringSources): Boolean =
         ProductionAndroidRuntimeConfiguration.install(sources)
