@@ -1,7 +1,6 @@
 package pro.liliya.android.runtime
 
 import java.io.ByteArrayInputStream
-import java.io.ByteArrayOutputStream
 import java.io.DataInputStream
 import java.io.EOFException
 import java.io.IOException
@@ -256,23 +255,19 @@ object AndroidProductRuntimeLocalModelDekArtifact {
         input: InputStream,
         maxBytes: Int
     ): ByteArray? {
-        val output = ByteArrayOutputStream(minOf(maxBytes, 256))
-        val buffer = ByteArray(256)
+        val buffer = ByteArray(maxBytes + 1)
         var total = 0
         try {
-            while (true) {
-                val count = input.read(buffer)
-                if (count < 0) break
-                if (count == 0) continue
-                total = try {
-                    Math.addExact(total, count)
-                } catch (_: ArithmeticException) {
-                    return null
+            while (total < buffer.size) {
+                val count = input.read(buffer, total, buffer.size - total)
+                if (count < 0) {
+                    return buffer.copyOf(total)
                 }
+                if (count == 0) continue
+                total += count
                 if (total > maxBytes) return null
-                output.write(buffer, 0, count)
             }
-            return output.toByteArray()
+            return null
         } finally {
             buffer.fill(0)
         }
