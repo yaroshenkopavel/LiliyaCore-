@@ -31,6 +31,7 @@ repositories {
 
 dependencies {
     implementation(project(":android-runtime"))
+    implementation(project(":license-transport-client"))
 
     testImplementation(kotlin("test"))
     testImplementation("junit:junit:4.13.2")
