@@ -45,6 +45,48 @@ class AndroidProductRuntimeStartupPreparedInputsContractTest {
         assertIs<AndroidProductRuntimeStartupPreparationResult.Rejected>(result)
     }
 
+
+    @Test
+    fun learning_mutation_resolution_uses_exact_store_and_active_dek() {
+        val storeId = pro.liliya.core.persistence.PersistentStoreId("learning-mutations")
+        val dek = CognitiveDekReference(
+            id = CognitiveDekId("learning-mutation-dek"),
+            generation = CognitiveDekGeneration(7)
+        )
+        var actualStoreId: pro.liliya.core.persistence.PersistentStoreId? = null
+        var actualDek: CognitiveDekReference? = null
+
+        val result = resolveStartupLearningMutations(
+            storeId = storeId,
+            activeDek = dek,
+            openPort = AndroidProductRuntimeStartupLearningMutationsOpenPort { receivedStoreId, receivedDek ->
+                actualStoreId = receivedStoreId
+                actualDek = receivedDek
+                pro.liliya.android.cognitivestorage.AndroidEncryptedLearningMutationOpenResult.Corrupt
+            }
+        )
+
+        assertEquals(storeId, actualStoreId)
+        assertEquals(dek, actualDek)
+        assertIs<AndroidProductRuntimeStartupPreparationResult.Rejected>(result)
+    }
+
+    @Test
+    fun learning_mutation_resolution_bounds_open_exception() {
+        val result = resolveStartupLearningMutations(
+            storeId = pro.liliya.core.persistence.PersistentStoreId("learning-mutations"),
+            activeDek = CognitiveDekReference(
+                id = CognitiveDekId("learning-mutation-dek"),
+                generation = CognitiveDekGeneration(1)
+            ),
+            openPort = AndroidProductRuntimeStartupLearningMutationsOpenPort { _, _ ->
+                error("private mutation-store failure")
+            }
+        )
+
+        assertIs<AndroidProductRuntimeStartupPreparationResult.Rejected>(result)
+    }
+
     @Test
     fun adapter_bounds_builder_exception() {
         val adapter = AndroidProductRuntimeStartupPreparedInputsAdapter(
