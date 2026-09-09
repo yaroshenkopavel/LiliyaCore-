@@ -4,6 +4,7 @@ import android.app.Application
 import pro.liliya.android.runtime.AndroidProductRuntimeStartupCompositionRequest
 import pro.liliya.android.runtime.AndroidProductRuntimeStartupProvisioningPorts
 import pro.liliya.android.runtime.AndroidProductRuntimeStartupRequestSourceInput
+import pro.liliya.android.runtime.AndroidProductRuntimeStartupInputAssemblyInput
 
 class LiliyaApplication : Application() {
     val runtimeOwner: ProductionAndroidAppRuntimeOwner = ProductionAndroidAppRuntimeOwner()
@@ -30,6 +31,11 @@ class LiliyaApplication : Application() {
     fun configureStartup(
         input: AndroidProductRuntimeStartupRequestSourceInput
     ): Boolean = ProductionAndroidRuntimeStartupInputConfiguration.install(input)
+
+    fun configureStartup(
+        input: AndroidProductRuntimeStartupInputAssemblyInput
+    ): ProductionAndroidRuntimeStartupInputAssemblyInstallResult =
+        ProductionAndroidRuntimeStartupInputAssemblyInstall.prepareAndInstall(input)
 
     fun startApplicationRuntime(): ProductionAndroidAppStartupOutcome {
         val input = ProductionAndroidRuntimeStartupInputConfiguration.current()

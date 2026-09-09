@@ -39,7 +39,16 @@ data class AndroidProductRuntimeStartupInputOwnership(
     val sourceInput: AndroidProductRuntimeStartupRequestSourceInput,
     val trust: AndroidProductRuntimeStartupTrustOwnership,
     val authority: AndroidProductRuntimeStartupAuthorityOwnership
-)
+) {
+    fun releaseAuthorityOwnership() {
+        authority.directGrants.asReversed().forEach { grant ->
+            runCatching { grant.revoke() }
+        }
+        authority.capabilities.asReversed().forEach { capability ->
+            runCatching { capability.unregister() }
+        }
+    }
+}
 
 sealed interface AndroidProductRuntimeStartupInputAssemblyResult {
     data class Ready(
