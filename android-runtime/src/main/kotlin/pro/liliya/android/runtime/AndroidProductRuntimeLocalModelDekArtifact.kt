@@ -141,7 +141,10 @@ object AndroidProductRuntimeLocalModelDekArtifact {
         input: InputStream,
         maxArtifactBytes: Int = DEFAULT_MAX_ARTIFACT_BYTES
     ): AndroidProductRuntimeLocalModelDekArtifactResult {
-        if (maxArtifactBytes <= 0) {
+        if (
+            maxArtifactBytes <= 0 ||
+            maxArtifactBytes > DEFAULT_MAX_ARTIFACT_BYTES
+        ) {
             return AndroidProductRuntimeLocalModelDekArtifactResult.Rejected(
                 AndroidProductRuntimeLocalModelDekArtifactFailure.OVERSIZED
             )
