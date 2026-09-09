@@ -1,0 +1,37 @@
+name: Tooling Pinned Llama Git Bundle Bridge
+
+on:
+  push:
+    branches:
+      - foundation/tooling-local-snapshot
+    paths:
+      - .github/workflows/tooling-pinned-llama-bundle.yml
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Build exact pinned llama.cpp git bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone https://github.com/ggml-org/llama.cpp.git llama_cpp
+          cd llama_cpp
+          git checkout 0f3a71be15af836d277c9f918adfafb45732677e
+          test "$(git rev-parse HEAD)" = "0f3a71be15af836d277c9f918adfafb45732677e"
+          git branch offline-pinned 0f3a71be15af836d277c9f918adfafb45732677e
+          git bundle create ../llama_cpp-pinned.bundle offline-pinned
+          cd ..
+          printf '%s\n' 0f3a71be15af836d277c9f918adfafb45732677e > LLAMA_HEAD.txt
+          git bundle verify llama_cpp-pinned.bundle
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pinned-llama-cpp-git-bundle
+          path: |
+            llama_cpp-pinned.bundle
+            LLAMA_HEAD.txt
+          if-no-files-found: error
+          retention-days: 1
