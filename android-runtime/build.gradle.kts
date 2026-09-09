@@ -25,6 +25,8 @@ repositories {
 dependencies {
     implementation(project(":core"))
     implementation(project(":android-cognitive-storage"))
+    implementation(project(":android-device-key"))
+    implementation(project(":android-durable-persistence"))
     implementation(project(":android-offline-semantic-provider"))
     implementation(project(":android-llama-cpp-engine"))
 
