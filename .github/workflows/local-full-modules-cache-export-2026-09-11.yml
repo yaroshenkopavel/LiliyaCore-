@@ -1,0 +1,67 @@
+name: Local Full Gradle Modules Cache Export 2026-09-11
+
+on:
+  push:
+    branches:
+      - maintenance/local-mirror-export-2026-09-10
+    paths:
+      - .github/workflows/local-full-modules-cache-export-2026-09-11.yml
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout environment branch
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle 9.6.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.1'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install pinned Android build toolchain
+        shell: bash
+        run: |
+          sdkmanager \
+            "platforms;android-35" \
+            "build-tools;35.0.0" \
+            "platform-tools" \
+            "ndk;29.0.13113456" \
+            "cmake;3.31.6"
+
+      - name: Resolve exact release dependency graph
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle :android-app:assembleRelease --console=plain --no-daemon
+
+      - name: Package full modules cache
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GRADLE_USER_HOME"
+          test -d caches/modules-2
+          tar -czf "$RUNNER_TEMP/gradle-modules-2-release-ready.tar.gz" caches/modules-2
+          gzip -t "$RUNNER_TEMP/gradle-modules-2-release-ready.tar.gz"
+          du -h "$RUNNER_TEMP/gradle-modules-2-release-ready.tar.gz"
+
+      - name: Upload full modules cache
+        uses: actions/upload-artifact@v4
+        with:
+          name: gradle-modules-2-release-ready
+          path: ${{ runner.temp }}/gradle-modules-2-release-ready.tar.gz
+          retention-days: 7
+          if-no-files-found: error
