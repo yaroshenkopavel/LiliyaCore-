@@ -40,6 +40,8 @@ jobs:
           tar -C "$ANDROID_HOME" -czf "$RUNNER_TEMP/local-native/cmake-3.31.6.tar.gz" cmake/3.31.6
           split -b 450M -d -a 2 "$RUNNER_TEMP/local-native/ndk-29.0.13113456.tar.gz" "$RUNNER_TEMP/local-native/ndk.part."
           rm "$RUNNER_TEMP/local-native/ndk-29.0.13113456.tar.gz"
+          test -s "$RUNNER_TEMP/local-native/ndk.part.00"
+          test -s "$RUNNER_TEMP/local-native/ndk.part.01"
           du -sh "$RUNNER_TEMP/local-native"/*
 
       - name: Upload NDK part 00
@@ -52,21 +54,10 @@ jobs:
           if-no-files-found: error
 
       - name: Upload NDK part 01
-        if: ${{ hashFiles(format('{0}/local-native/ndk.part.01', runner.temp)) != '' }}
         uses: actions/upload-artifact@v4
         with:
           name: liliyacore-local-ndk-part-01-${{ github.sha }}
           path: ${{ runner.temp }}/local-native/ndk.part.01
-          retention-days: 1
-          compression-level: 0
-          if-no-files-found: error
-
-      - name: Upload NDK part 02
-        if: ${{ hashFiles(format('{0}/local-native/ndk.part.02', runner.temp)) != '' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: liliyacore-local-ndk-part-02-${{ github.sha }}
-          path: ${{ runner.temp }}/local-native/ndk.part.02
           retention-days: 1
           compression-level: 0
           if-no-files-found: error
@@ -127,10 +118,16 @@ jobs:
           name: liliyacore-local-android-sdk-031d866e65ff5f7a2da8dd9c343e1a3dadaf1bf6
           path: ${{ runner.temp }}/restore/android-sdk
 
-      - name: Download current NDK
+      - name: Download current NDK part 00
         uses: actions/download-artifact@v4
         with:
           name: liliyacore-local-ndk-part-00-${{ github.sha }}
+          path: ${{ runner.temp }}/restore/native
+
+      - name: Download current NDK part 01
+        uses: actions/download-artifact@v4
+        with:
+          name: liliyacore-local-ndk-part-01-${{ github.sha }}
           path: ${{ runner.temp }}/restore/native
 
       - name: Download current CMake
@@ -149,7 +146,8 @@ jobs:
           tar -xzf "$RUNNER_TEMP/restore/gradle/gradle-9.6.1-runtime.tar.gz" -C "$ROOT/gradle"
           tar -xzf "$RUNNER_TEMP/restore/gradle-home/liliya-gradle-home.tar.gz" -C "$ROOT/gradle-home"
           tar -xzf "$RUNNER_TEMP/restore/android-sdk/android-sdk-compile.tar.gz" -C "$ROOT/android-sdk"
-          cat "$RUNNER_TEMP/restore/native"/ndk.part.* > "$RUNNER_TEMP/restore/native/ndk-29.0.13113456.tar.gz"
+          cat "$RUNNER_TEMP/restore/native/ndk.part.00" "$RUNNER_TEMP/restore/native/ndk.part.01" > "$RUNNER_TEMP/restore/native/ndk-29.0.13113456.tar.gz"
+          gzip -t "$RUNNER_TEMP/restore/native/ndk-29.0.13113456.tar.gz"
           tar -xzf "$RUNNER_TEMP/restore/native/ndk-29.0.13113456.tar.gz" -C "$ROOT/android-sdk"
           tar -xzf "$RUNNER_TEMP/restore/native/cmake-3.31.6.tar.gz" -C "$ROOT/android-sdk"
           JAVA_HOME="$(find "$ROOT/jdk" -mindepth 1 -maxdepth 1 -type d | head -1)"
