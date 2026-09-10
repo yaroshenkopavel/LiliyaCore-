@@ -11,7 +11,7 @@ permissions:
 jobs:
   export:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 35
     steps:
       - name: Checkout active development branch
         uses: actions/checkout@v4
@@ -34,16 +34,14 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install pinned Android build toolchain
+      - name: Install local compile SDK
         shell: bash
         run: |
           set -euo pipefail
           sdkmanager \
             "platforms;android-35" \
             "build-tools;35.0.0" \
-            "platform-tools" \
-            "ndk;29.0.13113456" \
-            "cmake;3.31.6"
+            "platform-tools"
 
       - name: Warm project-only Gradle home
         shell: bash
@@ -62,30 +60,65 @@ jobs:
             :core:test \
             --offline --console=plain
 
-      - name: Pack local toolchain
+      - name: Pack split local toolchain
         shell: bash
         run: |
           set -euo pipefail
           GRADLE_BIN="$(readlink -f "$(command -v gradle)")"
           GRADLE_HOME="$(cd "$(dirname "$GRADLE_BIN")/.." && pwd)"
           mkdir -p "$RUNNER_TEMP/local-toolchain"
-          tar -C "$(dirname "$JAVA_HOME")" -czf "$RUNNER_TEMP/local-toolchain/temurin-jdk17.tar.gz" "$(basename "$JAVA_HOME")"
+          JAVA_REAL="$(readlink -f "$JAVA_HOME")"
+          tar --dereference -C "$(dirname "$JAVA_REAL")" -czf "$RUNNER_TEMP/local-toolchain/temurin-jdk17.tar.gz" "$(basename "$JAVA_REAL")"
           tar -C "$(dirname "$GRADLE_HOME")" -czf "$RUNNER_TEMP/local-toolchain/gradle-9.6.1-runtime.tar.gz" "$(basename "$GRADLE_HOME")"
           tar -C "$RUNNER_TEMP" -czf "$RUNNER_TEMP/local-toolchain/liliya-gradle-home.tar.gz" liliya-gradle-home
-          tar -C "$ANDROID_HOME" -czf "$RUNNER_TEMP/local-toolchain/android-sdk-pinned.tar.gz" \
+          tar -C "$ANDROID_HOME" -czf "$RUNNER_TEMP/local-toolchain/android-sdk-compile.tar.gz" \
             platforms/android-35 \
             build-tools/35.0.0 \
             platform-tools \
-            ndk/29.0.13113456 \
-            cmake/3.31.6 \
             licenses
-          printf '%s\n' "JAVA_HOME=$(basename "$JAVA_HOME")" "GRADLE_HOME=$(basename "$GRADLE_HOME")" > "$RUNNER_TEMP/local-toolchain/MANIFEST.txt"
+          printf '%s\n' "JAVA_REAL=$(basename "$JAVA_REAL")" "GRADLE_HOME=$(basename "$GRADLE_HOME")" > "$RUNNER_TEMP/local-toolchain/MANIFEST.txt"
           du -sh "$RUNNER_TEMP/local-toolchain"/*
 
-      - name: Upload local toolchain
+      - name: Upload JDK 17
         uses: actions/upload-artifact@v4
         with:
-          name: liliyacore-local-toolchain-${{ github.sha }}
-          path: ${{ runner.temp }}/local-toolchain/*
+          name: liliyacore-local-jdk17-${{ github.sha }}
+          path: ${{ runner.temp }}/local-toolchain/temurin-jdk17.tar.gz
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
+
+      - name: Upload Gradle runtime
+        uses: actions/upload-artifact@v4
+        with:
+          name: liliyacore-local-gradle-${{ github.sha }}
+          path: ${{ runner.temp }}/local-toolchain/gradle-9.6.1-runtime.tar.gz
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
+
+      - name: Upload project Gradle home
+        uses: actions/upload-artifact@v4
+        with:
+          name: liliyacore-local-gradle-home-${{ github.sha }}
+          path: ${{ runner.temp }}/local-toolchain/liliya-gradle-home.tar.gz
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
+
+      - name: Upload Android compile SDK
+        uses: actions/upload-artifact@v4
+        with:
+          name: liliyacore-local-android-sdk-${{ github.sha }}
+          path: ${{ runner.temp }}/local-toolchain/android-sdk-compile.tar.gz
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
+
+      - name: Upload manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: liliyacore-local-toolchain-manifest-${{ github.sha }}
+          path: ${{ runner.temp }}/local-toolchain/MANIFEST.txt
           retention-days: 1
           if-no-files-found: error
