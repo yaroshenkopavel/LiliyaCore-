@@ -31,54 +31,40 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           p = Path('android-app/src/androidTest/kotlin/pro/liliya/app/DevelopmentFirstWorkingLiliyaColdStartInstrumentedTest.kt')
-          s = p.read_text()
-          s = s.replace('import java.security.KeyFactory\n', '')
-          s = s.replace('import java.security.KeyPairGenerator\n', 'import java.security.KeyPairGenerator\nimport java.security.KeyStore\n')
-          s = s.replace('import java.security.spec.X509EncodedKeySpec\n', '')
-          old = '''        val modelSignerId = ProtectedModelSignerId("first-working-liliya-model-signer")
-        val modelSignerProvider = org.bouncycastle.jce.provider.BouncyCastleProvider()
-        val modelSigner = KeyPairGenerator.getInstance("Ed25519", modelSignerProvider).generateKeyPair()
-        val verifierCompatibleModelSignerPublicKey = KeyFactory.getInstance("Ed25519").generatePublic(
-            X509EncodedKeySpec(modelSigner.public.encoded)
-        )
-'''
-          new = '''        val modelSignerId = ProtectedModelSignerId("first-working-liliya-model-signer")
-        val modelSignerAlias = "first-working-liliya-model-signer-ed25519"
-        val androidKeyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-        androidKeyStore.deleteEntry(modelSignerAlias)
-        val modelSigner = KeyPairGenerator.getInstance("EC", "AndroidKeyStore").run {
-            initialize(
-                android.security.keystore.KeyGenParameterSpec.Builder(
-                    modelSignerAlias,
-                    android.security.keystore.KeyProperties.PURPOSE_SIGN or
-                        android.security.keystore.KeyProperties.PURPOSE_VERIFY
-                )
-                    .setAlgorithmParameterSpec(ECGenParameterSpec("ed25519"))
-                    .setDigests(android.security.keystore.KeyProperties.DIGEST_NONE)
-                    .build()
-            )
-            generateKeyPair()
-        }
-'''
-          if s.count(old) != 1:
-              raise SystemExit(f'signer replacement precondition failed: count={s.count(old)}')
-          s = s.replace(old, new, 1)
-          old = '                            val signer = Signature.getInstance("Ed25519", modelSignerProvider)\n'
-          new = '                            val signer = Signature.getInstance("Ed25519")\n'
-          if s.count(old) != 1:
-              raise SystemExit(f'signature replacement precondition failed: count={s.count(old)}')
-          s = s.replace(old, new, 1)
-          old = '                verifierCompatibleModelSignerPublicKey.takeIf {\n'
-          new = '                modelSigner.public.takeIf {\n'
-          if s.count(old) != 1:
-              raise SystemExit(f'resolver replacement precondition failed: count={s.count(old)}')
-          s = s.replace(old, new, 1)
-          old = '            modelDekBytes.fill(0)\n            application.runtimeOwner.close()\n'
-          new = '            modelDekBytes.fill(0)\n            runCatching { androidKeyStore.deleteEntry(modelSignerAlias) }\n            application.runtimeOwner.close()\n'
-          if s.count(old) != 1:
-              raise SystemExit(f'cleanup replacement precondition failed: count={s.count(old)}')
-          s = s.replace(old, new, 1)
-          p.write_text(s)
+          lines = p.read_text().splitlines()
+          lines.remove('import java.security.KeyFactory')
+          lines.remove('import java.security.spec.X509EncodedKeySpec')
+          kp = lines.index('import java.security.KeyPairGenerator')
+          lines.insert(kp + 1, 'import java.security.KeyStore')
+          start = lines.index('        val modelSignerProvider = org.bouncycastle.jce.provider.BouncyCastleProvider()')
+          end = lines.index('        )', start) + 1
+          replacement = [
+              '        val modelSignerAlias = "first-working-liliya-model-signer-ed25519"',
+              '        val androidKeyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }',
+              '        androidKeyStore.deleteEntry(modelSignerAlias)',
+              '        val modelSigner = KeyPairGenerator.getInstance("EC", "AndroidKeyStore").run {',
+              '            initialize(',
+              '                android.security.keystore.KeyGenParameterSpec.Builder(',
+              '                    modelSignerAlias,',
+              '                    android.security.keystore.KeyProperties.PURPOSE_SIGN or',
+              '                        android.security.keystore.KeyProperties.PURPOSE_VERIFY',
+              '                )',
+              '                    .setAlgorithmParameterSpec(ECGenParameterSpec("ed25519"))',
+              '                    .setDigests(android.security.keystore.KeyProperties.DIGEST_NONE)',
+              '                    .build()',
+              '            )',
+              '            generateKeyPair()',
+              '        }',
+          ]
+          lines[start:end] = replacement
+          sig = '                            val signer = Signature.getInstance("Ed25519", modelSignerProvider)'
+          lines[lines.index(sig)] = '                            val signer = Signature.getInstance("Ed25519")'
+          resolver = '                verifierCompatibleModelSignerPublicKey.takeIf {'
+          lines[lines.index(resolver)] = '                modelSigner.public.takeIf {'
+          cleanup = '            application.runtimeOwner.close()'
+          ci = lines.index(cleanup)
+          lines.insert(ci, '            runCatching { androidKeyStore.deleteEntry(modelSignerAlias) }')
+          p.write_text('\n'.join(lines) + '\n')
           PY
           git diff --check
           git reset --mixed origin/main
