@@ -1,0 +1,37 @@
+name: Local llama.cpp Source Export 2026-09-11
+
+on:
+  push:
+    branches:
+      - maintenance/local-mirror-export-2026-09-10
+    paths:
+      - .github/workflows/local-llama-source-export-2026-09-11.yml
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout pinned llama.cpp
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone https://github.com/ggml-org/llama.cpp.git llama.cpp
+          cd llama.cpp
+          git checkout 0f3a71be15af836d277c9f918adfafb45732677e
+          test "$(git rev-parse HEAD)" = "0f3a71be15af836d277c9f918adfafb45732677e"
+          rm -rf .git
+          cd ..
+          tar -czf llama-cpp-0f3a71be15af836d277c9f918adfafb45732677e.tar.gz llama.cpp
+          gzip -t llama-cpp-0f3a71be15af836d277c9f918adfafb45732677e.tar.gz
+
+      - name: Upload exact source
+        uses: actions/upload-artifact@v4
+        with:
+          name: llama-cpp-0f3a71be15af836d277c9f918adfafb45732677e
+          path: llama-cpp-0f3a71be15af836d277c9f918adfafb45732677e.tar.gz
+          retention-days: 7
+          if-no-files-found: error
