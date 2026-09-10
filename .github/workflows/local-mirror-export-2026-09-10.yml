@@ -24,14 +24,15 @@ jobs:
             --exclude='*/build' \
             --exclude='*/.cxx' \
             .
-          tar -tzf "$RUNNER_TEMP/LiliyaCore-local.tar.gz" | grep -q '^./.git/'
+          tar -tzf "$RUNNER_TEMP/LiliyaCore-local.tar.gz" > "$RUNNER_TEMP/LiliyaCore-local.contents"
+          grep -q '^./.git/' "$RUNNER_TEMP/LiliyaCore-local.contents"
           git rev-parse HEAD
           git status --short --branch
 
       - name: Upload local mirror archive
         uses: actions/upload-artifact@v4
         with:
-          name: liliy核心-local-mirror-${{ github.sha }}
+          name: liliyacore-local-mirror-${{ github.sha }}
           path: ${{ runner.temp }}/LiliyaCore-local.tar.gz
           retention-days: 1
           if-no-files-found: error
