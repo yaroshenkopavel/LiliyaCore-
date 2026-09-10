@@ -1,6 +1,7 @@
 package pro.liliya.app
 
 import android.app.Application
+import pro.liliya.android.runtime.AndroidProductRuntimeFirstRunProductInput
 import pro.liliya.android.runtime.AndroidProductRuntimeStartupCompositionRequest
 import pro.liliya.android.runtime.AndroidProductRuntimeStartupProvisioningPorts
 import pro.liliya.android.runtime.AndroidProductRuntimeStartupRequestSourceInput
@@ -12,6 +13,11 @@ class LiliyaApplication : Application() {
 
     fun configureRuntime(sources: ProductionAndroidRuntimeWiringSources): Boolean =
         ProductionAndroidRuntimeConfiguration.install(sources)
+
+    fun configureFirstRun(
+        input: AndroidProductRuntimeFirstRunProductInput
+    ): ProductionAndroidFirstRunProductInstallResult =
+        ProductionAndroidFirstRunProductInstall.prepareAndInstall(input)
 
     fun provisionRuntime(
         ports: AndroidProductRuntimeStartupProvisioningPorts
