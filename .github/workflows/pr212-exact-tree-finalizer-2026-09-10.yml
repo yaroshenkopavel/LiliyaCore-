@@ -21,63 +21,170 @@ jobs:
           ref: development-first-working-liliya-cold-start-fixture-v0.1
           fetch-depth: 0
 
-      - name: Build exact tested fixture tree
+      - name: Build exact tested provider-compatible verification tree
         shell: bash
         run: |
           set -euo pipefail
           git fetch origin main development-first-working-liliya-cold-start-fixture-v0.1
           test "$(git rev-parse origin/main)" = "5f949ec37cb17fad408509e2a1453c270aac1f63"
-          test "$(git rev-parse origin/development-first-working-liliya-cold-start-fixture-v0.1)" = "34c21ad79e5b2469e0084b2df72e8d7edcfa717a"
+          test "$(git rev-parse origin/development-first-working-liliya-cold-start-fixture-v0.1)" = "13713be49e620ab39a56d9f0a88b9f8fafc88c6e"
           python - <<'PY'
           from pathlib import Path
-          p = Path('android-app/src/androidTest/kotlin/pro/liliya/app/DevelopmentFirstWorkingLiliyaColdStartInstrumentedTest.kt')
-          lines = p.read_text().splitlines()
-          lines.remove('import java.security.KeyFactory')
-          lines.remove('import java.security.spec.X509EncodedKeySpec')
-          kp = lines.index('import java.security.KeyPairGenerator')
-          lines.insert(kp + 1, 'import java.security.KeyStore')
-          start = lines.index('        val modelSignerProvider = org.bouncycastle.jce.provider.BouncyCastleProvider()')
-          end = lines.index('        )', start) + 1
-          replacement = [
-              '        val modelSignerAlias = "first-working-liliya-model-signer-ed25519"',
-              '        val androidKeyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }',
-              '        androidKeyStore.deleteEntry(modelSignerAlias)',
-              '        val modelSigner = KeyPairGenerator.getInstance("EC", "AndroidKeyStore").run {',
-              '            initialize(',
-              '                android.security.keystore.KeyGenParameterSpec.Builder(',
-              '                    modelSignerAlias,',
-              '                    android.security.keystore.KeyProperties.PURPOSE_SIGN or',
-              '                        android.security.keystore.KeyProperties.PURPOSE_VERIFY',
-              '                )',
-              '                    .setAlgorithmParameterSpec(ECGenParameterSpec("ed25519"))',
-              '                    .setDigests(android.security.keystore.KeyProperties.DIGEST_NONE)',
-              '                    .build()',
-              '            )',
-              '            generateKeyPair()',
-              '        }',
+
+          production_files = [
+              Path('core/src/main/kotlin/pro/liliya/core/protectedmodel/ProtectedModelManifestVerification.kt'),
+              Path('core/src/main/kotlin/pro/liliya/core/protectedmodel/LargeProtectedModelSegmentedCrypto.kt'),
           ]
-          lines[start:end] = replacement
-          sig = '                            val signer = Signature.getInstance("Ed25519", modelSignerProvider)'
-          lines[lines.index(sig)] = '                            val signer = Signature.getInstance("Ed25519")'
-          resolver = '                verifierCompatibleModelSignerPublicKey.takeIf {'
-          lines[lines.index(resolver)] = '                modelSigner.public.takeIf {'
-          cleanup = '            application.runtimeOwner.close()'
-          ci = lines.index(cleanup)
-          lines.insert(ci, '            runCatching { androidKeyStore.deleteEntry(modelSignerAlias) }')
-          p.write_text('\n'.join(lines) + '\n')
+          old_import = 'import java.security.Signature\n'
+          old_verifier = '''            val verifier = Signature.getInstance(signatureName(manifest.signatureAlgorithm))
+            verifier.initVerify(signerKey)
+'''
+          new_verifier = '''            val verifier = ProtectedModelSignatureVerification.verifier(
+                signatureName(manifest.signatureAlgorithm),
+                signerKey
+            )
+'''
+          for path in production_files:
+              text = path.read_text()
+              if text.count(old_import) != 1:
+                  raise SystemExit(f'{path}: Signature import precondition failed: {text.count(old_import)}')
+              if text.count(old_verifier) != 1:
+                  raise SystemExit(f'{path}: verifier precondition failed: {text.count(old_verifier)}')
+              text = text.replace(old_import, '', 1)
+              text = text.replace(old_verifier, new_verifier, 1)
+              path.write_text(text)
+
+          Path('core/src/main/kotlin/pro/liliya/core/protectedmodel/ProtectedModelSignatureVerification.kt').write_text('''package pro.liliya.core.protectedmodel
+
+import java.security.GeneralSecurityException
+import java.security.NoSuchAlgorithmException
+import java.security.PublicKey
+import java.security.Security
+import java.security.Signature
+
+/**
+ * Resolves a signature implementation that can actually consume the supplied signer key.
+ *
+ * Some JCA runtimes expose more than one implementation for the same signature algorithm and
+ * their first/default implementation may reject a public key owned by another provider. Package
+ * authenticity must not depend on that provider ordering, so verification walks the advertised
+ * implementations in runtime order and selects the first one that accepts the trusted key.
+ */
+internal object ProtectedModelSignatureVerification {
+    fun verifier(
+        signatureName: String,
+        signerKey: PublicKey
+    ): Signature {
+        val providers = Security.getProviders("Signature.$signatureName")?.asList().orEmpty()
+        if (providers.isEmpty()) {
+            return Signature.getInstance(signatureName).apply {
+                initVerify(signerKey)
+            }
+        }
+
+        var lastFailure: GeneralSecurityException? = null
+        for (provider in providers) {
+            try {
+                return Signature.getInstance(signatureName, provider).apply {
+                    initVerify(signerKey)
+                }
+            } catch (failure: GeneralSecurityException) {
+                lastFailure = failure
+            }
+        }
+
+        throw lastFailure ?: NoSuchAlgorithmException(
+            "No $signatureName signature provider accepted the signer key"
+        )
+    }
+}
+''')
+
+          Path('core/src/test/kotlin/pro/liliya/core/protectedmodel/ProtectedModelSignatureProviderSelectionContractTest.kt').write_text('''package pro.liliya.core.protectedmodel
+
+import java.security.InvalidKeyException
+import java.security.KeyPairGenerator
+import java.security.PrivateKey
+import java.security.Provider
+import java.security.PublicKey
+import java.security.Security
+import java.security.Signature
+import java.security.SignatureSpi
+import kotlin.test.Test
+import kotlin.test.assertTrue
+
+class ProtectedModelSignatureProviderSelectionContractTest {
+    @Test
+    fun verification_skips_an_earlier_provider_that_rejects_the_signer_key() {
+        val keys = KeyPairGenerator.getInstance("Ed25519").generateKeyPair()
+        val payload = "provider-order-independent-verification".encodeToByteArray()
+        val realProvider = Signature.getInstance("Ed25519").provider
+        val signature = Signature.getInstance("Ed25519", realProvider).run {
+            initSign(keys.private)
+            update(payload)
+            sign()
+        }
+        val rejectingProvider = RejectingEd25519Provider()
+
+        Security.insertProviderAt(rejectingProvider, 1)
+        try {
+            val verifier = ProtectedModelSignatureVerification.verifier("Ed25519", keys.public)
+            verifier.update(payload)
+            assertTrue(verifier.verify(signature))
+            assertTrue(verifier.provider.name != rejectingProvider.name)
+        } finally {
+            Security.removeProvider(rejectingProvider.name)
+        }
+    }
+}
+
+class RejectingEd25519Provider : Provider(
+    "LiliyaRejectingEd25519",
+    "1.0",
+    "Test provider that advertises Ed25519 but rejects verification keys"
+) {
+    init {
+        put("Signature.Ed25519", RejectingEd25519SignatureSpi::class.java.name)
+    }
+}
+
+class RejectingEd25519SignatureSpi : SignatureSpi() {
+    override fun engineInitVerify(publicKey: PublicKey) {
+        throw InvalidKeyException("intentional test provider rejection")
+    }
+
+    override fun engineInitSign(privateKey: PrivateKey) {
+        throw InvalidKeyException("signing is unsupported")
+    }
+
+    override fun engineUpdate(b: Byte) = Unit
+
+    override fun engineUpdate(b: ByteArray, off: Int, len: Int) = Unit
+
+    override fun engineSign(): ByteArray = error("signing is unsupported")
+
+    override fun engineVerify(sigBytes: ByteArray): Boolean = false
+
+    @Deprecated("Deprecated in Java")
+    override fun engineSetParameter(param: String, value: Any) = Unit
+
+    @Deprecated("Deprecated in Java")
+    override fun engineGetParameter(param: String): Any? = null
+}
+''')
           PY
           git diff --check
           git reset --mixed origin/main
           git add -A
           TREE="$(git write-tree)"
           echo "TREE=$TREE"
-          test "$TREE" = "1892a1fdbceeae79e3bd558eb71eca1565778495"
+          test "$TREE" = "5b2b38842d70aa3c6b4e3aec5070fc95a989af79"
           git config user.name "yaroshenkopavel"
           git config user.email "78513566+yaroshenkopavel@users.noreply.github.com"
           git commit -m "First Working Liliya cold-start fixture v0.1"
           test "$(git rev-list --count origin/main..HEAD)" = "1"
           test "$(git rev-parse HEAD^)" = "5f949ec37cb17fad408509e2a1453c270aac1f63"
-          test "$(git rev-parse HEAD^{tree})" = "1892a1fdbceeae79e3bd558eb71eca1565778495"
+          test "$(git rev-parse HEAD^{tree})" = "5b2b38842d70aa3c6b4e3aec5070fc95a989af79"
           echo "CANDIDATE_HEAD=$(git rev-parse HEAD)"
 
       - name: Publish exact-tree candidate only
