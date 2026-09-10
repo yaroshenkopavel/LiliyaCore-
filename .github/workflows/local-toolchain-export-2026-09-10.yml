@@ -1,4 +1,4 @@
-name: Local Toolchain Export 2026-09-10
+name: Local Native Toolchain Export 2026-09-10
 
 on:
   push:
@@ -9,116 +9,72 @@ permissions:
   contents: read
 
 jobs:
-  export:
+  export-native:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 25
     steps:
-      - name: Checkout active development branch
-        uses: actions/checkout@v4
-        with:
-          ref: development-first-working-liliya-cold-start-fixture-v0.1
-          fetch-depth: 0
-
       - name: Set up Java 17
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Gradle 9.6.1
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '9.6.1'
-          cache-disabled: true
-
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install local compile SDK
+      - name: Install pinned native toolchain
         shell: bash
         run: |
           set -euo pipefail
           sdkmanager \
-            "platforms;android-35" \
-            "build-tools;35.0.0" \
-            "platform-tools"
+            "ndk;29.0.13113456" \
+            "cmake;3.31.6"
 
-      - name: Warm project-only Gradle home
+      - name: Pack and split native toolchain
         shell: bash
         run: |
           set -euo pipefail
-          LILIYA_GRADLE_HOME="$RUNNER_TEMP/liliya-gradle-home"
-          rm -rf "$LILIYA_GRADLE_HOME"
-          mkdir -p "$LILIYA_GRADLE_HOME"
-          GRADLE_USER_HOME="$LILIYA_GRADLE_HOME" gradle \
-            :android-app:testDebugUnitTest \
-            :android-runtime:testDebugUnitTest \
-            :core:test \
-            :android-app:compileDebugAndroidTestKotlin \
-            --console=plain
-          GRADLE_USER_HOME="$LILIYA_GRADLE_HOME" gradle \
-            :core:test \
-            --offline --console=plain
+          mkdir -p "$RUNNER_TEMP/local-native"
+          tar -C "$ANDROID_HOME" -czf "$RUNNER_TEMP/local-native/ndk-29.0.13113456.tar.gz" ndk/29.0.13113456
+          tar -C "$ANDROID_HOME" -czf "$RUNNER_TEMP/local-native/cmake-3.31.6.tar.gz" cmake/3.31.6
+          split -b 450M -d -a 2 "$RUNNER_TEMP/local-native/ndk-29.0.13113456.tar.gz" "$RUNNER_TEMP/local-native/ndk.part."
+          rm "$RUNNER_TEMP/local-native/ndk-29.0.13113456.tar.gz"
+          du -sh "$RUNNER_TEMP/local-native"/*
 
-      - name: Pack split local toolchain
-        shell: bash
-        run: |
-          set -euo pipefail
-          GRADLE_BIN="$(readlink -f "$(command -v gradle)")"
-          GRADLE_HOME="$(cd "$(dirname "$GRADLE_BIN")/.." && pwd)"
-          mkdir -p "$RUNNER_TEMP/local-toolchain"
-          JAVA_REAL="$(readlink -f "$JAVA_HOME")"
-          tar --dereference -C "$(dirname "$JAVA_REAL")" -czf "$RUNNER_TEMP/local-toolchain/temurin-jdk17.tar.gz" "$(basename "$JAVA_REAL")"
-          tar -C "$(dirname "$GRADLE_HOME")" -czf "$RUNNER_TEMP/local-toolchain/gradle-9.6.1-runtime.tar.gz" "$(basename "$GRADLE_HOME")"
-          tar -C "$RUNNER_TEMP" -czf "$RUNNER_TEMP/local-toolchain/liliya-gradle-home.tar.gz" liliya-gradle-home
-          tar -C "$ANDROID_HOME" -czf "$RUNNER_TEMP/local-toolchain/android-sdk-compile.tar.gz" \
-            platforms/android-35 \
-            build-tools/35.0.0 \
-            platform-tools \
-            licenses
-          printf '%s\n' "JAVA_REAL=$(basename "$JAVA_REAL")" "GRADLE_HOME=$(basename "$GRADLE_HOME")" > "$RUNNER_TEMP/local-toolchain/MANIFEST.txt"
-          du -sh "$RUNNER_TEMP/local-toolchain"/*
-
-      - name: Upload JDK 17
+      - name: Upload NDK part 00
         uses: actions/upload-artifact@v4
         with:
-          name: liliyacore-local-jdk17-${{ github.sha }}
-          path: ${{ runner.temp }}/local-toolchain/temurin-jdk17.tar.gz
+          name: liliyacore-local-ndk-part-00-${{ github.sha }}
+          path: ${{ runner.temp }}/local-native/ndk.part.00
           retention-days: 1
           compression-level: 0
           if-no-files-found: error
 
-      - name: Upload Gradle runtime
+      - name: Upload NDK part 01
+        if: ${{ hashFiles(format('{0}/local-native/ndk.part.01', runner.temp)) != '' }}
         uses: actions/upload-artifact@v4
         with:
-          name: liliyacore-local-gradle-${{ github.sha }}
-          path: ${{ runner.temp }}/local-toolchain/gradle-9.6.1-runtime.tar.gz
+          name: liliyacore-local-ndk-part-01-${{ github.sha }}
+          path: ${{ runner.temp }}/local-native/ndk.part.01
           retention-days: 1
           compression-level: 0
           if-no-files-found: error
 
-      - name: Upload project Gradle home
+      - name: Upload NDK part 02
+        if: ${{ hashFiles(format('{0}/local-native/ndk.part.02', runner.temp)) != '' }}
         uses: actions/upload-artifact@v4
         with:
-          name: liliyacore-local-gradle-home-${{ github.sha }}
-          path: ${{ runner.temp }}/local-toolchain/liliya-gradle-home.tar.gz
+          name: liliyacore-local-ndk-part-02-${{ github.sha }}
+          path: ${{ runner.temp }}/local-native/ndk.part.02
           retention-days: 1
           compression-level: 0
           if-no-files-found: error
 
-      - name: Upload Android compile SDK
+      - name: Upload CMake
         uses: actions/upload-artifact@v4
         with:
-          name: liliyacore-local-android-sdk-${{ github.sha }}
-          path: ${{ runner.temp }}/local-toolchain/android-sdk-compile.tar.gz
+          name: liliyacore-local-cmake-${{ github.sha }}
+          path: ${{ runner.temp }}/local-native/cmake-3.31.6.tar.gz
           retention-days: 1
           compression-level: 0
-          if-no-files-found: error
-
-      - name: Upload manifest
-        uses: actions/upload-artifact@v4
-        with:
-          name: liliyacore-local-toolchain-manifest-${{ github.sha }}
-          path: ${{ runner.temp }}/local-toolchain/MANIFEST.txt
-          retention-days: 1
           if-no-files-found: error
