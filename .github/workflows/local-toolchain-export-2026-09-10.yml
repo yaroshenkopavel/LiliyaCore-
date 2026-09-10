@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   export-native:
@@ -78,3 +79,97 @@ jobs:
           retention-days: 1
           compression-level: 0
           if-no-files-found: error
+
+  verify-clean-restore:
+    needs: export-native
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout exact active development branch
+        uses: actions/checkout@v4
+        with:
+          ref: development-first-working-liliya-cold-start-fixture-v0.1
+          fetch-depth: 0
+
+      - name: Download exported JDK 17
+        uses: actions/download-artifact@v4
+        with:
+          repository: yaroshenkopavel/LiliyaCore-
+          run-id: 34501234283
+          github-token: ${{ github.token }}
+          name: liliyacore-local-jdk17-031d866e65ff5f7a2da8dd9c343e1a3dadaf1bf6
+          path: ${{ runner.temp }}/restore/jdk
+
+      - name: Download exported Gradle runtime
+        uses: actions/download-artifact@v4
+        with:
+          repository: yaroshenkopavel/LiliyaCore-
+          run-id: 34501234283
+          github-token: ${{ github.token }}
+          name: liliyacore-local-gradle-031d866e65ff5f7a2da8dd9c343e1a3dadaf1bf6
+          path: ${{ runner.temp }}/restore/gradle
+
+      - name: Download exported project Gradle home
+        uses: actions/download-artifact@v4
+        with:
+          repository: yaroshenkopavel/LiliyaCore-
+          run-id: 34501234283
+          github-token: ${{ github.token }}
+          name: liliyacore-local-gradle-home-031d866e65ff5f7a2da8dd9c343e1a3dadaf1bf6
+          path: ${{ runner.temp }}/restore/gradle-home
+
+      - name: Download exported Android compile SDK
+        uses: actions/download-artifact@v4
+        with:
+          repository: yaroshenkopavel/LiliyaCore-
+          run-id: 34501234283
+          github-token: ${{ github.token }}
+          name: liliyacore-local-android-sdk-031d866e65ff5f7a2da8dd9c343e1a3dadaf1bf6
+          path: ${{ runner.temp }}/restore/android-sdk
+
+      - name: Download current NDK
+        uses: actions/download-artifact@v4
+        with:
+          name: liliyacore-local-ndk-part-00-${{ github.sha }}
+          path: ${{ runner.temp }}/restore/native
+
+      - name: Download current CMake
+        uses: actions/download-artifact@v4
+        with:
+          name: liliyacore-local-cmake-${{ github.sha }}
+          path: ${{ runner.temp }}/restore/native
+
+      - name: Restore local-first environment from artifacts only
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$RUNNER_TEMP/restored-local-first"
+          mkdir -p "$ROOT/jdk" "$ROOT/gradle" "$ROOT/gradle-home" "$ROOT/android-sdk"
+          tar -xzf "$RUNNER_TEMP/restore/jdk/temurin-jdk17.tar.gz" -C "$ROOT/jdk"
+          tar -xzf "$RUNNER_TEMP/restore/gradle/gradle-9.6.1-runtime.tar.gz" -C "$ROOT/gradle"
+          tar -xzf "$RUNNER_TEMP/restore/gradle-home/liliya-gradle-home.tar.gz" -C "$ROOT/gradle-home"
+          tar -xzf "$RUNNER_TEMP/restore/android-sdk/android-sdk-compile.tar.gz" -C "$ROOT/android-sdk"
+          cat "$RUNNER_TEMP/restore/native"/ndk.part.* > "$RUNNER_TEMP/restore/native/ndk-29.0.13113456.tar.gz"
+          tar -xzf "$RUNNER_TEMP/restore/native/ndk-29.0.13113456.tar.gz" -C "$ROOT/android-sdk"
+          tar -xzf "$RUNNER_TEMP/restore/native/cmake-3.31.6.tar.gz" -C "$ROOT/android-sdk"
+          JAVA_HOME="$(find "$ROOT/jdk" -mindepth 1 -maxdepth 1 -type d | head -1)"
+          GRADLE_HOME="$ROOT/gradle/gradle-9.6.1"
+          GRADLE_USER_HOME="$ROOT/gradle-home/liliya-gradle-home"
+          ANDROID_HOME="$ROOT/android-sdk"
+          ANDROID_SDK_ROOT="$ANDROID_HOME"
+          PATH="$JAVA_HOME/bin:$GRADLE_HOME/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/build-tools/35.0.0:$PATH"
+          export JAVA_HOME GRADLE_HOME GRADLE_USER_HOME ANDROID_HOME ANDROID_SDK_ROOT PATH
+          java -version
+          gradle --version
+          test -d "$ANDROID_HOME/platforms/android-35"
+          test -d "$ANDROID_HOME/build-tools/35.0.0"
+          test -d "$ANDROID_HOME/ndk/29.0.13113456"
+          test -d "$ANDROID_HOME/cmake/3.31.6"
+          printf 'HEAD='; git rev-parse HEAD
+          printf 'TREE='; git rev-parse HEAD^{tree}
+          gradle \
+            :core:test \
+            :android-runtime:testDebugUnitTest \
+            :android-app:testDebugUnitTest \
+            :android-app:compileDebugAndroidTestKotlin \
+            --offline --console=plain --no-daemon
