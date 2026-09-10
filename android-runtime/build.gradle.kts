@@ -31,6 +31,7 @@ dependencies {
     implementation(project(":android-llama-cpp-engine"))
 
     testImplementation(kotlin("test"))
+    testImplementation(project(":protected-model-packager"))
     testImplementation("junit:junit:4.13.2")
 
     androidTestImplementation(kotlin("test"))

@@ -40,8 +40,18 @@ jobs:
       - name: Install Android API 35
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
 
-      - name: Run core and License transport tests
-        run: gradle :core:test :license-transport-client:test --console=plain
+      - name: Run core, License transport, and protected-model packager tests
+        run: gradle :core:test :license-transport-client:test :protected-model-packager:test --console=plain
+
+      - name: Protected-model packager architecture guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -R -n -E '(^|[^A-Za-z])android\.|pro\.liliya\.android|project\(":android-' \
+              --include='*.kt' --include='*.kts' protected-model-packager; then
+            echo "Android dependency leaked into offline protected-model packager"
+            exit 1
+          fi
 
       - name: License transport architecture guard
         shell: bash
@@ -433,6 +443,15 @@ jobs:
             --output "$asset"
           echo "6151b1929d7f5aa3385d9ddef3393e55587c0a55de661562322bc51dfda93a04  $asset" | sha256sum --check --strict
           test "$(stat --format=%s "$asset")" -eq 19077344
+
+      - name: Run real-GGUF protected packaging round trip
+        env:
+          LILIYA_REQUIRE_REAL_GGUF: "1"
+          LILIYA_REAL_GGUF: ${{ github.workspace }}/android-llama-cpp-engine/src/androidTest/assets/stories15M-q4_0.gguf
+        run: >-
+          gradle :android-runtime:testDebugUnitTest
+          --tests "pro.liliya.android.runtime.ProductProtectedModelOfflinePackagerRealGgufContractTest"
+          --console=plain
 
       - name: Compile verified real-model instrumentation contract
         run: gradle :android-llama-cpp-engine:assembleDebugAndroidTest --console=plain
