@@ -42,11 +42,17 @@ jobs:
             "ndk;29.0.13113456" \
             "cmake;3.31.6"
 
-      - name: Resolve exact release dependency graph
+      - name: Resolve exact production host dependency graph
         shell: bash
         run: |
           set -euo pipefail
-          gradle :android-app:assembleRelease --console=plain --no-daemon
+          gradle \
+            :android-app:testDebugUnitTest \
+            :android-runtime:testDebugUnitTest \
+            :core:test \
+            :android-app:assembleDebug \
+            :android-app:assembleRelease \
+            --console=plain --no-daemon
 
       - name: Package full modules cache
         shell: bash
@@ -54,14 +60,14 @@ jobs:
           set -euo pipefail
           cd "$GRADLE_USER_HOME"
           test -d caches/modules-2
-          tar -czf "$RUNNER_TEMP/gradle-modules-2-release-ready.tar.gz" caches/modules-2
-          gzip -t "$RUNNER_TEMP/gradle-modules-2-release-ready.tar.gz"
-          du -h "$RUNNER_TEMP/gradle-modules-2-release-ready.tar.gz"
+          tar -czf "$RUNNER_TEMP/gradle-modules-2-host-ready.tar.gz" caches/modules-2
+          gzip -t "$RUNNER_TEMP/gradle-modules-2-host-ready.tar.gz"
+          du -h "$RUNNER_TEMP/gradle-modules-2-host-ready.tar.gz"
 
       - name: Upload full modules cache
         uses: actions/upload-artifact@v4
         with:
-          name: gradle-modules-2-release-ready
-          path: ${{ runner.temp }}/gradle-modules-2-release-ready.tar.gz
+          name: gradle-modules-2-host-ready
+          path: ${{ runner.temp }}/gradle-modules-2-host-ready.tar.gz
           retention-days: 7
           if-no-files-found: error
