@@ -30,148 +30,20 @@ jobs:
           test "$(git rev-parse origin/development-first-working-liliya-cold-start-fixture-v0.1)" = "13713be49e620ab39a56d9f0a88b9f8fafc88c6e"
           python - <<'PY'
           from pathlib import Path
-
-          production_files = [
-              Path('core/src/main/kotlin/pro/liliya/core/protectedmodel/ProtectedModelManifestVerification.kt'),
-              Path('core/src/main/kotlin/pro/liliya/core/protectedmodel/LargeProtectedModelSegmentedCrypto.kt'),
-          ]
+          import base64
+          production_files = [Path('core/src/main/kotlin/pro/liliya/core/protectedmodel/ProtectedModelManifestVerification.kt'), Path('core/src/main/kotlin/pro/liliya/core/protectedmodel/LargeProtectedModelSegmentedCrypto.kt')]
           old_import = 'import java.security.Signature\n'
-          old_verifier = '''            val verifier = Signature.getInstance(signatureName(manifest.signatureAlgorithm))
-            verifier.initVerify(signerKey)
-'''
-          new_verifier = '''            val verifier = ProtectedModelSignatureVerification.verifier(
-                signatureName(manifest.signatureAlgorithm),
-                signerKey
-            )
-'''
+          old_verifier = '            val verifier = Signature.getInstance(signatureName(manifest.signatureAlgorithm))\n            verifier.initVerify(signerKey)\n'
+          new_verifier = '            val verifier = ProtectedModelSignatureVerification.verifier(\n                signatureName(manifest.signatureAlgorithm),\n                signerKey\n            )\n'
           for path in production_files:
               text = path.read_text()
-              if text.count(old_import) != 1:
-                  raise SystemExit(f'{path}: Signature import precondition failed: {text.count(old_import)}')
-              if text.count(old_verifier) != 1:
-                  raise SystemExit(f'{path}: verifier precondition failed: {text.count(old_verifier)}')
-              text = text.replace(old_import, '', 1)
-              text = text.replace(old_verifier, new_verifier, 1)
-              path.write_text(text)
-
-          Path('core/src/main/kotlin/pro/liliya/core/protectedmodel/ProtectedModelSignatureVerification.kt').write_text('''package pro.liliya.core.protectedmodel
-
-import java.security.GeneralSecurityException
-import java.security.NoSuchAlgorithmException
-import java.security.PublicKey
-import java.security.Security
-import java.security.Signature
-
-/**
- * Resolves a signature implementation that can actually consume the supplied signer key.
- *
- * Some JCA runtimes expose more than one implementation for the same signature algorithm and
- * their first/default implementation may reject a public key owned by another provider. Package
- * authenticity must not depend on that provider ordering, so verification walks the advertised
- * implementations in runtime order and selects the first one that accepts the trusted key.
- */
-internal object ProtectedModelSignatureVerification {
-    fun verifier(
-        signatureName: String,
-        signerKey: PublicKey
-    ): Signature {
-        val providers = Security.getProviders("Signature.$signatureName")?.asList().orEmpty()
-        if (providers.isEmpty()) {
-            return Signature.getInstance(signatureName).apply {
-                initVerify(signerKey)
-            }
-        }
-
-        var lastFailure: GeneralSecurityException? = null
-        for (provider in providers) {
-            try {
-                return Signature.getInstance(signatureName, provider).apply {
-                    initVerify(signerKey)
-                }
-            } catch (failure: GeneralSecurityException) {
-                lastFailure = failure
-            }
-        }
-
-        throw lastFailure ?: NoSuchAlgorithmException(
-            "No $signatureName signature provider accepted the signer key"
-        )
-    }
-}
-''')
-
-          Path('core/src/test/kotlin/pro/liliya/core/protectedmodel/ProtectedModelSignatureProviderSelectionContractTest.kt').write_text('''package pro.liliya.core.protectedmodel
-
-import java.security.InvalidKeyException
-import java.security.KeyPairGenerator
-import java.security.PrivateKey
-import java.security.Provider
-import java.security.PublicKey
-import java.security.Security
-import java.security.Signature
-import java.security.SignatureSpi
-import kotlin.test.Test
-import kotlin.test.assertTrue
-
-class ProtectedModelSignatureProviderSelectionContractTest {
-    @Test
-    fun verification_skips_an_earlier_provider_that_rejects_the_signer_key() {
-        val keys = KeyPairGenerator.getInstance("Ed25519").generateKeyPair()
-        val payload = "provider-order-independent-verification".encodeToByteArray()
-        val realProvider = Signature.getInstance("Ed25519").provider
-        val signature = Signature.getInstance("Ed25519", realProvider).run {
-            initSign(keys.private)
-            update(payload)
-            sign()
-        }
-        val rejectingProvider = RejectingEd25519Provider()
-
-        Security.insertProviderAt(rejectingProvider, 1)
-        try {
-            val verifier = ProtectedModelSignatureVerification.verifier("Ed25519", keys.public)
-            verifier.update(payload)
-            assertTrue(verifier.verify(signature))
-            assertTrue(verifier.provider.name != rejectingProvider.name)
-        } finally {
-            Security.removeProvider(rejectingProvider.name)
-        }
-    }
-}
-
-class RejectingEd25519Provider : Provider(
-    "LiliyaRejectingEd25519",
-    "1.0",
-    "Test provider that advertises Ed25519 but rejects verification keys"
-) {
-    init {
-        put("Signature.Ed25519", RejectingEd25519SignatureSpi::class.java.name)
-    }
-}
-
-class RejectingEd25519SignatureSpi : SignatureSpi() {
-    override fun engineInitVerify(publicKey: PublicKey) {
-        throw InvalidKeyException("intentional test provider rejection")
-    }
-
-    override fun engineInitSign(privateKey: PrivateKey) {
-        throw InvalidKeyException("signing is unsupported")
-    }
-
-    override fun engineUpdate(b: Byte) = Unit
-
-    override fun engineUpdate(b: ByteArray, off: Int, len: Int) = Unit
-
-    override fun engineSign(): ByteArray = error("signing is unsupported")
-
-    override fun engineVerify(sigBytes: ByteArray): Boolean = false
-
-    @Deprecated("Deprecated in Java")
-    override fun engineSetParameter(param: String, value: Any) = Unit
-
-    @Deprecated("Deprecated in Java")
-    override fun engineGetParameter(param: String): Any? = null
-}
-''')
+              if text.count(old_import) != 1 or text.count(old_verifier) != 1:
+                  raise SystemExit(f'{path}: production replacement precondition failed')
+              path.write_text(text.replace(old_import, '', 1).replace(old_verifier, new_verifier, 1))
+          helper_b64 = 'cGFja2FnZSBwcm8ubGlsaXlhLmNvcmUucHJvdGVjdGVkbW9kZWwKCmltcG9ydCBqYXZhLnNlY3VyaXR5LkdlbmVyYWxTZWN1cml0eUV4Y2VwdGlvbgppbXBvcnQgamF2YS5zZWN1cml0eS5Ob1N1Y2hBbGdvcml0aG1FeGNlcHRpb24KaW1wb3J0IGphdmEuc2VjdXJpdHkuUHVibGljS2V5CmltcG9ydCBqYXZhLnNlY3VyaXR5LlNlY3VyaXR5CmltcG9ydCBqYXZhLnNlY3VyaXR5LlNpZ25hdHVyZQoKLyoqCiAqIFJlc29sdmVzIGEgc2lnbmF0dXJlIGltcGxlbWVudGF0aW9uIHRoYXQgY2FuIGFjdHVhbGx5IGNvbnN1bWUgdGhlIHN1cHBsaWVkIHNpZ25lciBrZXkuCiAqCiAqIFNvbWUgSkNBIHJ1bnRpbWVzIGV4cG9zZSBtb3JlIHRoYW4gb25lIGltcGxlbWVudGF0aW9uIGZvciB0aGUgc2FtZSBzaWduYXR1cmUgYWxnb3JpdGhtIGFuZAogKiB0aGVpciBmaXJzdC9kZWZhdWx0IGltcGxlbWVudGF0aW9uIG1heSByZWplY3QgYSBwdWJsaWMga2V5IG93bmVkIGJ5IGFub3RoZXIgcHJvdmlkZXIuIFBhY2thZ2UKICogYXV0aGVudGljaXR5IG11c3Qgbm90IGRlcGVuZCBvbiB0aGF0IHByb3ZpZGVyIG9yZGVyaW5nLCBzbyB2ZXJpZmljYXRpb24gd2Fsa3MgdGhlIGFkdmVydGlzZWQKICogaW1wbGVtZW50YXRpb25zIGluIHJ1bnRpbWUgb3JkZXIgYW5kIHNlbGVjdHMgdGhlIGZpcnN0IG9uZSB0aGF0IGFjY2VwdHMgdGhlIHRydXN0ZWQga2V5LgogKi8KaW50ZXJuYWwgb2JqZWN0IFByb3RlY3RlZE1vZGVsU2lnbmF0dXJlVmVyaWZpY2F0aW9uIHsKICAgIGZ1biB2ZXJpZmllcigKICAgICAgICBzaWduYXR1cmVOYW1lOiBTdHJpbmcsCiAgICAgICAgc2lnbmVyS2V5OiBQdWJsaWNLZXkKICAgICk6IFNpZ25hdHVyZSB7CiAgICAgICAgdmFsIHByb3ZpZGVycyA9IFNlY3VyaXR5LmdldFByb3ZpZGVycygiU2lnbmF0dXJlLiRzaWduYXR1cmVOYW1lIik/LmFzTGlzdCgpLm9yRW1wdHkoKQogICAgICAgIGlmIChwcm92aWRlcnMuaXNFbXB0eSgpKSB7CiAgICAgICAgICAgIHJldHVybiBTaWduYXR1cmUuZ2V0SW5zdGFuY2Uoc2lnbmF0dXJlTmFtZSkuYXBwbHkgewogICAgICAgICAgICAgICAgaW5pdFZlcmlmeShzaWduZXJLZXkpCiAgICAgICAgICAgIH0KICAgICAgICB9CgogICAgICAgIHZhciBsYXN0RmFpbHVyZTogR2VuZXJhbFNlY3VyaXR5RXhjZXB0aW9uPyA9IG51bGwKICAgICAgICBmb3IgKHByb3ZpZGVyIGluIHByb3ZpZGVycykgewogICAgICAgICAgICB0cnkgewogICAgICAgICAgICAgICAgcmV0dXJuIFNpZ25hdHVyZS5nZXRJbnN0YW5jZShzaWduYXR1cmVOYW1lLCBwcm92aWRlcikuYXBwbHkgewogICAgICAgICAgICAgICAgICAgIGluaXRWZXJpZnkoc2lnbmVyS2V5KQogICAgICAgICAgICAgICAgfQogICAgICAgICAgICB9IGNhdGNoIChmYWlsdXJlOiBHZW5lcmFsU2VjdXJpdHlFeGNlcHRpb24pIHsKICAgICAgICAgICAgICAgIGxhc3RGYWlsdXJlID0gZmFpbHVyZQogICAgICAgICAgICB9CiAgICAgICAgfQoKICAgICAgICB0aHJvdyBsYXN0RmFpbHVyZSA/OiBOb1N1Y2hBbGdvcml0aG1FeGNlcHRpb24oCiAgICAgICAgICAgICJObyAkc2lnbmF0dXJlTmFtZSBzaWduYXR1cmUgcHJvdmlkZXIgYWNjZXB0ZWQgdGhlIHNpZ25lciBrZXkiCiAgICAgICAgKQogICAgfQp9Cg=='
+          test_b64 = 'cGFja2FnZSBwcm8ubGlsaXlhLmNvcmUucHJvdGVjdGVkbW9kZWwKCmltcG9ydCBqYXZhLnNlY3VyaXR5LkludmFsaWRLZXlFeGNlcHRpb24KaW1wb3J0IGphdmEuc2VjdXJpdHkuS2V5UGFpckdlbmVyYXRvcgppbXBvcnQgamF2YS5zZWN1cml0eS5Qcml2YXRlS2V5CmltcG9ydCBqYXZhLnNlY3VyaXR5LlByb3ZpZGVyCmltcG9ydCBqYXZhLnNlY3VyaXR5LlB1YmxpY0tleQppbXBvcnQgamF2YS5zZWN1cml0eS5TZWN1cml0eQppbXBvcnQgamF2YS5zZWN1cml0eS5TaWduYXR1cmUKaW1wb3J0IGphdmEuc2VjdXJpdHkuU2lnbmF0dXJlU3BpCmltcG9ydCBrb3RsaW4udGVzdC5UZXN0CmltcG9ydCBrb3RsaW4udGVzdC5hc3NlcnRUcnVlCgpjbGFzcyBQcm90ZWN0ZWRNb2RlbFNpZ25hdHVyZVByb3ZpZGVyU2VsZWN0aW9uQ29udHJhY3RUZXN0IHsKICAgIEBUZXN0CiAgICBmdW4gdmVyaWZpY2F0aW9uX3NraXBzX2FuX2VhcmxpZXJfcHJvdmlkZXJfdGhhdF9yZWplY3RzX3RoZV9zaWduZXJfa2V5KCkgewogICAgICAgIHZhbCBrZXlzID0gS2V5UGFpckdlbmVyYXRvci5nZXRJbnN0YW5jZSgiRWQyNTUxOSIpLmdlbmVyYXRlS2V5UGFpcigpCiAgICAgICAgdmFsIHBheWxvYWQgPSAicHJvdmlkZXItb3JkZXItaW5kZXBlbmRlbnQtdmVyaWZpY2F0aW9uIi5lbmNvZGVUb0J5dGVBcnJheSgpCiAgICAgICAgdmFsIHJlYWxQcm92aWRlciA9IFNpZ25hdHVyZS5nZXRJbnN0YW5jZSgiRWQyNTUxOSIpLnByb3ZpZGVyCiAgICAgICAgdmFsIHNpZ25hdHVyZSA9IFNpZ25hdHVyZS5nZXRJbnN0YW5jZSgiRWQyNTUxOSIsIHJlYWxQcm92aWRlcikucnVuIHsKICAgICAgICAgICAgaW5pdFNpZ24oa2V5cy5wcml2YXRlKQogICAgICAgICAgICB1cGRhdGUocGF5bG9hZCkKICAgICAgICAgICAgc2lnbigpCiAgICAgICAgfQogICAgICAgIHZhbCByZWplY3RpbmdQcm92aWRlciA9IFJlamVjdGluZ0VkMjU1MTlQcm92aWRlcigpCgogICAgICAgIFNlY3VyaXR5Lmluc2VydFByb3ZpZGVyQXQocmVqZWN0aW5nUHJvdmlkZXIsIDEpCiAgICAgICAgdHJ5IHsKICAgICAgICAgICAgdmFsIHZlcmlmaWVyID0gUHJvdGVjdGVkTW9kZWxTaWduYXR1cmVWZXJpZmljYXRpb24udmVyaWZpZXIoIkVkMjU1MTkiLCBrZXlzLnB1YmxpYykKICAgICAgICAgICAgdmVyaWZpZXIudXBkYXRlKHBheWxvYWQpCiAgICAgICAgICAgIGFzc2VydFRydWUodmVyaWZpZXIudmVyaWZ5KHNpZ25hdHVyZSkpCiAgICAgICAgICAgIGFzc2VydFRydWUodmVyaWZpZXIucHJvdmlkZXIubmFtZSAhPSByZWplY3RpbmdQcm92aWRlci5uYW1lKQogICAgICAgIH0gZmluYWxseSB7CiAgICAgICAgICAgIFNlY3VyaXR5LnJlbW92ZVByb3ZpZGVyKHJlamVjdGluZ1Byb3ZpZGVyLm5hbWUpCiAgICAgICAgfQogICAgfQp9CgpjbGFzcyBSZWplY3RpbmdFZDI1NTE5UHJvdmlkZXIgOiBQcm92aWRlcigKICAgICJMaWxpeWFSZWplY3RpbmdFZDI1NTE5IiwKICAgICIxLjAiLAogICAgIlRlc3QgcHJvdmlkZXIgdGhhdCBhZHZlcnRpc2VzIEVkMjU1MTkgYnV0IHJlamVjdHMgdmVyaWZpY2F0aW9uIGtleXMiCikgewogICAgaW5pdCB7CiAgICAgICAgcHV0KCJTaWduYXR1cmUuRWQyNTUxOSIsIFJlamVjdGluZ0VkMjU1MTlTaWduYXR1cmVTcGk6OmNsYXNzLmphdmEubmFtZSkKICAgIH0KfQoKY2xhc3MgUmVqZWN0aW5nRWQyNTUxOVNpZ25hdHVyZVNwaSA6IFNpZ25hdHVyZVNwaSgpIHsKICAgIG92ZXJyaWRlIGZ1biBlbmdpbmVJbml0VmVyaWZ5KHB1YmxpY0tleTogUHVibGljS2V5KSB7CiAgICAgICAgdGhyb3cgSW52YWxpZEtleUV4Y2VwdGlvbigiaW50ZW50aW9uYWwgdGVzdCBwcm92aWRlciByZWplY3Rpb24iKQogICAgfQoKICAgIG92ZXJyaWRlIGZ1biBlbmdpbmVJbml0U2lnbihwcml2YXRlS2V5OiBQcml2YXRlS2V5KSB7CiAgICAgICAgdGhyb3cgSW52YWxpZEtleUV4Y2VwdGlvbigic2lnbmluZyBpcyB1bnN1cHBvcnRlZCIpCiAgICB9CgogICAgb3ZlcnJpZGUgZnVuIGVuZ2luZVVwZGF0ZShiOiBCeXRlKSA9IFVuaXQKCiAgICBvdmVycmlkZSBmdW4gZW5naW5lVXBkYXRlKGI6IEJ5dGVBcnJheSwgb2ZmOiBJbnQsIGxlbjogSW50KSA9IFVuaXQKCiAgICBvdmVycmlkZSBmdW4gZW5naW5lU2lnbigpOiBCeXRlQXJyYXkgPSBlcnJvcigic2lnbmluZyBpcyB1bnN1cHBvcnRlZCIpCgogICAgb3ZlcnJpZGUgZnVuIGVuZ2luZVZlcmlmeShzaWdCeXRlczogQnl0ZUFycmF5KTogQm9vbGVhbiA9IGZhbHNlCgogICAgQERlcHJlY2F0ZWQoIkRlcHJlY2F0ZWQgaW4gSmF2YSIpCiAgICBvdmVycmlkZSBmdW4gZW5naW5lU2V0UGFyYW1ldGVyKHBhcmFtOiBTdHJpbmcsIHZhbHVlOiBBbnkpID0gVW5pdAoKICAgIEBEZXByZWNhdGVkKCJEZXByZWNhdGVkIGluIEphdmEiKQogICAgb3ZlcnJpZGUgZnVuIGVuZ2luZUdldFBhcmFtZXRlcihwYXJhbTogU3RyaW5nKTogQW55PyA9IG51bGwKfQo='
+          Path('core/src/main/kotlin/pro/liliya/core/protectedmodel/ProtectedModelSignatureVerification.kt').write_bytes(base64.b64decode(helper_b64))
+          Path('core/src/test/kotlin/pro/liliya/core/protectedmodel/ProtectedModelSignatureProviderSelectionContractTest.kt').write_bytes(base64.b64decode(test_b64))
           PY
           git diff --check
           git reset --mixed origin/main
@@ -185,7 +57,6 @@ class RejectingEd25519SignatureSpi : SignatureSpi() {
           test "$(git rev-list --count origin/main..HEAD)" = "1"
           test "$(git rev-parse HEAD^)" = "5f949ec37cb17fad408509e2a1453c270aac1f63"
           test "$(git rev-parse HEAD^{tree})" = "5b2b38842d70aa3c6b4e3aec5070fc95a989af79"
-          echo "CANDIDATE_HEAD=$(git rev-parse HEAD)"
 
       - name: Publish exact-tree candidate only
         shell: bash
