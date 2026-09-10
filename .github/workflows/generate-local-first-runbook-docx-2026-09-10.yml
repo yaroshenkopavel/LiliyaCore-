@@ -1,0 +1,314 @@
+name: Generate Local-First Runbook DOCX 2026-09-10
+
+on:
+  push:
+    branches:
+      - maintenance/local-first-runbook-docx-2026-09-10
+
+permissions:
+  contents: read
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate Word runbook
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/make_docx.py" <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile, ZIP_DEFLATED
+          from xml.sax.saxutils import escape
+          import datetime
+
+          OUT = Path('/tmp/LiliyaCore_Local_First_Working_Environment_Runbook_2026-09-10.docx')
+
+          paras = []
+          def p(text='', style=None, bold=False, mono=False):
+              paras.append(('p', text, style, bold, mono))
+          def h(text, level=1):
+              paras.append(('h', text, level, False, False))
+          def code(text):
+              for line in text.strip('\n').split('\n'):
+                  paras.append(('p', line, 'Code', False, True))
+          def bullet(text):
+              paras.append(('p', '• ' + text, 'List', False, False))
+          def num(text):
+              paras.append(('p', text, 'List', False, False))
+
+          h('LiliyaCore — Local-First рабочая среда', 1)
+          p('Полная инструкция установки с нуля, проверки воспроизводимости и ежедневного рабочего процесса', 'Subtitle')
+          p('Статус: ПРОВЕРЕНО / GREEN', bold=True)
+          p('Дата фиксации: 10 сентября 2026 года')
+          p('Назначение: следующий чат ChatGPT или разработчик должен прочитать этот документ, развернуть среду, доказать её исправность контрольными командами и только после этого продолжать разработку LiliyaCore.')
+
+          h('1. Что именно доказано', 1)
+          p('Технология Local-First / Exact-Tree доказана на полностью новом независимом GitHub runner. Runner восстановил JDK, Gradle, project-specific Gradle cache, Android SDK, NDK, CMake и Build Tools только из подготовленных artifacts, после чего выполнил Gradle строго с флагом --offline.')
+          p('Финальный проверочный результат:', bold=True)
+          bullet('GitHub Actions run: 34508499852')
+          bullet('Job verify-clean-restore: 102977430502 — SUCCESS')
+          bullet('Исходный exact HEAD: 5e31b7ee882a568c5bdcb5f414eddaacb65b4be3')
+          bullet('Исходный exact TREE: 111af8b2a643e692d99463079788ec008f580d99')
+          bullet('BUILD SUCCESSFUL in 2m 6s')
+          bullet('163 actionable tasks: 163 executed')
+          p('Важно: это доказательство воспроизводимости рецепта среды. Оно не является заменой физического Android instrumentation run на реальном телефоне. В baseline локальной среды проверяется компиляция androidTest, а физические device-gates остаются отдельным этапом CI/physical acceptance.')
+
+          h('2. Канонические репозитории', 1)
+          p('Использовать только эти имена. Финальный дефис в названии репозитория обязателен.')
+          bullet('Реализация: yaroshenkopavel/LiliyaCore-')
+          bullet('Документация: yaroshenkopavel/Documents-LiliyaCore-')
+          bullet('Licensing service: yaroshenkopavel/LiliyaLicensingService-')
+          p('Основная локальная рабочая копия рекомендуется по пути /mnt/data/LiliyaCore-local. Toolchain рекомендуется хранить отдельно в /mnt/data/local-toolchain.')
+
+          h('3. Главный принцип технологии', 1)
+          p('GitHub больше не должен использоваться как основной медленный цикл «изменить файл → запустить CI → ждать → снова изменить». Основной цикл переносится локально. GitHub используется как канонический remote, exact-head CI и merge gate.')
+          p('Канонический цикл:', bold=True)
+          code('local edit\n→ local targeted test\n→ local commit\n→ exact HEAD/TREE/diff proof\n→ push branch\n→ GitHub exact-head CI\n→ refetch head/diff/tree\n→ expected-head merge\n→ post-merge exact-main verification\n→ docs/freeze\n→ следующий bounded slice')
+
+          h('4. Проверенные версии toolchain', 1)
+          bullet('JDK: Eclipse Temurin OpenJDK 17.0.20.1+1')
+          bullet('Gradle: 9.6.1')
+          bullet('Android platform / compile SDK: API 35')
+          bullet('Android Build Tools: 35.0.0 и 36.0.0')
+          bullet('Android NDK: 29.0.13113456')
+          bullet('CMake: 3.31.6')
+          bullet('Linux proof host: Ubuntu 24.04, amd64')
+          p('Не заменять версии «похожими» без причины. При изменении pins в проекте сначала обновить toolchain snapshot/cache, затем заново доказать clean restore.')
+
+          h('5. Структура локальной среды', 1)
+          code('/mnt/data/\n├── LiliyaCore-local/\n│   ├── .git/\n│   ├── core/\n│   ├── android-runtime/\n│   ├── android-app/\n│   └── ...\n└── local-toolchain/\n    ├── jdk/\n    ├── gradle/\n    ├── gradle-home/\n    └── android-sdk/\n        ├── platforms/android-35/\n        ├── build-tools/35.0.0/\n        ├── build-tools/36.0.0/\n        ├── ndk/29.0.13113456/\n        ├── cmake/3.31.6/\n        └── platform-tools/')
+
+          h('6. Почему нужен project-specific Gradle home', 1)
+          p('Обычной установки Gradle недостаточно. Проект использует плагины и Maven-зависимости. Для настоящего offline режима нужен заранее прогретый GRADLE_USER_HOME именно для LiliyaCore. В доказанном наборе использовался архив liliya-gradle-home.tar.gz. Если зависимости проекта изменились, этот cache нужно обновить с сетью и только после этого снова проверять --offline.')
+
+          h('7. Artifacts, из которых доказано восстановление', 1)
+          p('Базовые toolchain artifacts были экспортированы run 34501234283:')
+          bullet('temurin-jdk17.tar.gz — SHA256 f3692ccc2383793e5dc18d9da6a35981a5f0b6841a4bdd40871533c6dcaf1023')
+          bullet('gradle-9.6.1-runtime.tar.gz — SHA256 6a9b52b087ac2658c3de699f20df5ace02e4fdecd5541e8254db47c933497864')
+          bullet('liliya-gradle-home.tar.gz — SHA256 68d75b1f3f7aee79c56411bb17ca94c18e5056e09d68652ff52460ac42051478')
+          bullet('android-sdk-compile.tar.gz — SHA256 367f504cc29c1442f4fc079d9b720a97c80d8fea6e9d3654afc977339fbf82fb')
+          p('Native/build additions финального run 34508499852:')
+          bullet('NDK part 00 — SHA256 51edfa3a50746081b80dae370dac91d01a03b9b9b65c7c98761c8ad1bcba4bab')
+          bullet('NDK part 01 — SHA256 c07ca7dbf1ca8b5734efb743c990895138dc8c29aa229feeab55bd738fb24721')
+          bullet('CMake 3.31.6 — SHA256 ad893d924f5cad8a6407295e6dd09d6ee8bc01f47a256025a054dc3a79b715d9')
+          bullet('Build Tools 36.0.0 — SHA256 a8083375dd0181c5c1e607a4efda2c83d5438299ac4707f895e1fa16cef9fd0b')
+          p('GitHub artifacts временные. Текущие maintenance exporters используют короткий retention. Поэтому старые run ID и artifact ID — доказательство, а не вечное хранилище. Если artifacts истекли, exporter нужно запустить снова и получить новый snapshot.')
+
+          h('8. Ограничение 512 МБ и обязательное разбиение NDK', 1)
+          p('NDK в сжатом виде превышает безопасный размер одного connector/artifact файла. Проверенная схема режет архив на части по 450 MiB.')
+          code('split -b 450M -d -a 2 \\\n  ndk-29.0.13113456.tar.gz \\\n  ndk.part.')
+          p('В доказанном snapshot получились две обязательные части:')
+          bullet('ndk.part.00 ≈ 450 MiB')
+          bullet('ndk.part.01 ≈ 289 MiB')
+          p('Нельзя загружать только part.00. После скачивания обе части объединяются строго в порядке 00, 01, затем gzip обязательно проверяется до распаковки:')
+          code('cat ndk.part.00 ndk.part.01 > ndk-29.0.13113456.tar.gz\ngzip -t ndk-29.0.13113456.tar.gz\ntar -xzf ndk-29.0.13113456.tar.gz -C /mnt/data/local-toolchain/android-sdk')
+
+          h('9. Установка с нуля — подготовка каталогов', 1)
+          code('set -euo pipefail\n\nROOT=/mnt/data/local-toolchain\nPROJECT=/mnt/data/LiliyaCore-local\n\nmkdir -p "$ROOT/jdk" \\\n         "$ROOT/gradle" \\\n         "$ROOT/gradle-home" \\\n         "$ROOT/android-sdk"\nmkdir -p "$PROJECT"')
+          p('Если /mnt/data/LiliyaCore-local уже содержит рабочую Git-копию, не уничтожать её автоматически. Сначала выполнить git status и сохранить незакоммиченные изменения.')
+
+          h('10. Получение полной Git-копии', 1)
+          p('Предпочтительный вариант — полноценный git clone/fetch, если DNS и GitHub доступны:')
+          code('git clone https://github.com/yaroshenkopavel/LiliyaCore-.git /mnt/data/LiliyaCore-local\ncd /mnt/data/LiliyaCore-local\ngit fetch --all --tags --prune')
+          p('Если в рабочем контейнере GitHub DNS недоступен, использовать GitHub connector для подготовки полного mirror archive, обязательно включая .git. Нельзя заменять Git-копию набором отдельных файлов: для exact-tree технологии нужны commit history, refs и git object database.')
+          p('После восстановления mirror archive:')
+          code('cd /mnt/data/LiliyaCore-local\ngit status --short --branch\ngit remote -v\ngit rev-parse --is-inside-work-tree')
+
+          h('11. Распаковка JDK, Gradle и caches', 1)
+          p('Предполагается, что экспортированные архивы уже находятся во временном каталоге, например /mnt/data/bootstrap.')
+          code('BOOT=/mnt/data/bootstrap\nROOT=/mnt/data/local-toolchain\n\ntar -xzf "$BOOT/temurin-jdk17.tar.gz" -C "$ROOT/jdk"\ntar -xzf "$BOOT/gradle-9.6.1-runtime.tar.gz" -C "$ROOT/gradle"\ntar -xzf "$BOOT/liliya-gradle-home.tar.gz" -C "$ROOT/gradle-home"\ntar -xzf "$BOOT/android-sdk-compile.tar.gz" -C "$ROOT/android-sdk"')
+
+          h('12. Распаковка Android native/build toolchain', 1)
+          code('BOOT=/mnt/data/bootstrap\nROOT=/mnt/data/local-toolchain\n\ncat "$BOOT/ndk.part.00" "$BOOT/ndk.part.01" \\\n  > "$BOOT/ndk-29.0.13113456.tar.gz"\n\ngzip -t "$BOOT/ndk-29.0.13113456.tar.gz"\n\ntar -xzf "$BOOT/ndk-29.0.13113456.tar.gz" -C "$ROOT/android-sdk"\ntar -xzf "$BOOT/cmake-3.31.6.tar.gz" -C "$ROOT/android-sdk"\ntar -xzf "$BOOT/build-tools-36.0.0.tar.gz" -C "$ROOT/android-sdk"')
+
+          h('13. Переменные окружения', 1)
+          p('JAVA_HOME зависит от имени корневой директории внутри JDK archive. В доказанном Linux snapshot это temurin-17-jdk-amd64. Безопаснее определять единственный каталог автоматически.')
+          code('ROOT=/mnt/data/local-toolchain\n\nexport JAVA_HOME="$(find "$ROOT/jdk" -mindepth 1 -maxdepth 1 -type d | head -1)"\nexport GRADLE_HOME="$ROOT/gradle/gradle-9.6.1"\nexport GRADLE_USER_HOME="$ROOT/gradle-home/liliya-gradle-home"\nexport ANDROID_HOME="$ROOT/android-sdk"\nexport ANDROID_SDK_ROOT="$ANDROID_HOME"\nexport PATH="$JAVA_HOME/bin:$GRADLE_HOME/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/build-tools/36.0.0:$PATH"')
+          p('Для постоянной рабочей среды эти export-команды можно поместить в отдельный /mnt/data/local-toolchain/activate.sh и выполнять source перед началом работы. Не зашивать абсолютные пути конкретного временного runner.')
+
+          h('14. Обязательная sanity-проверка toolchain', 1)
+          code('set -euo pipefail\n\njava -version\ngradle --version\n\ntest -d "$ANDROID_HOME/platforms/android-35"\ntest -d "$ANDROID_HOME/build-tools/35.0.0"\ntest -d "$ANDROID_HOME/build-tools/36.0.0"\ntest -d "$ANDROID_HOME/ndk/29.0.13113456"\ntest -d "$ANDROID_HOME/cmake/3.31.6"\n\necho "TOOLCHAIN_LAYOUT_OK"')
+          p('Ожидается Java 17.0.20.1 Temurin и Gradle 9.6.1. Любое несовпадение — причина остановиться до изменения проекта.')
+
+          h('15. Exact source proof перед тестами', 1)
+          code('cd /mnt/data/LiliyaCore-local\n\nprintf "BRANCH="; git branch --show-current\nprintf "HEAD="; git rev-parse HEAD\nprintf "TREE="; git rev-parse HEAD^{tree}\ngit status --short --branch')
+          p('Рабочая директория должна быть чистой перед baseline-проверкой. Если есть незакоммиченные изменения, нельзя выдавать результат за доказательство канонического exact tree.')
+
+          h('16. Базовый offline acceptance gate', 1)
+          p('Это центральная проверка работоспособности среды. Запускается без сети Maven/Google dependencies.')
+          code('cd /mnt/data/LiliyaCore-local\n\ngradle \\\n  :core:test \\\n  :android-runtime:testDebugUnitTest \\\n  :android-app:testDebugUnitTest \\\n  :android-app:compileDebugAndroidTestKotlin \\\n  --offline --console=plain --no-daemon')
+          p('Успех означает, что локальная среда способна выполнить критический JVM/core тестовый слой, Android runtime unit layer, Android app unit layer и компиляцию instrumentation tests без скачивания зависимостей.')
+
+          h('17. Доказанный эталон результата', 1)
+          code('openjdk version "17.0.20.1"\nGradle 9.6.1\nHEAD=5e31b7ee882a568c5bdcb5f414eddaacb65b4be3\nTREE=111af8b2a643e692d99463079788ec008f580d99\n...\n> Task :android-app:compileDebugAndroidTestKotlin\n> Task :android-app:testDebugUnitTest\n> Task :android-runtime:testDebugUnitTest\n> Task :core:test\n\nBUILD SUCCESSFUL in 2m 6s\n163 actionable tasks: 163 executed')
+          p('В новом чате HEAD/TREE могут закономерно быть другими, потому что проект развивается. Критерий — exact фиксация текущих значений и GREEN на том же tree, а не совпадение с историческими SHA из этого документа.')
+
+          h('18. Ежедневный рабочий процесс нового чата', 1)
+          num('1) Прочитать этот runbook полностью.')
+          num('2) Получить live canonical main и проверить, не сдвинулся ли он относительно handoff.')
+          num('3) Убедиться, что локальный mirror и toolchain активированы.')
+          num('4) Выполнить baseline --offline gate до начала новой разработки.')
+          num('5) Создать или продолжить один bounded slice; не смешивать независимые архитектурные изменения.')
+          num('6) Редактировать файлы локально в /mnt/data/LiliyaCore-local.')
+          num('7) Запускать сначала самые узкие релевантные тесты, затем расширять проверку.')
+          num('8) После GREEN сделать локальный commit.')
+          num('9) Зафиксировать git HEAD, TREE, status и diff/stat.')
+          num('10) Отправить exact commit в GitHub.')
+          num('11) Запустить/дождаться CI именно на этом exact head.')
+          num('12) Если main сдвинулся — inspect/reanchor; старый CI после reanchor считать недействительным.')
+          num('13) Никогда не merge RED, stale или непроверенный head.')
+          num('14) После merge снова проверить exact main и обновить документацию/handoff.')
+
+          h('19. Команды быстрого контроля перед каждым commit', 1)
+          code('cd /mnt/data/LiliyaCore-local\n\ngit status --short --branch\ngit diff --check\ngit diff --stat\ngit diff\n\nprintf "HEAD="; git rev-parse HEAD\nprintf "TREE="; git write-tree')
+          p('git write-tree полезен для фиксации exact tree рабочего индекса после staging. После commit использовать git rev-parse HEAD^{tree}.')
+
+          h('20. Когда обновлять offline Gradle cache', 1)
+          p('Cache нужно регенерировать, если изменились plugin versions, dependency coordinates/versions, repositories, Gradle/AGP/Kotlin versions или появились новые configurations, для которых artifact ещё не был загружен.')
+          p('Правильная последовательность: один раз прогреть зависимости в сетевой доверенной среде → сохранить новый GRADLE_USER_HOME artifact → восстановить его на чистом runner → повторить тот же --offline gate → только после GREEN считать snapshot новым baseline.')
+
+          h('21. Когда обновлять Android SDK snapshot', 1)
+          p('Обновлять snapshot при изменении compileSdk, buildToolsVersion, NDK pin, CMake pin или при появлении новой Android Gradle Plugin requirement. Нельзя исправлять missing toolchain изменением production build-файлов только ради текущего контейнера.')
+
+          h('22. Диагностика реальных ошибок, найденных при доказательстве', 1)
+          h('22.1. Сообщение про NDK 28.2 при отсутствующем NDK', 2)
+          p('Симптом: Android tooling может сообщить fallback/recommended NDK 28.2.13676358. Это не означает, что проект требует NDK 28.2. В LiliyaCore source pin был NDK 29.0.13113456. Сначала проверить build.gradle.kts, затем наличие pinned NDK в ANDROID_HOME/ndk.')
+          h('22.2. gzip: unexpected end of file / tar: Unexpected EOF', 2)
+          p('Причина, подтверждённая в нашей проверке: был загружен только ndk.part.00, а ndk.part.01 пропущен. Нельзя распаковывать такой архив. Проверить наличие обеих частей, объединить их по порядку, выполнить gzip -t и только затем tar -xzf.')
+          h('22.3. Failed to find Build Tools revision 36.0.0', 2)
+          p('Причина: первоначальный Android SDK snapshot содержал Build Tools 35.0.0, но текущий Android Gradle Plugin потребовал 36.0.0. Исправление: добавить build-tools;36.0.0 в toolchain snapshot и восстановить его в ANDROID_HOME/build-tools/36.0.0.')
+          h('22.4. --offline не находит dependency', 2)
+          p('Это означает, что project-specific Gradle cache неполный или устарел. Не отключать --offline для скрытия проблемы. Обновить cache в сетевой среде, экспортировать его и повторить clean restore.')
+          h('22.5. Artifact истёк', 2)
+          p('Maintenance artifacts имеют ограниченный retention. Перезапустить exporter, получить новый run и использовать новые artifacts. Run IDs из данного документа — исторический proof record, не API стабильного хранилища.')
+          h('22.6. Container TransportTimeout после большой распаковки', 2)
+          p('Такое произошло в текущем ChatGPT container после тяжёлой распаковки NDK. Это внешний infrastructure/transport incident, а не доказательство ошибки проекта. Не маркировать проект RED без Gradle/compile evidence. При необходимости восстановить новый container и применить уже доказанный clean-restore recipe.')
+
+          h('23. Ошибка, которую нельзя повторять: hashFiles и RUNNER_TEMP', 1)
+          p('В первой версии exporter условная загрузка ndk.part.01 использовала GitHub expression hashFiles() по пути в $RUNNER_TEMP. hashFiles ориентирован на workspace и вернул пустой результат, хотя файл реально существовал. Итог — part.01 не был загружен.')
+          p('Безопасный вариант для известного split: после split выполнить test -s для ожидаемых частей и загрузить их явно. Не использовать hashFiles для проверки файлов в RUNNER_TEMP.')
+
+          h('24. Security rules для bootstrap artifacts', 1)
+          bullet('Никогда не помещать production signing private keys в toolchain artifacts.')
+          bullet('Никогда не помещать plaintext model DEK в artifacts.')
+          bullet('Никогда не помещать license secrets/tokens в snapshot.')
+          bullet('Artifacts должны содержать только воспроизводимый toolchain/cache, допустимый для development environment.')
+          bullet('Maintenance workflow не должен менять production semantics или обходить архитектурные gates.')
+
+          h('25. Граница доказательства', 1)
+          p('Local-first baseline доказывает локальное редактирование/коммит, воспроизводимую toolchain-среду и offline компиляцию/тестовый слой. Он не отменяет GitHub exact-head CI, Android emulator/device instrumentation и физические acceptance gates. Для изменений, зависящих от Android Keystore, JNI/ABI, реального GGUF или поведения устройства, после локального gate нужен соответствующий CI/physical proof.')
+
+          h('26. Рекомендованный activate.sh', 1)
+          code('#!/usr/bin/env bash\nset -euo pipefail\nROOT=/mnt/data/local-toolchain\nexport JAVA_HOME="$(find "$ROOT/jdk" -mindepth 1 -maxdepth 1 -type d | head -1)"\nexport GRADLE_HOME="$ROOT/gradle/gradle-9.6.1"\nexport GRADLE_USER_HOME="$ROOT/gradle-home/liliya-gradle-home"\nexport ANDROID_HOME="$ROOT/android-sdk"\nexport ANDROID_SDK_ROOT="$ANDROID_HOME"\nexport PATH="$JAVA_HOME/bin:$GRADLE_HOME/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/build-tools/36.0.0:$PATH"\n\njava -version\ngradle --version')
+          p('Использование:')
+          code('source /mnt/data/local-toolchain/activate.sh\ncd /mnt/data/LiliyaCore-local')
+
+          h('27. Startup checklist для следующего чата', 1)
+          bullet('Прочитал этот документ полностью.')
+          bullet('Проверил правильные репозитории с финальным дефисом.')
+          bullet('Получил/восстановил полноценный Git mirror в /mnt/data/LiliyaCore-local.')
+          bullet('Восстановил JDK 17.0.20.1, Gradle 9.6.1 и project Gradle cache.')
+          bullet('Восстановил Android API35, Build Tools35+36, NDK29.0.13113456, CMake3.31.6.')
+          bullet('NDK собран из part.00 + part.01 и прошёл gzip -t.')
+          bullet('Экспортировал JAVA_HOME, GRADLE_HOME, GRADLE_USER_HOME, ANDROID_HOME, ANDROID_SDK_ROOT, PATH.')
+          bullet('java -version и gradle --version соответствуют baseline.')
+          bullet('Зафиксировал текущие BRANCH/HEAD/TREE и чистый status.')
+          bullet('Выполнил полный baseline gate с --offline и получил BUILD SUCCESSFUL.')
+          bullet('Только после этого начал менять код.')
+
+          h('28. Правило передачи между чатами', 1)
+          p('Следующий чат не должен начинать с повторного многодневного аудита всей истории, если canonical handoff и этот runbook доступны. Он обязан сначала проверить live main и exact local baseline, затем продолжить текущий bounded slice. Если обнаружено расхождение между handoff и live repository, приоритет имеет фактический live Git state; расхождение документируется до изменений.')
+
+          h('29. Proof record — финальная фиксация', 1)
+          p('Maintenance exporter/verification commit: a20c618d54ee7a5df9cedd68bca86091c55f4b0f')
+          p('Final proof workflow run: 34508499852')
+          p('Final proof job: 102977430502 (verify-clean-restore)')
+          p('Source branch: development-first-working-liliya-cold-start-fixture-v0.1')
+          p('Source HEAD: 5e31b7ee882a568c5bdcb5f414eddaacb65b4be3')
+          p('Source TREE: 111af8b2a643e692d99463079788ec008f580d99')
+          p('Result: BUILD SUCCESSFUL; 163 actionable tasks, 163 executed.', bold=True)
+
+          h('30. Короткая формула технологии', 1)
+          p('Работаем локально быстро; доказываем exact tree; GitHub используем как канонический интеграционный gate. Если локальная среда перестала воспроизводиться в --offline режиме, сначала чинится/обновляется toolchain snapshot — production код не меняется ради маскировки проблем среды.', bold=True)
+
+          def r(text, bold=False, mono=False, size=None):
+              props=[]
+              if bold: props.append('<w:b/>')
+              if mono: props.append('<w:rFonts w:ascii="Courier New" w:hAnsi="Courier New"/>')
+              if size: props.append(f'<w:sz w:val="{size}"/><w:szCs w:val="{size}"/>')
+              rp = '<w:rPr>'+''.join(props)+'</w:rPr>' if props else ''
+              preserve = ' xml:space="preserve"' if text.startswith(' ') or text.endswith(' ') else ''
+              return f'<w:r>{rp}<w:t{preserve}>{escape(text)}</w:t></w:r>'
+
+          def para_xml(item):
+              typ,text,style,bold,mono=item
+              if typ=='h':
+                  level=style
+                  return f'<w:p><w:pPr><w:pStyle w:val="Heading{level}"/></w:pPr>{r(text, bold=True)}</w:p>'
+              ppr=''
+              if style=='Subtitle': ppr='<w:pPr><w:pStyle w:val="Subtitle"/></w:pPr>'
+              elif style=='Code': ppr='<w:pPr><w:pStyle w:val="Code"/><w:spacing w:before="0" w:after="0"/></w:pPr>'
+              elif style=='List': ppr='<w:pPr><w:ind w:left="360" w:hanging="180"/><w:spacing w:after="60"/></w:pPr>'
+              else: ppr='<w:pPr><w:spacing w:after="120"/><w:jc w:val="both"/></w:pPr>'
+              return f'<w:p>{ppr}{r(text,bold=bold,mono=mono)}</w:p>'
+
+          body=''.join(para_xml(x) for x in paras)
+          sect='''<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1134" w:header="708" w:footer="708" w:gutter="0"/></w:sectPr>'''
+          document=f'''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+          <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>{body}{sect}</w:body></w:document>'''
+
+          styles='''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+          <w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+            <w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Aptos" w:hAnsi="Aptos"/><w:sz w:val="22"/><w:szCs w:val="22"/><w:lang w:val="ru-RU"/></w:rPr></w:rPrDefault></w:docDefaults>
+            <w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style>
+            <w:style w:type="paragraph" w:styleId="Title"><w:name w:val="Title"/><w:basedOn w:val="Normal"/><w:rPr><w:b/><w:sz w:val="36"/></w:rPr></w:style>
+            <w:style w:type="paragraph" w:styleId="Subtitle"><w:name w:val="Subtitle"/><w:basedOn w:val="Normal"/><w:rPr><w:i/><w:sz w:val="24"/></w:rPr></w:style>
+            <w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/><w:pPr><w:keepNext/><w:spacing w:before="300" w:after="120"/></w:pPr><w:rPr><w:b/><w:sz w:val="30"/></w:rPr></w:style>
+            <w:style w:type="paragraph" w:styleId="Heading2"><w:name w:val="heading 2"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/><w:pPr><w:keepNext/><w:spacing w:before="240" w:after="100"/></w:pPr><w:rPr><w:b/><w:sz w:val="26"/></w:rPr></w:style>
+            <w:style w:type="paragraph" w:styleId="Code"><w:name w:val="Code"/><w:basedOn w:val="Normal"/><w:pPr><w:ind w:left="360"/><w:shd w:fill="F2F2F2"/></w:pPr><w:rPr><w:rFonts w:ascii="Courier New" w:hAnsi="Courier New"/><w:sz w:val="18"/></w:rPr></w:style>
+          </w:styles>'''
+          content_types='''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+          <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/><Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/></Types>'''
+          rels='''<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/></Relationships>'''
+          docrels='''<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>'''
+          now='2026-09-10T17:40:00Z'
+          core=f'''<?xml version="1.0" encoding="UTF-8" standalone="yes"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:title>LiliyaCore Local-First Working Environment Runbook</dc:title><dc:subject>Проверенная инструкция установки рабочей среды</dc:subject><dc:creator>OpenAI ChatGPT</dc:creator><cp:keywords>LiliyaCore; Local-First; Exact-Tree; Gradle; Android</cp:keywords><dcterms:created xsi:type="dcterms:W3CDTF">{now}</dcterms:created><dcterms:modified xsi:type="dcterms:W3CDTF">{now}</dcterms:modified></cp:coreProperties>'''
+          app='''<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"><Application>Microsoft Office Word</Application><DocSecurity>0</DocSecurity><AppVersion>16.0000</AppVersion></Properties>'''
+
+          OUT.parent.mkdir(parents=True, exist_ok=True)
+          with ZipFile(OUT,'w',ZIP_DEFLATED) as z:
+              z.writestr('[Content_Types].xml',content_types)
+              z.writestr('_rels/.rels',rels)
+              z.writestr('word/document.xml',document)
+              z.writestr('word/styles.xml',styles)
+              z.writestr('word/_rels/document.xml.rels',docrels)
+              z.writestr('docProps/core.xml',core)
+              z.writestr('docProps/app.xml',app)
+          print(OUT)
+          PY
+          python3 "$RUNNER_TEMP/make_docx.py"
+          cp /tmp/LiliyaCore_Local_First_Working_Environment_Runbook_2026-09-10.docx "$RUNNER_TEMP/"
+
+      - name: Validate DOCX package
+        shell: bash
+        run: |
+          set -euo pipefail
+          DOC="$RUNNER_TEMP/LiliyaCore_Local_First_Working_Environment_Runbook_2026-09-10.docx"
+          unzip -t "$DOC"
+          unzip -p "$DOC" word/document.xml | grep -q 'BUILD SUCCESSFUL'
+          unzip -p "$DOC" word/document.xml | grep -q '163 actionable tasks'
+          unzip -p "$DOC" word/document.xml | grep -q '29.0.13113456'
+          unzip -p "$DOC" word/document.xml | grep -q 'build-tools/36.0.0'
+          test "$(stat -c%s "$DOC")" -gt 10000
+          sha256sum "$DOC"
+          echo DOCX_VALIDATED
+
+      - name: Upload Word runbook
+        uses: actions/upload-artifact@v4
+        with:
+          name: LiliyaCore-Local-First-Working-Environment-Runbook-2026-09-10
+          path: ${{ runner.temp }}/LiliyaCore_Local_First_Working_Environment_Runbook_2026-09-10.docx
+          retention-days: 7
+          compression-level: 0
+          if-no-files-found: error
