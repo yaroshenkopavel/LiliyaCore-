@@ -1,0 +1,68 @@
+name: Amend PR 212 preflight provider 2026-09-11
+
+on:
+  push:
+    branches:
+      - maintenance/local-mirror-export-2026-09-10
+    paths:
+      - .github/workflows/amend-pr212-preflight-provider-2026-09-11.yml
+
+permissions:
+  contents: write
+
+jobs:
+  amend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout PR branch with history
+        uses: actions/checkout@v4
+        with:
+          ref: development-first-working-liliya-cold-start-fixture-v0.1
+          fetch-depth: 0
+
+      - name: Verify expected old head and tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "e2fd4d112d7edb17bbae743d872b96e1fbcffa25"
+          test "$(git rev-parse HEAD^{tree})" = "28acb8a8df9fda3e27d6350cefa71fa459035d69"
+          test "$(git rev-parse HEAD^)" = "5f949ec37cb17fad408509e2a1453c270aac1f63"
+
+      - name: Correct test-only diagnostic verifier provider
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("android-app/src/androidTest/kotlin/pro/liliya/app/DevelopmentFirstWorkingLiliyaColdStartInstrumentedTest.kt")
+          text = p.read_text(encoding="utf-8")
+          old = '''                val verified = pro.liliya.core.protectedmodel.LargeProtectedModelPackageVerifier(\n                    signerResolver = signerResolver,\n                    budgets = packageBudgets\n                ).verify(openedPackage.envelope)'''
+          new = '''                val verified = pro.liliya.core.protectedmodel.LargeProtectedModelPackageVerifier(\n                    signerResolver = signerResolver,\n                    budgets = packageBudgets,\n                    signatureProvider = modelSignerProvider\n                ).verify(openedPackage.envelope)'''
+          if text.count(old) != 1:
+              raise SystemExit("expected verifier preflight block exactly once")
+          p.write_text(text.replace(old, new, 1), encoding="utf-8")
+          PY
+          git diff --check
+          test "$(git diff --name-only)" = "android-app/src/androidTest/kotlin/pro/liliya/app/DevelopmentFirstWorkingLiliyaColdStartInstrumentedTest.kt"
+
+      - name: Amend single PR commit and prove exact tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "yaroshenkopavel"
+          git config user.email "78513566+yaroshenkopavel@users.noreply.github.com"
+          git add android-app/src/androidTest/kotlin/pro/liliya/app/DevelopmentFirstWorkingLiliyaColdStartInstrumentedTest.kt
+          git commit --amend --no-edit
+          test "$(git rev-parse HEAD^)" = "5f949ec37cb17fad408509e2a1453c270aac1f63"
+          test "$(git rev-parse HEAD^{tree})" = "926a5f90b8ca383bad60703baa87674590a1148e"
+          echo "NEW_HEAD=$(git rev-parse HEAD)"
+          echo "NEW_TREE=$(git rev-parse HEAD^{tree})"
+
+      - name: Publish exact amended PR head
+        shell: bash
+        run: |
+          set -euo pipefail
+          git push \
+            --force-with-lease=refs/heads/development-first-working-liliya-cold-start-fixture-v0.1:e2fd4d112d7edb17bbae743d872b96e1fbcffa25 \
+            origin HEAD:refs/heads/development-first-working-liliya-cold-start-fixture-v0.1
