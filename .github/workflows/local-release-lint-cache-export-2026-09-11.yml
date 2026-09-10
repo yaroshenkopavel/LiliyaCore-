@@ -49,7 +49,7 @@ jobs:
           cd "$GRADLE_USER_HOME"
           test -d caches/modules-2/files-2.1/com.android.tools.lint/lint-gradle/32.3.0
           shopt -s nullglob
-          metadata=(caches/modules-2/metadata-2.*/descriptors/com.android.tools.lint)
+          metadata=(caches/modules-2/metadata-2.*)
           test ${#metadata[@]} -gt 0
           tar -czf "$RUNNER_TEMP/release-lint-cache-32.3.0.tar.gz" \
             caches/modules-2/files-2.1/com.android.tools.lint \
@@ -59,7 +59,7 @@ jobs:
       - name: Upload release lint cache slice
         uses: actions/upload-artifact@v4
         with:
-          name: release-lint-cache-32.3.0
+          name: release-lint-cache-32.3.0-full-metadata
           path: ${{ runner.temp }}/release-lint-cache-32.3.0.tar.gz
           retention-days: 7
           if-no-files-found: error
