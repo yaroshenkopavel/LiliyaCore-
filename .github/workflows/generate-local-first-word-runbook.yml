@@ -1,0 +1,286 @@
+name: Generate Local-First Word Runbook
+
+on:
+  push:
+    branches:
+      - maintenance/local-mirror-export-2026-09-10
+
+permissions:
+  contents: read
+
+jobs:
+  generate-docx:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate verified Word instruction
+        shell: bash
+        run: |
+          python - <<'PY'
+          from zipfile import ZipFile, ZIP_DEFLATED
+          from pathlib import Path
+          from xml.sax.saxutils import escape
+          from datetime import datetime, timezone
+
+          out = Path('/tmp/LiliyaCore_Local_First_Working_Environment_Runbook_2026-09-10.docx')
+
+          title = 'LiliyaCore — Полная инструкция по рабочей среде Local-First / Exact-Tree'
+          subtitle = 'Проверенная технология восстановления среды с нуля и рабочего цикла для следующего чата'
+
+          sections = [
+              ('1. Назначение и статус', [
+                  'Этот документ предназначен для следующего чата ChatGPT, который продолжает разработку LiliyaCore. Его задача — поднять рабочую среду с нуля, проверить её и перейти к разработке без повторного исследования технологии.',
+                  'Статус технологии: ПРОВЕРЕНО. 10 сентября 2026 года clean-restore на новом GitHub runner восстановил среду только из экспортированных artifacts и успешно выполнил offline Gradle gate. Результат: BUILD SUCCESSFUL in 2m 6s; 163 actionable tasks: 163 executed.',
+                  'Проверенный exact source: HEAD 5e31b7ee882a568c5bdcb5f414eddaacb65b4be3; TREE 111af8b2a643e692d99463079788ec008f580d99. Эти SHA — доказательный checkpoint конкретной проверки, а не вечный canonical main. Перед каждой новой работой нужно получить live main заново.'
+              ]),
+              ('2. Авторитетная технология', [
+                  'Основной принцип: GitHub остаётся canonical source и независимой acceptance-средой, а локальный контейнер является основной средой написания и предварительного тестирования.',
+                  'Рабочая цепочка: Canonical GitHub main -> exact local tree -> bounded local slice -> local acceptance -> exact blob/tree proof -> one clean PR commit -> exact-head CI -> expected-head merge -> exact-main post-merge verification -> freeze -> next gap.',
+                  'Авторитетные документы проекта: docs/development/LILIYACORE_LOCAL_FIRST_EXACT_TREE_WORKFLOW_V0_2.md; docs/development/LILIYACORE_LOCAL_OFFLINE_DEVELOPMENT_LOOP.md; docs/development/LILIYACORE_HANDOFF_NEXT_CHAT_2026-09-09.md. При конфликте механики workflow v0.2 имеет приоритет над более старым local/offline документом.'
+              ]),
+              ('3. Почему обычный git clone может не работать', [
+                  'Контейнер ChatGPT может не иметь прямого DNS/сетевого доступа к github.com. Обычный git clone может завершаться ошибкой разрешения хоста. Это не дефект проекта и не повод менять production code.',
+                  'Проверенный обход: GitHub Actions используется как транспортный мост. Runner делает checkout нужной ветки/точного SHA, упаковывает repository snapshot/mirror и toolchain, затем artifacts скачиваются через GitHub connector и разворачиваются в /mnt/data.'
+              ]),
+              ('4. Проверенные версии среды', [
+                  'Java: Eclipse Temurin OpenJDK 17.0.20.1 (Java 17).',
+                  'Gradle: 9.6.1.',
+                  'Android Platform: API 35.',
+                  'Android Build Tools: 35.0.0 и 36.0.0. Build Tools 36.0.0 обязателен: AGP запросил его при чистом restore.',
+                  'Android NDK: 29.0.13113456.',
+                  'CMake: 3.31.6.',
+                  'Gradle dependency cache: project-specific, предварительно прогретый на текущем дереве и проверенный с --offline.'
+              ]),
+              ('5. Канонические локальные пути', [
+                  'Repository mirror: /mnt/data/LiliyaCore-local',
+                  'Toolchain root: /mnt/data/local-toolchain',
+                  'Рекомендуемые подпапки: /mnt/data/local-toolchain/jdk, /mnt/data/local-toolchain/gradle, /mnt/data/local-toolchain/gradle-home, /mnt/data/local-toolchain/android-sdk.',
+                  'Локальный mirror не является canonical history owner. Canonical main всегда GitHub.'
+              ]),
+              ('6. Шаг 1 — получить live canonical main', [
+                  'Никогда не начинай работу только по SHA из старого handoff. Через GitHub connector получи текущий main SHA и tree SHA.',
+                  'Если main продвинулся после handoff, сначала кратко просмотри новые merged PR и убедись, что локальный slice можно безопасно re-anchor. Не запускай полный проектный аудит без доказанной причины.'
+              ]),
+              ('7. Шаг 2 — восстановить local Git mirror без DNS', [
+                  'Создай временную техническую branch от нужного canonical main. В GitHub Actions checkout сделай fetch-depth: 0, чтобы получить полноценную .git историю, если нужен настоящий mirror.',
+                  'Упакуй checkout в tar.gz, исключив .gradle, */build и */.cxx. Обязательно проверь, что archive содержит .git, если нужен полноценный Git mirror.',
+                  'Upload artifact с retention 1 day. Скачай artifact через GitHub connector, материализуй его в /mnt/data и распакуй в /mnt/data/LiliyaCore-local.',
+                  'После распаковки добавь путь в git safe.directory, если Git сообщает dubious ownership.',
+                  'Обязательные проверки: git status --short --branch; git rev-parse HEAD; git rev-parse HEAD^{tree}. HEAD/tree должны соответствовать выбранному exact source.'
+              ]),
+              ('8. Шаг 3 — подготовить toolchain bridge', [
+                  'На GitHub runner установи Java 17, Gradle 9.6.1 и Android SDK.',
+                  'Установи platforms;android-35, build-tools;35.0.0, build-tools;36.0.0, platform-tools, ndk;29.0.13113456, cmake;3.31.6.',
+                  'Создай чистый project-only GRADLE_USER_HOME и прогрей его задачами проекта. Минимум: :android-app:testDebugUnitTest, :android-runtime:testDebugUnitTest, :core:test, :android-app:compileDebugAndroidTestKotlin.',
+                  'После прогрева обязательно выполни хотя бы :core:test --offline на runner. Это доказывает, что cache действительно пригоден для offline режима.'
+              ]),
+              ('9. Шаг 4 — экспортировать artifacts', [
+                  'Экспортируй отдельно: JDK17, Gradle runtime, project Gradle home, Android compile SDK, NDK, CMake, Build Tools 36.',
+                  'Практический лимит connector download — около 512 MB на один artifact. Всё, что больше, дели на части ниже лимита.',
+                  'NDK 29 в проверенной схеме был разбит минимум на ndk.part.00 и ndk.part.01. Нельзя загружать только первую часть.',
+                  'После локальной склейки NDK archive обязательно выполнить gzip -t перед распаковкой. Если gzip -t не проходит, не продолжать и не менять production code.'
+              ]),
+              ('10. Шаг 5 — восстановить toolchain локально', [
+                  'Распакуй JDK в /mnt/data/local-toolchain/jdk.',
+                  'Распакуй Gradle в /mnt/data/local-toolchain/gradle.',
+                  'Распакуй project Gradle home в /mnt/data/local-toolchain/gradle-home.',
+                  'Распакуй Android SDK в /mnt/data/local-toolchain/android-sdk.',
+                  'Склей части NDK: cat ndk.part.00 ndk.part.01 > ndk-29.0.13113456.tar.gz; затем gzip -t; только после этого распакуй в Android SDK.',
+                  'Распакуй CMake 3.31.6 и Build Tools 36.0.0 в тот же Android SDK root.'
+              ]),
+              ('11. Шаг 6 — активировать окружение', [
+                  'Установить переменные окружения перед каждым локальным Gradle запуском:',
+                  'JAVA_HOME=<корень распакованного Temurin 17>',
+                  'GRADLE_HOME=/mnt/data/local-toolchain/gradle/gradle-9.6.1',
+                  'GRADLE_USER_HOME=/mnt/data/local-toolchain/gradle-home/liliya-gradle-home',
+                  'ANDROID_HOME=/mnt/data/local-toolchain/android-sdk',
+                  'ANDROID_SDK_ROOT=$ANDROID_HOME',
+                  'PATH=$JAVA_HOME/bin:$GRADLE_HOME/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/build-tools/36.0.0:$PATH',
+                  'После export проверить java -version и gradle --version. Нужны Java 17 и Gradle 9.6.1.'
+              ]),
+              ('12. Шаг 7 — обязательная локальная проверка среды', [
+                  'Перед первой реальной правкой запусти offline smoke/gate из /mnt/data/LiliyaCore-local.',
+                  'Рекомендуемый полный локальный gate для app/runtime slice: gradle :core:test :android-runtime:testDebugUnitTest :android-app:testDebugUnitTest :android-app:compileDebugAndroidTestKotlin --offline --console=plain --no-daemon',
+                  'Для slice, влияющего на упаковку приложения, workflow v0.2 рекомендует также :android-app:assembleDebug --offline.',
+                  'GREEN признаётся только по фактическому exit code 0 и строке BUILD SUCCESSFUL. TransportTimeout wrapper не считается build failure.'
+              ]),
+              ('13. Доказательство полного clean-restore от 10.09.2026', [
+                  'Новый clean GitHub runner восстановил JDK, Gradle, project cache, Android SDK, обе части NDK, CMake и Build Tools 36 исключительно из artifacts.',
+                  'Перед сборкой были проверены Java 17.0.20.1, Gradle 9.6.1, platforms/android-35, build-tools/35.0.0, build-tools/36.0.0, ndk/29.0.13113456 и cmake/3.31.6.',
+                  'Exact checkout: HEAD=5e31b7ee882a568c5bdcb5f414eddaacb65b4be3; TREE=111af8b2a643e692d99463079788ec008f580d99.',
+                  'Offline command выполнил :core:test, :android-runtime:testDebugUnitTest, :android-app:testDebugUnitTest и :android-app:compileDebugAndroidTestKotlin.',
+                  'Результат: BUILD SUCCESSFUL in 2m 6s; 163 actionable tasks: 163 executed. Это является проверенным доказательством воспроизводимости технологии на текущем проекте.'
+              ]),
+              ('14. Рабочий цикл после установки', [
+                  '1) Получить live main и exact tree.',
+                  '2) Синхронизировать local mirror до exact source.',
+                  '3) Создать bounded local slice.',
+                  '4) Внести изменения локально пакетно, а не по одному микрошагу через GitHub.',
+                  '5) Запустить targeted tests.',
+                  '6) Запустить полный relevant offline gate.',
+                  '7) Просмотреть полный diff и changed files.',
+                  '8) Зафиксировать локальный tested tree и важные blob SHA.',
+                  '9) Перед публикацией повторно получить live canonical main. Если он изменился, re-anchor exact tested blobs поверх нового main и повторно проверить tree.',
+                  '10) Сформировать один clean remote commit от актуального canonical main.',
+                  '11) Проверить equality remote blob/tree с локально принятым деревом.',
+                  '12) Открыть PR и запускать только path-policy-required CI.',
+                  '13) Не менять branch после exact-head acceptance.',
+                  '14) Перед merge заново проверить PR head, changed files, commit count и diff/tree.',
+                  '15) Merge только с expected-head protection.',
+                  '16) После merge проверить exact main SHA/tree и post-merge CI.',
+                  '17) Только после этого пометить slice COMPLETE/FROZEN и перейти к следующему proven gap.'
+              ]),
+              ('15. Правило one clean commit', [
+                  'Техническая синхронизация может оставить несколько промежуточных commits. Они не являются acceptance history.',
+                  'Перед PR собрать exact tested tree в один clean commit от текущего canonical main. Не сливать техническую цепочку только потому, что её последний tree выглядит правильно.'
+              ]),
+              ('16. Правило exact bytes / exact tree', [
+                  'Локально протестированный файл не считается удалённо принятым, пока exact bytes не проверены.',
+                  'Для важных файлов вычислить local Git blob SHA и сравнить с remote blob SHA. Для полного slice сравнить local accepted tree SHA и remote tree SHA.',
+                  'Особенно осторожно с Kotlin строками вида ${...}: промежуточные JS/template-string механизмы могут изменить содержимое. Использовать byte-preserving routes и всегда проверять SHA.'
+              ]),
+              ('17. Таймауты контейнера и длинные Gradle задачи', [
+                  'TransportTimeout от orchestration/container tool не является Gradle failure.',
+                  'Для длинных локальных задач использовать controlled background process: redirect stdout/stderr в log, записать exit code в marker file, polling делать в текущей активной сессии.',
+                  'GREEN только при marker exit code 0 и наличии BUILD SUCCESSFUL. Не обещать фоновые результаты вне активной сессии.'
+              ]),
+              ('18. Типовые ошибки и правильная реакция', [
+                  'Ошибка DNS / git clone: использовать Actions artifact bridge, а не менять проект.',
+                  'Java 21 в базовом контейнере: не использовать для canonical build; активировать перенесённый Java 17.',
+                  'Нет NDK: установить/export exact 29.0.13113456. Не верить fallback-тексту Android tooling без проверки build files.',
+                  'Есть только Build Tools 35: добавить 36.0.0.',
+                  'NDK archive unexpected end of file: проверить, что скачаны все части; склеить; gzip -t.',
+                  'Offline dependency miss: обновить project Gradle cache через runner; это инфраструктура, не production defect.',
+                  'Kotlin incremental cache collision/corruption: остановить stale Gradle/Kotlin daemons, очистить только affected local build/incremental cache и rerun. Не менять production logic.',
+                  'Emulator/system-image download failure до исполнения instrumentation: classify as infrastructure only при доказательстве из log; rerun same SHA; production code не менять.'
+              ]),
+              ('19. Границы GitHub и локальной среды', [
+                  'Local GREEN — обязательный pre-PR quality gate, но не финальный project acceptance.',
+                  'GitHub отвечает за canonical main, exact PR head, path-triggered CI, merge SHA и post-merge verification.',
+                  'Не считать отсутствие workflow ошибкой, если path filters намеренно его не запускают.'
+              ]),
+              ('20. Что следующий чат должен сделать сразу после чтения', [
+                  '1) Прочитать актуальный handoff и authoritative workflow v0.2.',
+                  '2) Получить live GitHub main SHA/tree.',
+                  '3) Проверить наличие /mnt/data/LiliyaCore-local. Не предполагать, что старый mirror актуален.',
+                  '4) Если mirror отсутствует или существенно устарел — восстановить через Actions artifact bridge.',
+                  '5) Проверить toolchain versions и каталоги.',
+                  '6) Выполнить offline smoke test.',
+                  '7) Только после GREEN начинать production slice.',
+                  '8) Работать автономно как технический lead: не останавливать пользователя после каждой команды; спрашивать только при необходимости user-only secret/file/physical action или irreducible product-policy decision.'
+              ]),
+              ('21. Текущий проектный checkpoint на момент создания инструкции', [
+                  'Canonical implementation main на момент проверки: 5f949ec37cb17fad408509e2a1453c270aac1f63; tree 90677219f770f8b22b8891b80cdb0c9632853d1c.',
+                  'Текущий рабочий PR #212: Development First Working Liliya cold-start fixture v0.1; head 5e31b7ee882a568c5bdcb5f414eddaacb65b4be3. PR остаётся draft/open на момент создания инструкции.',
+                  'Эти значения являются checkpoint, а не заменой обязательной live-проверки в следующем чате.'
+              ]),
+              ('22. Краткая формула для следующего чата', [
+                  'Не редактируй проект через GitHub микрошагами, если local-first среда доступна.',
+                  'Сначала exact local mirror + Java17/Gradle9.6.1/SDK35/BT36/NDK29/CMake3.31.6 + offline cache -> локальная реализация и тесты -> exact tree -> один clean GitHub commit -> exact-head CI -> expected-head merge -> post-merge exact-main verification.',
+                  'Если локальная инфраструктура неполна, исправляй инфраструктуру. Не меняй production code, чтобы удовлетворить сломанную локальную среду.'
+              ]),
+          ]
+
+          NS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
+          def r(text, bold=False, italic=False, size=None, font='Aptos'):
+              props = []
+              if bold: props.append('<w:b/>')
+              if italic: props.append('<w:i/>')
+              if size: props.append(f'<w:sz w:val="{size}"/><w:szCs w:val="{size}"/>')
+              props.append(f'<w:rFonts w:ascii="{font}" w:hAnsi="{font}" w:eastAsia="{font}"/>')
+              return f'<w:r><w:rPr>{"".join(props)}</w:rPr><w:t xml:space="preserve">{escape(text)}</w:t></w:r>'
+
+          def p(text='', style=None, bold=False, italic=False, size=None, keep=False):
+              ppr=[]
+              if style: ppr.append(f'<w:pStyle w:val="{style}"/>')
+              if keep: ppr.append('<w:keepNext/>')
+              return f'<w:p><w:pPr>{"".join(ppr)}</w:pPr>{r(text,bold,italic,size)}</w:p>'
+
+          body=[]
+          body.append(p(title, style='Title', bold=True, size=36))
+          body.append(p(subtitle, style='Subtitle', italic=True, size=24))
+          body.append(p('Дата: 10 сентября 2026 г.   Статус: VERIFIED / READY FOR CROSS-CHAT RESTORE', bold=True))
+          body.append(p(''))
+          for heading, paras in sections:
+              body.append(p(heading, style='Heading1', bold=True, size=28, keep=True))
+              for text in paras:
+                  style='Normal'
+                  body.append(p(text, style=style, size=22))
+          body.append(p(''))
+          body.append(p('Конец инструкции. Перед каждым новым slice обязательна live-проверка GitHub main и локального exact tree.', bold=True, size=22))
+          body.append('<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1134" w:header="708" w:footer="708" w:gutter="0"/></w:sectPr>')
+
+          document = f'''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+          <w:document xmlns:w="{NS}"><w:body>{''.join(body)}</w:body></w:document>'''
+
+          styles = f'''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+          <w:styles xmlns:w="{NS}">
+            <w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/><w:rPr><w:rFonts w:ascii="Aptos" w:hAnsi="Aptos"/><w:sz w:val="22"/><w:szCs w:val="22"/></w:rPr><w:pPr><w:spacing w:after="120" w:line="276" w:lineRule="auto"/></w:pPr></w:style>
+            <w:style w:type="paragraph" w:styleId="Title"><w:name w:val="Title"/><w:basedOn w:val="Normal"/><w:qFormat/><w:rPr><w:b/><w:sz w:val="36"/><w:szCs w:val="36"/></w:rPr><w:pPr><w:spacing w:after="180"/></w:pPr></w:style>
+            <w:style w:type="paragraph" w:styleId="Subtitle"><w:name w:val="Subtitle"/><w:basedOn w:val="Normal"/><w:qFormat/><w:rPr><w:i/><w:sz w:val="24"/><w:szCs w:val="24"/></w:rPr><w:pPr><w:spacing w:after="240"/></w:pPr></w:style>
+            <w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/><w:uiPriority w:val="9"/><w:rPr><w:b/><w:sz w:val="28"/><w:szCs w:val="28"/></w:rPr><w:pPr><w:keepNext/><w:spacing w:before="240" w:after="100"/></w:pPr></w:style>
+          </w:styles>'''
+
+          content_types = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+          <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+            <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+            <Default Extension="xml" ContentType="application/xml"/>
+            <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+            <Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>
+            <Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>
+            <Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>
+          </Types>'''
+
+          rels = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+          <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+            <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+            <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>
+            <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/>
+          </Relationships>'''
+
+          doc_rels = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+          <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+            <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+          </Relationships>'''
+
+          now = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+          core = f'''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+          <cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+            <dc:title>{escape(title)}</dc:title><dc:subject>Verified LiliyaCore local-first environment runbook</dc:subject><dc:creator>OpenAI ChatGPT</dc:creator><cp:lastModifiedBy>OpenAI ChatGPT</cp:lastModifiedBy><dcterms:created xsi:type="dcterms:W3CDTF">{now}</dcterms:created><dcterms:modified xsi:type="dcterms:W3CDTF">{now}</dcterms:modified>
+          </cp:coreProperties>'''
+          app = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"><Application>Microsoft Office Word</Application></Properties>'''
+
+          with ZipFile(out, 'w', ZIP_DEFLATED) as z:
+              z.writestr('[Content_Types].xml', content_types)
+              z.writestr('_rels/.rels', rels)
+              z.writestr('word/document.xml', document)
+              z.writestr('word/styles.xml', styles)
+              z.writestr('word/_rels/document.xml.rels', doc_rels)
+              z.writestr('docProps/core.xml', core)
+              z.writestr('docProps/app.xml', app)
+
+          # Structural validation of the DOCX package.
+          import xml.etree.ElementTree as ET
+          with ZipFile(out, 'r') as z:
+              required={'[Content_Types].xml','_rels/.rels','word/document.xml','word/styles.xml','word/_rels/document.xml.rels','docProps/core.xml','docProps/app.xml'}
+              missing=required-set(z.namelist())
+              if missing: raise SystemExit(f'Missing DOCX parts: {missing}')
+              for name in required:
+                  if name.endswith('.xml') or name.endswith('.rels'):
+                      ET.fromstring(z.read(name))
+              text=z.read('word/document.xml').decode('utf-8')
+              assert 'BUILD SUCCESSFUL in 2m 6s' in text
+              assert 'LILIYACORE_LOCAL_FIRST_EXACT_TREE_WORKFLOW_V0_2.md' in text
+              assert 'build-tools;36.0.0' in text
+              assert 'ndk.part.01' in text
+              assert '--offline' in text
+          print(out)
+          print(out.stat().st_size)
+          PY
+
+      - name: Upload Word runbook
+        uses: actions/upload-artifact@v4
+        with:
+          name: liliyacore-local-first-word-runbook
+          path: /tmp/LiliyaCore_Local_First_Working_Environment_Runbook_2026-09-10.docx
+          retention-days: 7
+          if-no-files-found: error
