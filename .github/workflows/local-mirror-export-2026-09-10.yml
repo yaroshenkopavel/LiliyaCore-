@@ -1,0 +1,37 @@
+name: Local Mirror Export 2026-09-10
+
+on:
+  push:
+    branches:
+      - maintenance/local-mirror-export-2026-09-10
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout active development branch
+        uses: actions/checkout@v4
+        with:
+          ref: development-first-working-liliya-cold-start-fixture-v0.1
+          fetch-depth: 0
+
+      - name: Create local mirror archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar -czf "$RUNNER_TEMP/LiliyaCore-local.tar.gz" \
+            --exclude='./.gradle' \
+            --exclude='*/build' \
+            --exclude='*/.cxx' \
+            .
+          tar -tzf "$RUNNER_TEMP/LiliyaCore-local.tar.gz" | grep -q '^./.git/'
+          git rev-parse HEAD
+          git status --short --branch
+
+      - name: Upload local mirror archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: liliy核心-local-mirror-${{ github.sha }}
+          path: ${{ runner.temp }}/LiliyaCore-local.tar.gz
+          retention-days: 1
+          if-no-files-found: error
