@@ -27,21 +27,57 @@ jobs:
           set -euo pipefail
           git fetch origin main development-first-working-liliya-cold-start-fixture-v0.1
           test "$(git rev-parse origin/main)" = "5f949ec37cb17fad408509e2a1453c270aac1f63"
-          test "$(git rev-parse origin/development-first-working-liliya-cold-start-fixture-v0.1)" = "5e31b7ee882a568c5bdcb5f414eddaacb65b4be3"
+          test "$(git rev-parse origin/development-first-working-liliya-cold-start-fixture-v0.1)" = "34c21ad79e5b2469e0084b2df72e8d7edcfa717a"
           python - <<'PY'
           from pathlib import Path
           p = Path('android-app/src/androidTest/kotlin/pro/liliya/app/DevelopmentFirstWorkingLiliyaColdStartInstrumentedTest.kt')
           s = p.read_text()
-          replacements = [
-              ('import java.security.KeyPairGenerator\n', 'import java.security.KeyFactory\nimport java.security.KeyPairGenerator\n'),
-              ('import java.security.spec.ECGenParameterSpec\n', 'import java.security.spec.ECGenParameterSpec\nimport java.security.spec.X509EncodedKeySpec\n'),
-              ('        val modelSigner = KeyPairGenerator.getInstance("Ed25519", modelSignerProvider).generateKeyPair()\n', '        val modelSigner = KeyPairGenerator.getInstance("Ed25519", modelSignerProvider).generateKeyPair()\n        val verifierCompatibleModelSignerPublicKey = KeyFactory.getInstance("Ed25519").generatePublic(\n            X509EncodedKeySpec(modelSigner.public.encoded)\n        )\n'),
-              ('            val signerResolver = ProtectedModelSignerResolver { requested, algorithm ->\n                modelSigner.public.takeIf {\n', '            val signerResolver = ProtectedModelSignerResolver { requested, algorithm ->\n                verifierCompatibleModelSignerPublicKey.takeIf {\n'),
-          ]
-          for old, new in replacements:
-              if s.count(old) != 1:
-                  raise SystemExit(f'exact replacement precondition failed: {old!r}, count={s.count(old)}')
-              s = s.replace(old, new, 1)
+          s = s.replace('import java.security.KeyFactory\n', '')
+          s = s.replace('import java.security.KeyPairGenerator\n', 'import java.security.KeyPairGenerator\nimport java.security.KeyStore\n')
+          s = s.replace('import java.security.spec.X509EncodedKeySpec\n', '')
+          old = '''        val modelSignerId = ProtectedModelSignerId("first-working-liliya-model-signer")
+        val modelSignerProvider = org.bouncycastle.jce.provider.BouncyCastleProvider()
+        val modelSigner = KeyPairGenerator.getInstance("Ed25519", modelSignerProvider).generateKeyPair()
+        val verifierCompatibleModelSignerPublicKey = KeyFactory.getInstance("Ed25519").generatePublic(
+            X509EncodedKeySpec(modelSigner.public.encoded)
+        )
+'''
+          new = '''        val modelSignerId = ProtectedModelSignerId("first-working-liliya-model-signer")
+        val modelSignerAlias = "first-working-liliya-model-signer-ed25519"
+        val androidKeyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        androidKeyStore.deleteEntry(modelSignerAlias)
+        val modelSigner = KeyPairGenerator.getInstance("EC", "AndroidKeyStore").run {
+            initialize(
+                android.security.keystore.KeyGenParameterSpec.Builder(
+                    modelSignerAlias,
+                    android.security.keystore.KeyProperties.PURPOSE_SIGN or
+                        android.security.keystore.KeyProperties.PURPOSE_VERIFY
+                )
+                    .setAlgorithmParameterSpec(ECGenParameterSpec("ed25519"))
+                    .setDigests(android.security.keystore.KeyProperties.DIGEST_NONE)
+                    .build()
+            )
+            generateKeyPair()
+        }
+'''
+          if s.count(old) != 1:
+              raise SystemExit(f'signer replacement precondition failed: count={s.count(old)}')
+          s = s.replace(old, new, 1)
+          old = '                            val signer = Signature.getInstance("Ed25519", modelSignerProvider)\n'
+          new = '                            val signer = Signature.getInstance("Ed25519")\n'
+          if s.count(old) != 1:
+              raise SystemExit(f'signature replacement precondition failed: count={s.count(old)}')
+          s = s.replace(old, new, 1)
+          old = '                verifierCompatibleModelSignerPublicKey.takeIf {\n'
+          new = '                modelSigner.public.takeIf {\n'
+          if s.count(old) != 1:
+              raise SystemExit(f'resolver replacement precondition failed: count={s.count(old)}')
+          s = s.replace(old, new, 1)
+          old = '            modelDekBytes.fill(0)\n            application.runtimeOwner.close()\n'
+          new = '            modelDekBytes.fill(0)\n            runCatching { androidKeyStore.deleteEntry(modelSignerAlias) }\n            application.runtimeOwner.close()\n'
+          if s.count(old) != 1:
+              raise SystemExit(f'cleanup replacement precondition failed: count={s.count(old)}')
+          s = s.replace(old, new, 1)
           p.write_text(s)
           PY
           git diff --check
@@ -49,13 +85,13 @@ jobs:
           git add -A
           TREE="$(git write-tree)"
           echo "TREE=$TREE"
-          test "$TREE" = "2f2a83c95664714b1f178642af2179a97cb5785d"
+          test "$TREE" = "1892a1fdbceeae79e3bd558eb71eca1565778495"
           git config user.name "yaroshenkopavel"
           git config user.email "78513566+yaroshenkopavel@users.noreply.github.com"
           git commit -m "First Working Liliya cold-start fixture v0.1"
           test "$(git rev-list --count origin/main..HEAD)" = "1"
           test "$(git rev-parse HEAD^)" = "5f949ec37cb17fad408509e2a1453c270aac1f63"
-          test "$(git rev-parse HEAD^{tree})" = "2f2a83c95664714b1f178642af2179a97cb5785d"
+          test "$(git rev-parse HEAD^{tree})" = "1892a1fdbceeae79e3bd558eb71eca1565778495"
           echo "CANDIDATE_HEAD=$(git rev-parse HEAD)"
 
       - name: Publish exact-tree candidate only
