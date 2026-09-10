@@ -15,23 +15,26 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Checkout pinned llama.cpp
+      - name: Export exact pinned llama.cpp git mirror
         shell: bash
         run: |
           set -euo pipefail
-          git clone https://github.com/ggml-org/llama.cpp.git llama.cpp
+          mkdir llama.cpp
           cd llama.cpp
-          git checkout 0f3a71be15af836d277c9f918adfafb45732677e
+          git init
+          git remote add origin https://github.com/ggml-org/llama.cpp.git
+          git fetch --depth=1 origin 0f3a71be15af836d277c9f918adfafb45732677e
+          git checkout --detach FETCH_HEAD
           test "$(git rev-parse HEAD)" = "0f3a71be15af836d277c9f918adfafb45732677e"
-          rm -rf .git
+          git fsck --full
           cd ..
-          tar -czf llama-cpp-0f3a71be15af836d277c9f918adfafb45732677e.tar.gz llama.cpp
-          gzip -t llama-cpp-0f3a71be15af836d277c9f918adfafb45732677e.tar.gz
+          tar -czf llama-cpp-git-0f3a71be15af836d277c9f918adfafb45732677e.tar.gz llama.cpp
+          gzip -t llama-cpp-git-0f3a71be15af836d277c9f918adfafb45732677e.tar.gz
 
-      - name: Upload exact source
+      - name: Upload exact git mirror
         uses: actions/upload-artifact@v4
         with:
-          name: llama-cpp-0f3a71be15af836d277c9f918adfafb45732677e
-          path: llama-cpp-0f3a71be15af836d277c9f918adfafb45732677e.tar.gz
+          name: llama-cpp-git-0f3a71be15af836d277c9f918adfafb45732677e
+          path: llama-cpp-git-0f3a71be15af836d277c9f918adfafb45732677e.tar.gz
           retention-days: 7
           if-no-files-found: error
