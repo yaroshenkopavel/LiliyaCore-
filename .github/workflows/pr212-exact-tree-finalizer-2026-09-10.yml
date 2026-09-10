@@ -15,73 +15,27 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Checkout exact PR head
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           ref: 9e5ba26fc510387b86d3db808477622a4613a949
           fetch-depth: 0
-
-      - name: Build exact locally tested portable signer tree
+      - name: Build and publish exact locally tested tree
         shell: bash
         run: |
           set -euo pipefail
           git fetch origin main
           test "$(git rev-parse origin/main)" = "5f949ec37cb17fad408509e2a1453c270aac1f63"
           test "$(git rev-parse HEAD^{tree})" = "82c8a09d39bb151d87b6da4e6fc6b28efb0f1719"
-          python - <<'PY'
-          from pathlib import Path
-          p = Path('android-app/src/androidTest/kotlin/pro/liliya/app/DevelopmentFirstWorkingLiliyaColdStartInstrumentedTest.kt')
-          s = p.read_text()
-          changes = [
-              ('import java.security.KeyStore\n', ''),
-              ('import org.junit.runner.RunWith\n', 'import org.junit.runner.RunWith\nimport org.bouncycastle.jce.provider.BouncyCastleProvider\n'),
-              ('''        val modelSignerAlias = "first-working-liliya-model-signer-ed25519"
-        val androidKeyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-        androidKeyStore.deleteEntry(modelSignerAlias)
-        val modelSigner = KeyPairGenerator.getInstance("EC", "AndroidKeyStore").run {
-            initialize(
-                android.security.keystore.KeyGenParameterSpec.Builder(
-                    modelSignerAlias,
-                    android.security.keystore.KeyProperties.PURPOSE_SIGN or
-                        android.security.keystore.KeyProperties.PURPOSE_VERIFY
-                )
-                    .setAlgorithmParameterSpec(ECGenParameterSpec("ed25519"))
-                    .setDigests(android.security.keystore.KeyProperties.DIGEST_NONE)
-                    .build()
-            )
-            generateKeyPair()
-        }
-''', '''        val modelSignerProvider = BouncyCastleProvider()
-        val modelSigner = KeyPairGenerator.getInstance(
-            "Ed25519",
-            modelSignerProvider
-        ).generateKeyPair()
-'''),
-              ('val signer = Signature.getInstance("Ed25519")', 'val signer = Signature.getInstance("Ed25519", modelSignerProvider)'),
-              ('            runCatching { androidKeyStore.deleteEntry(modelSignerAlias) }\n', ''),
-          ]
-          for old, new in changes:
-              if s.count(old) != 1:
-                  raise SystemExit(f'precondition failed for: {old[:80]!r}; count={s.count(old)}')
-              s = s.replace(old, new, 1)
-          p.write_text(s)
-          PY
+          printf '%s' 'ZnJvbSBwYXRobGliIGltcG9ydCBQYXRoCnA9UGF0aCgiYW5kcm9pZC1hcHAvc3JjL2FuZHJvaWRUZXN0L2tvdGxpbi9wcm8vbGlsaXlhL2FwcC9EZXZlbG9wbWVudEZpcnN0V29ya2luZ0xpbGl5YUNvbGRTdGFydEluc3RydW1lbnRlZFRlc3Qua3QiKQpzPXAucmVhZF90ZXh0KCkKcz1zLnJlcGxhY2UoImltcG9ydCBqYXZhLnNlY3VyaXR5LktleVN0b3JlXG4iLCAiIiwgMSkKcz1zLnJlcGxhY2UoImltcG9ydCBvcmcuanVuaXQucnVubmVyLlJ1bldpdGhcbiIsICJpbXBvcnQgb3JnLmp1bml0LnJ1bm5lci5SdW5XaXRoXG5pbXBvcnQgb3JnLmJvdW5jeWNhc3RsZS5qY2UucHJvdmlkZXIuQm91bmN5Q2FzdGxlUHJvdmlkZXJcbiIsIDEpCnN0YXJ0PXMuaW5kZXgoJyAgICAgICAgdmFsIG1vZGVsU2lnbmVyQWxpYXMgPSAiZmlyc3Qtd29ya2luZy1saWxpeWEtbW9kZWwtc2lnbmVyLWVkMjU1MTkiJykKZW5kPXMuaW5kZXgoJyAgICAgICAgdmFyIG1vZGVsRGVrQXNzZW1ibHk6Jywgc3RhcnQpCnM9c1s6c3RhcnRdKycgICAgICAgIHZhbCBtb2RlbFNpZ25lclByb3ZpZGVyID0gQm91bmN5Q2FzdGxlUHJvdmlkZXIoKVxuICAgICAgICB2YWwgbW9kZWxTaWduZXIgPSBLZXlQYWlyR2VuZXJhdG9yLmdldEluc3RhbmNlKFxuICAgICAgICAgICAgIkVkMjU1MTkiLFxuICAgICAgICAgICAgbW9kZWxTaWduZXJQcm92aWRlclxuICAgICAgICApLmdlbmVyYXRlS2V5UGFpcigpXG4nK3NbZW5kOl0Kcz1zLnJlcGxhY2UoJ3ZhbCBzaWduZXIgPSBTaWduYXR1cmUuZ2V0SW5zdGFuY2UoIkVkMjU1MTkiKScsICd2YWwgc2lnbmVyID0gU2lnbmF0dXJlLmdldEluc3RhbmNlKCJFZDI1NTE5IiwgbW9kZWxTaWduZXJQcm92aWRlciknLCAxKQpzPXMucmVwbGFjZSgnICAgICAgICAgICAgcnVuQ2F0Y2hpbmcgeyBhbmRyb2lkS2V5U3RvcmUuZGVsZXRlRW50cnkobW9kZWxTaWduZXJBbGlhcykgfVxuJywgJycsIDEpCnAud3JpdGVfdGV4dChzKQo=' | base64 -d | python
           git diff --check
           test "$(git hash-object android-app/src/androidTest/kotlin/pro/liliya/app/DevelopmentFirstWorkingLiliyaColdStartInstrumentedTest.kt)" = "20feb577bc776e4bbcc7bb8b46097494c4a49ec2"
           git reset --mixed origin/main
           git add -A
-          TREE="$(git write-tree)"
-          echo "TREE=$TREE"
-          test "$TREE" = "013cbfbb2356b5a13058a1766819ab5291d0dc92"
+          test "$(git write-tree)" = "013cbfbb2356b5a13058a1766819ab5291d0dc92"
           git config user.name "yaroshenkopavel"
           git config user.email "78513566+yaroshenkopavel@users.noreply.github.com"
           git commit -m "First Working Liliya cold-start fixture v0.1"
           test "$(git rev-list --count origin/main..HEAD)" = "1"
           test "$(git rev-parse HEAD^)" = "5f949ec37cb17fad408509e2a1453c270aac1f63"
           test "$(git rev-parse HEAD^{tree})" = "013cbfbb2356b5a13058a1766819ab5291d0dc92"
-
-      - name: Publish exact-tree candidate only
-        shell: bash
-        run: |
-          set -euo pipefail
           git push --force origin HEAD:refs/heads/maintenance/pr212-exact-tree-candidate-2026-09-10
