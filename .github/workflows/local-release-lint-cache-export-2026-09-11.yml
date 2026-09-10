@@ -1,0 +1,65 @@
+name: Local Release Lint Cache Export 2026-09-11
+
+on:
+  push:
+    branches:
+      - maintenance/local-mirror-export-2026-09-10
+    paths:
+      - .github/workflows/local-release-lint-cache-export-2026-09-11.yml
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout environment branch
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle 9.6.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.1'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install compile SDK
+        shell: bash
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Resolve release lint toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle :android-runtime:extractReleaseAnnotations --console=plain
+
+      - name: Package exact lint cache slice
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GRADLE_USER_HOME"
+          test -d caches/modules-2/files-2.1/com.android.tools.lint/lint-gradle/32.3.0
+          shopt -s nullglob
+          metadata=(caches/modules-2/metadata-2.*/descriptors/com.android.tools.lint)
+          test ${#metadata[@]} -gt 0
+          tar -czf "$RUNNER_TEMP/release-lint-cache-32.3.0.tar.gz" \
+            caches/modules-2/files-2.1/com.android.tools.lint \
+            "${metadata[@]}"
+          gzip -t "$RUNNER_TEMP/release-lint-cache-32.3.0.tar.gz"
+
+      - name: Upload release lint cache slice
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-lint-cache-32.3.0
+          path: ${{ runner.temp }}/release-lint-cache-32.3.0.tar.gz
+          retention-days: 7
+          if-no-files-found: error
