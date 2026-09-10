@@ -1,4 +1,4 @@
-name: PR212 Exact Tree Finalizer 2026-09-10
+name: PR212 Exact Tree Finalizer 2026-09-11
 
 on:
   push:
@@ -15,34 +15,70 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Checkout known clean fixture commit
+      - name: Checkout exact PR head
         uses: actions/checkout@v4
         with:
-          ref: 13713be49e620ab39a56d9f0a88b9f8fafc88c6e
+          ref: 9e5ba26fc510387b86d3db808477622a4613a949
           fetch-depth: 0
 
-      - name: Build exact tested product signer trust tree
+      - name: Build exact locally tested portable signer tree
         shell: bash
         run: |
           set -euo pipefail
           git fetch origin main
           test "$(git rev-parse origin/main)" = "5f949ec37cb17fad408509e2a1453c270aac1f63"
-          test "$(git rev-parse HEAD^{tree})" = "1892a1fdbceeae79e3bd558eb71eca1565778495"
-          printf '%s' 'ZGlmZiAtLWdpdCBhL2FuZHJvaWQtYXBwL3NyYy9hbmRyb2lkVGVzdC9rb3RsaW4vcHJvL2xpbGl5YS9hcHAvRGV2ZWxvcG1lbnRGaXJzdFdvcmtpbmdMaWxpeWFDb2xkU3RhcnRJbnN0cnVtZW50ZWRUZXN0Lmt0IGIvYW5kcm9pZC1hcHAvc3JjL2FuZHJvaWRUZXN0L2tvdGxpbi9wcm8vbGlsaXlhL2FwcC9EZXZlbG9wbWVudEZpcnN0V29ya2luZ0xpbGl5YUNvbGRTdGFydEluc3RydW1lbnRlZFRlc3Qua3QKaW5kZXggMGNlOGY3YmEuLmI3MDA0NGVlIDEwMDY0NAotLS0gYS9hbmRyb2lkLWFwcC9zcmMvYW5kcm9pZFRlc3Qva290bGluL3Byby9saWxpeWEvYXBwL0RldmVsb3BtZW50Rmlyc3RXb3JraW5nTGlsaXlhQ29sZFN0YXJ0SW5zdHJ1bWVudGVkVGVzdC5rdAorKysgYi9hbmRyb2lkLWFwcC9zcmMvYW5kcm9pZFRlc3Qva290bGluL3Byby9saWxpeWEvYXBwL0RldmVsb3BtZW50Rmlyc3RXb3JraW5nTGlsaXlhQ29sZFN0YXJ0SW5zdHJ1bWVudGVkVGVzdC5rdApAQCAtMjgsNiArMjgsOSBAQCBpbXBvcnQgcHJvLmxpbGl5YS5hbmRyb2lkLnJ1bnRpbWUuQW5kcm9pZFByb2R1Y3RSdW50aW1lRmlyc3RXb3JraW5nTGVhcm5pbmdEaXNhYgogaW1wb3J0IHByby5saWxpeWEuYW5kcm9pZC5ydW50aW1lLkFuZHJvaWRQcm9kdWN0UnVudGltZUxpY2Vuc2VUcnVzdEtleQogaW1wb3J0IHByby5saWxpeWEuYW5kcm9pZC5ydW50aW1lLkFuZHJvaWRQcm9kdWN0UnVudGltZU9ic2VydmFiaWxpdHkKIGltcG9ydCBwcm8ubGlsaXlhLmFuZHJvaWQucnVudGltZS5BbmRyb2lkUHJvZHVjdFJ1bnRpbWVQcm90ZWN0ZWRNb2RlbEJ1ZGdldElucHV0CitpbXBvcnQgcHJvLmxpbGl5YS5hbmRyb2lkLnJ1bnRpbWUuQW5kcm9pZFByb2R1Y3RSdW50aW1lUHJvdGVjdGVkTW9kZWxTaWduZXJUcnVzdAoraW1wb3J0IHByby5saWxpeWEuYW5kcm9pZC5ydW50aW1lLkFuZHJvaWRQcm9kdWN0UnVudGltZVByb3RlY3RlZE1vZGVsU2lnbmVyVHJ1c3RLZXkKK2ltcG9ydCBwcm8ubGlsaXlhLmFuZHJvaWQucnVudGltZS5BbmRyb2lkUHJvZHVjdFJ1bnRpbWVQcm90ZWN0ZWRNb2RlbFNpZ25lclRydXN0UmVzdWx0CiBpbXBvcnQgcHJvLmxpbGl5YS5hbmRyb2lkLnJ1bnRpbWUuQW5kcm9pZFByb2R1Y3RSdW50aW1lUHJvdGVjdGVkTW9kZWxTdGFnaW5nUHJvdmlzaW9uaW5nRmFjdG9yeQogaW1wb3J0IHByby5saWxpeWEuYW5kcm9pZC5ydW50aW1lLkFuZHJvaWRQcm9kdWN0UnVudGltZVN0YXJ0dXBBZG1pc3Npb25JbnB1dAogaW1wb3J0IHByby5saWxpeWEuYW5kcm9pZC5ydW50aW1lLkFuZHJvaWRQcm9kdWN0UnVudGltZVN0YXJ0dXBBdXRob3JpdHlQbGFuCkBAIC0yMTEsMTIgKzIxNCwxNyBAQCBjbGFzcyBEZXZlbG9wbWVudEZpcnN0V29ya2luZ0xpbGl5YUNvbGRTdGFydEluc3RydW1lbnRlZFRlc3QgewogICAgICAgICAgICAgKQogCiAgICAgICAgICAgICB2YWwgZml4dHVyZUZvdW5kYXRpb24gPSBmb3VuZGF0aW9uKCkKLSAgICAgICAgICAgIHZhbCBzaWduZXJSZXNvbHZlciA9IFByb3RlY3RlZE1vZGVsU2lnbmVyUmVzb2x2ZXIgeyByZXF1ZXN0ZWQsIGFsZ29yaXRobSAtPgotICAgICAgICAgICAgICAgIG1vZGVsU2lnbmVyLnB1YmxpYy50YWtlSWYgewotICAgICAgICAgICAgICAgICAgICByZXF1ZXN0ZWQgPT0gbW9kZWxTaWduZXJJZCAmJgotICAgICAgICAgICAgICAgICAgICAgICAgYWxnb3JpdGhtID09IFByb3RlY3RlZE1vZGVsU2lnbmF0dXJlQWxnb3JpdGhtLkVEMjU1MTkKLSAgICAgICAgICAgICAgICB9Ci0gICAgICAgICAgICB9CisgICAgICAgICAgICB2YWwgc2lnbmVyVHJ1c3QgPSBBbmRyb2lkUHJvZHVjdFJ1bnRpbWVQcm90ZWN0ZWRNb2RlbFNpZ25lclRydXN0LmNyZWF0ZSgKKyAgICAgICAgICAgICAgICBsaXN0T2YoCisgICAgICAgICAgICAgICAgICAgIEFuZHJvaWRQcm9kdWN0UnVudGltZVByb3RlY3RlZE1vZGVsU2lnbmVyVHJ1c3RLZXkoCisgICAgICAgICAgICAgICAgICAgICAgICBzaWduZXJJZCA9IG1vZGVsU2lnbmVySWQudmFsdWUsCisgICAgICAgICAgICAgICAgICAgICAgICBtYXRlcmlhbCA9IG1vZGVsU2lnbmVyLnB1YmxpYy5lbmNvZGVkCisgICAgICAgICAgICAgICAgICAgICkKKyAgICAgICAgICAgICAgICApCisgICAgICAgICAgICApCisgICAgICAgICAgICB2YWwgc2lnbmVyUmVzb2x2ZXIgPSAoCisgICAgICAgICAgICAgICAgc2lnbmVyVHJ1c3QgYXM/IEFuZHJvaWRQcm9kdWN0UnVudGltZVByb3RlY3RlZE1vZGVsU2lnbmVyVHJ1c3RSZXN1bHQuUmVhZHkKKyAgICAgICAgICAgICk/LnJlc29sdmVyID86IGVycm9yKCJDb2xkLXN0YXJ0IHByb3RlY3RlZC1tb2RlbCBzaWduZXIgdHJ1c3QgcmVqZWN0ZWQiKQogCiAgICAgICAgICAgICB2YWwgb3BlbmVkUGFja2FnZSA9IHdoZW4gKAogICAgICAgICAgICAgICAgIHZhbCBvcGVuZWQgPSBwcm8ubGlsaXlhLmFuZHJvaWQucnVudGltZS5Qcm9kdWN0UHJvdGVjdGVkTW9kZWxMb2NhbFBhY2thZ2Uub3BlbigK' | base64 -d > /tmp/pr212.patch
-          git apply --check /tmp/pr212.patch
-          git apply /tmp/pr212.patch
+          test "$(git rev-parse HEAD^{tree})" = "82c8a09d39bb151d87b6da4e6fc6b28efb0f1719"
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('android-app/src/androidTest/kotlin/pro/liliya/app/DevelopmentFirstWorkingLiliyaColdStartInstrumentedTest.kt')
+          s = p.read_text()
+          changes = [
+              ('import java.security.KeyStore\n', ''),
+              ('import org.junit.runner.RunWith\n', 'import org.junit.runner.RunWith\nimport org.bouncycastle.jce.provider.BouncyCastleProvider\n'),
+              ('''        val modelSignerAlias = "first-working-liliya-model-signer-ed25519"
+        val androidKeyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        androidKeyStore.deleteEntry(modelSignerAlias)
+        val modelSigner = KeyPairGenerator.getInstance("EC", "AndroidKeyStore").run {
+            initialize(
+                android.security.keystore.KeyGenParameterSpec.Builder(
+                    modelSignerAlias,
+                    android.security.keystore.KeyProperties.PURPOSE_SIGN or
+                        android.security.keystore.KeyProperties.PURPOSE_VERIFY
+                )
+                    .setAlgorithmParameterSpec(ECGenParameterSpec("ed25519"))
+                    .setDigests(android.security.keystore.KeyProperties.DIGEST_NONE)
+                    .build()
+            )
+            generateKeyPair()
+        }
+''', '''        val modelSignerProvider = BouncyCastleProvider()
+        val modelSigner = KeyPairGenerator.getInstance(
+            "Ed25519",
+            modelSignerProvider
+        ).generateKeyPair()
+'''),
+              ('val signer = Signature.getInstance("Ed25519")', 'val signer = Signature.getInstance("Ed25519", modelSignerProvider)'),
+              ('            runCatching { androidKeyStore.deleteEntry(modelSignerAlias) }\n', ''),
+          ]
+          for old, new in changes:
+              if s.count(old) != 1:
+                  raise SystemExit(f'precondition failed for: {old[:80]!r}; count={s.count(old)}')
+              s = s.replace(old, new, 1)
+          p.write_text(s)
+          PY
           git diff --check
+          test "$(git hash-object android-app/src/androidTest/kotlin/pro/liliya/app/DevelopmentFirstWorkingLiliyaColdStartInstrumentedTest.kt)" = "20feb577bc776e4bbcc7bb8b46097494c4a49ec2"
           git reset --mixed origin/main
           git add -A
           TREE="$(git write-tree)"
           echo "TREE=$TREE"
-          test "$TREE" = "82c8a09d39bb151d87b6da4e6fc6b28efb0f1719"
+          test "$TREE" = "013cbfbb2356b5a13058a1766819ab5291d0dc92"
           git config user.name "yaroshenkopavel"
           git config user.email "78513566+yaroshenkopavel@users.noreply.github.com"
           git commit -m "First Working Liliya cold-start fixture v0.1"
           test "$(git rev-list --count origin/main..HEAD)" = "1"
           test "$(git rev-parse HEAD^)" = "5f949ec37cb17fad408509e2a1453c270aac1f63"
-          test "$(git rev-parse HEAD^{tree})" = "82c8a09d39bb151d87b6da4e6fc6b28efb0f1719"
+          test "$(git rev-parse HEAD^{tree})" = "013cbfbb2356b5a13058a1766819ab5291d0dc92"
 
       - name: Publish exact-tree candidate only
         shell: bash
