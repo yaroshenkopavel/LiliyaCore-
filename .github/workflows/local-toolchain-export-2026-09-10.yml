@@ -23,25 +23,28 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install pinned native toolchain
+      - name: Install pinned native and Android build toolchain
         shell: bash
         run: |
           set -euo pipefail
           sdkmanager \
             "ndk;29.0.13113456" \
-            "cmake;3.31.6"
+            "cmake;3.31.6" \
+            "build-tools;36.0.0"
 
-      - name: Pack and split native toolchain
+      - name: Pack and split toolchain additions
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/local-native"
           tar -C "$ANDROID_HOME" -czf "$RUNNER_TEMP/local-native/ndk-29.0.13113456.tar.gz" ndk/29.0.13113456
           tar -C "$ANDROID_HOME" -czf "$RUNNER_TEMP/local-native/cmake-3.31.6.tar.gz" cmake/3.31.6
+          tar -C "$ANDROID_HOME" -czf "$RUNNER_TEMP/local-native/build-tools-36.0.0.tar.gz" build-tools/36.0.0
           split -b 450M -d -a 2 "$RUNNER_TEMP/local-native/ndk-29.0.13113456.tar.gz" "$RUNNER_TEMP/local-native/ndk.part."
           rm "$RUNNER_TEMP/local-native/ndk-29.0.13113456.tar.gz"
           test -s "$RUNNER_TEMP/local-native/ndk.part.00"
           test -s "$RUNNER_TEMP/local-native/ndk.part.01"
+          test -s "$RUNNER_TEMP/local-native/build-tools-36.0.0.tar.gz"
           du -sh "$RUNNER_TEMP/local-native"/*
 
       - name: Upload NDK part 00
@@ -67,6 +70,15 @@ jobs:
         with:
           name: liliyacore-local-cmake-${{ github.sha }}
           path: ${{ runner.temp }}/local-native/cmake-3.31.6.tar.gz
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
+
+      - name: Upload Build Tools 36
+        uses: actions/upload-artifact@v4
+        with:
+          name: liliyacore-local-build-tools-36-${{ github.sha }}
+          path: ${{ runner.temp }}/local-native/build-tools-36.0.0.tar.gz
           retention-days: 1
           compression-level: 0
           if-no-files-found: error
@@ -136,6 +148,12 @@ jobs:
           name: liliyacore-local-cmake-${{ github.sha }}
           path: ${{ runner.temp }}/restore/native
 
+      - name: Download current Build Tools 36
+        uses: actions/download-artifact@v4
+        with:
+          name: liliyacore-local-build-tools-36-${{ github.sha }}
+          path: ${{ runner.temp }}/restore/native
+
       - name: Restore local-first environment from artifacts only
         shell: bash
         run: |
@@ -150,17 +168,19 @@ jobs:
           gzip -t "$RUNNER_TEMP/restore/native/ndk-29.0.13113456.tar.gz"
           tar -xzf "$RUNNER_TEMP/restore/native/ndk-29.0.13113456.tar.gz" -C "$ROOT/android-sdk"
           tar -xzf "$RUNNER_TEMP/restore/native/cmake-3.31.6.tar.gz" -C "$ROOT/android-sdk"
+          tar -xzf "$RUNNER_TEMP/restore/native/build-tools-36.0.0.tar.gz" -C "$ROOT/android-sdk"
           JAVA_HOME="$(find "$ROOT/jdk" -mindepth 1 -maxdepth 1 -type d | head -1)"
           GRADLE_HOME="$ROOT/gradle/gradle-9.6.1"
           GRADLE_USER_HOME="$ROOT/gradle-home/liliya-gradle-home"
           ANDROID_HOME="$ROOT/android-sdk"
           ANDROID_SDK_ROOT="$ANDROID_HOME"
-          PATH="$JAVA_HOME/bin:$GRADLE_HOME/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/build-tools/35.0.0:$PATH"
+          PATH="$JAVA_HOME/bin:$GRADLE_HOME/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/build-tools/36.0.0:$PATH"
           export JAVA_HOME GRADLE_HOME GRADLE_USER_HOME ANDROID_HOME ANDROID_SDK_ROOT PATH
           java -version
           gradle --version
           test -d "$ANDROID_HOME/platforms/android-35"
           test -d "$ANDROID_HOME/build-tools/35.0.0"
+          test -d "$ANDROID_HOME/build-tools/36.0.0"
           test -d "$ANDROID_HOME/ndk/29.0.13113456"
           test -d "$ANDROID_HOME/cmake/3.31.6"
           printf 'HEAD='; git rev-parse HEAD
