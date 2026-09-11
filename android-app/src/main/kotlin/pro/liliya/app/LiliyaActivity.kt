@@ -17,6 +17,7 @@ import pro.liliya.android.runtime.ProductChatResult
 
 class LiliyaActivity : Activity() {
     private val worker = Executors.newSingleThreadExecutor()
+    private val conversation = ProductConversationTranscript()
 
     private lateinit var status: TextView
     private lateinit var transcript: TextView
@@ -112,7 +113,7 @@ class LiliyaActivity : Activity() {
 
         transcript = TextView(this).apply {
             textSize = 16f
-            text = ""
+            text = conversation.render()
         }
         root.addView(
             ScrollView(this).apply { addView(transcript) },
@@ -202,6 +203,8 @@ class LiliyaActivity : Activity() {
         val message = input.text?.toString()?.trim().orEmpty()
         if (message.isBlank() || !send.isEnabled) return
 
+        conversation.appendUser(message)
+        transcript.text = conversation.render()
         input.isEnabled = false
         send.isEnabled = false
         status.text = "Думаю…"
@@ -216,7 +219,8 @@ class LiliyaActivity : Activity() {
                 if (isFinishing || isDestroyed) return@runOnUiThread
                 when (result) {
                     is ProductChatResult.Completed -> {
-                        transcript.text = result.reply
+                        conversation.appendLiliya(result.reply)
+                        transcript.text = conversation.render()
                         input.text?.clear()
                         status.text = "Готова"
                     }
