@@ -2,6 +2,7 @@ package pro.liliya.app
 
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import org.junit.Test
 
@@ -45,6 +46,32 @@ class ProductConversationTranscriptContractTest {
         transcript.appendUser("Первый запрос")
 
         assertEquals("Вы: Первый запрос", transcript.render())
+    }
+
+    @Test
+    fun matching_newest_user_turn_can_be_rolled_back_for_retry() {
+        val transcript = ProductConversationTranscript()
+        transcript.appendUser("Первый")
+        transcript.appendLiliya("Ответ")
+        transcript.appendUser("  Повторить  ")
+
+        assertTrue(transcript.rollbackLastUser("Повторить"))
+        assertEquals("Вы: Первый\n\nЛилия: Ответ", transcript.render())
+    }
+
+    @Test
+    fun rollback_fails_closed_when_newest_turn_or_message_does_not_match() {
+        val transcript = ProductConversationTranscript()
+        transcript.appendUser("Первый")
+        transcript.appendLiliya("Ответ")
+
+        assertFalse(transcript.rollbackLastUser("Первый"))
+        assertFalse(transcript.rollbackLastUser(""))
+        assertEquals("Вы: Первый\n\nЛилия: Ответ", transcript.render())
+
+        transcript.appendUser("Второй")
+        assertFalse(transcript.rollbackLastUser("другой текст"))
+        assertEquals("Вы: Первый\n\nЛилия: Ответ\n\nВы: Второй", transcript.render())
     }
 
     @Test
