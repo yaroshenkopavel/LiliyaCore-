@@ -25,86 +25,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path('android-llama-cpp-engine/src/main/cpp/liliya_llama_jni.cpp')
-          s = p.read_text()
-
-          old = '''    int32_t max_output_utf8_bytes = 0;\n    std::mutex execution_mutex;\n'''
-          new = '''    int32_t max_output_utf8_bytes = 0;\n    int32_t max_structured_grammar_utf8_bytes = 0;\n    std::string structured_grammar;\n    std::mutex execution_mutex;\n'''
-          assert s.count(old) == 1
-          s = s.replace(old, new, 1)
-
-          marker = '''StreamCallbackResult emit_stream_chunk(\n'''
-          idx = s.index(marker)
-          helper = r'''std::unique_ptr<llama_sampler, decltype(&llama_sampler_free)> create_session_sampler(
-    const NativeSession * session
-) {
-    if (session == nullptr) {
-        return {nullptr, llama_sampler_free};
-    }
-    if (session->structured_grammar.empty()) {
-        return {llama_sampler_init_greedy(), llama_sampler_free};
-    }
-
-    llama_sampler_chain_params chain_params = llama_sampler_chain_default_params();
-    chain_params.no_perf = true;
-    llama_sampler * chain = llama_sampler_chain_init(chain_params);
-    if (chain == nullptr) {
-        return {nullptr, llama_sampler_free};
-    }
-    std::unique_ptr<llama_sampler, decltype(&llama_sampler_free)> result(chain, llama_sampler_free);
-
-    llama_sampler * grammar = llama_sampler_init_grammar(
-        session->vocab,
-        session->structured_grammar.c_str(),
-        "root"
-    );
-    if (grammar == nullptr) {
-        return {nullptr, llama_sampler_free};
-    }
-    llama_sampler * greedy = llama_sampler_init_greedy();
-    if (greedy == nullptr) {
-        llama_sampler_free(grammar);
-        return {nullptr, llama_sampler_free};
-    }
-
-    llama_sampler_chain_add(chain, grammar);
-    llama_sampler_chain_add(chain, greedy);
-    return result;
-}
-
-'''
-          s = s[:idx] + helper + s[idx:]
-
-          sig_old = '''    jint max_prompt_utf8_bytes,\n    jint max_output_utf8_bytes,\n    jboolean use_mmap\n) {\n'''
-          sig_new = '''    jint max_prompt_utf8_bytes,\n    jint max_output_utf8_bytes,\n    jbyteArray structured_grammar_utf8,\n    jint max_structured_grammar_utf8_bytes,\n    jboolean use_mmap\n) {\n'''
-          assert s.count(sig_old) == 1
-          s = s.replace(sig_old, sig_new, 1)
-
-          validate_old = '''        max_prompt_utf8_bytes <= 0 ||\n        max_output_utf8_bytes <= 0 ||\n        max_prompt_tokens > context_tokens ||\n'''
-          validate_new = '''        max_prompt_utf8_bytes <= 0 ||\n        max_output_utf8_bytes <= 0 ||\n        max_structured_grammar_utf8_bytes <= 0 ||\n        structured_grammar_utf8 == nullptr ||\n        max_prompt_tokens > context_tokens ||\n'''
-          assert s.count(validate_old) == 1
-          s = s.replace(validate_old, validate_new, 1)
-
-          path_anchor = '''        ByteScrubber path_scrubber(path_bytes);\n        if (\n            std::find(path_bytes.begin(), path_bytes.end(), static_cast<uint8_t>(0)) !=\n            path_bytes.end()\n        ) {\n            return LOAD_REJECTED;\n        }\n        path_bytes.push_back(0);\n\n        ensure_backend_initialized();\n'''
-          grammar_block = '''        ByteScrubber path_scrubber(path_bytes);\n        if (\n            std::find(path_bytes.begin(), path_bytes.end(), static_cast<uint8_t>(0)) !=\n            path_bytes.end()\n        ) {\n            return LOAD_REJECTED;\n        }\n        path_bytes.push_back(0);\n\n        std::vector<uint8_t> grammar_bytes;\n        if (!copy_bytes(env, structured_grammar_utf8, grammar_bytes)) {\n            return LOAD_REJECTED;\n        }\n        ByteScrubber grammar_scrubber(grammar_bytes);\n        if (grammar_bytes.size() > static_cast<size_t>(max_structured_grammar_utf8_bytes)) {\n            return LOAD_RESOURCE_REJECTED;\n        }\n        if (\n            std::find(grammar_bytes.begin(), grammar_bytes.end(), static_cast<uint8_t>(0)) !=\n            grammar_bytes.end()\n        ) {\n            return LOAD_REJECTED;\n        }\n        std::string structured_grammar(\n            reinterpret_cast<const char *>(grammar_bytes.data()),\n            grammar_bytes.size()\n        );\n\n        ensure_backend_initialized();\n'''
-          assert s.count(path_anchor) == 1
-          s = s.replace(path_anchor, grammar_block, 1)
-
-          assign_old = '''        session->max_prompt_utf8_bytes = max_prompt_utf8_bytes;\n        session->max_output_utf8_bytes = max_output_utf8_bytes;\n\n        const int64_t session_id = allocate_native_session_id();\n'''
-          assign_new = '''        session->max_prompt_utf8_bytes = max_prompt_utf8_bytes;\n        session->max_output_utf8_bytes = max_output_utf8_bytes;\n        session->max_structured_grammar_utf8_bytes = max_structured_grammar_utf8_bytes;\n        session->structured_grammar = std::move(structured_grammar);\n\n        const int64_t session_id = allocate_native_session_id();\n'''
-          assert s.count(assign_old) == 1
-          s = s.replace(assign_old, assign_new, 1)
-
-          sampler_old = '''            std::unique_ptr<llama_sampler, decltype(&llama_sampler_free)> sampler(\n                llama_sampler_init_greedy(),\n                llama_sampler_free\n            );\n'''
-          count = s.count(sampler_old)
-          assert count >= 2, count
-          s = s.replace(sampler_old, '''            auto sampler = create_session_sampler(session);\n''')
-          print('SAMPLER_REPLACEMENTS=' + str(count))
-
-          p.write_text(s)
-          PY
+          printf '%s' 'ZnJvbSBwYXRobGliIGltcG9ydCBQYXRoCnAgPSBQYXRoKCJhbmRyb2lkLWxsYW1hLWNwcC1lbmdpbmUvc3JjL21haW4vY3BwL2xpbGl5YV9sbGFtYV9qbmkuY3BwIikKcyA9IHAucmVhZF90ZXh0KCkKCm9sZCA9ICIgICAgaW50MzJfdCBtYXhfb3V0cHV0X3V0ZjhfYnl0ZXMgPSAwO1xuICAgIHN0ZDo6bXV0ZXggZXhlY3V0aW9uX211dGV4O1xuIgpuZXcgPSAiICAgIGludDMyX3QgbWF4X291dHB1dF91dGY4X2J5dGVzID0gMDtcbiAgICBpbnQzMl90IG1heF9zdHJ1Y3R1cmVkX2dyYW1tYXJfdXRmOF9ieXRlcyA9IDA7XG4gICAgc3RkOjpzdHJpbmcgc3RydWN0dXJlZF9ncmFtbWFyO1xuICAgIHN0ZDo6bXV0ZXggZXhlY3V0aW9uX211dGV4O1xuIgphc3NlcnQgcy5jb3VudChvbGQpID09IDEKcyA9IHMucmVwbGFjZShvbGQsIG5ldywgMSkKCm1hcmtlciA9ICJTdHJlYW1DYWxsYmFja1Jlc3VsdCBlbWl0X3N0cmVhbV9jaHVuayhcbiIKaWR4ID0gcy5pbmRleChtYXJrZXIpCmhlbHBlciA9IHInJydzdGQ6OnVuaXF1ZV9wdHI8bGxhbWFfc2FtcGxlciwgZGVjbHR5cGUoJmxsYW1hX3NhbXBsZXJfZnJlZSk+IGNyZWF0ZV9zZXNzaW9uX3NhbXBsZXIoCiAgICBjb25zdCBOYXRpdmVTZXNzaW9uICogc2Vzc2lvbgopIHsKICAgIGlmIChzZXNzaW9uID09IG51bGxwdHIpIHsKICAgICAgICByZXR1cm4ge251bGxwdHIsIGxsYW1hX3NhbXBsZXJfZnJlZX07CiAgICB9CiAgICBpZiAoc2Vzc2lvbi0+c3RydWN0dXJlZF9ncmFtbWFyLmVtcHR5KCkpIHsKICAgICAgICByZXR1cm4ge2xsYW1hX3NhbXBsZXJfaW5pdF9ncmVlZHkoKSwgbGxhbWFfc2FtcGxlcl9mcmVlfTsKICAgIH0KCiAgICBsbGFtYV9zYW1wbGVyX2NoYWluX3BhcmFtcyBjaGFpbl9wYXJhbXMgPSBsbGFtYV9zYW1wbGVyX2NoYWluX2RlZmF1bHRfcGFyYW1zKCk7CiAgICBjaGFpbl9wYXJhbXMubm9fcGVyZiA9IHRydWU7CiAgICBsbGFtYV9zYW1wbGVyICogY2hhaW4gPSBsbGFtYV9zYW1wbGVyX2NoYWluX2luaXQoY2hhaW5fcGFyYW1zKTsKICAgIGlmIChjaGFpbiA9PSBudWxscHRyKSB7CiAgICAgICAgcmV0dXJuIHtudWxscHRyLCBsbGFtYV9zYW1wbGVyX2ZyZWV9OwogICAgfQogICAgc3RkOjp1bmlxdWVfcHRyPGxsYW1hX3NhbXBsZXIsIGRlY2x0eXBlKCZsbGFtYV9zYW1wbGVyX2ZyZWUpPiByZXN1bHQoY2hhaW4sIGxsYW1hX3NhbXBsZXJfZnJlZSk7CgogICAgbGxhbWFfc2FtcGxlciAqIGdyYW1tYXIgPSBsbGFtYV9zYW1wbGVyX2luaXRfZ3JhbW1hcigKICAgICAgICBzZXNzaW9uLT52b2NhYiwKICAgICAgICBzZXNzaW9uLT5zdHJ1Y3R1cmVkX2dyYW1tYXIuY19zdHIoKSwKICAgICAgICAicm9vdCIKICAgICk7CiAgICBpZiAoZ3JhbW1hciA9PSBudWxscHRyKSB7CiAgICAgICAgcmV0dXJuIHtudWxscHRyLCBsbGFtYV9zYW1wbGVyX2ZyZWV9OwogICAgfQogICAgbGxhbWFfc2FtcGxlciAqIGdyZWVkeSA9IGxsYW1hX3NhbXBsZXJfaW5pdF9ncmVlZHkoKTsKICAgIGlmIChncmVlZHkgPT0gbnVsbHB0cikgewogICAgICAgIGxsYW1hX3NhbXBsZXJfZnJlZShncmFtbWFyKTsKICAgICAgICByZXR1cm4ge251bGxwdHIsIGxsYW1hX3NhbXBsZXJfZnJlZX07CiAgICB9CgogICAgbGxhbWFfc2FtcGxlcl9jaGFpbl9hZGQoY2hhaW4sIGdyYW1tYXIpOwogICAgbGxhbWFfc2FtcGxlcl9jaGFpbl9hZGQoY2hhaW4sIGdyZWVkeSk7CiAgICByZXR1cm4gcmVzdWx0Owp9CgonJycKcyA9IHNbOmlkeF0gKyBoZWxwZXIgKyBzW2lkeDpdCgpzaWdfb2xkID0gIiAgICBqaW50IG1heF9wcm9tcHRfdXRmOF9ieXRlcyxcbiAgICBqaW50IG1heF9vdXRwdXRfdXRmOF9ieXRlcyxcbiAgICBqYm9vbGVhbiB1c2VfbW1hcFxuKSB7XG4iCnNpZ19uZXcgPSAiICAgIGppbnQgbWF4X3Byb21wdF91dGY4X2J5dGVzLFxuICAgIGppbnQgbWF4X291dHB1dF91dGY4X2J5dGVzLFxuICAgIGpieXRlQXJyYXkgc3RydWN0dXJlZF9ncmFtbWFyX3V0ZjgsXG4gICAgamludCBtYXhfc3RydWN0dXJlZF9ncmFtbWFyX3V0ZjhfYnl0ZXMsXG4gICAgamJvb2xlYW4gdXNlX21tYXBcbikge1xuIgphc3NlcnQgcy5jb3VudChzaWdfb2xkKSA9PSAxCnMgPSBzLnJlcGxhY2Uoc2lnX29sZCwgc2lnX25ldywgMSkKCnZhbGlkYXRlX29sZCA9ICIgICAgICAgIG1heF9wcm9tcHRfdXRmOF9ieXRlcyA8PSAwIHx8XG4gICAgICAgIG1heF9vdXRwdXRfdXRmOF9ieXRlcyA8PSAwIHx8XG4gICAgICAgIG1heF9wcm9tcHRfdG9rZW5zID4gY29udGV4dF90b2tlbnMgfHxcbiIKdmFsaWRhdGVfbmV3ID0gIiAgICAgICAgbWF4X3Byb21wdF91dGY4X2J5dGVzIDw9IDAgfHxcbiAgICAgICAgbWF4X291dHB1dF91dGY4X2J5dGVzIDw9IDAgfHxcbiAgICAgICAgbWF4X3N0cnVjdHVyZWRfZ3JhbW1hcl91dGY4X2J5dGVzIDw9IDAgfHxcbiAgICAgICAgc3RydWN0dXJlZF9ncmFtbWFyX3V0ZjggPT0gbnVsbHB0ciB8fFxuICAgICAgICBtYXhfcHJvbXB0X3Rva2VucyA+IGNvbnRleHRfdG9rZW5zIHx8XG4iCmFzc2VydCBzLmNvdW50KHZhbGlkYXRlX29sZCkgPT0gMQpzID0gcy5yZXBsYWNlKHZhbGlkYXRlX29sZCwgdmFsaWRhdGVfbmV3LCAxKQoKcGF0aF9hbmNob3IgPSAnJycgICAgICAgIEJ5dGVTY3J1YmJlciBwYXRoX3NjcnViYmVyKHBhdGhfYnl0ZXMpOwogICAgICAgIGlmICgKICAgICAgICAgICAgc3RkOjplbmQocGF0aF9ieXRlcy5iZWdpbigpLCBwYXRoX2J5dGVzLmVuZCgpLCBzdGF0aWNfY2FzdDx1aW50OF90PigwKSkgIT0KICAgICAgICAgICAgcGF0aF9ieXRlcy5lbmQoKQogICAgICAgICkgewogICAgICAgICAgICByZXR1cm4gTE9BRF9SRUpFQ1RFRDsKICAgICAgICB9CiAgICAgICAgcGF0aF9ieXRlcy5wdXNoX2JhY2soMCk7CgogICAgICAgIGVuc3VyZV9iYWNrZW5kX2luaXRpYWxpemVkKCk7CicnJwpncmFtbWFyX2Jsb2NrID0gJycnICAgICAgICBCeXRlU2NydWJiZXIgcGF0aF9zY3J1YmJlcihwYXRoX2J5dGVzKTsKICAgICAgICBpZiAoCiAgICAgICAgICAgIHN0ZDo6ZmluZChwYXRoX2J5dGVzLmJlZ2luKCksIHBhdGhfYnl0ZXMuZW5kKCksIHN0YXRpY19jYXN0PHVpbnQ4X3Q+KDApKSAhPQogICAgICAgICAgICBwYXRoX2J5dGVzLmVuZCgpCiAgICAgICAgKSB7CiAgICAgICAgICAgIHJldHVybiBMT0FEX1JFSkVDVEVEOwogICAgICAgIH0KICAgICAgICBwYXRoX2J5dGVzLnB1c2hfYmFjaygwKTsKCiAgICAgICAgc3RkOjp2ZWN0b3I8dWludDhfdD4gZ3JhbW1hcl9ieXRlczsKICAgICAgICBpZiAoIWNvcHlfYnl0ZXMoZW52LCBzdHJ1Y3R1cmVkX2dyYW1tYXJfdXRmOCwgZ3JhbW1hcl9ieXRlcykpIHsKICAgICAgICAgICAgcmV0dXJuIExPQURfUkVKRUNURUQ7CiAgICAgICAgfQogICAgICAgIEJ5dGVTY3J1YmJlciBncmFtbWFyX3NjcnViYmVyKGdyYW1tYXJfYnl0ZXMpOwogICAgICAgIGlmIChncmFtbWFyX2J5dGVzLnNpemUoKSA+IHN0YXRpY19jYXN0PHNpemVfdD4obWF4X3N0cnVjdHVyZWRfZ3JhbW1hcl91dGY4X2J5dGVzKSkgewogICAgICAgICAgICByZXR1cm4gTE9BRF9SRVNPVVJDRV9SRUpFQ1RFRDsKICAgICAgICB9CiAgICAgICAgaWYgKAogICAgICAgICAgICBzdGQ6OmZpbmQoZ3JhbW1hcl9ieXRlcy5iZWdpbigpLCBncmFtbWFyX2J5dGVzLmVuZCgpLCBzdGF0aWNfY2FzdDx1aW50OF90PigwKSkgIT0KICAgICAgICAgICAgZ3JhbW1hcl9ieXRlcy5lbmQoKQogICAgICAgICkgewogICAgICAgICAgICByZXR1cm4gTE9BRF9SRUpFQ1RFRDsKICAgICAgICB9CiAgICAgICAgc3RkOjpzdHJpbmcgc3RydWN0dXJlZF9ncmFtbWFyKAogICAgICAgICAgICByZWludGVycHJldF9jYXN0PGNvbnN0IGNoYXIgKj4oZ3JhbW1hcl9ieXRlcy5kYXRhKCkpLAogICAgICAgICAgICBncmFtbWFyX2J5dGVzLnNpemUoKQogICAgICAgICk7CgogICAgICAgIGVuc3VyZV9iYWNrZW5kX2luaXRpYWxpemVkKCk7CicnJwphc3NlcnQgcy5jb3VudChwYXRoX2FuY2hvcikgPT0gMQpzID0gcy5yZXBsYWNlKHBhdGhfYW5jaG9yLCBncmFtbWFyX2Jsb2NrLCAxKQoKYXNzaWduX29sZCA9ICIgICAgICAgIHNlc3Npb24tPm1heF9wcm9tcHRfdXRmOF9ieXRlcyA9IG1heF9wcm9tcHRfdXRmOF9ieXRlcztcbiAgICAgICAgc2Vzc2lvbi0+bWF4X291dHB1dF91dGY4X2J5dGVzID0gbWF4X291dHB1dF91dGY4X2J5dGVzO1xuXG4gICAgICAgIGNvbnN0IGludDY0X3Qgc2Vzc2lvbl9pZCA9IGFsbG9jYXRlX25hdGl2ZV9zZXNzaW9uX2lkKCk7XG4iCmFzc2lnbl9uZXcgPSAiICAgICAgICBzZXNzaW9uLT5tYXhfcHJvbXB0X3V0ZjhfYnl0ZXMgPSBtYXhfcHJvbXB0X3V0ZjhfYnl0ZXM7XG4gICAgICAgIHNlc3Npb24tPm1heF9vdXRwdXRfdXRmOF9ieXRlcyA9IG1heF9vdXRwdXRfdXRmOF9ieXRlcztcbiAgICAgICAgc2Vzc2lvbi0+bWF4X3N0cnVjdHVyZWRfZ3JhbW1hcl91dGY4X2J5dGVzID0gbWF4X3N0cnVjdHVyZWRfZ3JhbW1hcl91dGY4X2J5dGVzO1xuICAgICAgICBzZXNzaW9uLT5zdHJ1Y3R1cmVkX2dyYW1tYXIgPSBzdGQ6Om1vdmUoc3RydWN0dXJlZF9ncmFtbWFyKTtcblxuICAgICAgICBjb25zdCBpbnQ2NF90IHNlc3Npb25faWQgPSBhbGxvY2F0ZV9uYXRpdmVfc2Vzc2lvbl9pZCgpO1xuIgphc3NlcnQgcy5jb3VudChhc3NpZ25fb2xkKSA9PSAxCnMgPSBzLnJlcGxhY2UoYXNzaWduX29sZCwgYXNzaWduX25ldywgMSkKCnNhbXBsZXJfb2xkID0gIiAgICAgICAgICAgIHN0ZDo6dW5pcXVlX3B0cjxsbGFtYV9zYW1wbGVyLCBkZWNsdHlwZSgmbGxhbWFfc2FtcGxlcl9mcmVlKT4gc2FtcGxlcihcbiAgICAgICAgICAgICAgICBsbGFtYV9zYW1wbGVyX2luaXRfZ3JlZWR5KCksXG4gICAgICAgICAgICAgICAgbGxhbWFfc2FtcGxlcl9mcmVlXG4gICAgICAgICAgICApO1xuIgpjb3VudCA9IHMuY291bnQoc2FtcGxlcl9vbGQpCmFzc2VydCBjb3VudCA+PSAyLCBjb3VudApzID0gcy5yZXBsYWNlKHNhbXBsZXJfb2xkLCAiICAgICAgICAgICAgYXV0byBzYW1wbGVyID0gY3JlYXRlX3Nlc3Npb25fc2FtcGxlcihzZXNzaW9uKTtcbiIpCnByaW50KCJTQU1QTEVSX1JFUExBQ0VNRU5UUz0iICsgc3RyKGNvdW50KSkKcC53cml0ZV90ZXh0KHMpCg==' | base64 -d > /tmp/patch.py
+          python3 /tmp/patch.py
           git diff --check
 
       - name: Set up Java 17
@@ -125,8 +47,7 @@ jobs:
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "ndk;29.0.13113456" "cmake;3.31.6"
 
       - name: Run constrained generation gate
-        run: |
-          gradle :android-llama-cpp-engine:testDebugUnitTest :android-llama-cpp-engine:assembleDebug --console=plain
+        run: gradle :android-llama-cpp-engine:testDebugUnitTest :android-llama-cpp-engine:assembleDebug --console=plain
 
       - name: Publish tested development slice
         shell: bash
