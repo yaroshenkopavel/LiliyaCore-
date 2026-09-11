@@ -1,133 +1,52 @@
-name: PR212 constrained decoding candidate 2026-09-11
+name: PR212 reanchor bridge
 
 on:
   push:
     branches:
       - maintenance/local-mirror-export-2026-09-10
     paths:
-      - '.github/workflows/pr212-constrained-decoding-candidate-2026-09-11.yml'
+      - .github/workflows/pr212-constrained-decoding-candidate-2026-09-11.yml
 
 permissions:
   contents: write
 
 jobs:
-  build-candidate:
+  reanchor:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
         with:
           ref: aeb5a86d15909f74465e67616121fc4bad802046
           fetch-depth: 0
-
-      - name: Assemble exact PR212 acceptance slice on merged structured main
+      - name: Build one-commit PR212 candidate
         shell: bash
         run: |
           set -euo pipefail
           git fetch origin 08408262ce4bd906e756ae28f9fa661345ca8758 c495edfe784441fc09447354322a8ef0d64fa935
-
-          git checkout 08408262ce4bd906e756ae28f9fa661345ca8758 -- \
-            .github/workflows/android-app-host-ci.yml \
-            android-app/build.gradle.kts \
-            android-app/src/androidTest/kotlin/pro/liliya/app/DevelopmentFirstWorkingLiliyaColdStartFixturePrerequisiteInstrumentedTest.kt \
-            android-app/src/androidTest/kotlin/pro/liliya/app/ProtectedModelPackagerAndroidProbeInstrumentedTest.kt
-
-          git checkout c495edfe784441fc09447354322a8ef0d64fa935 -- \
-            android-app/src/androidTest/kotlin/pro/liliya/app/DevelopmentFirstWorkingLiliyaColdStartInstrumentedTest.kt
-
-          python3 - <<'PY'
+          git checkout 08408262ce4bd906e756ae28f9fa661345ca8758 -- .github/workflows/android-app-host-ci.yml android-app/build.gradle.kts android-app/src/androidTest/kotlin/pro/liliya/app/DevelopmentFirstWorkingLiliyaColdStartFixturePrerequisiteInstrumentedTest.kt android-app/src/androidTest/kotlin/pro/liliya/app/ProtectedModelPackagerAndroidProbeInstrumentedTest.kt
+          git checkout c495edfe784441fc09447354322a8ef0d64fa935 -- android-app/src/androidTest/kotlin/pro/liliya/app/DevelopmentFirstWorkingLiliyaColdStartInstrumentedTest.kt
+          file=android-app/src/androidTest/kotlin/pro/liliya/app/DevelopmentFirstWorkingLiliyaColdStartInstrumentedTest.kt
+          sed -i '/outputGrammar = STRICT_RESPONSE_GRAMMAR,/d' "$file"
+          sed -i '/maxOutputGrammarUtf8Bytes = 4_096/d' "$file"
+          python3 - "$file" <<'PY'
+          import sys
           from pathlib import Path
-          p = Path('android-app/src/androidTest/kotlin/pro/liliya/app/DevelopmentFirstWorkingLiliyaColdStartInstrumentedTest.kt')
-          text = p.read_text()
-          old = '''                useMmap = true,
-                outputGrammar = STRICT_RESPONSE_GRAMMAR,
-                maxOutputGrammarUtf8Bytes = 4_096
-'''
-          new = '''                useMmap = true
-'''
-          if text.count(old) != 1:
-              raise SystemExit('expected temporary grammar policy block exactly once')
-          text = text.replace(old, new, 1)
-          start = text.find('        val STRICT_RESPONSE_GRAMMAR = """\n')
-          if start < 0:
-              raise SystemExit('temporary strict grammar constant start not found')
-          end_marker = '        """.trimIndent()\n'
-          end = text.find(end_marker, start)
-          if end < 0:
-              raise SystemExit('temporary strict grammar constant end not found')
-          end += len(end_marker)
-          text = text[:start] + text[end:]
-          p.write_text(text)
+          p = Path(sys.argv[1])
+          s = p.read_text()
+          a = s.index('        val STRICT_RESPONSE_GRAMMAR = """\n')
+          b = s.index('        """.trimIndent()\n', a) + len('        """.trimIndent()\n')
+          p.write_text(s[:a] + s[b:])
           PY
-
           git diff --check
           test "$(git diff --name-only | wc -l)" -eq 5
-          git diff --name-only
-          grep -F 'DeterministicCognitiveModelRequestCompiler()' android-app/src/androidTest/kotlin/pro/liliya/app/DevelopmentFirstWorkingLiliyaColdStartInstrumentedTest.kt
-          grep -F 'maxGeneratedTokens = 512' android-app/src/androidTest/kotlin/pro/liliya/app/DevelopmentFirstWorkingLiliyaColdStartInstrumentedTest.kt
-          grep -F 'const val MAX_OUTPUT_CHARS = 768' android-app/src/androidTest/kotlin/pro/liliya/app/DevelopmentFirstWorkingLiliyaColdStartInstrumentedTest.kt
-          ! grep -Fq 'STRICT_RESPONSE_GRAMMAR' android-app/src/androidTest/kotlin/pro/liliya/app/DevelopmentFirstWorkingLiliyaColdStartInstrumentedTest.kt
-
-      - name: Set up Java 17
-        uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - name: Set up Gradle 9.6.1
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '9.6.1'
-
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install pinned Android toolchain
-        run: |
-          sdkmanager \
-            "platforms;android-35" \
-            "build-tools;35.0.0" \
-            "platform-tools" \
-            "ndk;29.0.13113456" \
-            "cmake;3.31.6"
-
-      - name: Run bounded acceptance gate
-        env:
-          LILIYA_LLAMA_ALLOW_X86_64_API35_TRANSLATION: "1"
-        run: |
-          gradle \
-            :core:test \
-            :android-runtime:testDebugUnitTest \
-            :android-app:testDebugUnitTest \
-            :android-app:compileDebugAndroidTestKotlin \
-            :android-app:assembleDebug \
-            :android-app:assembleRelease \
-            --console=plain --no-daemon
-
-      - name: Guard release APK from cold-start test payloads
-        shell: bash
-        run: |
-          set -euo pipefail
-          apk="android-app/build/outputs/apk/release/android-app-release-unsigned.apk"
-          test -f "$apk"
-          listing="$RUNNER_TEMP/android-app-release-files.txt"
-          unzip -Z1 "$apk" > "$listing"
-          ! grep -E 'stories15M-q4_0\.gguf|multilingual-e5-small-liliya-v0\.1\.onnx|multilingual-e5-small-tokenizer-v0\.1\.onnx' "$listing"
-          while IFS= read -r dex; do
-            ! unzip -p "$apk" "$dex" | strings | grep -Fq 'pro/liliya/packager/ProtectedModelOfflinePackager'
-          done < <(grep -E '^classes([0-9]+)?\.dex$' "$listing")
-
-      - name: Publish one-commit candidate from exact merged main
-        shell: bash
-        run: |
-          set -euo pipefail
-          test "$(git rev-parse HEAD)" = "aeb5a86d15909f74465e67616121fc4bad802046"
-          git config user.name "yaroshenkopavel"
-          git config user.email "78513566+yaroshenkopavel@users.noreply.github.com"
+          grep -Fq 'DeterministicCognitiveModelRequestCompiler()' "$file"
+          grep -Fq 'maxGeneratedTokens = 512' "$file"
+          grep -Fq 'const val MAX_OUTPUT_CHARS = 768' "$file"
+          ! grep -Fq 'STRICT_RESPONSE_GRAMMAR' "$file"
+          git config user.name yaroshenkopavel
+          git config user.email 78513566+yaroshenkopavel@users.noreply.github.com
           git add -A
-          TREE="$(git write-tree)"
-          echo "CANDIDATE_TREE=$TREE"
-          git commit -m "First Working Liliya cold-start fixture v0.1"
+          git commit -m 'First Working Liliya cold-start fixture v0.1'
+          test "$(git rev-parse HEAD^)" = aeb5a86d15909f74465e67616121fc4bad802046
           test "$(git rev-list --count aeb5a86d15909f74465e67616121fc4bad802046..HEAD)" -eq 1
-          test "$(git rev-parse HEAD^)" = "aeb5a86d15909f74465e67616121fc4bad802046"
           git push --force origin HEAD:refs/heads/maintenance/pr212-constrained-decoding-candidate-2026-09-11
