@@ -18,7 +18,9 @@ data class LlamaCppEnginePolicy(
     val maxPromptUtf8Bytes: Int,
     val maxOutputChars: Int,
     val maxOutputUtf8Bytes: Int,
-    val useMmap: Boolean
+    val useMmap: Boolean,
+    val structuredGrammar: String? = null,
+    val maxStructuredGrammarUtf8Bytes: Int = CognitiveStructuredResponseGrammar.MAX_GRAMMAR_UTF8_BYTES
 ) {
     init {
         require(contextTokens > 0) { "context token budget must be positive" }
@@ -31,6 +33,9 @@ data class LlamaCppEnginePolicy(
         require(maxPromptUtf8Bytes > 0) { "prompt UTF-8 byte budget must be positive" }
         require(maxOutputChars > 0) { "output character budget must be positive" }
         require(maxOutputUtf8Bytes > 0) { "output UTF-8 byte budget must be positive" }
+        require(maxStructuredGrammarUtf8Bytes > 0) {
+            "structured grammar UTF-8 byte budget must be positive"
+        }
         require(maxPromptTokens <= contextTokens) {
             "prompt token budget must not exceed context token budget"
         }
@@ -51,6 +56,12 @@ data class LlamaCppEnginePolicy(
         }
         require(maxOutputUtf8Bytes.toLong() <= maxOutputChars.toLong() * 4L) {
             "output UTF-8 byte budget must fit output character ceiling"
+        }
+        structuredGrammar?.let { grammar ->
+            require(grammar.isNotBlank()) { "structured grammar must not be blank" }
+            require(grammar.toByteArray(Charsets.UTF_8).size <= maxStructuredGrammarUtf8Bytes) {
+                "structured grammar exceeds UTF-8 byte budget"
+            }
         }
     }
 }
