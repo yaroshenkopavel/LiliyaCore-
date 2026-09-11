@@ -1,0 +1,223 @@
+name: Physical First Working Liliya Acceptance
+
+on:
+  workflow_dispatch:
+    inputs:
+      provenance_run_id:
+        description: Successful Semantic Model Provenance run ID containing semantic-onnx-provenance
+        required: false
+        default: '33981322350'
+        type: string
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/physical-first-working-liliya-acceptance.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  validate-physical-acceptance-contract:
+    name: Validate physical acceptance workflow contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Validate workflow and cold-start contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          workflow='.github/workflows/physical-first-working-liliya-acceptance.yml'
+          test_source='android-app/src/androidTest/kotlin/pro/liliya/app/DevelopmentFirstWorkingLiliyaColdStartInstrumentedTest.kt'
+
+          test -f "$workflow"
+          test -f "$test_source"
+          grep -Fq 'runs-on: [self-hosted, ARM64, android-device]' "$workflow"
+          grep -Fq "if: github.event_name == 'workflow_dispatch'" "$workflow"
+          grep -Fq 'test "$abi" = "arm64-v8a"' "$workflow"
+          grep -Fq 'test "$qemu" != "1"' "$workflow"
+          grep -Fq 'DevelopmentFirstWorkingLiliyaColdStartInstrumentedTest' "$workflow"
+          grep -Fq 'class DevelopmentFirstWorkingLiliyaColdStartInstrumentedTest' "$test_source"
+
+          forbidden='LILIYA_LLAMA_ALLOW_X86_64_API35_'
+          forbidden+='TRANSLATION'
+          if grep -Fq "$forbidden" "$workflow"; then
+            echo 'physical acceptance must not enable x86_64 translation mode' >&2
+            exit 1
+          fi
+
+  physical-first-working-liliya:
+    name: Physical ARM64 First Working Liliya READY-to-first-chat acceptance
+    if: github.event_name == 'workflow_dispatch'
+    needs: validate-physical-acceptance-contract
+    runs-on: [self-hosted, ARM64, android-device]
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Download exact semantic provenance bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: semantic-onnx-provenance
+          path: ${{ runner.temp }}/semantic-onnx-download
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.provenance_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify and stage exact semantic test assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import shutil
+
+          root = Path(os.environ["RUNNER_TEMP"]) / "semantic-onnx-download"
+          manifests = list(root.rglob("semantic-onnx-provenance.json"))
+          encoders = list(root.rglob("multilingual-e5-small-liliya-v0.1.onnx"))
+          tokenizers = list(root.rglob("multilingual-e5-small-tokenizer-v0.1.onnx"))
+          if len(manifests) != 1 or len(encoders) != 1 or len(tokenizers) != 1:
+              raise SystemExit(
+                  f"unexpected provenance layout: manifest={manifests}, "
+                  f"encoder={encoders}, tokenizer={tokenizers}"
+              )
+
+          manifest = json.loads(manifests[0].read_text(encoding="utf-8"))
+          encoder = manifest["encoder"]
+          tokenizer = manifest["tokenizer"]
+
+          def digest(path):
+              h = hashlib.sha256()
+              with path.open("rb") as stream:
+                  for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                      h.update(chunk)
+              return h.hexdigest()
+
+          if encoders[0].stat().st_size != encoder["size"] or digest(encoders[0]) != encoder["sha256"]:
+              raise SystemExit("encoder provenance mismatch")
+          if tokenizers[0].stat().st_size != tokenizer["size"] or digest(tokenizers[0]) != tokenizer["sha256"]:
+              raise SystemExit("tokenizer provenance mismatch")
+
+          assets = Path("android-app/src/androidTest/assets")
+          assets.mkdir(parents=True, exist_ok=True)
+          shutil.copy2(encoders[0], assets / encoders[0].name)
+          shutil.copy2(tokenizers[0], assets / tokenizers[0].name)
+          PY
+
+      - name: Prepare verified real-model cold-start fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          asset_dir="android-app/src/androidTest/assets"
+          asset="$asset_dir/stories15M-q4_0.gguf"
+          mkdir -p "$asset_dir"
+          curl --fail --location --retry 3 \
+            "https://huggingface.co/ggml-org/tiny-llamas/resolve/def3e2dd70df35ecbf6403ea347de4c5977220c1/stories15M-q4_0.gguf?download=true" \
+            --output "$asset"
+          echo "6151b1929d7f5aa3385d9ddef3393e55587c0a55de661562322bc51dfda93a04  $asset" | sha256sum --check --strict
+          test "$(stat --format=%s "$asset")" -eq 19077344
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle 9.6.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.1'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install pinned Android instrumentation toolchain
+        run: |
+          sdkmanager \
+            "platforms;android-35" \
+            "build-tools;35.0.0" \
+            "platform-tools" \
+            "ndk;29.0.13113456" \
+            "cmake;3.31.6"
+
+      - name: Verify one physical ARM64 Android device
+        shell: bash
+        run: |
+          set -euo pipefail
+          adb start-server
+          adb devices
+          mapfile -t devices < <(adb devices | awk 'NR>1 && $2=="device" {print $1}')
+          test "${#devices[@]}" -eq 1
+          serial="${devices[0]}"
+          case "$serial" in
+            emulator-*) echo "emulator is not accepted for physical First Working Liliya gate" >&2; exit 1 ;;
+          esac
+          abi="$(adb -s "$serial" shell getprop ro.product.cpu.abi | tr -d '\r')"
+          qemu="$(adb -s "$serial" shell getprop ro.kernel.qemu | tr -d '\r')"
+          sdk="$(adb -s "$serial" shell getprop ro.build.version.sdk | tr -d '\r')"
+          model="$(adb -s "$serial" shell getprop ro.product.model | tr -d '\r')"
+          test "$abi" = "arm64-v8a"
+          test "$qemu" != "1"
+          test "$sdk" -ge 29
+          echo "ANDROID_DEVICE_SERIAL=$serial" >> "$GITHUB_ENV"
+          python3 - "$RUNNER_TEMP/physical-first-working-liliya-device.json" "$serial" "$abi" "$qemu" "$sdk" "$model" <<'PY'
+          import json
+          import sys
+          path, serial, abi, qemu, sdk, model = sys.argv[1:]
+          with open(path, "w", encoding="utf-8") as stream:
+              json.dump(
+                  {
+                      "evidenceClass": "physical-first-working-liliya-device",
+                      "serialPresent": bool(serial),
+                      "primaryAbi": abi,
+                      "qemu": qemu,
+                      "sdk": int(sdk),
+                      "model": model,
+                  },
+                  stream,
+                  indent=2,
+                  sort_keys=True,
+              )
+              stream.write("\n")
+          PY
+
+      - name: Compile physical cold-start instrumentation
+        run: gradle :android-app:assembleDebug :android-app:assembleDebugAndroidTest --console=plain
+
+      - name: Run physical First Working Liliya cold-start instrumentation
+        shell: bash
+        run: |
+          set -euo pipefail
+          set -o pipefail
+          gradle \
+            :android-app:connectedDebugAndroidTest \
+            -Pandroid.testInstrumentationRunnerArguments.class=pro.liliya.app.DevelopmentFirstWorkingLiliyaColdStartInstrumentedTest \
+            --console=plain \
+            2>&1 | tee "$RUNNER_TEMP/physical-first-working-liliya-cold-start.log"
+
+      - name: Publish physical First Working Liliya evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: physical-first-working-liliya-evidence-${{ github.sha }}
+          if-no-files-found: warn
+          retention-days: 30
+          path: |
+            ${{ runner.temp }}/physical-first-working-liliya-device.json
+            ${{ runner.temp }}/physical-first-working-liliya-cold-start.log
+            android-app/build/outputs/androidTest-results/connected/**
+            android-app/build/reports/androidTests/connected/**
