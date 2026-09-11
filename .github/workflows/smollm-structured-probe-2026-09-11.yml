@@ -1,4 +1,4 @@
-name: SmolLM structured response probe 2026-09-11
+name: Qwen2.5 0.5B structured response probe 2026-09-11
 
 on:
   push:
@@ -30,15 +30,15 @@ jobs:
           cmake --build llama-build --target llama-completion -j2
           test -x llama-build/bin/llama-completion
 
-      - name: Download pinned SmolLM2 135M instruct GGUF
+      - name: Download exact Qwen2.5 0.5B Instruct Q4_K_M GGUF
         shell: bash
         run: |
           set -euo pipefail
-          curl --fail --location --retry 3 'https://huggingface.co/unsloth/SmolLM2-135M-Instruct-GGUF/resolve/main/SmolLM2-135M-Instruct-Q4_K_M.gguf?download=true' --output smollm.gguf
-          echo 'ed5fa30c487b282ec156c29062f1222e5c20875a944ac98289dbd242e947f747  smollm.gguf' | sha256sum --check --strict
-          stat --format='MODEL_BYTES=%s' smollm.gguf
+          curl --fail --location --retry 3 'https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf?download=true' --output model.gguf
+          echo '74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db  model.gguf' | sha256sum --check --strict
+          stat --format='MODEL_BYTES=%s' model.gguf
 
-      - name: Probe production-style raw and chat-templated prompts
+      - name: Probe production-style raw and ChatML prompts
         shell: bash
         run: |
           set -euo pipefail
@@ -48,8 +48,8 @@ jobs:
           cat protocol.txt >> chat-prompt.txt
           printf '<|im_end|>\n<|im_start|>assistant\n' >> chat-prompt.txt
           CLI=llama-build/bin/llama-completion
-          "$CLI" -m smollm.gguf -c 2048 -n 512 --temp 0 --no-display-prompt -no-cnv -p "$(cat raw-prompt.txt)" > raw.out 2> raw.err || true
-          "$CLI" -m smollm.gguf -c 2048 -n 512 --temp 0 --no-display-prompt -no-cnv -p "$(cat chat-prompt.txt)" > chat.out 2> chat.err || true
+          "$CLI" -m model.gguf -c 4096 -n 512 --temp 0 --no-display-prompt -no-cnv -p "$(cat raw-prompt.txt)" > raw.out 2> raw.err || true
+          "$CLI" -m model.gguf -c 4096 -n 512 --temp 0 --no-display-prompt -no-cnv -p "$(cat chat-prompt.txt)" > chat.out 2> chat.err || true
           echo '=== RAW OUTPUT ==='
           head -c 5000 raw.out || true
           echo
@@ -62,7 +62,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: smollm-structured-probe
+          name: qwen25-05b-structured-probe
           path: |
             raw.out
             raw.err
