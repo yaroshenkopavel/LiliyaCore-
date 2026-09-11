@@ -1,0 +1,46 @@
+name: Constrained decoding local acceptance 2026-09-11
+
+on:
+  push:
+    branches:
+      - maintenance/constrained-decoding-probe-2026-09-11
+
+permissions:
+  contents: read
+
+jobs:
+  targeted:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - name: Apply exact local production patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "5f949ec37cb17fad408509e2a1453c270aac1f63"
+          gzip -dc .github/probes/structured.patch.gz > "$RUNNER_TEMP/structured.patch"
+          git apply --check "$RUNNER_TEMP/structured.patch"
+          git apply "$RUNNER_TEMP/structured.patch"
+          git diff --check
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.1'
+      - uses: android-actions/setup-android@v3
+      - name: Install exact native toolchain
+        shell: bash
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "ndk;29.0.13113456" "cmake;3.31.6"
+      - name: Targeted constrained-decoding acceptance
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle \
+            :android-llama-cpp-engine:testDebugUnitTest \
+            :android-llama-cpp-engine:assembleDebug \
+            --console=plain --no-daemon
