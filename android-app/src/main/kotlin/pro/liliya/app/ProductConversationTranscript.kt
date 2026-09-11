@@ -44,6 +44,43 @@ internal class ProductConversationTranscript private constructor(
     fun snapshotWithinBudget(
         maxEntries: Int,
         maxUtf8Bytes: Int
+    ): ProductConversationTranscriptSnapshot =
+        snapshotWithinBudget(
+            sourceEntries = entries,
+            maxEntries = maxEntries,
+            maxUtf8Bytes = maxUtf8Bytes
+        )
+
+    fun snapshotWithinBudgetExcludingLastUser(
+        message: String,
+        maxEntries: Int,
+        maxUtf8Bytes: Int
+    ): ProductConversationTranscriptSnapshot {
+        val normalized = message.trim()
+        val last = entries.lastOrNull()
+        val sourceEntries =
+            if (
+                normalized.isNotEmpty() &&
+                last != null &&
+                last.speaker == Speaker.USER &&
+                last.message == normalized
+            ) {
+                entries.dropLast(1)
+            } else {
+                entries
+            }
+
+        return snapshotWithinBudget(
+            sourceEntries = sourceEntries,
+            maxEntries = maxEntries,
+            maxUtf8Bytes = maxUtf8Bytes
+        )
+    }
+
+    private fun snapshotWithinBudget(
+        sourceEntries: List<Entry>,
+        maxEntries: Int,
+        maxUtf8Bytes: Int
     ): ProductConversationTranscriptSnapshot {
         require(maxEntries > 0) { "maxEntries must be positive" }
         require(maxUtf8Bytes > 0) { "maxUtf8Bytes must be positive" }
@@ -51,7 +88,7 @@ internal class ProductConversationTranscript private constructor(
         val selected = mutableListOf<Entry>()
         var usedUtf8Bytes = 0
 
-        for (entry in entries.asReversed()) {
+        for (entry in sourceEntries.asReversed()) {
             if (selected.size >= maxEntries) break
 
             val entryUtf8Bytes =

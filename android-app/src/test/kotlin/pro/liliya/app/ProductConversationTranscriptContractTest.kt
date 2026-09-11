@@ -158,6 +158,66 @@ class ProductConversationTranscriptContractTest {
     }
 
     @Test
+    fun recreation_snapshot_can_exclude_only_the_matching_newest_pending_user_turn() {
+        val transcript = ProductConversationTranscript()
+        transcript.appendUser("Первый")
+        transcript.appendLiliya("Ответ")
+        transcript.appendUser("  В процессе  ")
+
+        val snapshot = transcript.snapshotWithinBudgetExcludingLastUser(
+            message = "В процессе",
+            maxEntries = 8,
+            maxUtf8Bytes = 1024
+        )
+
+        assertEquals(listOf("USER", "LILIYA"), snapshot.speakers)
+        assertEquals(listOf("Первый", "Ответ"), snapshot.messages)
+        assertEquals("Вы: Первый\n\nЛилия: Ответ\n\nВы: В процессе", transcript.render())
+    }
+
+    @Test
+    fun recreation_snapshot_pending_exclusion_fails_closed_on_mismatch_or_non_user_tail() {
+        val transcript = ProductConversationTranscript()
+        transcript.appendUser("Первый")
+        transcript.appendLiliya("Ответ")
+
+        val wrongMessage = transcript.snapshotWithinBudgetExcludingLastUser(
+            message = "Первый",
+            maxEntries = 8,
+            maxUtf8Bytes = 1024
+        )
+        val blankMessage = transcript.snapshotWithinBudgetExcludingLastUser(
+            message = "   ",
+            maxEntries = 8,
+            maxUtf8Bytes = 1024
+        )
+
+        assertEquals(transcript.snapshot(), wrongMessage)
+        assertEquals(transcript.snapshot(), blankMessage)
+    }
+
+    @Test
+    fun recreation_snapshot_pending_exclusion_applies_budget_after_exclusion() {
+        val transcript = ProductConversationTranscript()
+        transcript.appendUser("старое")
+        transcript.appendLiliya("ответ")
+        transcript.appendUser("pending")
+
+        val answerBytes =
+            "LILIYA".toByteArray(Charsets.UTF_8).size +
+                "ответ".toByteArray(Charsets.UTF_8).size
+        val snapshot = transcript.snapshotWithinBudgetExcludingLastUser(
+            message = "pending",
+            maxEntries = 8,
+            maxUtf8Bytes = answerBytes
+        )
+
+        assertEquals(listOf("LILIYA"), snapshot.speakers)
+        assertEquals(listOf("ответ"), snapshot.messages)
+        assertEquals("Вы: старое\n\nЛилия: ответ\n\nВы: pending", transcript.render())
+    }
+
+    @Test
     fun bounded_snapshot_rejects_non_positive_budgets() {
         val transcript = ProductConversationTranscript()
 
@@ -166,6 +226,13 @@ class ProductConversationTranscriptContractTest {
         }
         assertFailsWith<IllegalArgumentException> {
             transcript.snapshotWithinBudget(maxEntries = 1, maxUtf8Bytes = 0)
+        }
+        assertFailsWith<IllegalArgumentException> {
+            transcript.snapshotWithinBudgetExcludingLastUser(
+                message = "pending",
+                maxEntries = 0,
+                maxUtf8Bytes = 1
+            )
         }
     }
 }
