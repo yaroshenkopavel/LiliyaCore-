@@ -29,6 +29,7 @@ dependencies {
     implementation(project(":android-durable-persistence"))
     implementation(project(":android-offline-semantic-provider"))
     implementation(project(":android-llama-cpp-engine"))
+    implementation("org.bouncycastle:bcprov-jdk18on:1.81")
 
     testImplementation(kotlin("test"))
     testImplementation(project(":protected-model-packager"))

@@ -52,13 +52,17 @@ object AndroidProductRuntimeProtectedModelSignerTrust {
 
         val parsed = LinkedHashMap<ProtectedModelSignerId, PublicKey>()
         return try {
+            val keyFactory = KeyFactory.getInstance(
+                "Ed25519",
+                AndroidProductRuntimeProtectedModelCryptoProvider.provider
+            )
             for (key in keys) {
                 val id = ProtectedModelSignerId(key.signerId)
                 if (parsed.containsKey(id)) {
                     return AndroidProductRuntimeProtectedModelSignerTrustResult.Rejected
                 }
 
-                val publicKey = KeyFactory.getInstance("Ed25519").generatePublic(
+                val publicKey = keyFactory.generatePublic(
                     X509EncodedKeySpec(key.copyMaterial())
                 )
                 parsed[id] = publicKey

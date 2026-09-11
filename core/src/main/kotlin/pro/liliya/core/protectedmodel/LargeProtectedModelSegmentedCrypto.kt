@@ -4,6 +4,7 @@ import java.io.ByteArrayOutputStream
 import java.io.DataOutputStream
 import java.security.GeneralSecurityException
 import java.security.MessageDigest
+import java.security.Provider
 import java.security.Signature
 import java.security.SignatureException
 import javax.crypto.AEADBadTagException
@@ -165,10 +166,15 @@ sealed interface LargeProtectedModelPackageVerificationResult {
 /**
  * Segmented package authenticity boundary. Reuses the existing protected-model signer trust root.
  * Successful verification is authenticity evidence only, never License/DEK/Authority/Execution.
+ *
+ * [signatureProvider] is optional and exists only to make the JCA signature boundary explicit on
+ * runtimes such as Android where the platform provider cannot verify a portable Ed25519 key. The
+ * provider is caller-owned and is never installed into the process-wide Security registry.
  */
 class LargeProtectedModelPackageVerifier(
     private val signerResolver: ProtectedModelSignerResolver,
-    private val budgets: LargeProtectedModelPackageBudgets
+    private val budgets: LargeProtectedModelPackageBudgets,
+    private val signatureProvider: Provider? = null
 ) {
     fun verify(
         envelope: LargeProtectedModelPackageEnvelope
@@ -204,7 +210,12 @@ class LargeProtectedModelPackageVerifier(
                 )
 
             signatureBytes = envelope.copySignature()
-            val verifier = Signature.getInstance(signatureName(manifest.signatureAlgorithm))
+            val signatureName = signatureName(manifest.signatureAlgorithm)
+            val verifier = if (signatureProvider == null) {
+                Signature.getInstance(signatureName)
+            } else {
+                Signature.getInstance(signatureName, signatureProvider)
+            }
             verifier.initVerify(signerKey)
             verifier.update(signatureInput)
             val valid = try {
