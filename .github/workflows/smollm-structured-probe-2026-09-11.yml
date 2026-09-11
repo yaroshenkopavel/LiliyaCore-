@@ -26,20 +26,14 @@ jobs:
           git checkout --detach FETCH_HEAD
           test "$(git rev-parse HEAD)" = "0f3a71be15af836d277c9f918adfafb45732677e"
           cd ..
-          cmake -S llama.cpp -B llama-build \
-            -DLLAMA_BUILD_TESTS=OFF \
-            -DLLAMA_BUILD_SERVER=OFF \
-            -DGGML_NATIVE=OFF \
-            -DCMAKE_BUILD_TYPE=Release
+          cmake -S llama.cpp -B llama-build -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_SERVER=OFF -DGGML_NATIVE=OFF -DCMAKE_BUILD_TYPE=Release
           cmake --build llama-build --target llama-cli -j2
 
       - name: Download pinned SmolLM2 135M instruct GGUF
         shell: bash
         run: |
           set -euo pipefail
-          curl --fail --location --retry 3 \
-            'https://huggingface.co/unsloth/SmolLM2-135M-Instruct-GGUF/resolve/main/SmolLM2-135M-Instruct-Q4_K_M.gguf?download=true' \
-            --output smollm.gguf
+          curl --fail --location --retry 3 'https://huggingface.co/unsloth/SmolLM2-135M-Instruct-GGUF/resolve/main/SmolLM2-135M-Instruct-Q4_K_M.gguf?download=true' --output smollm.gguf
           echo 'ed5fa30c487b282ec156c29062f1222e5c20875a944ac98289dbd242e947f747  smollm.gguf' | sha256sum --check --strict
           stat --format='MODEL_BYTES=%s' smollm.gguf
 
@@ -47,102 +41,21 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cat > protocol.txt <<'EOF'
-LILIYA_COGNITIVE_REQUEST_V1
-
-RESPONSE_PROTOCOL
-RESPONSE_VERSION=LILIYA_COGNITIVE_RESPONSE_V1
-RULE=OUTPUT_ONLY_PROTOCOL_ENVELOPE_NO_PROSE
-RULE=ALL_FIELDS_REQUIRED_IN_EXACT_ORDER
-RULE=LIST_RECORDS_REPEAT_EXACTLY_DECLARED_COUNT
-RULE=RAW_C0_CONTROL_CHARACTERS_FORBIDDEN_IN_VALUES
-RULE=ESCAPES_ONLY_BACKSLASH_NEWLINE_CARRIAGE_RETURN_TAB
-ESCAPE_BACKSLASH=\\
-ESCAPE_NEWLINE=\n
-ESCAPE_CARRIAGE_RETURN=\r
-ESCAPE_TAB=\t
-RULE=OTHER_ESCAPES_FORBIDDEN
-RULE=OPTIONAL_SINGLE_TERMINAL_LF_AFTER_END
-LIMIT_ENGINE_OUTPUT_CHARS=768
-LIMIT_PROTOCOL_OUTPUT_CHARS=768
-LIMIT_PLANNING_GOAL_CHARS=64
-LIMIT_PLANNING_STEPS=1
-LIMIT_PLANNING_STEP_CHARS=64
-LIMIT_REASONING_PREMISES=1
-LIMIT_REASONING_PREMISE_CHARS=64
-LIMIT_REASONING_ANALYSIS_CHARS=64
-LIMIT_REASONING_CONCLUSION_CHARS=64
-LIMIT_DECISION_OPTIONS=1
-LIMIT_DECISION_OPTION_CHARS=64
-LIMIT_DECISION_RATIONALE_CHARS=64
-LIMIT_RESULT_CHARS=64
-LIMIT_REFLECTION_CHARS=64
-LIMIT_LEARNING_PROPOSAL_CHARS=64
-SCHEMA
-PLANNING_GOAL=<escaped>
-PLANNING_STEP_COUNT=<int 1..1>
-PLANNING_STEP=<escaped> repeat exactly PLANNING_STEP_COUNT times
-REASONING_PREMISE_COUNT=<int 1..1>
-REASONING_PREMISE=<escaped> repeat exactly REASONING_PREMISE_COUNT times
-REASONING_ANALYSIS=<escaped>
-REASONING_CONCLUSION=<escaped>
-DECISION_OPTION_COUNT=<int 1..1>
-DECISION_OPTION=<escaped> repeat exactly DECISION_OPTION_COUNT times
-DECISION_SELECTED_INDEX=<int 0..DECISION_OPTION_COUNT-1>
-DECISION_RATIONALE=<escaped>
-RESULT_CONTENT=<escaped>
-REFLECTION_CONTENT=<escaped>
-LEARNING_PROPOSAL=<escaped>
-END
-INPUT
-Hello Liliya
-CONTEXT
-1:SELF
-Liliya
-2:PERSONALITY
-helpful concise assistant
-EOF
+          echo 'TElMSVlBX0NPR05JVElWRV9SRVFVRVNUX1YxCgpSRVNQT05TRV9QUk9UT0NPTApSRVNQT05TRV9WRVJTSU9OPUxJTElZQV9DT0dOSVRJVkVfUkVTUE9OU0VfVjEKUlVMRT1PVVRQVVRfT05MWV9QUk9UT0NPTF9FTlZFTE9QRV9OT19QUk9TRQpSVUxFPUFMTF9GSUVMRFNfUkVRVUlSRURfSU5fRVhBQ1RfT1JERVIKUlVMRT1MSVNUX1JFQ09SRFNfUkVQRUFUX0VYQUNUTFlfREVDTEFSRURfQ09VTlQKUlVMRT1SQVdfQzBfQ09OVFJPTF9DSEFSQUNURVJTX0ZPUkJJRERFTl9JTl9WQUxVRVMKUlVMRT1FU0NBUEVTX09OTFlfQkFDS1NMQVNIX05FV0xJTkVfQ0FSUklBR0VfUkVUVVJOX1RBQgpFU0NBUEVfQkFDS1NMQVNIPVxcCkVTQ0FQRV9ORVdMSU5FPVxuCkVTQ0FQRV9DQVJSSUFHRV9SRVRVUk49XHIKRVNDQVBFX1RBQj1cdApSVUxFPU9USEVSX0VTQ0FQRVNfRk9SQklEREVOClJVTEU9T1BUSU9OQUxfU0lOR0xFX1RFUk1JTkFMX0xGX0FGVEVSX0VORApMSU1JVF9FTkdJTkVfT1VUUFVUX0NIQVJTPTc2OApMSU1JVF9QUk9UT0NPTF9PVVRQVVRfQ0hBUlM9NzY4CkxJTUlUX1BMQU5OSU5HX0dPQUxfQ0hBUlM9NjQKTElNSVRfUExBTk5JTkdfU1RFUFM9MQpMSU1JVF9QTEFOTklOR19TVEVQX0NIQVJTPTY0CkxJTUlUX1JFQVNPTklOR19QUkVNSVNFUz0xCkxJTUlUX1JFQVNPTklOR19QUkVNSVNFX0NIQVJTPTY0CkxJTUlUX1JFQVNPTklOR19BTkFMWVNJU19DSEFSUz02NApMSU1JVF9SRUFTT05JTkdfQ09OQ0xVU0lPTl9DSEFSUz02NApMSU1JVF9ERUNJU0lPTl9PUFRJT05TPTEKTElNSVRfREVDSVNJT05fT1BUSU9OX0NIQVJTPTY0CkxJTUlUX0RFQ0lTSU9OX1JBVElPTkFMRV9DSEFSUz02NApMSU1JVF9SRVNVTFRfQ0hBUlM9NjQKTElNSVRfUkVGTEVDVElPTl9DSEFSUz02NApMSU1JVF9MRUFSTklOR19QUk9QT1NBTF9DSEFSUz02NApTQ0hFTUEKUExBTk5JTkdfR09BTD08ZXNjYXBlZD4KUExBTk5JTkdfU1RFUF9DT1VOVD08aW50IDEuLjE+ClBMQU5OSU5HX1NURVA9PGVzY2FwZWQ+IHJlcGVhdCBleGFjdGx5IFBMQU5OSU5HX1NURVBfQ09VTlQgdGltZXMKUkVBU09OSU5HX1BSRU1JU0VfQ09VTlQ9PGludCAxLi4xPgpSRUFTT05JTkdfUFJFTUlTRT08ZXNjYXBlZD4gcmVwZWF0IGV4YWN0bHkgUkVBU09OSU5HX1BSRU1JU0VfQ09VTlQgdGltZXMKUkVBU09OSU5HX0FOQUxZU0lTPTxlc2NhcGVkPgpSRUFTT05JTkdfQ09OQ0xVU0lPTj08ZXNjYXBlZD4KREVDSVNJT05fT1BUSU9OX0NPVU5UPTxpbnQgMS4uMT4KREVDSVNJT05fT1BUSU9OPTxlc2NhcGVkPiByZXBlYXQgZXhhY3RseSBERUNJU0lPTl9PUFRJT05fQ09VTlQgdGltZXMKREVDSVNJT05fU0VMRUNURURfSU5ERVg9PGludCAwLi5ERUNJU0lPTl9PUFRJT05fQ09VTlQtMT4KREVDSVNJT05fUkFUSU9OQUxFPTxlc2NhcGVkPgpSRVNVTFRfQ09OVEVOVD08ZXNjYXBlZD4KUkVGTEVDVElPTl9DT05URU5UPTxlc2NhcGVkPgpMRUFSTklOR19QUk9QT1NBTD08ZXNjYXBlZD4KRU5ECklOUFVUCkhlbGxvIExpbGl5YQpDT05URVhUCjE6U0VMRgpMaWxpeWEKMjpQRVJTT05BTElUWQpoZWxwZnVsIGNvbmNpc2UgYXNzaXN0YW50Cg==' | base64 -d > protocol.txt
           cp protocol.txt raw-prompt.txt
-          {
-            printf '<|im_start|>system\nYou are Liliya. Follow the response protocol exactly and output no prose outside it.<|im_end|>\n<|im_start|>user\n'
-            cat protocol.txt
-            printf '<|im_end|>\n<|im_start|>assistant\n'
-          } > chat-prompt.txt
-
+          printf '<|im_start|>system\nYou are Liliya. Follow the response protocol exactly and output no prose outside it.<|im_end|>\n<|im_start|>user\n' > chat-prompt.txt
+          cat protocol.txt >> chat-prompt.txt
+          printf '<|im_end|>\n<|im_start|>assistant\n' >> chat-prompt.txt
           CLI=llama-build/bin/llama-cli
           "$CLI" -m smollm.gguf -c 2048 -n 512 --temp 0 --no-display-prompt -p "$(cat raw-prompt.txt)" > raw.out 2> raw.err || true
           "$CLI" -m smollm.gguf -c 2048 -n 512 --temp 0 --no-display-prompt -p "$(cat chat-prompt.txt)" > chat.out 2> chat.err || true
-
-          python3 - <<'PY'
-          from pathlib import Path
-          required = [
-              'LILIYA_COGNITIVE_RESPONSE_V1',
-              'PLANNING_GOAL=',
-              'PLANNING_STEP_COUNT=',
-              'PLANNING_STEP=',
-              'REASONING_PREMISE_COUNT=',
-              'REASONING_PREMISE=',
-              'REASONING_ANALYSIS=',
-              'REASONING_CONCLUSION=',
-              'DECISION_OPTION_COUNT=',
-              'DECISION_OPTION=',
-              'DECISION_SELECTED_INDEX=',
-              'DECISION_RATIONALE=',
-              'RESULT_CONTENT=',
-              'REFLECTION_CONTENT=',
-              'LEARNING_PROPOSAL=',
-              'END',
-          ]
-          for name in ('raw', 'chat'):
-              text = Path(f'{name}.out').read_text(errors='replace')
-              print(f'=== {name.upper()} OUTPUT BEGIN ===')
-              print(text[:5000])
-              print(f'=== {name.upper()} OUTPUT END ===')
-              positions = [text.find(x) for x in required]
-              ordered = all(p >= 0 for p in positions) and positions == sorted(positions)
-              print(f'{name.upper()}_STRUCTURE_ORDERED={ordered}')
-              print(f'{name.upper()}_OUTPUT_CHARS={len(text)}')
-          PY
+          echo '=== RAW OUTPUT ==='
+          head -c 5000 raw.out || true
+          echo
+          echo '=== CHAT OUTPUT ==='
+          head -c 5000 chat.out || true
+          echo
+          python3 -c "from pathlib import Path; req=['LILIYA_COGNITIVE_RESPONSE_V1','PLANNING_GOAL=','PLANNING_STEP_COUNT=','PLANNING_STEP=','REASONING_PREMISE_COUNT=','REASONING_PREMISE=','REASONING_ANALYSIS=','REASONING_CONCLUSION=','DECISION_OPTION_COUNT=','DECISION_OPTION=','DECISION_SELECTED_INDEX=','DECISION_RATIONALE=','RESULT_CONTENT=','REFLECTION_CONTENT=','LEARNING_PROPOSAL=','END']; [(lambda t,n: print(n+'_STRUCTURE_ORDERED='+str((lambda p: all(x>=0 for x in p) and p==sorted(p))([t.find(x) for x in req]))+' '+n+'_OUTPUT_CHARS='+str(len(t))))(Path(n+'.out').read_text(errors='replace'), n.upper()) for n in ('raw','chat')]"
 
       - name: Upload probe outputs
         if: always()
