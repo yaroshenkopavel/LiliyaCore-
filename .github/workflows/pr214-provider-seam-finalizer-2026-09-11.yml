@@ -1,0 +1,66 @@
+name: PR214 Provider Seam Finalizer 2026-09-11
+
+on:
+  push:
+    branches:
+      - maintenance/local-mirror-export-2026-09-10
+    paths:
+      - .github/workflows/pr214-provider-seam-finalizer-2026-09-11.yml
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact PR214 source
+        uses: actions/checkout@v4
+        with:
+          ref: 9b66a557baae4f8058a947e6efc40ad4384f533f
+          fetch-depth: 0
+
+      - name: Add generic explicit signature provider seam and squash to main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          test "$(git rev-parse origin/main)" = "aeb5a86d15909f74465e67616121fc4bad802046"
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('core/src/main/kotlin/pro/liliya/core/protectedmodel/LargeProtectedModelSegmentedCrypto.kt')
+          text = p.read_text()
+          old_import = 'import java.security.MessageDigest\nimport java.security.Signature\n'
+          new_import = 'import java.security.MessageDigest\nimport java.security.Provider\nimport java.security.Signature\n'
+          if text.count(old_import) != 1:
+              raise SystemExit('provider import precondition failed')
+          text = text.replace(old_import, new_import, 1)
+          old_ctor = '''class LargeProtectedModelPackageVerifier(\n    private val signerResolver: ProtectedModelSignerResolver,\n    private val budgets: LargeProtectedModelPackageBudgets\n) {'''
+          new_ctor = '''class LargeProtectedModelPackageVerifier(\n    private val signerResolver: ProtectedModelSignerResolver,\n    private val budgets: LargeProtectedModelPackageBudgets,\n    private val signatureProvider: Provider? = null\n) {'''
+          if text.count(old_ctor) != 1:
+              raise SystemExit('verifier constructor precondition failed')
+          text = text.replace(old_ctor, new_ctor, 1)
+          old_verify = '            val verifier = Signature.getInstance(signatureName(manifest.signatureAlgorithm))\n'
+          new_verify = '''            val signatureName = signatureName(manifest.signatureAlgorithm)\n            val verifier = signatureProvider?.let { provider ->\n                Signature.getInstance(signatureName, provider)\n            } ?: Signature.getInstance(signatureName)\n'''
+          if text.count(old_verify) != 1:
+              raise SystemExit('signature creation precondition failed')
+          text = text.replace(old_verify, new_verify, 1)
+          p.write_text(text)
+          PY
+          git diff --check
+          git reset --mixed origin/main
+          git add -A
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Android protected-model Ed25519 provider compatibility v0.1"
+          test "$(git rev-list --count origin/main..HEAD)" = "1"
+          test "$(git rev-parse HEAD^)" = "aeb5a86d15909f74465e67616121fc4bad802046"
+          echo "CANDIDATE_HEAD=$(git rev-parse HEAD)"
+          echo "CANDIDATE_TREE=$(git rev-parse HEAD^{tree})"
+
+      - name: Publish exact candidate only
+        shell: bash
+        run: |
+          set -euo pipefail
+          git push --force origin HEAD:refs/heads/maintenance/pr214-provider-seam-candidate-2026-09-11
