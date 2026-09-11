@@ -35,6 +35,8 @@ internal object LlamaCppNativeBridge {
         threadCount: Int,
         maxPromptUtf8Bytes: Int,
         maxOutputUtf8Bytes: Int,
+        structuredGrammarUtf8: ByteArray,
+        maxStructuredGrammarUtf8Bytes: Int,
         useMmap: Boolean
     ): Long
 
