@@ -1,0 +1,405 @@
+name: Structured Cognitive Grammar Slice 2026-09-11
+
+on:
+  push:
+    branches:
+      - development-structured-cognitive-grammar-v0.1
+    paths:
+      - .github/workflows/structured-cognitive-grammar-slice-2026-09-11.yml
+
+permissions:
+  contents: write
+
+jobs:
+  implement-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout exact development branch
+        uses: actions/checkout@v4
+        with:
+          ref: development-structured-cognitive-grammar-v0.1
+          fetch-depth: 0
+
+      - name: Apply bounded grammar transport and native sampler chain
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace(path, old, new, count):
+              p = Path(path)
+              text = p.read_text()
+              actual = text.count(old)
+              if actual != count:
+                  raise SystemExit(f"{path}: expected {count} occurrences, found {actual}")
+              p.write_text(text.replace(old, new))
+
+          # Preserve historical redacted toString contracts while carrying grammar structurally.
+          replace(
+              'core/src/main/kotlin/pro/liliya/core/modelengine/ModelEngineContracts.kt',
+              '''    override fun toString(): String =\n        "ModelEngineInferenceRequest(" +\n            "prompt=<redacted:${prompt.length}>, " +\n            "maxOutputChars=$maxOutputChars, " +\n            "grammar=${grammar?.let { "<redacted:${it.length}>" } ?: "<none>"})"\n''',
+              '''    override fun toString(): String =\n        "ModelEngineInferenceRequest(prompt=<redacted:${prompt.length}>, maxOutputChars=$maxOutputChars)"\n''',
+              1
+          )
+          replace(
+              'core/src/main/kotlin/pro/liliya/core/cognitive/CognitiveModelRequestCompiler.kt',
+              '''    override fun toString(): String =\n        "CognitiveCompiledModelRequest(" +\n            "prompt=<redacted:${prompt.length}>, " +\n            "grammar=${grammar?.let { "<redacted:${it.length}>" } ?: "<none>"})"\n''',
+              '''    override fun toString(): String =\n        "CognitiveCompiledModelRequest(prompt=<redacted:${prompt.length}>)"\n''',
+              1
+          )
+
+          replace(
+              'core/src/main/kotlin/pro/liliya/core/cognitive/CognitiveModelRuntimeComposition.kt',
+              '''                ModelEngineInferenceRequest(\n                    prompt = compiledRequest.prompt,\n                    maxOutputChars = request.maxOutputChars\n                )\n''',
+              '''                ModelEngineInferenceRequest(\n                    prompt = compiledRequest.prompt,\n                    maxOutputChars = request.maxOutputChars,\n                    grammar = compiledRequest.grammar\n                )\n''',
+              1
+          )
+          replace(
+              'core/src/main/kotlin/pro/liliya/core/cognitive/CognitiveModelRuntimeComposition.kt',
+              '''                request = ModelEngineInferenceRequest(\n                    prompt = compiledRequest.prompt,\n                    maxOutputChars = request.maxOutputChars\n                ),\n''',
+              '''                request = ModelEngineInferenceRequest(\n                    prompt = compiledRequest.prompt,\n                    maxOutputChars = request.maxOutputChars,\n                    grammar = compiledRequest.grammar\n                ),\n''',
+              1
+          )
+
+          replace(
+              'android-llama-cpp-engine/src/main/kotlin/pro/liliya/android/llamacppengine/LlamaCppNativeBridge.kt',
+              '''        nativeSessionId: Long,\n        promptUtf8: ByteArray,\n        maxOutputChars: Int\n''',
+              '''        nativeSessionId: Long,\n        promptUtf8: ByteArray,\n        grammarUtf8: ByteArray?,\n        maxOutputChars: Int\n''',
+              1
+          )
+          replace(
+              'android-llama-cpp-engine/src/main/kotlin/pro/liliya/android/llamacppengine/LlamaCppNativeBridge.kt',
+              '''        nativeSessionId: Long,\n        promptUtf8: ByteArray,\n        maxOutputChars: Int,\n        sink: LlamaCppNativeStreamingSink\n''',
+              '''        nativeSessionId: Long,\n        promptUtf8: ByteArray,\n        grammarUtf8: ByteArray?,\n        maxOutputChars: Int,\n        sink: LlamaCppNativeStreamingSink\n''',
+              1
+          )
+
+          # Keep old fake/native ports source-compatible; constrained calls are optional capability methods.
+          replace(
+              'android-llama-cpp-engine/src/main/kotlin/pro/liliya/android/llamacppengine/AndroidLlamaCppPhysicalEngineLoader.kt',
+              '''    fun infer(\n        nativeSessionId: Long,\n        promptUtf8: ByteArray,\n        maxOutputChars: Int\n    ): LlamaCppNativeInferenceResult\n\n    fun stream(\n''',
+              '''    fun infer(\n        nativeSessionId: Long,\n        promptUtf8: ByteArray,\n        maxOutputChars: Int\n    ): LlamaCppNativeInferenceResult\n\n    fun inferConstrained(\n        nativeSessionId: Long,\n        promptUtf8: ByteArray,\n        grammarUtf8: ByteArray,\n        maxOutputChars: Int\n    ): LlamaCppNativeInferenceResult = infer(nativeSessionId, promptUtf8, maxOutputChars)\n\n    fun stream(\n''',
+              1
+          )
+          replace(
+              'android-llama-cpp-engine/src/main/kotlin/pro/liliya/android/llamacppengine/AndroidLlamaCppPhysicalEngineLoader.kt',
+              '''    fun close(nativeSessionId: Long): LlamaCppNativeCloseResult\n}\n''',
+              '''    fun streamConstrained(\n        nativeSessionId: Long,\n        promptUtf8: ByteArray,\n        grammarUtf8: ByteArray,\n        maxOutputChars: Int,\n        sink: LlamaCppNativeStreamingSink\n    ): LlamaCppNativeInferenceResult = stream(nativeSessionId, promptUtf8, maxOutputChars, sink)\n\n    fun close(nativeSessionId: Long): LlamaCppNativeCloseResult\n}\n''',
+              1
+          )
+          replace(
+              'android-llama-cpp-engine/src/main/kotlin/pro/liliya/android/llamacppengine/AndroidLlamaCppPhysicalEngineLoader.kt',
+              '''    override fun infer(\n        nativeSessionId: Long,\n        promptUtf8: ByteArray,\n        maxOutputChars: Int\n    ): LlamaCppNativeInferenceResult =\n        decodeInferencePacket(\n            LlamaCppNativeBridge.nativeInfer(\n                nativeSessionId = nativeSessionId,\n                promptUtf8 = promptUtf8,\n                maxOutputChars = maxOutputChars\n            )\n        )\n\n    override fun stream(\n''',
+              '''    override fun infer(\n        nativeSessionId: Long,\n        promptUtf8: ByteArray,\n        maxOutputChars: Int\n    ): LlamaCppNativeInferenceResult = inferPacket(\n        nativeSessionId = nativeSessionId,\n        promptUtf8 = promptUtf8,\n        grammarUtf8 = null,\n        maxOutputChars = maxOutputChars\n    )\n\n    override fun inferConstrained(\n        nativeSessionId: Long,\n        promptUtf8: ByteArray,\n        grammarUtf8: ByteArray,\n        maxOutputChars: Int\n    ): LlamaCppNativeInferenceResult = inferPacket(\n        nativeSessionId = nativeSessionId,\n        promptUtf8 = promptUtf8,\n        grammarUtf8 = grammarUtf8,\n        maxOutputChars = maxOutputChars\n    )\n\n    private fun inferPacket(\n        nativeSessionId: Long,\n        promptUtf8: ByteArray,\n        grammarUtf8: ByteArray?,\n        maxOutputChars: Int\n    ): LlamaCppNativeInferenceResult =\n        decodeInferencePacket(\n            LlamaCppNativeBridge.nativeInfer(\n                nativeSessionId = nativeSessionId,\n                promptUtf8 = promptUtf8,\n                grammarUtf8 = grammarUtf8,\n                maxOutputChars = maxOutputChars\n            )\n        )\n\n    override fun stream(\n''',
+              1
+          )
+          replace(
+              'android-llama-cpp-engine/src/main/kotlin/pro/liliya/android/llamacppengine/AndroidLlamaCppPhysicalEngineLoader.kt',
+              '''    override fun stream(\n        nativeSessionId: Long,\n        promptUtf8: ByteArray,\n        maxOutputChars: Int,\n        sink: LlamaCppNativeStreamingSink\n    ): LlamaCppNativeInferenceResult =\n        decodeInferencePacket(\n            LlamaCppNativeBridge.nativeInferStreaming(\n                nativeSessionId = nativeSessionId,\n                promptUtf8 = promptUtf8,\n                maxOutputChars = maxOutputChars,\n                sink = sink\n            )\n        )\n\n    private fun decodeInferencePacket''',
+              '''    override fun stream(\n        nativeSessionId: Long,\n        promptUtf8: ByteArray,\n        maxOutputChars: Int,\n        sink: LlamaCppNativeStreamingSink\n    ): LlamaCppNativeInferenceResult = streamPacket(\n        nativeSessionId = nativeSessionId,\n        promptUtf8 = promptUtf8,\n        grammarUtf8 = null,\n        maxOutputChars = maxOutputChars,\n        sink = sink\n    )\n\n    override fun streamConstrained(\n        nativeSessionId: Long,\n        promptUtf8: ByteArray,\n        grammarUtf8: ByteArray,\n        maxOutputChars: Int,\n        sink: LlamaCppNativeStreamingSink\n    ): LlamaCppNativeInferenceResult = streamPacket(\n        nativeSessionId = nativeSessionId,\n        promptUtf8 = promptUtf8,\n        grammarUtf8 = grammarUtf8,\n        maxOutputChars = maxOutputChars,\n        sink = sink\n    )\n\n    private fun streamPacket(\n        nativeSessionId: Long,\n        promptUtf8: ByteArray,\n        grammarUtf8: ByteArray?,\n        maxOutputChars: Int,\n        sink: LlamaCppNativeStreamingSink\n    ): LlamaCppNativeInferenceResult =\n        decodeInferencePacket(\n            LlamaCppNativeBridge.nativeInferStreaming(\n                nativeSessionId = nativeSessionId,\n                promptUtf8 = promptUtf8,\n                grammarUtf8 = grammarUtf8,\n                maxOutputChars = maxOutputChars,\n                sink = sink\n            )\n        )\n\n    private fun decodeInferencePacket''',
+              1
+          )
+
+          # Session ownership: bounded grammar encoding, explicit scrub, constrained native call.
+          p = Path('android-llama-cpp-engine/src/main/kotlin/pro/liliya/android/llamacppengine/LlamaCppSessionOwnership.kt')
+          text = p.read_text()
+          marker = 'private val LLAMA_CPP_BACKEND_ID = ModelEngineBackendId("llama.cpp-v0.1")\n'
+          if text.count(marker) != 1:
+              raise SystemExit('session grammar constant anchor failed')
+          text = text.replace(marker, marker + 'private const val MAX_LLAMA_CPP_GRAMMAR_UTF8_BYTES = 64 * 1024\n', 1)
+
+          old = '''            operationInProgress = true\n            val result = try {\n                nativePort.infer(\n                    nativeSessionId = nativeSessionId,\n                    promptUtf8 = promptUtf8,\n                    maxOutputChars = request.maxOutputChars\n                )\n            } catch (_: Throwable) {\n                LlamaCppNativeInferenceResult.Rejected(ModelEngineInferenceFailure.PROVIDER_FAILED)\n            } finally {\n                operationInProgress = false\n                promptUtf8.fill(0)\n            }\n'''
+          new = '''            val grammarUtf8 = encodeGrammar(request.grammar)\n                ?: if (request.grammar == null) null else {\n                    promptUtf8.fill(0)\n                    return@withLock ModelEngineInferenceResult.Rejected(\n                        ModelEngineInferenceFailure.RESOURCE_LIMIT_REJECTED\n                    )\n                }\n\n            operationInProgress = true\n            val result = try {\n                if (grammarUtf8 == null) {\n                    nativePort.infer(\n                        nativeSessionId = nativeSessionId,\n                        promptUtf8 = promptUtf8,\n                        maxOutputChars = request.maxOutputChars\n                    )\n                } else {\n                    nativePort.inferConstrained(\n                        nativeSessionId = nativeSessionId,\n                        promptUtf8 = promptUtf8,\n                        grammarUtf8 = grammarUtf8,\n                        maxOutputChars = request.maxOutputChars\n                    )\n                }\n            } catch (_: Throwable) {\n                LlamaCppNativeInferenceResult.Rejected(ModelEngineInferenceFailure.PROVIDER_FAILED)\n            } finally {\n                operationInProgress = false\n                promptUtf8.fill(0)\n                grammarUtf8?.fill(0)\n            }\n'''
+          if text.count(old) != 1:
+              raise SystemExit('session infer replacement anchor failed')
+          text = text.replace(old, new, 1)
+
+          old = '''        var sequence = 0L\n        var stopped = false\n        var contractViolation = false\n        val collected = StringBuilder()\n        operationInProgress = true\n        val result = try {\n            nativePort.stream(\n                nativeSessionId = nativeSessionId,\n                promptUtf8 = promptUtf8,\n                maxOutputChars = request.maxOutputChars,\n                sink = LlamaCppNativeStreamingSink { chunkUtf8 ->\n'''
+          new = '''        val grammarUtf8 = encodeGrammar(request.grammar)\n            ?: if (request.grammar == null) null else {\n                promptUtf8.fill(0)\n                return@withLock ModelEngineInferenceResult.Rejected(\n                    ModelEngineInferenceFailure.RESOURCE_LIMIT_REJECTED\n                )\n            }\n\n        var sequence = 0L\n        var stopped = false\n        var contractViolation = false\n        val collected = StringBuilder()\n        operationInProgress = true\n        val nativeSink = LlamaCppNativeStreamingSink { chunkUtf8 ->\n'''
+          if text.count(old) != 1:
+              raise SystemExit('session stream start anchor failed')
+          text = text.replace(old, new, 1)
+
+          old = '''                }\n            )\n        } catch (_: Throwable) {\n            LlamaCppNativeInferenceResult.Rejected(ModelEngineInferenceFailure.PROVIDER_FAILED)\n        } finally {\n            operationInProgress = false\n            promptUtf8.fill(0)\n        }\n\n        if (contractViolation) {\n'''
+          new = '''                }\n        val result = try {\n            if (grammarUtf8 == null) {\n                nativePort.stream(\n                    nativeSessionId = nativeSessionId,\n                    promptUtf8 = promptUtf8,\n                    maxOutputChars = request.maxOutputChars,\n                    sink = nativeSink\n                )\n            } else {\n                nativePort.streamConstrained(\n                    nativeSessionId = nativeSessionId,\n                    promptUtf8 = promptUtf8,\n                    grammarUtf8 = grammarUtf8,\n                    maxOutputChars = request.maxOutputChars,\n                    sink = nativeSink\n                )\n            }\n        } catch (_: Throwable) {\n            LlamaCppNativeInferenceResult.Rejected(ModelEngineInferenceFailure.PROVIDER_FAILED)\n        } finally {\n            operationInProgress = false\n            promptUtf8.fill(0)\n            grammarUtf8?.fill(0)\n        }\n\n        if (contractViolation) {\n'''
+          if text.count(old) != 1:
+              raise SystemExit(f'session stream end anchor failed: {text.count(old)}')
+          text = text.replace(old, new, 1)
+
+          anchor = '''    override fun close(): ModelEngineCloseResult = executionLock.withLock {\n'''
+          helper = '''    private fun encodeGrammar(grammar: String?): ByteArray? {\n        if (grammar == null) return null\n        val encoded = try {\n            grammar.toByteArray(Charsets.UTF_8)\n        } catch (_: Throwable) {\n            return null\n        }\n        if (encoded.isEmpty() || encoded.size > MAX_LLAMA_CPP_GRAMMAR_UTF8_BYTES) {\n            encoded.fill(0)\n            return null\n        }\n        return encoded\n    }\n\n'''
+          if text.count(anchor) != 1:
+              raise SystemExit('session helper anchor failed')
+          text = text.replace(anchor, helper + anchor, 1)
+          p.write_text(text)
+
+          # Native JNI: optional bounded grammar + grammar->greedy sampler chain.
+          p = Path('android-llama-cpp-engine/src/main/cpp/liliya_llama_jni.cpp')
+          text = p.read_text()
+          anchor = 'constexpr jint CLOSE_PROVIDER_FAILED = 2;\n'
+          if text.count(anchor) != 1:
+              raise SystemExit('native constant anchor failed')
+          text = text.replace(anchor, anchor + '\nconstexpr size_t MAX_GRAMMAR_UTF8_BYTES = 64U * 1024U;\n', 1)
+
+          helper_anchor = '''int64_t allocate_native_session_id() {\n'''
+          helper = r'''std::unique_ptr<llama_sampler, decltype(&llama_sampler_free)> create_sampler(
+    const llama_vocab * vocab,
+    const std::vector<uint8_t> & grammar_bytes
+) {
+    if (grammar_bytes.empty()) {
+        return {llama_sampler_init_greedy(), llama_sampler_free};
+    }
+    if (grammar_bytes.size() > MAX_GRAMMAR_UTF8_BYTES) {
+        return {nullptr, llama_sampler_free};
+    }
+    if (std::find(grammar_bytes.begin(), grammar_bytes.end(), static_cast<uint8_t>(0)) != grammar_bytes.end()) {
+        return {nullptr, llama_sampler_free};
+    }
+
+    const std::string grammar(
+        reinterpret_cast<const char *>(grammar_bytes.data()),
+        grammar_bytes.size()
+    );
+    llama_sampler_chain_params params = llama_sampler_chain_default_params();
+    params.no_perf = true;
+    llama_sampler * chain = llama_sampler_chain_init(params);
+    if (chain == nullptr) {
+        return {nullptr, llama_sampler_free};
+    }
+
+    llama_sampler * grammar_sampler = llama_sampler_init_grammar(vocab, grammar.c_str(), "root");
+    if (grammar_sampler == nullptr) {
+        llama_sampler_free(chain);
+        return {nullptr, llama_sampler_free};
+    }
+    llama_sampler_chain_add(chain, grammar_sampler);
+
+    llama_sampler * greedy = llama_sampler_init_greedy();
+    if (greedy == nullptr) {
+        llama_sampler_free(chain);
+        return {nullptr, llama_sampler_free};
+    }
+    llama_sampler_chain_add(chain, greedy);
+    return {chain, llama_sampler_free};
+}
+
+'''
+          if text.count(helper_anchor) != 1:
+              raise SystemExit('native sampler helper anchor failed')
+          text = text.replace(helper_anchor, helper + helper_anchor, 1)
+
+          # JNI signatures.
+          old = '''    jlong native_session_id,\n    jbyteArray prompt_utf8,\n    jint max_output_chars\n) {\n'''
+          new = '''    jlong native_session_id,\n    jbyteArray prompt_utf8,\n    jbyteArray grammar_utf8,\n    jint max_output_chars\n) {\n'''
+          if text.count(old) != 1:
+              raise SystemExit('native infer signature anchor failed')
+          text = text.replace(old, new, 1)
+          old = '''    jlong native_session_id,\n    jbyteArray prompt_utf8,\n    jint max_output_chars,\n    jobject sink\n) {\n'''
+          new = '''    jlong native_session_id,\n    jbyteArray prompt_utf8,\n    jbyteArray grammar_utf8,\n    jint max_output_chars,\n    jobject sink\n) {\n'''
+          if text.count(old) != 1:
+              raise SystemExit('native stream signature anchor failed')
+          text = text.replace(old, new, 1)
+
+          # Copy optional grammar after prompt in both inference paths.
+          anchor = '''        ByteScrubber prompt_scrubber(prompt);\n\n        try {\n'''
+          insert = '''        ByteScrubber prompt_scrubber(prompt);\n\n        std::vector<uint8_t> grammar;\n        if (grammar_utf8 != nullptr) {\n            if (!copy_bytes(env, grammar_utf8, grammar)) {\n                return make_infer_packet(env, INFER_PROVIDER_FAILED);\n            }\n            if (grammar.empty() || grammar.size() > MAX_GRAMMAR_UTF8_BYTES) {\n                return make_infer_packet(env, INFER_RESOURCE_REJECTED);\n            }\n        }\n        ByteScrubber grammar_scrubber(grammar);\n\n        try {\n'''
+          if text.count(anchor) != 2:
+              raise SystemExit(f'native grammar copy anchor count={text.count(anchor)}')
+          text = text.replace(anchor, insert)
+
+          old = '''            std::unique_ptr<llama_sampler, decltype(&llama_sampler_free)> sampler(\n                llama_sampler_init_greedy(),\n                llama_sampler_free\n            );\n'''
+          new = '''            std::unique_ptr<llama_sampler, decltype(&llama_sampler_free)> sampler =\n                create_sampler(session->vocab, grammar);\n'''
+          if text.count(old) != 2:
+              raise SystemExit(f'native sampler replacement count={text.count(old)}')
+          text = text.replace(old, new)
+          p.write_text(text)
+          PY
+
+          cat > core/src/test/kotlin/pro/liliya/core/cognitive/CognitiveStructuredResponseGrammarContractTest.kt <<'EOF'
+          package pro.liliya.core.cognitive
+
+          import kotlin.test.assertContains
+          import kotlin.test.assertNotNull
+          import kotlin.test.assertTrue
+          import org.junit.Test
+
+          class CognitiveStructuredResponseGrammarContractTest {
+              @Test
+              fun grammar_projects_exact_count_and_selected_index_bounds() {
+                  val budgets = CognitiveStructuredResponseBudgets(
+                      maxOutputChars = 768,
+                      maxPlanningGoalChars = 64,
+                      maxPlanningSteps = 2,
+                      maxPlanningStepChars = 64,
+                      maxReasoningPremises = 2,
+                      maxReasoningPremiseChars = 64,
+                      maxReasoningAnalysisChars = 64,
+                      maxReasoningConclusionChars = 64,
+                      maxDecisionOptions = 3,
+                      maxDecisionOptionChars = 64,
+                      maxDecisionRationaleChars = 64,
+                      maxResultChars = 64,
+                      maxReflectionChars = 64,
+                      maxLearningProposalChars = 64
+                  )
+
+                  val grammar = assertNotNull(CognitiveStructuredResponseGrammar.compile(budgets))
+                  assertContains(grammar, "planning-count-2 ::= \"PLANNING_STEP_COUNT=2\\n\" planning-step-line{2}")
+                  assertContains(grammar, "reasoning-count-2 ::= \"REASONING_PREMISE_COUNT=2\\n\" reasoning-premise-line{2}")
+                  assertContains(grammar, "decision-option-line{3} \"DECISION_SELECTED_INDEX=\" (\"0\" | \"1\" | \"2\")")
+                  assertContains(grammar, "planning-goal ::= value-start value-char{0,63}")
+                  assertTrue(grammar.length <= 64 * 1024)
+              }
+
+              @Test
+              fun grammar_rejects_unbounded_projection_before_engine_boundary() {
+                  val budgets = CognitiveStructuredResponseBudgets(
+                      maxOutputChars = 1_000_000,
+                      maxPlanningGoalChars = 1,
+                      maxPlanningSteps = 20_000,
+                      maxPlanningStepChars = 1,
+                      maxReasoningPremises = 1,
+                      maxReasoningPremiseChars = 1,
+                      maxReasoningAnalysisChars = 1,
+                      maxReasoningConclusionChars = 1,
+                      maxDecisionOptions = 1,
+                      maxDecisionOptionChars = 1,
+                      maxDecisionRationaleChars = 1,
+                      maxResultChars = 1,
+                      maxReflectionChars = 1,
+                      maxLearningProposalChars = 1
+                  )
+                  assertTrue(CognitiveStructuredResponseGrammar.compile(budgets) == null)
+              }
+          }
+          EOF
+
+          cat > android-llama-cpp-engine/src/test/kotlin/pro/liliya/android/llamacppengine/LlamaCppGrammarPropagationContractTest.kt <<'EOF'
+          package pro.liliya.android.llamacppengine
+
+          import kotlin.test.assertContentEquals
+          import kotlin.test.assertEquals
+          import kotlin.test.assertIs
+          import org.junit.Test
+          import pro.liliya.core.modelengine.ModelEngineCloseResult
+          import pro.liliya.core.modelengine.ModelEngineHandleId
+          import pro.liliya.core.modelengine.ModelEngineInferenceRequest
+          import pro.liliya.core.modelengine.ModelEngineInferenceResult
+          import pro.liliya.core.modelengine.ModelEngineLoadFailure
+
+          class LlamaCppGrammarPropagationContractTest {
+              @Test
+              fun constrained_request_reaches_native_capability_and_source_buffer_is_scrubbed_after_call() {
+                  val native = CapturingNativePort()
+                  val session = LlamaCppSessionOwnership(
+                      handleId = ModelEngineHandleId("grammar-session"),
+                      nativeSessionId = 7L,
+                      nativePort = native,
+                      policy = policy()
+                  )
+                  val grammar = "root ::= \"OK\""
+
+                  val result = assertIs<ModelEngineInferenceResult.Succeeded>(
+                      session.infer(
+                          ModelEngineInferenceRequest(
+                              prompt = "prompt",
+                              maxOutputChars = 8,
+                              grammar = grammar
+                          )
+                      )
+                  )
+
+                  assertEquals("OK", result.output)
+                  assertContentEquals(grammar.encodeToByteArray(), native.capturedGrammar)
+              }
+
+              private fun policy() = LlamaCppEnginePolicy(
+                  contextTokens = 32,
+                  maxPromptTokens = 16,
+                  maxGeneratedTokens = 16,
+                  batchTokens = 16,
+                  microBatchTokens = 8,
+                  threadCount = 2,
+                  maxPromptChars = 32,
+                  maxPromptUtf8Bytes = 64,
+                  maxOutputChars = 16,
+                  maxOutputUtf8Bytes = 64,
+                  useMmap = true
+              )
+
+              private class CapturingNativePort : LlamaCppNativeSessionPort {
+                  var capturedGrammar: ByteArray = byteArrayOf()
+
+                  override fun load(sourcePath: String, policy: LlamaCppEnginePolicy) =
+                      LlamaCppNativeLoadResult.Rejected(ModelEngineLoadFailure.LOAD_REJECTED)
+
+                  override fun infer(
+                      nativeSessionId: Long,
+                      promptUtf8: ByteArray,
+                      maxOutputChars: Int
+                  ) = LlamaCppNativeInferenceResult.Succeeded("unconstrained")
+
+                  override fun inferConstrained(
+                      nativeSessionId: Long,
+                      promptUtf8: ByteArray,
+                      grammarUtf8: ByteArray,
+                      maxOutputChars: Int
+                  ): LlamaCppNativeInferenceResult {
+                      capturedGrammar = grammarUtf8.copyOf()
+                      return LlamaCppNativeInferenceResult.Succeeded("OK")
+                  }
+
+                  override fun close(nativeSessionId: Long) = LlamaCppNativeCloseResult.Closed
+              }
+          }
+          EOF
+
+          git rm .github/workflows/structured-cognitive-grammar-slice-2026-09-11.yml
+          git diff --check
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle 9.6.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.1'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install pinned Android native toolchain
+        run: |
+          sdkmanager \
+            "platforms;android-35" \
+            "build-tools;35.0.0" \
+            "platform-tools" \
+            "ndk;29.0.13113456" \
+            "cmake;3.31.6"
+
+      - name: Run grammar slice acceptance
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle \
+            :core:test \
+            :android-llama-cpp-engine:testDebugUnitTest \
+            :android-llama-cpp-engine:assembleDebug \
+            --console=plain
+
+      - name: Commit accepted slice
+        shell: bash
+        run: |
+          set -euo pipefail
+          git status --short
+          git add -A
+          git diff --cached --check
+          git config user.name "yaroshenkopavel"
+          git config user.email "78513566+yaroshenkopavel@users.noreply.github.com"
+          git commit -m "Cognitive structured grammar decoding v0.1"
+          git push origin HEAD:development-structured-cognitive-grammar-v0.1
