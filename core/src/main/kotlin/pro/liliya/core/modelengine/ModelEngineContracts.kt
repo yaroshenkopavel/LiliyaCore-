@@ -48,14 +48,21 @@ sealed interface ModelEngineLoadResult {
 
 class ModelEngineInferenceRequest(
     val prompt: String,
-    val maxOutputChars: Int
+    val maxOutputChars: Int,
+    val grammar: String? = null
 ) {
     init {
         require(maxOutputChars > 0) { "model engine output budget must be positive" }
+        require(grammar == null || grammar.isNotBlank()) {
+            "model engine grammar must be null or non-blank"
+        }
     }
 
     override fun toString(): String =
-        "ModelEngineInferenceRequest(prompt=<redacted:${prompt.length}>, maxOutputChars=$maxOutputChars)"
+        "ModelEngineInferenceRequest(" +
+            "prompt=<redacted:${prompt.length}>, " +
+            "maxOutputChars=$maxOutputChars, " +
+            "grammar=${grammar?.let { "<redacted:${it.length}>" } ?: "<none>"})"
 }
 
 enum class ModelEngineInferenceFailure {
