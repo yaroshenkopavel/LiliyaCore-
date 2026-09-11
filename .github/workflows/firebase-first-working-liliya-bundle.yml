@@ -1,0 +1,229 @@
+name: Firebase First Working Liliya Bundle
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/firebase-first-working-liliya-bundle.yml'
+      - 'android-app/ci/run_firebase_first_working_liliya_acceptance.sh'
+      - 'android-app/src/androidTest/**'
+      - 'android-app/build.gradle.kts'
+      - 'android-runtime/**'
+      - 'android-llama-cpp-engine/**'
+      - 'android-offline-semantic-provider/**'
+      - 'android-protected-model-staging/**'
+      - 'protected-model-packager/**'
+  workflow_dispatch:
+    inputs:
+      provenance_run_id:
+        description: Successful Semantic Model Provenance run ID containing semantic-onnx-provenance
+        required: false
+        default: '33981322350'
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build-firebase-first-working-liliya-bundle:
+    name: Build exact Firebase First Working Liliya APK bundle
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Download exact semantic provenance bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: semantic-onnx-provenance
+          path: ${{ runner.temp }}/semantic-onnx-download
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.provenance_run_id || '33981322350' }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify and stage exact semantic test assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import shutil
+
+          root = Path(os.environ["RUNNER_TEMP"]) / "semantic-onnx-download"
+          manifests = list(root.rglob("semantic-onnx-provenance.json"))
+          encoders = list(root.rglob("multilingual-e5-small-liliya-v0.1.onnx"))
+          tokenizers = list(root.rglob("multilingual-e5-small-tokenizer-v0.1.onnx"))
+          if len(manifests) != 1 or len(encoders) != 1 or len(tokenizers) != 1:
+              raise SystemExit(
+                  f"unexpected provenance layout: manifest={manifests}, "
+                  f"encoder={encoders}, tokenizer={tokenizers}"
+              )
+
+          manifest = json.loads(manifests[0].read_text(encoding="utf-8"))
+          encoder = manifest["encoder"]
+          tokenizer = manifest["tokenizer"]
+
+          def digest(path):
+              h = hashlib.sha256()
+              with path.open("rb") as stream:
+                  for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                      h.update(chunk)
+              return h.hexdigest()
+
+          if encoders[0].stat().st_size != encoder["size"] or digest(encoders[0]) != encoder["sha256"]:
+              raise SystemExit("encoder provenance mismatch")
+          if tokenizers[0].stat().st_size != tokenizer["size"] or digest(tokenizers[0]) != tokenizer["sha256"]:
+              raise SystemExit("tokenizer provenance mismatch")
+
+          assets = Path("android-app/src/androidTest/assets")
+          assets.mkdir(parents=True, exist_ok=True)
+          shutil.copy2(encoders[0], assets / encoders[0].name)
+          shutil.copy2(tokenizers[0], assets / tokenizers[0].name)
+          PY
+
+      - name: Prepare verified real-model cold-start fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          asset_dir="android-app/src/androidTest/assets"
+          asset="$asset_dir/stories15M-q4_0.gguf"
+          mkdir -p "$asset_dir"
+          curl --fail --location --retry 3 \
+            "https://huggingface.co/ggml-org/tiny-llamas/resolve/def3e2dd70df35ecbf6403ea347de4c5977220c1/stories15M-q4_0.gguf?download=true" \
+            --output "$asset"
+          echo "6151b1929d7f5aa3385d9ddef3393e55587c0a55de661562322bc51dfda93a04  $asset" | sha256sum --check --strict
+          test "$(stat --format=%s "$asset")" -eq 19077344
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle 9.6.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.1'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install pinned Android instrumentation toolchain
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools" "ndk;29.0.13113456" "cmake;3.31.6"
+
+      - name: Compile exact ARM64 First Working Liliya instrumentation bundle
+        run: gradle :android-app:assembleDebug :android-app:assembleDebugAndroidTest --console=plain
+
+      - name: Verify APK metadata and ARM64 target payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          app_apk="android-app/build/outputs/apk/debug/android-app-debug.apk"
+          test_apk="android-app/build/outputs/apk/androidTest/debug/android-app-debug-androidTest.apk"
+          aapt="$ANDROID_HOME/build-tools/35.0.0/aapt"
+
+          test -f "$app_apk"
+          test -f "$test_apk"
+
+          app_badging="$RUNNER_TEMP/firebase-first-working-liliya-app-badging.txt"
+          test_badging="$RUNNER_TEMP/firebase-first-working-liliya-test-badging.txt"
+          test_manifest="$RUNNER_TEMP/firebase-first-working-liliya-test-manifest.txt"
+          app_listing="$RUNNER_TEMP/firebase-first-working-liliya-app-apk-files.txt"
+          test_listing="$RUNNER_TEMP/firebase-first-working-liliya-test-apk-files.txt"
+
+          "$aapt" dump badging "$app_apk" | tee "$app_badging"
+          "$aapt" dump badging "$test_apk" | tee "$test_badging"
+          "$aapt" dump xmltree "$test_apk" AndroidManifest.xml | tee "$test_manifest"
+
+          grep -F "package: name='pro.liliya.app'" "$app_badging"
+          grep -F "native-code: 'arm64-v8a'" "$app_badging"
+          grep -F "package: name='pro.liliya.app.test'" "$test_badging"
+          grep -F 'E: instrumentation' "$test_manifest"
+          grep -F 'android:name' "$test_manifest" | grep -F '"androidx.test.runner.AndroidJUnitRunner"'
+          grep -F 'android:targetPackage' "$test_manifest" | grep -F '"pro.liliya.app"'
+
+          unzip -Z1 "$app_apk" > "$app_listing"
+          unzip -Z1 "$test_apk" > "$test_listing"
+          grep -Eq '^lib/arm64-v8a/[^/]+\.so$' "$app_listing"
+          if grep -Eq '^lib/(x86|x86_64|armeabi-v7a)/' "$app_listing"; then
+            echo "unexpected non-arm64 native payload in target APK" >&2
+            exit 1
+          fi
+
+      - name: Collect exact Firebase input bundle and manifest
+        shell: bash
+        env:
+          EXACT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          PROVENANCE_RUN_ID: ${{ inputs.provenance_run_id || '33981322350' }}
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/firebase-first-working-liliya-bundle"
+          mkdir -p "$out"
+
+          app_apk="android-app/build/outputs/apk/debug/android-app-debug.apk"
+          test_apk="android-app/build/outputs/apk/androidTest/debug/android-app-debug-androidTest.apk"
+          cp "$app_apk" "$out/"
+          cp "$test_apk" "$out/"
+          cp android-app/ci/run_firebase_first_working_liliya_acceptance.sh "$out/"
+          cp "$RUNNER_TEMP/firebase-first-working-liliya-app-badging.txt" "$out/"
+          cp "$RUNNER_TEMP/firebase-first-working-liliya-test-badging.txt" "$out/"
+          cp "$RUNNER_TEMP/firebase-first-working-liliya-test-manifest.txt" "$out/"
+          cp "$RUNNER_TEMP/firebase-first-working-liliya-app-apk-files.txt" "$out/"
+          cp "$RUNNER_TEMP/firebase-first-working-liliya-test-apk-files.txt" "$out/"
+          chmod +x "$out/run_firebase_first_working_liliya_acceptance.sh"
+
+          python3 - "$out" <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import sys
+
+          out = Path(sys.argv[1])
+          files = []
+          for path in sorted(out.iterdir()):
+              if path.is_file():
+                  files.append({
+                      "name": path.name,
+                      "bytes": path.stat().st_size,
+                      "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                  })
+
+          manifest = {
+              "evidenceClass": "firebase-first-working-liliya-input-bundle",
+              "acceptanceEvidence": False,
+              "exactCommitSha": os.environ["EXACT_SHA"],
+              "semanticProvenanceRunId": os.environ["PROVENANCE_RUN_ID"],
+              "devicePolicy": "firebase-physical-arm64-z3q-api33",
+              "testClass": "pro.liliya.app.DevelopmentFirstWorkingLiliyaColdStartInstrumentedTest",
+              "authenticationPolicy": "external-preauthenticated-gcloud-only",
+              "files": files,
+          }
+          (out / "firebase-first-working-liliya-bundle-manifest.json").write_text(
+              json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+          cat "$out/firebase-first-working-liliya-bundle-manifest.json"
+
+      - name: Syntax-check credential-neutral Firebase runner
+        shell: bash
+        run: bash -n android-app/ci/run_firebase_first_working_liliya_acceptance.sh
+
+      - name: Upload Firebase First Working Liliya input bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: firebase-first-working-liliya-bundle-${{ github.event.pull_request.head.sha || github.sha }}
+          path: ${{ runner.temp }}/firebase-first-working-liliya-bundle
+          if-no-files-found: error
+          retention-days: 30
