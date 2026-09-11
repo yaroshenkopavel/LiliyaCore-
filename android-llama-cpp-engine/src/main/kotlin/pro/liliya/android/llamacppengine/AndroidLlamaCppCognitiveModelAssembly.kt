@@ -59,7 +59,12 @@ class AndroidLlamaCppCognitiveModelAssembly private constructor(
                 backend = stagingBackend,
                 budgets = stagingBudgets
             )
-            val physicalLoader = AndroidLlamaCppPhysicalEngineLoader(llamaPolicy)
+            val cognitiveGrammar = CognitiveStructuredResponseGrammar.create(limits)
+            val constrainedPolicy = llamaPolicy.copy(
+                structuredGrammar = cognitiveGrammar,
+                maxStructuredGrammarUtf8Bytes = CognitiveStructuredResponseGrammar.MAX_GRAMMAR_UTF8_BYTES
+            )
+            val physicalLoader = AndroidLlamaCppPhysicalEngineLoader(constrainedPolicy)
             val platformStagedLoader = AndroidAppPrivateStagedModelEngineLoader(
                 stagingBackend = stagingBackend,
                 physicalLoader = physicalLoader
