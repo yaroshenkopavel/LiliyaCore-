@@ -18,6 +18,7 @@ import pro.liliya.android.runtime.ProductChatResult
 class LiliyaActivity : Activity() {
     private val worker = Executors.newSingleThreadExecutor()
     private lateinit var conversation: ProductConversationTranscript
+    private var requestInFlight = false
 
     private lateinit var status: TextView
     private lateinit var transcript: TextView
@@ -32,7 +33,12 @@ class LiliyaActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         conversation = restoreConversation(savedInstanceState)
+        val restoredDraft = restoreInputDraft(savedInstanceState)
         setContentView(buildContent())
+        if (restoredDraft.isNotEmpty()) {
+            input.setText(restoredDraft)
+            input.setSelection(restoredDraft.length)
+        }
         renderStartupOutcome(app.startApplicationRuntime())
         revealLatestTranscriptTurn()
     }
@@ -50,6 +56,15 @@ class LiliyaActivity : Activity() {
             TRANSCRIPT_MESSAGES_STATE,
             ArrayList(snapshot.messages)
         )
+        if (!requestInFlight && ::input.isInitialized) {
+            val draft = ProductConversationDraftState.snapshotWithinBudget(
+                draft = input.text?.toString().orEmpty(),
+                maxUtf8Bytes = INPUT_DRAFT_SAVED_STATE_MAX_UTF8_BYTES
+            )
+            if (draft.isNotEmpty()) {
+                outState.putString(INPUT_DRAFT_STATE, draft)
+            }
+        }
         super.onSaveInstanceState(outState)
     }
 
@@ -194,6 +209,12 @@ class LiliyaActivity : Activity() {
         )
     }
 
+    private fun restoreInputDraft(state: Bundle?): String =
+        ProductConversationDraftState.restoreWithinBudget(
+            savedDraft = state?.getString(INPUT_DRAFT_STATE),
+            maxUtf8Bytes = INPUT_DRAFT_SAVED_STATE_MAX_UTF8_BYTES
+        )
+
     private fun renderConversationAndRevealLatest() {
         transcript.text = conversation.render()
         revealLatestTranscriptTurn()
@@ -254,6 +275,7 @@ class LiliyaActivity : Activity() {
 
         conversation.appendUser(message)
         renderConversationAndRevealLatest()
+        requestInFlight = true
         input.isEnabled = false
         send.isEnabled = false
         status.text = "Думаю…"
@@ -266,6 +288,7 @@ class LiliyaActivity : Activity() {
             }
             runOnUiThread {
                 if (isFinishing || isDestroyed) return@runOnUiThread
+                requestInFlight = false
                 when (result) {
                     is ProductChatResult.Completed -> {
                         conversation.appendLiliya(result.reply)
@@ -289,7 +312,9 @@ class LiliyaActivity : Activity() {
         const val LOCAL_MODEL_DOCUMENT_REQUEST = 1001
         const val TRANSCRIPT_SPEAKERS_STATE = "liliya.transcript.speakers"
         const val TRANSCRIPT_MESSAGES_STATE = "liliya.transcript.messages"
+        const val INPUT_DRAFT_STATE = "liliya.input.draft"
         const val TRANSCRIPT_SAVED_STATE_MAX_ENTRIES = 64
         const val TRANSCRIPT_SAVED_STATE_MAX_UTF8_BYTES = 48 * 1024
+        const val INPUT_DRAFT_SAVED_STATE_MAX_UTF8_BYTES = 8 * 1024
     }
 }
