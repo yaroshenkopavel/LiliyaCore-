@@ -21,6 +21,7 @@ class LiliyaActivity : Activity() {
 
     private lateinit var status: TextView
     private lateinit var transcript: TextView
+    private lateinit var transcriptScroll: ScrollView
     private lateinit var input: EditText
     private lateinit var send: Button
     private lateinit var selectModel: Button
@@ -33,6 +34,7 @@ class LiliyaActivity : Activity() {
         conversation = restoreConversation(savedInstanceState)
         setContentView(buildContent())
         renderStartupOutcome(app.startApplicationRuntime())
+        revealLatestTranscriptTurn()
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -132,8 +134,11 @@ class LiliyaActivity : Activity() {
             textSize = 16f
             text = conversation.render()
         }
+        transcriptScroll = ScrollView(this).apply {
+            addView(transcript)
+        }
         root.addView(
-            ScrollView(this).apply { addView(transcript) },
+            transcriptScroll,
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 0,
@@ -189,6 +194,19 @@ class LiliyaActivity : Activity() {
         )
     }
 
+    private fun renderConversationAndRevealLatest() {
+        transcript.text = conversation.render()
+        revealLatestTranscriptTurn()
+    }
+
+    private fun revealLatestTranscriptTurn() {
+        transcriptScroll.post {
+            if (!isFinishing && !isDestroyed) {
+                transcriptScroll.fullScroll(View.FOCUS_DOWN)
+            }
+        }
+    }
+
     private fun renderStartupOutcome(outcome: ProductionAndroidAppStartupOutcome) {
         when (outcome) {
             ProductionAndroidAppStartupOutcome.ConfigurationRequired ->
@@ -235,7 +253,7 @@ class LiliyaActivity : Activity() {
         if (message.isBlank() || !send.isEnabled) return
 
         conversation.appendUser(message)
-        transcript.text = conversation.render()
+        renderConversationAndRevealLatest()
         input.isEnabled = false
         send.isEnabled = false
         status.text = "Думаю…"
@@ -251,7 +269,7 @@ class LiliyaActivity : Activity() {
                 when (result) {
                     is ProductChatResult.Completed -> {
                         conversation.appendLiliya(result.reply)
-                        transcript.text = conversation.render()
+                        renderConversationAndRevealLatest()
                         input.text?.clear()
                         status.text = "Готова"
                     }
