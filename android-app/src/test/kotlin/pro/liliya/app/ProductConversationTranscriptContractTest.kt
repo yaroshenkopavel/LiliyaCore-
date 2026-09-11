@@ -1,6 +1,7 @@
 package pro.liliya.app
 
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 import org.junit.Test
 
@@ -77,5 +78,67 @@ class ProductConversationTranscriptContractTest {
 
         assertTrue(mismatched.isEmpty())
         assertTrue(unknownSpeaker.isEmpty())
+    }
+
+    @Test
+    fun bounded_snapshot_keeps_newest_contiguous_tail_by_entry_count() {
+        val transcript = ProductConversationTranscript()
+        transcript.appendUser("один")
+        transcript.appendLiliya("два")
+        transcript.appendUser("три")
+        transcript.appendLiliya("четыре")
+
+        val snapshot = transcript.snapshotWithinBudget(
+            maxEntries = 2,
+            maxUtf8Bytes = 1024
+        )
+
+        assertEquals(listOf("USER", "LILIYA"), snapshot.speakers)
+        assertEquals(listOf("три", "четыре"), snapshot.messages)
+    }
+
+    @Test
+    fun bounded_snapshot_uses_utf8_budget_and_never_splits_a_message() {
+        val transcript = ProductConversationTranscript()
+        transcript.appendUser("старое")
+        transcript.appendLiliya("новое")
+
+        val newestEntryBytes =
+            "LILIYA".toByteArray(Charsets.UTF_8).size +
+                "новое".toByteArray(Charsets.UTF_8).size
+        val snapshot = transcript.snapshotWithinBudget(
+            maxEntries = 8,
+            maxUtf8Bytes = newestEntryBytes
+        )
+
+        assertEquals(listOf("LILIYA"), snapshot.speakers)
+        assertEquals(listOf("новое"), snapshot.messages)
+    }
+
+    @Test
+    fun oversized_newest_message_yields_empty_snapshot_instead_of_partial_text() {
+        val transcript = ProductConversationTranscript()
+        transcript.appendUser("очень длинное сообщение")
+
+        val snapshot = transcript.snapshotWithinBudget(
+            maxEntries = 8,
+            maxUtf8Bytes = 4
+        )
+
+        assertTrue(snapshot.speakers.isEmpty())
+        assertTrue(snapshot.messages.isEmpty())
+        assertEquals("Вы: очень длинное сообщение", transcript.render())
+    }
+
+    @Test
+    fun bounded_snapshot_rejects_non_positive_budgets() {
+        val transcript = ProductConversationTranscript()
+
+        assertFailsWith<IllegalArgumentException> {
+            transcript.snapshotWithinBudget(maxEntries = 0, maxUtf8Bytes = 1)
+        }
+        assertFailsWith<IllegalArgumentException> {
+            transcript.snapshotWithinBudget(maxEntries = 1, maxUtf8Bytes = 0)
+        }
     }
 }

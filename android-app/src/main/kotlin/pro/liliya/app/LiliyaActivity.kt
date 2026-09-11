@@ -36,7 +36,10 @@ class LiliyaActivity : Activity() {
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
-        val snapshot = conversation.snapshot()
+        val snapshot = conversation.snapshotWithinBudget(
+            maxEntries = TRANSCRIPT_SAVED_STATE_MAX_ENTRIES,
+            maxUtf8Bytes = TRANSCRIPT_SAVED_STATE_MAX_UTF8_BYTES
+        )
         outState.putStringArrayList(
             TRANSCRIPT_SPEAKERS_STATE,
             ArrayList(snapshot.speakers)
@@ -268,5 +271,7 @@ class LiliyaActivity : Activity() {
         const val LOCAL_MODEL_DOCUMENT_REQUEST = 1001
         const val TRANSCRIPT_SPEAKERS_STATE = "liliya.transcript.speakers"
         const val TRANSCRIPT_MESSAGES_STATE = "liliya.transcript.messages"
+        const val TRANSCRIPT_SAVED_STATE_MAX_ENTRIES = 64
+        const val TRANSCRIPT_SAVED_STATE_MAX_UTF8_BYTES = 48 * 1024
     }
 }

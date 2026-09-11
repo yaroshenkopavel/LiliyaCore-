@@ -30,6 +30,35 @@ internal class ProductConversationTranscript private constructor(
             messages = entries.map { it.message }
         )
 
+    fun snapshotWithinBudget(
+        maxEntries: Int,
+        maxUtf8Bytes: Int
+    ): ProductConversationTranscriptSnapshot {
+        require(maxEntries > 0) { "maxEntries must be positive" }
+        require(maxUtf8Bytes > 0) { "maxUtf8Bytes must be positive" }
+
+        val selected = mutableListOf<Entry>()
+        var usedUtf8Bytes = 0
+
+        for (entry in entries.asReversed()) {
+            if (selected.size >= maxEntries) break
+
+            val entryUtf8Bytes =
+                entry.speaker.name.toByteArray(Charsets.UTF_8).size +
+                    entry.message.toByteArray(Charsets.UTF_8).size
+            if (entryUtf8Bytes > maxUtf8Bytes - usedUtf8Bytes) break
+
+            selected += entry
+            usedUtf8Bytes += entryUtf8Bytes
+        }
+
+        selected.reverse()
+        return ProductConversationTranscriptSnapshot(
+            speakers = selected.map { it.speaker.name },
+            messages = selected.map { it.message }
+        )
+    }
+
     private fun append(speaker: Speaker, message: String) {
         val normalized = message.trim()
         if (normalized.isEmpty()) return
