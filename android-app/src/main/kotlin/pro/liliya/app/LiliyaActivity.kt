@@ -40,8 +40,14 @@ class LiliyaActivity : Activity() {
             input.setText(restoredDraft)
             input.setSelection(restoredDraft.length)
         }
-        renderStartupOutcome(app.startApplicationRuntime())
+        renderState(ProductionAndroidAppRuntimeState.STARTING)
         revealLatestTranscriptTurn()
+        app.startApplicationRuntimeAsync { result ->
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                renderStartupTaskResult(result)
+            }
+        }
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -234,6 +240,19 @@ class LiliyaActivity : Activity() {
         transcriptScroll.post {
             if (!isFinishing && !isDestroyed) {
                 transcriptScroll.fullScroll(View.FOCUS_DOWN)
+            }
+        }
+    }
+
+    private fun renderStartupTaskResult(result: ProductionAndroidAppStartupTaskResult) {
+        when (result) {
+            is ProductionAndroidAppStartupTaskResult.Completed ->
+                renderStartupOutcome(result.outcome)
+            ProductionAndroidAppStartupTaskResult.Failed -> {
+                status.text = "Внутренняя ошибка запуска"
+                selectModel.visibility = View.GONE
+                input.isEnabled = false
+                send.isEnabled = false
             }
         }
     }
