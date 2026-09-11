@@ -44,7 +44,8 @@ object AndroidProductRuntimeProtectedModelStagingProvisioningFactory {
     ): AndroidProductRuntimeProtectedModelStagingProvisioning {
         val verifier = LargeProtectedModelPackageVerifier(
             signerResolver = signerResolver,
-            budgets = packageBudgets
+            budgets = packageBudgets,
+            signatureProvider = AndroidProductRuntimeProtectedModelCryptoProvider.provider
         )
         val loader = LargeProtectedModelSegmentedPayloadLoader(
             packageVerifier = verifier,
