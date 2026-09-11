@@ -20,10 +20,13 @@ class CognitiveModelRequestCompilerRequest(
 }
 
 class CognitiveCompiledModelRequest(
-    val prompt: String
+    val prompt: String,
+    val grammar: String? = null
 ) {
     override fun toString(): String =
-        "CognitiveCompiledModelRequest(prompt=<redacted:${prompt.length}>)"
+        "CognitiveCompiledModelRequest(" +
+            "prompt=<redacted:${prompt.length}>, " +
+            "grammar=${grammar?.let { "<redacted:${it.length}>" } ?: "<none>"})"
 }
 
 enum class CognitiveModelRequestCompilerFailure {
@@ -65,6 +68,9 @@ class DeterministicCognitiveModelRequestCompiler : CognitiveModelRequestCompiler
             return rejected(CognitiveModelRequestCompilerFailure.RESOURCE_LIMIT_REJECTED)
         }
 
+        val grammar = CognitiveStructuredResponseGrammar.compile(request.responseBudgets)
+            ?: return rejected(CognitiveModelRequestCompilerFailure.RESOURCE_LIMIT_REJECTED)
+
         val builder = StringBuilder()
         if (!appendBounded(builder, HEADER, request.maxPromptChars)) {
             return rejected(CognitiveModelRequestCompilerFailure.RESOURCE_LIMIT_REJECTED)
@@ -93,7 +99,10 @@ class DeterministicCognitiveModelRequestCompiler : CognitiveModelRequestCompiler
             return rejected(CognitiveModelRequestCompilerFailure.COMPILER_REJECTED)
         }
         return CognitiveModelRequestCompilerResult.Compiled(
-            CognitiveCompiledModelRequest(prompt)
+            CognitiveCompiledModelRequest(
+                prompt = prompt,
+                grammar = grammar
+            )
         )
     }
 
