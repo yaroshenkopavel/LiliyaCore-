@@ -6,7 +6,6 @@ on:
       - maintenance/local-mirror-export-2026-09-10
     paths:
       - '.github/workflows/pr212-constrained-decoding-candidate-2026-09-11.yml'
-  workflow_dispatch:
 
 permissions:
   contents: write
@@ -14,129 +13,60 @@ permissions:
 jobs:
   build-candidate:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: 08408262ce4bd906e756ae28f9fa661345ca8758
+          ref: aeb5a86d15909f74465e67616121fc4bad802046
           fetch-depth: 0
 
-      - name: Apply exact constrained-decoding slice
+      - name: Assemble exact PR212 acceptance slice on merged structured main
         shell: bash
         run: |
           set -euo pipefail
+          git fetch origin 08408262ce4bd906e756ae28f9fa661345ca8758 c495edfe784441fc09447354322a8ef0d64fa935
+
+          git checkout 08408262ce4bd906e756ae28f9fa661345ca8758 -- \
+            .github/workflows/android-app-host-ci.yml \
+            android-app/build.gradle.kts \
+            android-app/src/androidTest/kotlin/pro/liliya/app/DevelopmentFirstWorkingLiliyaColdStartFixturePrerequisiteInstrumentedTest.kt \
+            android-app/src/androidTest/kotlin/pro/liliya/app/ProtectedModelPackagerAndroidProbeInstrumentedTest.kt
+
+          git checkout c495edfe784441fc09447354322a8ef0d64fa935 -- \
+            android-app/src/androidTest/kotlin/pro/liliya/app/DevelopmentFirstWorkingLiliyaColdStartInstrumentedTest.kt
+
           python3 - <<'PY'
           from pathlib import Path
-
-          def replace_exact(path, old, new, count=1):
-              p = Path(path)
-              text = p.read_text()
-              actual = text.count(old)
-              if actual != count:
-                  raise SystemExit(f"{path}: expected {count} occurrences, found {actual}")
-              p.write_text(text.replace(old, new, count))
-
-          replace_exact(
-              'android-llama-cpp-engine/src/main/kotlin/pro/liliya/android/llamacppengine/LlamaCppEnginePolicy.kt',
-              '''    val maxOutputUtf8Bytes: Int,\n    val useMmap: Boolean\n) {''',
-              '''    val maxOutputUtf8Bytes: Int,\n    val useMmap: Boolean,\n    val outputGrammar: String? = null,\n    val maxOutputGrammarUtf8Bytes: Int = 0\n) {'''
-          )
-          replace_exact(
-              'android-llama-cpp-engine/src/main/kotlin/pro/liliya/android/llamacppengine/LlamaCppEnginePolicy.kt',
-              '''        require(maxOutputUtf8Bytes.toLong() <= maxOutputChars.toLong() * 4L) {\n            "output UTF-8 byte budget must fit output character ceiling"\n        }\n''',
-              '''        require(maxOutputUtf8Bytes.toLong() <= maxOutputChars.toLong() * 4L) {\n            "output UTF-8 byte budget must fit output character ceiling"\n        }\n        require(maxOutputGrammarUtf8Bytes >= 0) {\n            "output grammar UTF-8 byte budget must not be negative"\n        }\n        val grammarUtf8Bytes = outputGrammar?.toByteArray(Charsets.UTF_8)?.size ?: 0\n        require(outputGrammar == null || outputGrammar.isNotBlank()) {\n            "output grammar must not be blank when supplied"\n        }\n        require(grammarUtf8Bytes <= maxOutputGrammarUtf8Bytes) {\n            "output grammar exceeds its UTF-8 byte budget"\n        }\n        require(outputGrammar != null || maxOutputGrammarUtf8Bytes == 0) {\n            "output grammar byte budget requires an output grammar"\n        }\n'''
-          )
-
-          replace_exact(
-              'android-llama-cpp-engine/src/main/kotlin/pro/liliya/android/llamacppengine/LlamaCppNativeBridge.kt',
-              '''        maxPromptUtf8Bytes: Int,\n        maxOutputUtf8Bytes: Int,\n        useMmap: Boolean\n''',
-              '''        maxPromptUtf8Bytes: Int,\n        maxOutputUtf8Bytes: Int,\n        outputGrammarUtf8: ByteArray,\n        maxOutputGrammarUtf8Bytes: Int,\n        useMmap: Boolean\n'''
-          )
-
-          replace_exact(
-              'android-llama-cpp-engine/src/main/kotlin/pro/liliya/android/llamacppengine/AndroidLlamaCppPhysicalEngineLoader.kt',
-              '''            maxPromptUtf8Bytes = policy.maxPromptUtf8Bytes,\n            maxOutputUtf8Bytes = policy.maxOutputUtf8Bytes,\n            useMmap = policy.useMmap\n''',
-              '''            maxPromptUtf8Bytes = policy.maxPromptUtf8Bytes,\n            maxOutputUtf8Bytes = policy.maxOutputUtf8Bytes,\n            outputGrammarUtf8 = policy.outputGrammar?.toByteArray(Charsets.UTF_8) ?: ByteArray(0),\n            maxOutputGrammarUtf8Bytes = policy.maxOutputGrammarUtf8Bytes,\n            useMmap = policy.useMmap\n'''
-          )
-
-          cpp = 'android-llama-cpp-engine/src/main/cpp/liliya_llama_jni.cpp'
-          replace_exact(
-              cpp,
-              '''    int32_t max_prompt_utf8_bytes = 0;\n    int32_t max_output_utf8_bytes = 0;\n    std::mutex execution_mutex;\n''',
-              '''    int32_t max_prompt_utf8_bytes = 0;\n    int32_t max_output_utf8_bytes = 0;\n    int32_t max_output_grammar_utf8_bytes = 0;\n    std::string output_grammar;\n    std::mutex execution_mutex;\n'''
-          )
-          replace_exact(
-              cpp,
-              '''    return keep_going == JNI_TRUE\n        ? StreamCallbackResult::CONTINUE\n        : StreamCallbackResult::CANCELLED;\n}\n\n}  // namespace\n''',
-              '''    return keep_going == JNI_TRUE\n        ? StreamCallbackResult::CONTINUE\n        : StreamCallbackResult::CANCELLED;\n}\n\nllama_sampler * create_session_sampler(const NativeSession * session) {\n    llama_sampler * chain = llama_sampler_chain_init(llama_sampler_chain_default_params());\n    if (chain == nullptr) {\n        return nullptr;\n    }\n    if (!session->output_grammar.empty()) {\n        llama_sampler * grammar = llama_sampler_init_grammar(\n            session->vocab,\n            session->output_grammar.c_str(),\n            "root"\n        );\n        if (grammar == nullptr) {\n            llama_sampler_free(chain);\n            return nullptr;\n        }\n        llama_sampler_chain_add(chain, grammar);\n    }\n    llama_sampler * greedy = llama_sampler_init_greedy();\n    if (greedy == nullptr) {\n        llama_sampler_free(chain);\n        return nullptr;\n    }\n    llama_sampler_chain_add(chain, greedy);\n    return chain;\n}\n\n}  // namespace\n'''
-          )
-          replace_exact(
-              cpp,
-              '''    jint max_prompt_utf8_bytes,\n    jint max_output_utf8_bytes,\n    jboolean use_mmap\n''',
-              '''    jint max_prompt_utf8_bytes,\n    jint max_output_utf8_bytes,\n    jbyteArray output_grammar_utf8,\n    jint max_output_grammar_utf8_bytes,\n    jboolean use_mmap\n'''
-          )
-          replace_exact(
-              cpp,
-              '''        thread_count <= 0 ||\n        max_prompt_utf8_bytes <= 0 ||\n        max_output_utf8_bytes <= 0 ||\n''',
-              '''        thread_count <= 0 ||\n        max_prompt_utf8_bytes <= 0 ||\n        max_output_utf8_bytes <= 0 ||\n        max_output_grammar_utf8_bytes < 0 ||\n        output_grammar_utf8 == nullptr ||\n'''
-          )
-          replace_exact(
-              cpp,
-              '''        path_bytes.push_back(0);\n\n        ensure_backend_initialized();\n''',
-              '''        path_bytes.push_back(0);\n\n        std::vector<uint8_t> grammar_bytes;\n        if (!copy_bytes(env, output_grammar_utf8, grammar_bytes)) {\n            return LOAD_PROVIDER_FAILED;\n        }\n        ByteScrubber grammar_scrubber(grammar_bytes);\n        if (grammar_bytes.size() > static_cast<size_t>(max_output_grammar_utf8_bytes)) {\n            return LOAD_RESOURCE_REJECTED;\n        }\n        if (\n            std::find(grammar_bytes.begin(), grammar_bytes.end(), static_cast<uint8_t>(0)) !=\n            grammar_bytes.end()\n        ) {\n            return LOAD_REJECTED;\n        }\n        std::string output_grammar(\n            reinterpret_cast<const char *>(grammar_bytes.data()),\n            grammar_bytes.size()\n        );\n\n        ensure_backend_initialized();\n'''
-          )
-          replace_exact(
-              cpp,
-              '''        session->max_prompt_utf8_bytes = max_prompt_utf8_bytes;\n        session->max_output_utf8_bytes = max_output_utf8_bytes;\n''',
-              '''        session->max_prompt_utf8_bytes = max_prompt_utf8_bytes;\n        session->max_output_utf8_bytes = max_output_utf8_bytes;\n        session->max_output_grammar_utf8_bytes = max_output_grammar_utf8_bytes;\n        session->output_grammar = std::move(output_grammar);\n'''
-          )
-          replace_exact(
-              cpp,
-              '''            std::unique_ptr<llama_sampler, decltype(&llama_sampler_free)> sampler(\n                llama_sampler_init_greedy(),\n                llama_sampler_free\n            );\n''',
-              '''            std::unique_ptr<llama_sampler, decltype(&llama_sampler_free)> sampler(\n                create_session_sampler(session),\n                llama_sampler_free\n            );\n''',
-              count=2
-          )
-
-          test = 'android-app/src/androidTest/kotlin/pro/liliya/app/DevelopmentFirstWorkingLiliyaColdStartInstrumentedTest.kt'
-          replace_exact(
-              test,
-              '''import pro.liliya.core.cognitive.CognitiveCompiledModelRequest\nimport pro.liliya.core.cognitive.CognitiveModelRequestCompilerPort\nimport pro.liliya.core.cognitive.CognitiveModelRequestCompilerResult\n''',
-              '''import pro.liliya.core.cognitive.DeterministicCognitiveModelRequestCompiler\n'''
-          )
-          replace_exact(
-              test,
-              '''            val limits = CognitiveRuntimeLimits(\n                maxInferenceOutputChars = MAX_OUTPUT_CHARS,\n                maxModelPromptChars = 128\n            )\n''',
-              '''            val limits = firstWorkingCognitiveLimits()\n'''
-          )
-          replace_exact(
-              test,
-              '''        val compiler = CognitiveModelRequestCompilerPort {\n            CognitiveModelRequestCompilerResult.Compiled(\n                CognitiveCompiledModelRequest("Once upon a time")\n            )\n        }\n''',
-              '''        val compiler = DeterministicCognitiveModelRequestCompiler()\n'''
-          )
-          replace_exact(
-              test,
-              '''            llamaPolicy = LlamaCppEnginePolicy(\n                contextTokens = 128,\n                maxPromptTokens = 32,\n                maxGeneratedTokens = 8,\n                batchTokens = 32,\n                microBatchTokens = 16,\n                threadCount = 1,\n                maxPromptChars = 128,\n                maxPromptUtf8Bytes = 256,\n                maxOutputChars = MAX_OUTPUT_CHARS,\n                maxOutputUtf8Bytes = 256,\n                useMmap = true\n            ),\n''',
-              '''            llamaPolicy = LlamaCppEnginePolicy(\n                contextTokens = 2_048,\n                maxPromptTokens = 1_024,\n                maxGeneratedTokens = 512,\n                batchTokens = 256,\n                microBatchTokens = 64,\n                threadCount = 1,\n                maxPromptChars = MAX_PROMPT_CHARS,\n                maxPromptUtf8Bytes = MAX_PROMPT_CHARS * 4,\n                maxOutputChars = MAX_OUTPUT_CHARS,\n                maxOutputUtf8Bytes = MAX_OUTPUT_CHARS * 4,\n                useMmap = true,\n                outputGrammar = STRICT_RESPONSE_GRAMMAR,\n                maxOutputGrammarUtf8Bytes = 4_096\n            ),\n'''
-          )
-          replace_exact(
-              test,
-              '''            limits = CognitiveRuntimeLimits(\n                maxInferenceOutputChars = MAX_OUTPUT_CHARS,\n                maxModelPromptChars = 128\n            )\n''',
-              '''            limits = firstWorkingCognitiveLimits()\n'''
-          )
-          replace_exact(
-              test,
-              '''    private fun packageBudgets() = LargeProtectedModelPackageBudgets(\n''',
-              '''    private fun firstWorkingCognitiveLimits() = CognitiveRuntimeLimits(\n        maxInferenceOutputChars = MAX_OUTPUT_CHARS,\n        maxModelPromptChars = MAX_PROMPT_CHARS,\n        maxPlanningGoalChars = 64,\n        maxPlanningSteps = 1,\n        maxPlanningStepChars = 64,\n        maxReasoningPremises = 1,\n        maxReasoningPremiseChars = 64,\n        maxReasoningAnalysisChars = 64,\n        maxReasoningConclusionChars = 64,\n        maxDecisionOptions = 1,\n        maxDecisionOptionChars = 64,\n        maxDecisionRationaleChars = 64,\n        maxResultChars = 64,\n        maxReflectionChars = 64,\n        maxLearningProposalChars = 64\n    )\n\n    private fun packageBudgets() = LargeProtectedModelPackageBudgets(\n'''
-          )
-          replace_exact(
-              test,
-              '''        const val SEGMENT_BYTES = 256 * 1024\n        const val MAX_OUTPUT_CHARS = 64\n        val GENERATION_REJECTION_REASON''',
-              '''        const val SEGMENT_BYTES = 256 * 1024\n        const val MAX_PROMPT_CHARS = 2_048\n        const val MAX_OUTPUT_CHARS = 768\n        val STRICT_RESPONSE_GRAMMAR = """\nroot ::= "LILIYA_COGNITIVE_RESPONSE_V1\\n" "PLANNING_GOAL=" planning-goal "\\n" planning-block reasoning-block "REASONING_ANALYSIS=" reasoning-analysis "\\nREASONING_CONCLUSION=" reasoning-conclusion "\\n" decision-block "DECISION_RATIONALE=" decision-rationale "\\nRESULT_CONTENT=" result-content "\\nREFLECTION_CONTENT=" reflection-content "\\nLEARNING_PROPOSAL=" learning-proposal "\\nEND" "\\n"?\nplanning-goal ::= value-start value-char{0,63}\nplanning-step ::= value-start value-char{0,63}\nreasoning-premise ::= value-start value-char{0,63}\nreasoning-analysis ::= value-start value-char{0,63}\nreasoning-conclusion ::= value-start value-char{0,63}\ndecision-option ::= value-start value-char{0,63}\ndecision-rationale ::= value-start value-char{0,63}\nresult-content ::= value-start value-char{0,63}\nreflection-content ::= value-start value-char{0,63}\nlearning-proposal ::= value-start value-char{0,63}\nplanning-step-line ::= "PLANNING_STEP=" planning-step "\\n"\nplanning-block ::= "PLANNING_STEP_COUNT=1\\n" planning-step-line{1}\nreasoning-premise-line ::= "REASONING_PREMISE=" reasoning-premise "\\n"\nreasoning-block ::= "REASONING_PREMISE_COUNT=1\\n" reasoning-premise-line{1}\ndecision-option-line ::= "DECISION_OPTION=" decision-option "\\n"\ndecision-block ::= "DECISION_OPTION_COUNT=1\\n" decision-option-line{1} "DECISION_SELECTED_INDEX=" ("0") "\\n"\nvalue-start ::= [\\x21-\\x5B\\x5D-\\x7E\\u0080-\\uFFFF] | "\\\\"\nvalue-char ::= [\\x20-\\x5B\\x5D-\\x7E\\u0080-\\uFFFF] | escaped-char\nescaped-char ::= "\\\\\\\\" | "\\\\n" | "\\\\r" | "\\\\t"\n        """.trimIndent()\n        val GENERATION_REJECTION_REASON'''
-          )
+          p = Path('android-app/src/androidTest/kotlin/pro/liliya/app/DevelopmentFirstWorkingLiliyaColdStartInstrumentedTest.kt')
+          text = p.read_text()
+          old = '''                useMmap = true,
+                outputGrammar = STRICT_RESPONSE_GRAMMAR,
+                maxOutputGrammarUtf8Bytes = 4_096
+'''
+          new = '''                useMmap = true
+'''
+          if text.count(old) != 1:
+              raise SystemExit('expected temporary grammar policy block exactly once')
+          text = text.replace(old, new, 1)
+          start = text.find('        val STRICT_RESPONSE_GRAMMAR = """\n')
+          if start < 0:
+              raise SystemExit('temporary strict grammar constant start not found')
+          end_marker = '        """.trimIndent()\n'
+          end = text.find(end_marker, start)
+          if end < 0:
+              raise SystemExit('temporary strict grammar constant end not found')
+          end += len(end_marker)
+          text = text[:start] + text[end:]
+          p.write_text(text)
           PY
 
           git diff --check
-          git status --short
+          test "$(git diff --name-only | wc -l)" -eq 5
+          git diff --name-only
+          grep -F 'DeterministicCognitiveModelRequestCompiler()' android-app/src/androidTest/kotlin/pro/liliya/app/DevelopmentFirstWorkingLiliyaColdStartInstrumentedTest.kt
+          grep -F 'maxGeneratedTokens = 512' android-app/src/androidTest/kotlin/pro/liliya/app/DevelopmentFirstWorkingLiliyaColdStartInstrumentedTest.kt
+          grep -F 'const val MAX_OUTPUT_CHARS = 768' android-app/src/androidTest/kotlin/pro/liliya/app/DevelopmentFirstWorkingLiliyaColdStartInstrumentedTest.kt
+          ! grep -Fq 'STRICT_RESPONSE_GRAMMAR' android-app/src/androidTest/kotlin/pro/liliya/app/DevelopmentFirstWorkingLiliyaColdStartInstrumentedTest.kt
 
       - name: Set up Java 17
         uses: actions/setup-java@v5
@@ -152,7 +82,7 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install pinned Android build toolchain
+      - name: Install pinned Android toolchain
         run: |
           sdkmanager \
             "platforms;android-35" \
@@ -161,30 +91,43 @@ jobs:
             "ndk;29.0.13113456" \
             "cmake;3.31.6"
 
-      - name: Compile and test bounded candidate
+      - name: Run bounded acceptance gate
+        env:
+          LILIYA_LLAMA_ALLOW_X86_64_API35_TRANSLATION: "1"
         run: |
           gradle \
-            :android-llama-cpp-engine:testDebugUnitTest \
+            :core:test \
+            :android-runtime:testDebugUnitTest \
+            :android-app:testDebugUnitTest \
             :android-app:compileDebugAndroidTestKotlin \
-            :android-app:assembleDebugAndroidTest \
-            --console=plain
+            :android-app:assembleDebug \
+            :android-app:assembleRelease \
+            --console=plain --no-daemon
 
-      - name: Commit exact candidate and push maintenance ref
+      - name: Guard release APK from cold-start test payloads
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "08408262ce4bd906e756ae28f9fa661345ca8758"
+          apk="android-app/build/outputs/apk/release/android-app-release-unsigned.apk"
+          test -f "$apk"
+          listing="$RUNNER_TEMP/android-app-release-files.txt"
+          unzip -Z1 "$apk" > "$listing"
+          ! grep -E 'stories15M-q4_0\.gguf|multilingual-e5-small-liliya-v0\.1\.onnx|multilingual-e5-small-tokenizer-v0\.1\.onnx' "$listing"
+          while IFS= read -r dex; do
+            ! unzip -p "$apk" "$dex" | strings | grep -Fq 'pro/liliya/packager/ProtectedModelOfflinePackager'
+          done < <(grep -E '^classes([0-9]+)?\.dex$' "$listing")
+
+      - name: Publish one-commit candidate from exact merged main
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "aeb5a86d15909f74465e67616121fc4bad802046"
           git config user.name "yaroshenkopavel"
           git config user.email "78513566+yaroshenkopavel@users.noreply.github.com"
-          git checkout -B maintenance/pr212-constrained-decoding-candidate-2026-09-11
-          git add \
-            android-llama-cpp-engine/src/main/kotlin/pro/liliya/android/llamacppengine/LlamaCppEnginePolicy.kt \
-            android-llama-cpp-engine/src/main/kotlin/pro/liliya/android/llamacppengine/LlamaCppNativeBridge.kt \
-            android-llama-cpp-engine/src/main/kotlin/pro/liliya/android/llamacppengine/AndroidLlamaCppPhysicalEngineLoader.kt \
-            android-llama-cpp-engine/src/main/cpp/liliya_llama_jni.cpp \
-            android-app/src/androidTest/kotlin/pro/liliya/app/DevelopmentFirstWorkingLiliyaColdStartInstrumentedTest.kt
-          test "$(git diff --cached --name-only | wc -l)" -eq 5
-          git commit -m "First Working Liliya: constrain structured local inference"
-          git push --force origin HEAD:maintenance/pr212-constrained-decoding-candidate-2026-09-11
-          echo "CANDIDATE_SHA=$(git rev-parse HEAD)"
-          echo "CANDIDATE_TREE=$(git rev-parse HEAD^{tree})"
+          git add -A
+          TREE="$(git write-tree)"
+          echo "CANDIDATE_TREE=$TREE"
+          git commit -m "First Working Liliya cold-start fixture v0.1"
+          test "$(git rev-list --count aeb5a86d15909f74465e67616121fc4bad802046..HEAD)" -eq 1
+          test "$(git rev-parse HEAD^)" = "aeb5a86d15909f74465e67616121fc4bad802046"
+          git push --force origin HEAD:refs/heads/maintenance/pr212-constrained-decoding-candidate-2026-09-11
