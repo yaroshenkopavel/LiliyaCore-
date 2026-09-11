@@ -314,7 +314,8 @@ class LlamaCppSessionOwnershipContractTest {
 
         override fun load(
             sourcePath: String,
-            policy: LlamaCppEnginePolicy
+            policy: LlamaCppEnginePolicy,
+            outputGrammar: String?
         ): LlamaCppNativeLoadResult =
             LlamaCppNativeLoadResult.Rejected(ModelEngineLoadFailure.LOAD_REJECTED)
 
