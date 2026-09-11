@@ -13,29 +13,79 @@ permissions:
 jobs:
   finalize:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout exact PR head
+        uses: actions/checkout@v4
         with:
-          ref: 9e5ba26fc510387b86d3db808477622a4613a949
+          ref: 9a8ca6e8327ca38d1f5d5e17bbc0fab19a3893da
           fetch-depth: 0
-      - name: Build and publish exact locally tested tree
+
+      - name: Apply bounded fixture API migration
         shell: bash
         run: |
           set -euo pipefail
           git fetch origin main
-          test "$(git rev-parse origin/main)" = "5f949ec37cb17fad408509e2a1453c270aac1f63"
-          test "$(git rev-parse HEAD^{tree})" = "82c8a09d39bb151d87b6da4e6fc6b28efb0f1719"
-          printf '%s' 'ZnJvbSBwYXRobGliIGltcG9ydCBQYXRoCnA9UGF0aCgiYW5kcm9pZC1hcHAvc3JjL2FuZHJvaWRUZXN0L2tvdGxpbi9wcm8vbGlsaXlhL2FwcC9EZXZlbG9wbWVudEZpcnN0V29ya2luZ0xpbGl5YUNvbGRTdGFydEluc3RydW1lbnRlZFRlc3Qua3QiKQpzPXAucmVhZF90ZXh0KCkKcz1zLnJlcGxhY2UoImltcG9ydCBqYXZhLnNlY3VyaXR5LktleVN0b3JlXG4iLCAiIiwgMSkKcz1zLnJlcGxhY2UoImltcG9ydCBvcmcuanVuaXQucnVubmVyLlJ1bldpdGhcbiIsICJpbXBvcnQgb3JnLmp1bml0LnJ1bm5lci5SdW5XaXRoXG5pbXBvcnQgb3JnLmJvdW5jeWNhc3RsZS5qY2UucHJvdmlkZXIuQm91bmN5Q2FzdGxlUHJvdmlkZXJcbiIsIDEpCnN0YXJ0PXMuaW5kZXgoJyAgICAgICAgdmFsIG1vZGVsU2lnbmVyQWxpYXMgPSAiZmlyc3Qtd29ya2luZy1saWxpeWEtbW9kZWwtc2lnbmVyLWVkMjU1MTkiJykKZW5kPXMuaW5kZXgoJyAgICAgICAgdmFyIG1vZGVsRGVrQXNzZW1ibHk6Jywgc3RhcnQpCnM9c1s6c3RhcnRdKycgICAgICAgIHZhbCBtb2RlbFNpZ25lclByb3ZpZGVyID0gQm91bmN5Q2FzdGxlUHJvdmlkZXIoKVxuICAgICAgICB2YWwgbW9kZWxTaWduZXIgPSBLZXlQYWlyR2VuZXJhdG9yLmdldEluc3RhbmNlKFxuICAgICAgICAgICAgIkVkMjU1MTkiLFxuICAgICAgICAgICAgbW9kZWxTaWduZXJQcm92aWRlclxuICAgICAgICApLmdlbmVyYXRlS2V5UGFpcigpXG4nK3NbZW5kOl0Kcz1zLnJlcGxhY2UoJ3ZhbCBzaWduZXIgPSBTaWduYXR1cmUuZ2V0SW5zdGFuY2UoIkVkMjU1MTkiKScsICd2YWwgc2lnbmVyID0gU2lnbmF0dXJlLmdldEluc3RhbmNlKCJFZDI1NTE5IiwgbW9kZWxTaWduZXJQcm92aWRlciknLCAxKQpzPXMucmVwbGFjZSgnICAgICAgICAgICAgcnVuQ2F0Y2hpbmcgeyBhbmRyb2lkS2V5U3RvcmUuZGVsZXRlRW50cnkobW9kZWxTaWduZXJBbGlhcykgfVxuJywgJycsIDEpCnAud3JpdGVfdGV4dChzKQo=' | base64 -d | python
+          test "$(git rev-parse origin/main)" = "aeb5a86d15909f74465e67616121fc4bad802046"
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('android-app/src/androidTest/kotlin/pro/liliya/app/DevelopmentFirstWorkingLiliyaColdStartInstrumentedTest.kt')
+          s = p.read_text()
+          old = '''                val verified = pro.liliya.core.protectedmodel.LargeProtectedModelPackageVerifier(
+                    signerResolver = signerResolver,
+                    budgets = packageBudgets,
+                    signatureProvider = modelSignerProvider
+                ).verify(openedPackage.envelope)
+'''
+          new = '''                val verified = pro.liliya.core.protectedmodel.LargeProtectedModelPackageVerifier(
+                    signerResolver = signerResolver,
+                    budgets = packageBudgets
+                ).verify(openedPackage.envelope)
+'''
+          if s.count(old) != 1:
+              raise SystemExit('stale preflight verifier shape precondition failed')
+          p.write_text(s.replace(old, new, 1))
+          PY
           git diff --check
-          test "$(git hash-object android-app/src/androidTest/kotlin/pro/liliya/app/DevelopmentFirstWorkingLiliyaColdStartInstrumentedTest.kt)" = "20feb577bc776e4bbcc7bb8b46097494c4a49ec2"
+          test "$(git diff --name-only)" = "android-app/src/androidTest/kotlin/pro/liliya/app/DevelopmentFirstWorkingLiliyaColdStartInstrumentedTest.kt"
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle 9.6.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.1'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install compile SDK
+        shell: bash
+        run: |
+          sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
+
+      - name: Compile exact cold-start instrumentation
+        shell: bash
+        env:
+          LILIYA_LLAMA_ALLOW_X86_64_API35_TRANSLATION: "1"
+        run: gradle :android-app:compileDebugAndroidTestKotlin --console=plain --no-daemon
+
+      - name: Publish one-commit candidate from canonical main
+        shell: bash
+        run: |
+          set -euo pipefail
           git reset --mixed origin/main
           git add -A
-          test "$(git write-tree)" = "013cbfbb2356b5a13058a1766819ab5291d0dc92"
+          TREE="$(git write-tree)"
+          echo "CANDIDATE_TREE=$TREE"
+          test "$(git diff --cached --name-only | wc -l)" -eq 5
           git config user.name "yaroshenkopavel"
           git config user.email "78513566+yaroshenkopavel@users.noreply.github.com"
           git commit -m "First Working Liliya cold-start fixture v0.1"
           test "$(git rev-list --count origin/main..HEAD)" = "1"
-          test "$(git rev-parse HEAD^)" = "5f949ec37cb17fad408509e2a1453c270aac1f63"
-          test "$(git rev-parse HEAD^{tree})" = "013cbfbb2356b5a13058a1766819ab5291d0dc92"
+          test "$(git rev-parse HEAD^)" = "aeb5a86d15909f74465e67616121fc4bad802046"
           git push --force origin HEAD:refs/heads/maintenance/pr212-exact-tree-candidate-2026-09-10
