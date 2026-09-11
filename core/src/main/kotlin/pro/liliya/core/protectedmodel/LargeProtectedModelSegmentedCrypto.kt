@@ -4,6 +4,7 @@ import java.io.ByteArrayOutputStream
 import java.io.DataOutputStream
 import java.security.GeneralSecurityException
 import java.security.MessageDigest
+import java.security.Provider
 import java.security.Signature
 import java.security.SignatureException
 import javax.crypto.AEADBadTagException
@@ -168,7 +169,8 @@ sealed interface LargeProtectedModelPackageVerificationResult {
  */
 class LargeProtectedModelPackageVerifier(
     private val signerResolver: ProtectedModelSignerResolver,
-    private val budgets: LargeProtectedModelPackageBudgets
+    private val budgets: LargeProtectedModelPackageBudgets,
+    private val signatureProvider: Provider? = null
 ) {
     fun verify(
         envelope: LargeProtectedModelPackageEnvelope
@@ -204,7 +206,10 @@ class LargeProtectedModelPackageVerifier(
                 )
 
             signatureBytes = envelope.copySignature()
-            val verifier = Signature.getInstance(signatureName(manifest.signatureAlgorithm))
+            val signatureName = signatureName(manifest.signatureAlgorithm)
+            val verifier = signatureProvider?.let { provider ->
+                Signature.getInstance(signatureName, provider)
+            } ?: Signature.getInstance(signatureName)
             verifier.initVerify(signerKey)
             verifier.update(signatureInput)
             val valid = try {
