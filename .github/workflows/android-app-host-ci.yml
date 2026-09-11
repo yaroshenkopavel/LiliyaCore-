@@ -21,6 +21,7 @@ on:
       - 'android-cognitive-storage/**'
       - 'android-license-state/**'
       - 'license-transport-client/**'
+      - 'protected-model-packager/**'
   pull_request:
     branches:
       - main
@@ -41,10 +42,12 @@ on:
       - 'android-cognitive-storage/**'
       - 'android-license-state/**'
       - 'license-transport-client/**'
+      - 'protected-model-packager/**'
   workflow_dispatch:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   android-app-host:
@@ -88,4 +91,165 @@ jobs:
             :android-runtime:testDebugUnitTest \
             :core:test \
             :android-app:assembleDebug \
+            :android-app:assembleRelease \
             --console=plain
+
+      - name: Guard release APK from cold-start test payloads
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="android-app/build/outputs/apk/release/android-app-release-unsigned.apk"
+          test -f "$apk"
+          listing="$RUNNER_TEMP/android-app-release-files.txt"
+          unzip -Z1 "$apk" > "$listing"
+
+          if grep -E \
+              'stories15M-q4_0\.gguf|multilingual-e5-small-liliya-v0\.1\.onnx|multilingual-e5-small-tokenizer-v0\.1\.onnx' \
+              "$listing"; then
+            echo "cold-start test model asset leaked into production release APK"
+            exit 1
+          fi
+
+          while IFS= read -r dex; do
+            if unzip -p "$apk" "$dex" | strings | grep -Fq \
+                'pro/liliya/packager/ProtectedModelOfflinePackager'; then
+              echo "offline protected-model packager leaked into production release APK: $dex"
+              exit 1
+            fi
+          done < <(grep -E '^classes([0-9]+)?\.dex$' "$listing")
+
+  development-first-working-liliya-cold-start:
+    name: Development First Working Liliya cold-start fixture
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    needs: android-app-host
+
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Download exact semantic provenance bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: semantic-onnx-provenance
+          path: ${{ runner.temp }}/semantic-onnx-download
+          repository: ${{ github.repository }}
+          run-id: '33981322350'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify and stage exact semantic test assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import shutil
+
+          root = Path(os.environ["RUNNER_TEMP"]) / "semantic-onnx-download"
+          manifests = list(root.rglob("semantic-onnx-provenance.json"))
+          encoders = list(root.rglob("multilingual-e5-small-liliya-v0.1.onnx"))
+          tokenizers = list(root.rglob("multilingual-e5-small-tokenizer-v0.1.onnx"))
+          if len(manifests) != 1 or len(encoders) != 1 or len(tokenizers) != 1:
+              raise SystemExit(
+                  f"unexpected provenance layout: manifest={manifests}, "
+                  f"encoder={encoders}, tokenizer={tokenizers}"
+              )
+
+          manifest = json.loads(manifests[0].read_text(encoding="utf-8"))
+          encoder = manifest["encoder"]
+          tokenizer = manifest["tokenizer"]
+
+          def digest(path):
+              h = hashlib.sha256()
+              with path.open("rb") as stream:
+                  for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                      h.update(chunk)
+              return h.hexdigest()
+
+          if encoders[0].stat().st_size != encoder["size"] or digest(encoders[0]) != encoder["sha256"]:
+              raise SystemExit("encoder provenance mismatch")
+          if tokenizers[0].stat().st_size != tokenizer["size"] or digest(tokenizers[0]) != tokenizer["sha256"]:
+              raise SystemExit("tokenizer provenance mismatch")
+
+          assets = Path("android-app/src/androidTest/assets")
+          assets.mkdir(parents=True, exist_ok=True)
+          shutil.copy2(encoders[0], assets / encoders[0].name)
+          shutil.copy2(tokenizers[0], assets / tokenizers[0].name)
+          PY
+
+      - name: Prepare verified real-model cold-start fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          asset_dir="android-app/src/androidTest/assets"
+          asset="$asset_dir/stories15M-q4_0.gguf"
+          mkdir -p "$asset_dir"
+          curl --fail --location --retry 3 \
+            "https://huggingface.co/ggml-org/tiny-llamas/resolve/def3e2dd70df35ecbf6403ea347de4c5977220c1/stories15M-q4_0.gguf?download=true" \
+            --output "$asset"
+          echo "6151b1929d7f5aa3385d9ddef3393e55587c0a55de661562322bc51dfda93a04  $asset" | sha256sum --check --strict
+          test "$(stat --format=%s "$asset")" -eq 19077344
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle 9.6.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.1'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install pinned Android instrumentation toolchain
+        run: |
+          sdkmanager \
+            "platforms;android-35" \
+            "build-tools;35.0.0" \
+            "platform-tools" \
+            "ndk;29.0.13113456" \
+            "cmake;3.31.6"
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Compile cold-start instrumentation
+        env:
+          LILIYA_LLAMA_ALLOW_X86_64_API35_TRANSLATION: "1"
+        run: gradle :android-app:assembleDebug :android-app:assembleDebugAndroidTest --console=plain
+
+      - name: Run First Working Liliya cold-start instrumentation
+        uses: ReactiveCircus/android-emulator-runner@v2
+        env:
+          LILIYA_LLAMA_ALLOW_X86_64_API35_TRANSLATION: "1"
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          disable-animations: true
+          script: |
+            bash -lc 'set -o pipefail; gradle :android-app:connectedDebugAndroidTest --console=plain 2>&1 | tee "$RUNNER_TEMP/development-first-working-liliya-cold-start.log"'
+
+      - name: Upload cold-start instrumentation diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: development-first-working-liliya-cold-start-diagnostics-${{ github.event.pull_request.head.sha || github.sha }}
+          if-no-files-found: warn
+          retention-days: 7
+          path: |
+            ${{ runner.temp }}/development-first-working-liliya-cold-start.log
+            android-app/build/outputs/androidTest-results/connected/**
+            android-app/build/reports/androidTests/connected/**
