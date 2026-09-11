@@ -27,7 +27,8 @@ jobs:
           test "$(git rev-parse HEAD)" = "0f3a71be15af836d277c9f918adfafb45732677e"
           cd ..
           cmake -S llama.cpp -B llama-build -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_SERVER=OFF -DGGML_NATIVE=OFF -DCMAKE_BUILD_TYPE=Release
-          cmake --build llama-build --target llama-cli -j2
+          cmake --build llama-build --target llama-completion -j2
+          test -x llama-build/bin/llama-completion
 
       - name: Download pinned SmolLM2 135M instruct GGUF
         shell: bash
@@ -46,9 +47,9 @@ jobs:
           printf '<|im_start|>system\nYou are Liliya. Follow the response protocol exactly and output no prose outside it.<|im_end|>\n<|im_start|>user\n' > chat-prompt.txt
           cat protocol.txt >> chat-prompt.txt
           printf '<|im_end|>\n<|im_start|>assistant\n' >> chat-prompt.txt
-          CLI=llama-build/bin/llama-cli
-          "$CLI" -m smollm.gguf -c 2048 -n 512 --temp 0 --no-display-prompt -p "$(cat raw-prompt.txt)" > raw.out 2> raw.err || true
-          "$CLI" -m smollm.gguf -c 2048 -n 512 --temp 0 --no-display-prompt -p "$(cat chat-prompt.txt)" > chat.out 2> chat.err || true
+          CLI=llama-build/bin/llama-completion
+          "$CLI" -m smollm.gguf -c 2048 -n 512 --temp 0 --no-display-prompt -no-cnv -p "$(cat raw-prompt.txt)" > raw.out 2> raw.err || true
+          "$CLI" -m smollm.gguf -c 2048 -n 512 --temp 0 --no-display-prompt -no-cnv -p "$(cat chat-prompt.txt)" > chat.out 2> chat.err || true
           echo '=== RAW OUTPUT ==='
           head -c 5000 raw.out || true
           echo
