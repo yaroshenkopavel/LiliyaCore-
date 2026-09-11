@@ -21,11 +21,21 @@ jobs:
       - name: Build one-commit PR212 candidate
         shell: bash
         run: |
-          set -euo pipefail
-          git fetch origin 08408262ce4bd906e756ae28f9fa661345ca8758 c495edfe784441fc09447354322a8ef0d64fa935
-          git checkout 08408262ce4bd906e756ae28f9fa661345ca8758 -- .github/workflows/android-app-host-ci.yml android-app/build.gradle.kts android-app/src/androidTest/kotlin/pro/liliya/app/DevelopmentFirstWorkingLiliyaColdStartFixturePrerequisiteInstrumentedTest.kt android-app/src/androidTest/kotlin/pro/liliya/app/ProtectedModelPackagerAndroidProbeInstrumentedTest.kt
-          git checkout c495edfe784441fc09447354322a8ef0d64fa935 -- android-app/src/androidTest/kotlin/pro/liliya/app/DevelopmentFirstWorkingLiliyaColdStartInstrumentedTest.kt
+          set -euxo pipefail
+          old=origin/development-first-working-liliya-cold-start-fixture-v0.1
+          constrained=origin/maintenance/pr212-constrained-decoding-candidate-2026-09-11
+          paths=(
+            .github/workflows/android-app-host-ci.yml
+            android-app/build.gradle.kts
+            android-app/src/androidTest/kotlin/pro/liliya/app/DevelopmentFirstWorkingLiliyaColdStartFixturePrerequisiteInstrumentedTest.kt
+            android-app/src/androidTest/kotlin/pro/liliya/app/ProtectedModelPackagerAndroidProbeInstrumentedTest.kt
+          )
+          for p in "${paths[@]}"; do
+            mkdir -p "$(dirname "$p")"
+            git show "$old:$p" > "$p"
+          done
           file=android-app/src/androidTest/kotlin/pro/liliya/app/DevelopmentFirstWorkingLiliyaColdStartInstrumentedTest.kt
+          git show "$constrained:$file" > "$file"
           sed -i '/outputGrammar = STRICT_RESPONSE_GRAMMAR,/d' "$file"
           sed -i '/maxOutputGrammarUtf8Bytes = 4_096/d' "$file"
           python3 - "$file" <<'PY'
@@ -33,15 +43,24 @@ jobs:
           from pathlib import Path
           p = Path(sys.argv[1])
           s = p.read_text()
-          a = s.index('        val STRICT_RESPONSE_GRAMMAR = """\n')
-          b = s.index('        """.trimIndent()\n', a) + len('        """.trimIndent()\n')
+          marker = '        val STRICT_RESPONSE_GRAMMAR = """\n'
+          a = s.find(marker)
+          if a < 0:
+              raise SystemExit('temporary grammar constant start missing')
+          end_marker = '        """.trimIndent()\n'
+          b = s.find(end_marker, a)
+          if b < 0:
+              raise SystemExit('temporary grammar constant end missing')
+          b += len(end_marker)
           p.write_text(s[:a] + s[b:])
           PY
           git diff --check
+          git diff --name-only
           test "$(git diff --name-only | wc -l)" -eq 5
           grep -Fq 'DeterministicCognitiveModelRequestCompiler()' "$file"
           grep -Fq 'maxGeneratedTokens = 512' "$file"
           grep -Fq 'const val MAX_OUTPUT_CHARS = 768' "$file"
+          grep -Fq 'maxCandidatesPerSource = limits.maxRetrievalResults' "$file"
           ! grep -Fq 'STRICT_RESPONSE_GRAMMAR' "$file"
           git config user.name yaroshenkopavel
           git config user.email 78513566+yaroshenkopavel@users.noreply.github.com
@@ -49,4 +68,6 @@ jobs:
           git commit -m 'First Working Liliya cold-start fixture v0.1'
           test "$(git rev-parse HEAD^)" = aeb5a86d15909f74465e67616121fc4bad802046
           test "$(git rev-list --count aeb5a86d15909f74465e67616121fc4bad802046..HEAD)" -eq 1
+          echo "CANDIDATE_HEAD=$(git rev-parse HEAD)"
+          echo "CANDIDATE_TREE=$(git rev-parse HEAD^{tree})"
           git push --force origin HEAD:refs/heads/maintenance/pr212-constrained-decoding-candidate-2026-09-11
