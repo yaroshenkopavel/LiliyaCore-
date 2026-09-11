@@ -1,0 +1,47 @@
+name: PR212 API Migration Bridge 2026-09-11
+
+on:
+  push:
+    branches:
+      - maintenance/local-mirror-export-2026-09-10
+    paths:
+      - .github/workflows/pr212-api-migration-bridge-2026-09-11.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 9a8ca6e8327ca38d1f5d5e17bbc0fab19a3893da
+          fetch-depth: 0
+      - shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          test "$(git rev-parse origin/main)" = "aeb5a86d15909f74465e67616121fc4bad802046"
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('android-app/src/androidTest/kotlin/pro/liliya/app/DevelopmentFirstWorkingLiliyaColdStartInstrumentedTest.kt')
+          s = p.read_text()
+          old = "                    budgets = packageBudgets,\n                    signatureProvider = modelSignerProvider\n"
+          new = "                    budgets = packageBudgets\n"
+          if s.count(old) != 1:
+              raise SystemExit('expected stale verifier argument exactly once')
+          p.write_text(s.replace(old, new, 1))
+          PY
+          git diff --check
+          test "$(git diff --name-only)" = "android-app/src/androidTest/kotlin/pro/liliya/app/DevelopmentFirstWorkingLiliyaColdStartInstrumentedTest.kt"
+          git reset --mixed origin/main
+          git add -A
+          test "$(git diff --cached --name-only | wc -l)" -eq 5
+          echo "CANDIDATE_TREE=$(git write-tree)"
+          git config user.name "yaroshenkopavel"
+          git config user.email "78513566+yaroshenkopavel@users.noreply.github.com"
+          git commit -m "First Working Liliya cold-start fixture v0.1"
+          test "$(git rev-list --count origin/main..HEAD)" = "1"
+          test "$(git rev-parse HEAD^)" = "aeb5a86d15909f74465e67616121fc4bad802046"
+          git push --force origin HEAD:refs/heads/maintenance/pr212-exact-tree-candidate-2026-09-10
