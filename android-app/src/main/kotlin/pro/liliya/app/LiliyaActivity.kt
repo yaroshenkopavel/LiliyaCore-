@@ -19,6 +19,7 @@ class LiliyaActivity : Activity() {
     private val worker = Executors.newSingleThreadExecutor()
     private lateinit var conversation: ProductConversationTranscript
     private var requestInFlight = false
+    private var pendingUserMessage: String? = null
 
     private lateinit var status: TextView
     private lateinit var transcript: TextView
@@ -44,10 +45,19 @@ class LiliyaActivity : Activity() {
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
-        val snapshot = conversation.snapshotWithinBudget(
-            maxEntries = TRANSCRIPT_SAVED_STATE_MAX_ENTRIES,
-            maxUtf8Bytes = TRANSCRIPT_SAVED_STATE_MAX_UTF8_BYTES
-        )
+        val pending = pendingUserMessage
+        val snapshot = if (requestInFlight && pending != null) {
+            conversation.snapshotWithinBudgetExcludingLastUser(
+                message = pending,
+                maxEntries = TRANSCRIPT_SAVED_STATE_MAX_ENTRIES,
+                maxUtf8Bytes = TRANSCRIPT_SAVED_STATE_MAX_UTF8_BYTES
+            )
+        } else {
+            conversation.snapshotWithinBudget(
+                maxEntries = TRANSCRIPT_SAVED_STATE_MAX_ENTRIES,
+                maxUtf8Bytes = TRANSCRIPT_SAVED_STATE_MAX_UTF8_BYTES
+            )
+        }
         outState.putStringArrayList(
             TRANSCRIPT_SPEAKERS_STATE,
             ArrayList(snapshot.speakers)
@@ -276,6 +286,7 @@ class LiliyaActivity : Activity() {
         conversation.appendUser(message)
         renderConversationAndRevealLatest()
         requestInFlight = true
+        pendingUserMessage = message
         input.isEnabled = false
         send.isEnabled = false
         status.text = "Думаю…"
@@ -289,6 +300,7 @@ class LiliyaActivity : Activity() {
             runOnUiThread {
                 if (isFinishing || isDestroyed) return@runOnUiThread
                 requestInFlight = false
+                pendingUserMessage = null
                 when (result) {
                     is ProductChatResult.Completed -> {
                         conversation.appendLiliya(result.reply)
