@@ -10,7 +10,9 @@ import pro.liliya.android.runtime.AndroidProductRuntimeStartupInputAssemblyInput
 class LiliyaApplication : Application() {
     val runtimeOwner: ProductionAndroidAppRuntimeOwner = ProductionAndroidAppRuntimeOwner()
     private val startupCoordinator = ProductionAndroidRuntimeStartupCoordinator()
-    private val startupTask = ProductionAndroidAppStartupTask()
+
+    @Volatile
+    private var startupTask = ProductionAndroidAppStartupTask()
 
     fun configureRuntime(sources: ProductionAndroidRuntimeWiringSources): Boolean =
         ProductionAndroidRuntimeConfiguration.install(sources)
@@ -51,6 +53,15 @@ class LiliyaApplication : Application() {
             startup = { startApplicationRuntime() },
             callback = callback
         )
+    }
+
+    @Synchronized
+    internal fun replaceStartupTaskForTests(
+        replacement: ProductionAndroidAppStartupTask
+    ): ProductionAndroidAppStartupTask {
+        val previous = startupTask
+        startupTask = replacement
+        return previous
     }
 
     fun startApplicationRuntime(): ProductionAndroidAppStartupOutcome {
