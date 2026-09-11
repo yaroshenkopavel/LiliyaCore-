@@ -8,7 +8,7 @@ on:
       - .github/workflows/structured-grammar-native-builder-2026-09-11.yml
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
@@ -49,13 +49,9 @@ jobs:
       - name: Run constrained generation gate
         run: gradle :android-llama-cpp-engine:testDebugUnitTest :android-llama-cpp-engine:assembleDebug --console=plain
 
-      - name: Publish tested development slice
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name "yaroshenkopavel"
-          git config user.email "78513566+yaroshenkopavel@users.noreply.github.com"
-          git add android-llama-cpp-engine
-          git diff --cached --check
-          git commit -m "Constrain cognitive llama generation with GBNF"
-          git push origin HEAD:refs/heads/development-structured-generation-grammar-v0.1
+      - name: Upload tested native source
+        uses: actions/upload-artifact@v4
+        with:
+          name: structured-generation-native-source
+          path: android-llama-cpp-engine/src/main/cpp/liliya_llama_jni.cpp
+          retention-days: 2
