@@ -216,9 +216,31 @@ jobs:
 
           cat "$out/firebase-first-working-liliya-bundle-manifest.json"
 
-      - name: Syntax-check credential-neutral Firebase runner
+      - name: Verify credential-neutral Firebase runner against exact bundle
         shell: bash
-        run: bash -n android-app/ci/run_firebase_first_working_liliya_acceptance.sh
+        env:
+          LILIYA_FIREBASE_VERIFY_ONLY: '1'
+        run: |
+          set -euo pipefail
+          bash -n android-app/ci/run_firebase_first_working_liliya_acceptance.sh
+          "$RUNNER_TEMP/firebase-first-working-liliya-bundle/run_firebase_first_working_liliya_acceptance.sh" \
+            "$RUNNER_TEMP/firebase-first-working-liliya-bundle"
+
+      - name: Verify Firebase runner rejects tampered bundle
+        shell: bash
+        env:
+          LILIYA_FIREBASE_VERIFY_ONLY: '1'
+        run: |
+          set -euo pipefail
+          source_bundle="$RUNNER_TEMP/firebase-first-working-liliya-bundle"
+          tampered_bundle="$RUNNER_TEMP/firebase-first-working-liliya-bundle-tampered"
+          cp -R "$source_bundle" "$tampered_bundle"
+          printf '\nTAMPERED\n' >> "$tampered_bundle/firebase-first-working-liliya-app-badging.txt"
+          if "$tampered_bundle/run_firebase_first_working_liliya_acceptance.sh" "$tampered_bundle"; then
+            echo "tampered Firebase bundle was unexpectedly accepted" >&2
+            exit 1
+          fi
+          echo "tampered Firebase bundle rejected as required"
 
       - name: Upload Firebase First Working Liliya input bundle
         uses: actions/upload-artifact@v4
