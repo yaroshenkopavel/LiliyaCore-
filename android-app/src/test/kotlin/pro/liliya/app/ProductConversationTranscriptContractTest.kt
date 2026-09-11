@@ -45,4 +45,37 @@ class ProductConversationTranscriptContractTest {
 
         assertEquals("Вы: Первый запрос", transcript.render())
     }
+
+    @Test
+    fun snapshot_round_trip_preserves_structured_turns_and_internal_newlines() {
+        val transcript = ProductConversationTranscript()
+        transcript.appendUser("Первая строка\nВторая строка")
+        transcript.appendLiliya("Ответ\nс переносом")
+        transcript.appendUser("Повтор")
+        transcript.appendUser("Повтор")
+
+        val restored = ProductConversationTranscript.restore(transcript.snapshot())
+
+        assertEquals(transcript.render(), restored.render())
+        assertEquals(transcript.snapshot(), restored.snapshot())
+    }
+
+    @Test
+    fun malformed_snapshot_fails_closed_to_empty_transcript_without_partial_restore() {
+        val mismatched = ProductConversationTranscript.restore(
+            ProductConversationTranscriptSnapshot(
+                speakers = listOf("USER", "LILIYA"),
+                messages = listOf("только одно сообщение")
+            )
+        )
+        val unknownSpeaker = ProductConversationTranscript.restore(
+            ProductConversationTranscriptSnapshot(
+                speakers = listOf("USER", "UNKNOWN", "LILIYA"),
+                messages = listOf("первое", "невалидное", "третье")
+            )
+        )
+
+        assertTrue(mismatched.isEmpty())
+        assertTrue(unknownSpeaker.isEmpty())
+    }
 }

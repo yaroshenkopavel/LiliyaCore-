@@ -17,7 +17,7 @@ import pro.liliya.android.runtime.ProductChatResult
 
 class LiliyaActivity : Activity() {
     private val worker = Executors.newSingleThreadExecutor()
-    private val conversation = ProductConversationTranscript()
+    private lateinit var conversation: ProductConversationTranscript
 
     private lateinit var status: TextView
     private lateinit var transcript: TextView
@@ -30,8 +30,22 @@ class LiliyaActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        conversation = restoreConversation(savedInstanceState)
         setContentView(buildContent())
         renderStartupOutcome(app.startApplicationRuntime())
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        val snapshot = conversation.snapshot()
+        outState.putStringArrayList(
+            TRANSCRIPT_SPEAKERS_STATE,
+            ArrayList(snapshot.speakers)
+        )
+        outState.putStringArrayList(
+            TRANSCRIPT_MESSAGES_STATE,
+            ArrayList(snapshot.messages)
+        )
+        super.onSaveInstanceState(outState)
     }
 
     override fun onDestroy() {
@@ -158,6 +172,20 @@ class LiliyaActivity : Activity() {
         startActivityForResult(intent, LOCAL_MODEL_DOCUMENT_REQUEST)
     }
 
+    private fun restoreConversation(state: Bundle?): ProductConversationTranscript {
+        if (state == null) return ProductConversationTranscript()
+        val speakers = state.getStringArrayList(TRANSCRIPT_SPEAKERS_STATE)
+            ?: return ProductConversationTranscript()
+        val messages = state.getStringArrayList(TRANSCRIPT_MESSAGES_STATE)
+            ?: return ProductConversationTranscript()
+        return ProductConversationTranscript.restore(
+            ProductConversationTranscriptSnapshot(
+                speakers = speakers,
+                messages = messages
+            )
+        )
+    }
+
     private fun renderStartupOutcome(outcome: ProductionAndroidAppStartupOutcome) {
         when (outcome) {
             ProductionAndroidAppStartupOutcome.ConfigurationRequired ->
@@ -238,5 +266,7 @@ class LiliyaActivity : Activity() {
 
     private companion object {
         const val LOCAL_MODEL_DOCUMENT_REQUEST = 1001
+        const val TRANSCRIPT_SPEAKERS_STATE = "liliya.transcript.speakers"
+        const val TRANSCRIPT_MESSAGES_STATE = "liliya.transcript.messages"
     }
 }
