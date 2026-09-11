@@ -21,7 +21,8 @@ class AndroidLlamaCppPhysicalEngineLoaderContractTest {
             loadResult = LlamaCppNativeLoadResult.Loaded(nativeSessionId)
             inferResult = LlamaCppNativeInferenceResult.Succeeded("answer")
         }
-        val loader = AndroidLlamaCppPhysicalEngineLoader(policy(), native)
+        val grammar = "root ::= \"ok\""
+        val loader = AndroidLlamaCppPhysicalEngineLoader(policy(), native, grammar)
 
         val loaded = assertIs<ModelEngineLoadResult.Loaded>(
             loader.loadValidatedPhysicalSource(File(privatePath))
@@ -29,6 +30,7 @@ class AndroidLlamaCppPhysicalEngineLoaderContractTest {
 
         assertEquals(privatePath, native.loadedPath)
         assertEquals(policy(), native.loadedPolicy)
+        assertEquals(grammar, native.loadedGrammar)
         assertFalse(loaded.ownership.handleId.value.contains(privatePath))
         assertFalse(loaded.ownership.handleId.value.contains(nativeSessionId.toString()))
         assertFalse(loaded.ownership.handleId.toString().contains(privatePath))
@@ -107,15 +109,18 @@ class AndroidLlamaCppPhysicalEngineLoaderContractTest {
         var loadThrowable: Throwable? = null
         var loadedPath: String? = null
         var loadedPolicy: LlamaCppEnginePolicy? = null
+        var loadedGrammar: String? = null
         var lastInferSessionId: Long? = null
         var lastCloseSessionId: Long? = null
 
         override fun load(
             sourcePath: String,
-            policy: LlamaCppEnginePolicy
+            policy: LlamaCppEnginePolicy,
+            outputGrammar: String?
         ): LlamaCppNativeLoadResult {
             loadedPath = sourcePath
             loadedPolicy = policy
+            loadedGrammar = outputGrammar
             loadThrowable?.let { throw it }
             return loadResult
         }

@@ -10,6 +10,7 @@ import pro.liliya.core.cognitive.CognitiveModelRequestCompilerPort
 import pro.liliya.core.cognitive.CognitiveModelRuntimeComposition
 import pro.liliya.core.cognitive.CognitiveModelRuntimeSessionIdSource
 import pro.liliya.core.cognitive.CognitiveRuntimeLimits
+import pro.liliya.core.cognitive.CognitiveStructuredResponseBudgets
 import pro.liliya.core.cognitive.CognitiveStagedModelActivationPort
 import pro.liliya.core.cognitive.stagedModelActivationPort
 import pro.liliya.core.foundation.FoundationComposition
@@ -59,7 +60,13 @@ class AndroidLlamaCppCognitiveModelAssembly private constructor(
                 backend = stagingBackend,
                 budgets = stagingBudgets
             )
-            val physicalLoader = AndroidLlamaCppPhysicalEngineLoader(llamaPolicy)
+            val outputGrammar = LlamaCppStructuredResponseGrammar.compile(
+                CognitiveStructuredResponseBudgets.from(limits)
+            )
+            val physicalLoader = AndroidLlamaCppPhysicalEngineLoader(
+                policy = llamaPolicy,
+                outputGrammar = outputGrammar
+            )
             val platformStagedLoader = AndroidAppPrivateStagedModelEngineLoader(
                 stagingBackend = stagingBackend,
                 physicalLoader = physicalLoader

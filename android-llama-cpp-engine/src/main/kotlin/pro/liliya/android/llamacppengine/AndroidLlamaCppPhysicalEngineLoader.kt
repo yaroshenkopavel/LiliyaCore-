@@ -31,7 +31,11 @@ internal fun interface LlamaCppNativeStreamingSink {
 }
 
 internal interface LlamaCppNativeSessionPort {
-    fun load(sourcePath: String, policy: LlamaCppEnginePolicy): LlamaCppNativeLoadResult
+    fun load(
+        sourcePath: String,
+        policy: LlamaCppEnginePolicy,
+        outputGrammar: String? = null
+    ): LlamaCppNativeLoadResult
 
     fun infer(
         nativeSessionId: Long,
@@ -53,12 +57,23 @@ internal interface LlamaCppNativeSessionPort {
 /** Concrete llama.cpp insertion point behind the frozen Slice 6 physical-source handoff. */
 class AndroidLlamaCppPhysicalEngineLoader internal constructor(
     private val policy: LlamaCppEnginePolicy,
-    private val nativePort: LlamaCppNativeSessionPort
+    private val nativePort: LlamaCppNativeSessionPort,
+    private val outputGrammar: String? = null
 ) : AndroidProtectedModelPhysicalEngineLoaderPort {
 
     constructor(policy: LlamaCppEnginePolicy) : this(
         policy = policy,
-        nativePort = JniLlamaCppNativeSessionPort
+        nativePort = JniLlamaCppNativeSessionPort,
+        outputGrammar = null
+    )
+
+    internal constructor(
+        policy: LlamaCppEnginePolicy,
+        outputGrammar: String
+    ) : this(
+        policy = policy,
+        nativePort = JniLlamaCppNativeSessionPort,
+        outputGrammar = outputGrammar
     )
 
     override fun load(
@@ -78,11 +93,18 @@ class AndroidLlamaCppPhysicalEngineLoader internal constructor(
      * a forgeable Core capability constructor or weakening the public physical-loader boundary.
      */
     internal fun loadValidatedPhysicalSource(source: File): ModelEngineLoadResult {
+        if (
+            outputGrammar != null &&
+            outputGrammar.toByteArray(Charsets.UTF_8).size >
+                LlamaCppStructuredResponseGrammar.MAX_GRAMMAR_UTF8_BYTES
+        ) {
+            return ModelEngineLoadResult.Rejected(ModelEngineLoadFailure.RESOURCE_LIMIT_REJECTED)
+        }
         val publicHandleId = PublicHandleIds.allocate()
             ?: return ModelEngineLoadResult.Rejected(ModelEngineLoadFailure.PROVIDER_FAILED)
 
         val nativeResult = try {
-            nativePort.load(source.absolutePath, policy)
+            nativePort.load(source.absolutePath, policy, outputGrammar)
         } catch (_: Throwable) {
             return ModelEngineLoadResult.Rejected(ModelEngineLoadFailure.PROVIDER_FAILED)
         }
@@ -126,20 +148,31 @@ private object PublicHandleIds {
 private object JniLlamaCppNativeSessionPort : LlamaCppNativeSessionPort {
     override fun load(
         sourcePath: String,
-        policy: LlamaCppEnginePolicy
+        policy: LlamaCppEnginePolicy,
+        outputGrammar: String?
     ): LlamaCppNativeLoadResult {
-        val code = LlamaCppNativeBridge.nativeLoad(
-            sourcePathUtf8 = sourcePath.toByteArray(Charsets.UTF_8),
-            contextTokens = policy.contextTokens,
-            maxPromptTokens = policy.maxPromptTokens,
-            maxGeneratedTokens = policy.maxGeneratedTokens,
-            batchTokens = policy.batchTokens,
-            microBatchTokens = policy.microBatchTokens,
-            threadCount = policy.threadCount,
-            maxPromptUtf8Bytes = policy.maxPromptUtf8Bytes,
-            maxOutputUtf8Bytes = policy.maxOutputUtf8Bytes,
-            useMmap = policy.useMmap
-        )
+        val grammarUtf8 = outputGrammar?.toByteArray(Charsets.UTF_8) ?: ByteArray(0)
+        if (grammarUtf8.size > LlamaCppStructuredResponseGrammar.MAX_GRAMMAR_UTF8_BYTES) {
+            grammarUtf8.fill(0)
+            return LlamaCppNativeLoadResult.Rejected(ModelEngineLoadFailure.RESOURCE_LIMIT_REJECTED)
+        }
+        val code = try {
+            LlamaCppNativeBridge.nativeLoad(
+                sourcePathUtf8 = sourcePath.toByteArray(Charsets.UTF_8),
+                contextTokens = policy.contextTokens,
+                maxPromptTokens = policy.maxPromptTokens,
+                maxGeneratedTokens = policy.maxGeneratedTokens,
+                batchTokens = policy.batchTokens,
+                microBatchTokens = policy.microBatchTokens,
+                threadCount = policy.threadCount,
+                maxPromptUtf8Bytes = policy.maxPromptUtf8Bytes,
+                maxOutputUtf8Bytes = policy.maxOutputUtf8Bytes,
+                useMmap = policy.useMmap,
+                outputGrammarUtf8 = grammarUtf8
+            )
+        } finally {
+            grammarUtf8.fill(0)
+        }
         return when {
             code > 0L -> LlamaCppNativeLoadResult.Loaded(code)
             code == LlamaCppNativeBridge.LOAD_RESOURCE_REJECTED ->

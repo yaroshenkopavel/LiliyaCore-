@@ -33,6 +33,7 @@ constexpr jbyte INFER_CANCELLED = 6;
 constexpr jint CLOSE_OK = 0;
 constexpr jint CLOSE_FAILED = 1;
 constexpr jint CLOSE_PROVIDER_FAILED = 2;
+constexpr size_t MAX_OUTPUT_GRAMMAR_UTF8_BYTES = 65536U;
 
 struct NativeSession {
     llama_model * model = nullptr;
@@ -43,6 +44,7 @@ struct NativeSession {
     int32_t batch_tokens = 0;
     int32_t max_prompt_utf8_bytes = 0;
     int32_t max_output_utf8_bytes = 0;
+    std::string output_grammar;
     std::mutex execution_mutex;
 
     void release() noexcept {
@@ -328,6 +330,46 @@ StreamCallbackResult emit_stream_chunk(
         : StreamCallbackResult::CANCELLED;
 }
 
+std::unique_ptr<llama_sampler, decltype(&llama_sampler_free)> create_generation_sampler(
+    const NativeSession * session
+) {
+    if (session == nullptr || session->vocab == nullptr) {
+        return {nullptr, llama_sampler_free};
+    }
+    if (session->output_grammar.empty()) {
+        return {
+            llama_sampler_init_greedy(),
+            llama_sampler_free
+        };
+    }
+
+    llama_sampler * chain = llama_sampler_chain_init(llama_sampler_chain_default_params());
+    if (chain == nullptr) {
+        return {nullptr, llama_sampler_free};
+    }
+    std::unique_ptr<llama_sampler, decltype(&llama_sampler_free)> owned_chain(
+        chain,
+        llama_sampler_free
+    );
+
+    llama_sampler * grammar = llama_sampler_init_grammar(
+        session->vocab,
+        session->output_grammar.c_str(),
+        "root"
+    );
+    if (grammar == nullptr) {
+        return {nullptr, llama_sampler_free};
+    }
+    llama_sampler_chain_add(chain, grammar);
+
+    llama_sampler * greedy = llama_sampler_init_greedy();
+    if (greedy == nullptr) {
+        return {nullptr, llama_sampler_free};
+    }
+    llama_sampler_chain_add(chain, greedy);
+    return owned_chain;
+}
+
 }  // namespace
 
 extern "C"
@@ -357,7 +399,8 @@ Java_pro_liliya_android_llamacppengine_LlamaCppNativeBridge_nativeLoad(
     jint thread_count,
     jint max_prompt_utf8_bytes,
     jint max_output_utf8_bytes,
-    jboolean use_mmap
+    jboolean use_mmap,
+    jbyteArray output_grammar_utf8
 ) {
     if (
         context_tokens <= 0 ||
@@ -378,6 +421,21 @@ Java_pro_liliya_android_llamacppengine_LlamaCppNativeBridge_nativeLoad(
     }
 
     try {
+        std::vector<uint8_t> grammar_bytes;
+        if (!copy_bytes(env, output_grammar_utf8, grammar_bytes)) {
+            return LOAD_REJECTED;
+        }
+        ByteScrubber grammar_scrubber(grammar_bytes);
+        if (grammar_bytes.size() > MAX_OUTPUT_GRAMMAR_UTF8_BYTES) {
+            return LOAD_RESOURCE_REJECTED;
+        }
+        if (
+            std::find(grammar_bytes.begin(), grammar_bytes.end(), static_cast<uint8_t>(0)) !=
+            grammar_bytes.end()
+        ) {
+            return LOAD_REJECTED;
+        }
+
         std::vector<uint8_t> path_bytes;
         if (!copy_bytes(env, source_path_utf8, path_bytes) || path_bytes.empty()) {
             return LOAD_REJECTED;
@@ -446,6 +504,12 @@ Java_pro_liliya_android_llamacppengine_LlamaCppNativeBridge_nativeLoad(
         session->batch_tokens = batch_tokens;
         session->max_prompt_utf8_bytes = max_prompt_utf8_bytes;
         session->max_output_utf8_bytes = max_output_utf8_bytes;
+        if (!grammar_bytes.empty()) {
+            session->output_grammar.assign(
+                reinterpret_cast<const char *>(grammar_bytes.data()),
+                grammar_bytes.size()
+            );
+        }
 
         const int64_t session_id = allocate_native_session_id();
         if (session_id <= 0) {
@@ -558,10 +622,7 @@ Java_pro_liliya_android_llamacppengine_LlamaCppNativeBridge_nativeInfer(
                 offset += chunk;
             }
 
-            std::unique_ptr<llama_sampler, decltype(&llama_sampler_free)> sampler(
-                llama_sampler_init_greedy(),
-                llama_sampler_free
-            );
+            auto sampler = create_generation_sampler(session);
             if (sampler == nullptr) {
                 llama_memory_clear(llama_get_memory(session->context), true);
                 return make_infer_packet(env, INFER_PROVIDER_FAILED);
@@ -728,10 +789,7 @@ Java_pro_liliya_android_llamacppengine_LlamaCppNativeBridge_nativeInferStreaming
                 offset += chunk;
             }
 
-            std::unique_ptr<llama_sampler, decltype(&llama_sampler_free)> sampler(
-                llama_sampler_init_greedy(),
-                llama_sampler_free
-            );
+            auto sampler = create_generation_sampler(session);
             if (sampler == nullptr) {
                 llama_memory_clear(llama_get_memory(session->context), true);
                 return make_infer_packet(env, INFER_PROVIDER_FAILED);
