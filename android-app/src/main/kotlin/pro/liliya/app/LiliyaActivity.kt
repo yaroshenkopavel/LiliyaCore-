@@ -297,9 +297,17 @@ class LiliyaActivity : Activity() {
                         status.text = "Готова"
                     }
                     is ProductChatResult.Rejected -> {
+                        if (conversation.rollbackLastUser(message)) {
+                            renderConversationAndRevealLatest()
+                        }
                         status.text = "Запрос отклонён: ${result.reason.name}"
                     }
-                    null -> status.text = "Внутренняя ошибка"
+                    null -> {
+                        if (conversation.rollbackLastUser(message)) {
+                            renderConversationAndRevealLatest()
+                        }
+                        status.text = "Внутренняя ошибка"
+                    }
                 }
                 val ready = app.runtimeOwner.state() == ProductionAndroidAppRuntimeState.READY
                 input.isEnabled = ready

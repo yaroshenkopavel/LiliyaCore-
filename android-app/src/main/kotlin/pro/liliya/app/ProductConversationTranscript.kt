@@ -18,6 +18,17 @@ internal class ProductConversationTranscript private constructor(
         append(Speaker.LILIYA, message)
     }
 
+    fun rollbackLastUser(message: String): Boolean {
+        val normalized = message.trim()
+        if (normalized.isEmpty()) return false
+
+        val last = entries.lastOrNull() ?: return false
+        if (last.speaker != Speaker.USER || last.message != normalized) return false
+
+        entries.removeAt(entries.lastIndex)
+        return true
+    }
+
     fun render(): String = entries.joinToString(separator = "\n\n") { entry ->
         "${entry.speaker.label}: ${entry.message}"
     }
