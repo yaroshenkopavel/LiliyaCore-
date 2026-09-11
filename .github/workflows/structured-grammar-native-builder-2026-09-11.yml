@@ -1,0 +1,140 @@
+name: Structured Grammar Native Builder 2026-09-11
+
+on:
+  push:
+    branches:
+      - maintenance/local-mirror-export-2026-09-10
+    paths:
+      - .github/workflows/structured-grammar-native-builder-2026-09-11.yml
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout development slice
+        uses: actions/checkout@v4
+        with:
+          ref: development-structured-generation-grammar-v0.1
+          fetch-depth: 0
+
+      - name: Patch native grammar sampler
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('android-llama-cpp-engine/src/main/cpp/liliya_llama_jni.cpp')
+          s = p.read_text()
+
+          old = '''    int32_t max_output_utf8_bytes = 0;\n    std::mutex execution_mutex;\n'''
+          new = '''    int32_t max_output_utf8_bytes = 0;\n    int32_t max_structured_grammar_utf8_bytes = 0;\n    std::string structured_grammar;\n    std::mutex execution_mutex;\n'''
+          assert s.count(old) == 1
+          s = s.replace(old, new, 1)
+
+          marker = '''StreamCallbackResult emit_stream_chunk(\n'''
+          idx = s.index(marker)
+          helper = r'''std::unique_ptr<llama_sampler, decltype(&llama_sampler_free)> create_session_sampler(
+    const NativeSession * session
+) {
+    if (session == nullptr) {
+        return {nullptr, llama_sampler_free};
+    }
+    if (session->structured_grammar.empty()) {
+        return {llama_sampler_init_greedy(), llama_sampler_free};
+    }
+
+    llama_sampler_chain_params chain_params = llama_sampler_chain_default_params();
+    chain_params.no_perf = true;
+    llama_sampler * chain = llama_sampler_chain_init(chain_params);
+    if (chain == nullptr) {
+        return {nullptr, llama_sampler_free};
+    }
+    std::unique_ptr<llama_sampler, decltype(&llama_sampler_free)> result(chain, llama_sampler_free);
+
+    llama_sampler * grammar = llama_sampler_init_grammar(
+        session->vocab,
+        session->structured_grammar.c_str(),
+        "root"
+    );
+    if (grammar == nullptr) {
+        return {nullptr, llama_sampler_free};
+    }
+    llama_sampler * greedy = llama_sampler_init_greedy();
+    if (greedy == nullptr) {
+        llama_sampler_free(grammar);
+        return {nullptr, llama_sampler_free};
+    }
+
+    llama_sampler_chain_add(chain, grammar);
+    llama_sampler_chain_add(chain, greedy);
+    return result;
+}
+
+'''
+          s = s[:idx] + helper + s[idx:]
+
+          sig_old = '''    jint max_prompt_utf8_bytes,\n    jint max_output_utf8_bytes,\n    jboolean use_mmap\n) {\n'''
+          sig_new = '''    jint max_prompt_utf8_bytes,\n    jint max_output_utf8_bytes,\n    jbyteArray structured_grammar_utf8,\n    jint max_structured_grammar_utf8_bytes,\n    jboolean use_mmap\n) {\n'''
+          assert s.count(sig_old) == 1
+          s = s.replace(sig_old, sig_new, 1)
+
+          validate_old = '''        max_prompt_utf8_bytes <= 0 ||\n        max_output_utf8_bytes <= 0 ||\n        max_prompt_tokens > context_tokens ||\n'''
+          validate_new = '''        max_prompt_utf8_bytes <= 0 ||\n        max_output_utf8_bytes <= 0 ||\n        max_structured_grammar_utf8_bytes <= 0 ||\n        structured_grammar_utf8 == nullptr ||\n        max_prompt_tokens > context_tokens ||\n'''
+          assert s.count(validate_old) == 1
+          s = s.replace(validate_old, validate_new, 1)
+
+          path_anchor = '''        ByteScrubber path_scrubber(path_bytes);\n        if (\n            std::find(path_bytes.begin(), path_bytes.end(), static_cast<uint8_t>(0)) !=\n            path_bytes.end()\n        ) {\n            return LOAD_REJECTED;\n        }\n        path_bytes.push_back(0);\n\n        ensure_backend_initialized();\n'''
+          grammar_block = '''        ByteScrubber path_scrubber(path_bytes);\n        if (\n            std::find(path_bytes.begin(), path_bytes.end(), static_cast<uint8_t>(0)) !=\n            path_bytes.end()\n        ) {\n            return LOAD_REJECTED;\n        }\n        path_bytes.push_back(0);\n\n        std::vector<uint8_t> grammar_bytes;\n        if (!copy_bytes(env, structured_grammar_utf8, grammar_bytes)) {\n            return LOAD_REJECTED;\n        }\n        ByteScrubber grammar_scrubber(grammar_bytes);\n        if (grammar_bytes.size() > static_cast<size_t>(max_structured_grammar_utf8_bytes)) {\n            return LOAD_RESOURCE_REJECTED;\n        }\n        if (\n            std::find(grammar_bytes.begin(), grammar_bytes.end(), static_cast<uint8_t>(0)) !=\n            grammar_bytes.end()\n        ) {\n            return LOAD_REJECTED;\n        }\n        std::string structured_grammar(\n            reinterpret_cast<const char *>(grammar_bytes.data()),\n            grammar_bytes.size()\n        );\n\n        ensure_backend_initialized();\n'''
+          assert s.count(path_anchor) == 1
+          s = s.replace(path_anchor, grammar_block, 1)
+
+          assign_old = '''        session->max_prompt_utf8_bytes = max_prompt_utf8_bytes;\n        session->max_output_utf8_bytes = max_output_utf8_bytes;\n\n        const int64_t session_id = allocate_native_session_id();\n'''
+          assign_new = '''        session->max_prompt_utf8_bytes = max_prompt_utf8_bytes;\n        session->max_output_utf8_bytes = max_output_utf8_bytes;\n        session->max_structured_grammar_utf8_bytes = max_structured_grammar_utf8_bytes;\n        session->structured_grammar = std::move(structured_grammar);\n\n        const int64_t session_id = allocate_native_session_id();\n'''
+          assert s.count(assign_old) == 1
+          s = s.replace(assign_old, assign_new, 1)
+
+          sampler_old = '''            std::unique_ptr<llama_sampler, decltype(&llama_sampler_free)> sampler(\n                llama_sampler_init_greedy(),\n                llama_sampler_free\n            );\n'''
+          count = s.count(sampler_old)
+          assert count >= 2, count
+          s = s.replace(sampler_old, '''            auto sampler = create_session_sampler(session);\n''')
+          print('SAMPLER_REPLACEMENTS=' + str(count))
+
+          p.write_text(s)
+          PY
+          git diff --check
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle 9.6.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.1'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install pinned Android native toolchain
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "ndk;29.0.13113456" "cmake;3.31.6"
+
+      - name: Run constrained generation gate
+        run: |
+          gradle :android-llama-cpp-engine:testDebugUnitTest :android-llama-cpp-engine:assembleDebug --console=plain
+
+      - name: Publish tested development slice
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "yaroshenkopavel"
+          git config user.email "78513566+yaroshenkopavel@users.noreply.github.com"
+          git add android-llama-cpp-engine
+          git diff --cached --check
+          git commit -m "Constrain cognitive llama generation with GBNF"
+          git push origin HEAD:refs/heads/development-structured-generation-grammar-v0.1
