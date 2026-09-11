@@ -20,6 +20,7 @@ class LiliyaActivity : Activity() {
     private lateinit var conversation: ProductConversationTranscript
     private var requestInFlight = false
     private var pendingUserMessage: String? = null
+    private var stateSaved = false
 
     private lateinit var status: TextView
     private lateinit var transcript: TextView
@@ -30,6 +31,13 @@ class LiliyaActivity : Activity() {
 
     private val app: LiliyaApplication
         get() = application as LiliyaApplication
+
+    private val chatObserver: (ProductionAndroidAppChatTaskState<ProductChatResult>) -> Unit = { state ->
+        runOnUiThread {
+            if (isFinishing || isDestroyed || stateSaved) return@runOnUiThread
+            renderApplicationChatState(state)
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -42,15 +50,31 @@ class LiliyaActivity : Activity() {
         }
         renderState(ProductionAndroidAppRuntimeState.STARTING)
         revealLatestTranscriptTurn()
+
+        app.observeApplicationChat(chatObserver)?.let { state ->
+            renderApplicationChatState(state)
+        }
+
         app.startApplicationRuntimeAsync { result ->
             runOnUiThread {
-                if (isFinishing || isDestroyed) return@runOnUiThread
+                if (isFinishing || isDestroyed || stateSaved) return@runOnUiThread
                 renderStartupTaskResult(result)
             }
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        stateSaved = false
+        if (::conversation.isInitialized && ::input.isInitialized) {
+            app.currentApplicationChatState()?.let { state ->
+                renderApplicationChatState(state)
+            }
+        }
+    }
+
     override fun onSaveInstanceState(outState: Bundle) {
+        stateSaved = true
         val pending = pendingUserMessage
         val snapshot = if (requestInFlight && pending != null) {
             conversation.snapshotWithinBudgetExcludingLastUser(
@@ -85,6 +109,7 @@ class LiliyaActivity : Activity() {
     }
 
     override fun onDestroy() {
+        app.removeApplicationChatObserver(chatObserver)
         worker.shutdownNow()
         super.onDestroy()
     }
@@ -278,19 +303,22 @@ class LiliyaActivity : Activity() {
     }
 
     private fun renderState(state: ProductionAndroidAppRuntimeState) {
-        status.text = when (state) {
-            ProductionAndroidAppRuntimeState.CONFIGURATION_REQUIRED ->
-                if (ProductionAndroidLocalModelSelection.current() == null) {
-                    "Требуется доверенная конфигурация запуска"
-                } else {
-                    "Модель выбрана. Требуются остальные параметры запуска"
-                }
-            ProductionAndroidAppRuntimeState.STARTING -> "Запуск…"
-            ProductionAndroidAppRuntimeState.READY -> "Готова"
-            ProductionAndroidAppRuntimeState.FAILED -> "Запуск отклонён"
-            ProductionAndroidAppRuntimeState.CLOSED -> "Остановлена"
+        status.text = when {
+            state == ProductionAndroidAppRuntimeState.READY && requestInFlight -> "Думаю…"
+            else -> when (state) {
+                ProductionAndroidAppRuntimeState.CONFIGURATION_REQUIRED ->
+                    if (ProductionAndroidLocalModelSelection.current() == null) {
+                        "Требуется доверенная конфигурация запуска"
+                    } else {
+                        "Модель выбрана. Требуются остальные параметры запуска"
+                    }
+                ProductionAndroidAppRuntimeState.STARTING -> "Запуск…"
+                ProductionAndroidAppRuntimeState.READY -> "Готова"
+                ProductionAndroidAppRuntimeState.FAILED -> "Запуск отклонён"
+                ProductionAndroidAppRuntimeState.CLOSED -> "Остановлена"
+            }
         }
-        val ready = state == ProductionAndroidAppRuntimeState.READY
+        val ready = state == ProductionAndroidAppRuntimeState.READY && !requestInFlight
         selectModel.visibility =
             if (state == ProductionAndroidAppRuntimeState.CONFIGURATION_REQUIRED) View.VISIBLE
             else View.GONE
@@ -302,25 +330,67 @@ class LiliyaActivity : Activity() {
         val message = input.text?.toString()?.trim().orEmpty()
         if (message.isBlank() || !send.isEnabled) return
 
-        conversation.appendUser(message)
-        renderConversationAndRevealLatest()
-        requestInFlight = true
-        pendingUserMessage = message
-        input.isEnabled = false
-        send.isEnabled = false
-        status.text = "Думаю…"
-
-        worker.execute {
-            val result = try {
-                app.runtimeOwner.send(message)
-            } catch (_: Exception) {
-                null
+        when (val submitted = app.submitApplicationChat(message)) {
+            is ProductionAndroidAppChatSubmitResult.Started -> {
+                conversation.appendUser(message)
+                renderConversationAndRevealLatest()
+                requestInFlight = true
+                pendingUserMessage = message
+                input.isEnabled = false
+                send.isEnabled = false
+                status.text = "Думаю…"
             }
-            runOnUiThread {
-                if (isFinishing || isDestroyed) return@runOnUiThread
-                requestInFlight = false
-                pendingUserMessage = null
-                when (result) {
+            is ProductionAndroidAppChatSubmitResult.Busy -> {
+                renderApplicationChatState(
+                    app.currentApplicationChatState()
+                        ?: ProductionAndroidAppChatTaskState.InFlight(
+                            requestId = submitted.requestId,
+                            message = submitted.message
+                        )
+                )
+            }
+        }
+    }
+
+    private fun renderApplicationChatState(
+        state: ProductionAndroidAppChatTaskState<ProductChatResult>
+    ) {
+        when (state) {
+            is ProductionAndroidAppChatTaskState.InFlight -> {
+                requestInFlight = true
+                pendingUserMessage = state.message
+                if (conversation.ensureLastUser(state.message)) {
+                    renderConversationAndRevealLatest()
+                }
+                if (input.text?.toString().orEmpty().isBlank()) {
+                    input.setText(state.message)
+                    input.setSelection(state.message.length)
+                }
+                status.text = "Думаю…"
+                input.isEnabled = false
+                send.isEnabled = false
+            }
+            is ProductionAndroidAppChatTaskState.Terminal -> {
+                if (stateSaved) return
+                val terminal = app.consumeApplicationChatTerminal(state.requestId) ?: return
+                applyApplicationChatTerminal(terminal)
+            }
+        }
+    }
+
+    private fun applyApplicationChatTerminal(
+        terminal: ProductionAndroidAppChatTaskState.Terminal<ProductChatResult>
+    ) {
+        val message = terminal.message
+        if (conversation.ensureLastUser(message)) {
+            renderConversationAndRevealLatest()
+        }
+        requestInFlight = false
+        pendingUserMessage = null
+
+        when (val execution = terminal.result) {
+            is ProductionAndroidAppChatExecutionResult.Completed -> {
+                when (val result = execution.value) {
                     is ProductChatResult.Completed -> {
                         conversation.appendLiliya(result.reply)
                         renderConversationAndRevealLatest()
@@ -331,20 +401,28 @@ class LiliyaActivity : Activity() {
                         if (conversation.rollbackLastUser(message)) {
                             renderConversationAndRevealLatest()
                         }
+                        restoreRetryInput(message)
                         status.text = "Запрос отклонён: ${result.reason.name}"
                     }
-                    null -> {
-                        if (conversation.rollbackLastUser(message)) {
-                            renderConversationAndRevealLatest()
-                        }
-                        status.text = "Внутренняя ошибка"
-                    }
                 }
-                val ready = app.runtimeOwner.state() == ProductionAndroidAppRuntimeState.READY
-                input.isEnabled = ready
-                send.isEnabled = ready
+            }
+            ProductionAndroidAppChatExecutionResult.Failed -> {
+                if (conversation.rollbackLastUser(message)) {
+                    renderConversationAndRevealLatest()
+                }
+                restoreRetryInput(message)
+                status.text = "Внутренняя ошибка"
             }
         }
+
+        val ready = app.runtimeOwner.state() == ProductionAndroidAppRuntimeState.READY
+        input.isEnabled = ready
+        send.isEnabled = ready
+    }
+
+    private fun restoreRetryInput(message: String) {
+        input.setText(message)
+        input.setSelection(message.length)
     }
 
     private companion object {

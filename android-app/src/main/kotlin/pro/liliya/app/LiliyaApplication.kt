@@ -6,6 +6,7 @@ import pro.liliya.android.runtime.AndroidProductRuntimeStartupCompositionRequest
 import pro.liliya.android.runtime.AndroidProductRuntimeStartupProvisioningPorts
 import pro.liliya.android.runtime.AndroidProductRuntimeStartupRequestSourceInput
 import pro.liliya.android.runtime.AndroidProductRuntimeStartupInputAssemblyInput
+import pro.liliya.android.runtime.ProductChatResult
 
 class LiliyaApplication : Application() {
     val runtimeOwner: ProductionAndroidAppRuntimeOwner = ProductionAndroidAppRuntimeOwner()
@@ -13,6 +14,8 @@ class LiliyaApplication : Application() {
 
     @Volatile
     private var startupTask = ProductionAndroidAppStartupTask()
+
+    private val chatTask = ProductionAndroidAppChatTask<ProductChatResult>()
 
     fun configureRuntime(sources: ProductionAndroidRuntimeWiringSources): Boolean =
         ProductionAndroidRuntimeConfiguration.install(sources)
@@ -63,6 +66,30 @@ class LiliyaApplication : Application() {
         startupTask = replacement
         return previous
     }
+
+    internal fun submitApplicationChat(
+        message: String
+    ): ProductionAndroidAppChatSubmitResult =
+        chatTask.submit(message) { runtimeOwner.send(message) }
+
+    internal fun observeApplicationChat(
+        observer: (ProductionAndroidAppChatTaskState<ProductChatResult>) -> Unit
+    ): ProductionAndroidAppChatTaskState<ProductChatResult>? =
+        chatTask.observe(observer)
+
+    internal fun removeApplicationChatObserver(
+        observer: (ProductionAndroidAppChatTaskState<ProductChatResult>) -> Unit
+    ) {
+        chatTask.removeObserver(observer)
+    }
+
+    internal fun currentApplicationChatState(): ProductionAndroidAppChatTaskState<ProductChatResult>? =
+        chatTask.currentState()
+
+    internal fun consumeApplicationChatTerminal(
+        requestId: Long
+    ): ProductionAndroidAppChatTaskState.Terminal<ProductChatResult>? =
+        chatTask.consumeTerminal(requestId)
 
     fun startApplicationRuntime(): ProductionAndroidAppStartupOutcome {
         val input = ProductionAndroidRuntimeStartupInputConfiguration.current()

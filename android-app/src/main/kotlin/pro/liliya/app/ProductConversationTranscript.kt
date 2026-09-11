@@ -18,6 +18,19 @@ internal class ProductConversationTranscript private constructor(
         append(Speaker.LILIYA, message)
     }
 
+    fun ensureLastUser(message: String): Boolean {
+        val normalized = message.trim()
+        if (normalized.isEmpty()) return false
+
+        val last = entries.lastOrNull()
+        if (last != null && last.speaker == Speaker.USER && last.message == normalized) {
+            return false
+        }
+
+        entries += Entry(Speaker.USER, normalized)
+        return true
+    }
+
     fun rollbackLastUser(message: String): Boolean {
         val normalized = message.trim()
         if (normalized.isEmpty()) return false
