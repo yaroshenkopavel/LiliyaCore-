@@ -1,0 +1,203 @@
+name: Android Protected Model Signer Bridge 2026-09-11
+
+on:
+  push:
+    branches:
+      - maintenance/android-protected-model-signer-bridge-2026-09-11
+    paths:
+      - .github/workflows/android-protected-model-signer-bridge-2026-09-11.yml
+
+permissions:
+  contents: write
+
+jobs:
+  build-slice:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout bridge branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Re-anchor exact canonical main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          test "$(git rev-parse origin/main)" = "aeb5a86d15909f74465e67616121fc4bad802046"
+          git reset --hard origin/main
+
+      - name: Apply bounded Android Ed25519 provider boundary fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              if text.count(old) != 1:
+                  raise SystemExit(f"precondition failed for {path}: {old!r} count={text.count(old)}")
+              p.write_text(text.replace(old, new, 1))
+
+          replace_once(
+              'core/src/main/kotlin/pro/liliya/core/protectedmodel/LargeProtectedModelSegmentedCrypto.kt',
+              'import java.security.MessageDigest\nimport java.security.Signature\n',
+              'import java.security.MessageDigest\nimport java.security.Provider\nimport java.security.Signature\n'
+          )
+          replace_once(
+              'core/src/main/kotlin/pro/liliya/core/protectedmodel/LargeProtectedModelSegmentedCrypto.kt',
+              'class LargeProtectedModelPackageVerifier(\n    private val signerResolver: ProtectedModelSignerResolver,\n    private val budgets: LargeProtectedModelPackageBudgets\n) {',
+              'class LargeProtectedModelPackageVerifier(\n    private val signerResolver: ProtectedModelSignerResolver,\n    private val budgets: LargeProtectedModelPackageBudgets,\n    private val signatureProvider: Provider? = null\n) {'
+          )
+          replace_once(
+              'core/src/main/kotlin/pro/liliya/core/protectedmodel/LargeProtectedModelSegmentedCrypto.kt',
+              '            val verifier = Signature.getInstance(signatureName(manifest.signatureAlgorithm))\n',
+              '            val signatureName = signatureName(manifest.signatureAlgorithm)\n            val verifier = signatureProvider?.let { provider ->\n                Signature.getInstance(signatureName, provider)\n            } ?: Signature.getInstance(signatureName)\n'
+          )
+
+          replace_once(
+              'android-runtime/src/main/kotlin/pro/liliya/android/runtime/AndroidProductRuntimeProtectedModelSignerTrust.kt',
+              '                val publicKey = KeyFactory.getInstance("Ed25519").generatePublic(\n',
+              '                val publicKey = KeyFactory.getInstance(\n                    "Ed25519",\n                    AndroidProductRuntimeProtectedModelCrypto.signatureProvider\n                ).generatePublic(\n'
+          )
+
+          replace_once(
+              'android-runtime/src/main/kotlin/pro/liliya/android/runtime/AndroidProductRuntimeProtectedModelStagingProvisioning.kt',
+              '        val verifier = LargeProtectedModelPackageVerifier(\n            signerResolver = signerResolver,\n            budgets = packageBudgets\n        )\n',
+              '        val verifier = LargeProtectedModelPackageVerifier(\n            signerResolver = signerResolver,\n            budgets = packageBudgets,\n            signatureProvider = AndroidProductRuntimeProtectedModelCrypto.signatureProvider\n        )\n'
+          )
+
+          replace_once(
+              'android-runtime/build.gradle.kts',
+              '    implementation(project(":android-llama-cpp-engine"))\n\n    testImplementation',
+              '    implementation(project(":android-llama-cpp-engine"))\n    implementation("org.bouncycastle:bcprov-jdk18on:1.81")\n\n    testImplementation'
+          )
+          PY
+
+          cat > android-runtime/src/main/kotlin/pro/liliya/android/runtime/AndroidProductRuntimeProtectedModelCrypto.kt <<'EOF'
+          package pro.liliya.android.runtime
+
+          import java.security.Provider
+          import org.bouncycastle.jce.provider.BouncyCastleProvider
+
+          /**
+           * Product-local Ed25519 provider boundary for protected-model signer trust and verification.
+           *
+           * The provider is intentionally not registered globally. Android's default JCA provider set
+           * does not expose a portable Ed25519 KeyFactory contract on every supported API level, and a
+           * key parsed by Bouncy Castle must be verified by the same compatible provider family.
+           */
+          internal object AndroidProductRuntimeProtectedModelCrypto {
+              val signatureProvider: Provider by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+                  BouncyCastleProvider()
+              }
+          }
+          EOF
+
+          mkdir -p android-runtime/src/androidTest/kotlin/pro/liliya/android/runtime
+          cat > android-runtime/src/androidTest/kotlin/pro/liliya/android/runtime/AndroidProductRuntimeProtectedModelSignerTrustInstrumentedTest.kt <<'EOF'
+          package pro.liliya.android.runtime
+
+          import androidx.test.ext.junit.runners.AndroidJUnit4
+          import java.security.KeyPairGenerator
+          import java.security.Signature
+          import kotlin.test.assertContentEquals
+          import kotlin.test.assertIs
+          import kotlin.test.assertTrue
+          import org.bouncycastle.jce.provider.BouncyCastleProvider
+          import org.junit.Test
+          import org.junit.runner.RunWith
+          import pro.liliya.core.protectedmodel.ProtectedModelSignatureAlgorithm
+          import pro.liliya.core.protectedmodel.ProtectedModelSignerId
+
+          @RunWith(AndroidJUnit4::class)
+          class AndroidProductRuntimeProtectedModelSignerTrustInstrumentedTest {
+              @Test
+              fun portable_ed25519_x509_key_is_parsed_and_verified_on_android() {
+                  val sourceProvider = BouncyCastleProvider()
+                  val pair = KeyPairGenerator.getInstance("Ed25519", sourceProvider).generateKeyPair()
+                  val result = AndroidProductRuntimeProtectedModelSignerTrust.create(
+                      listOf(
+                          AndroidProductRuntimeProtectedModelSignerTrustKey(
+                              signerId = "android-portable-signer",
+                              material = pair.public.encoded
+                          )
+                      )
+                  )
+
+                  val ready = assertIs<AndroidProductRuntimeProtectedModelSignerTrustResult.Ready>(result)
+                  val trusted = requireNotNull(
+                      ready.resolver.resolve(
+                          ProtectedModelSignerId("android-portable-signer"),
+                          ProtectedModelSignatureAlgorithm.ED25519
+                      )
+                  )
+                  assertContentEquals(pair.public.encoded, trusted.encoded)
+
+                  val message = "android-protected-model-signer-boundary".encodeToByteArray()
+                  val signer = Signature.getInstance("Ed25519", sourceProvider)
+                  signer.initSign(pair.private)
+                  signer.update(message)
+                  val signature = signer.sign()
+
+                  val verifier = Signature.getInstance(
+                      "Ed25519",
+                      AndroidProductRuntimeProtectedModelCrypto.signatureProvider
+                  )
+                  verifier.initVerify(trusted)
+                  verifier.update(message)
+                  assertTrue(verifier.verify(signature))
+              }
+          }
+          EOF
+
+          git diff --check
+          git status --short
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle 9.6.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.1'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Compile and test bounded slice
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle \
+            :core:test \
+            :android-runtime:testDebugUnitTest \
+            :android-runtime:assembleDebug \
+            :android-runtime:assembleDebugAndroidTest \
+            --console=plain
+
+      - name: Publish one clean candidate commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add \
+            core/src/main/kotlin/pro/liliya/core/protectedmodel/LargeProtectedModelSegmentedCrypto.kt \
+            android-runtime/build.gradle.kts \
+            android-runtime/src/main/kotlin/pro/liliya/android/runtime/AndroidProductRuntimeProtectedModelCrypto.kt \
+            android-runtime/src/main/kotlin/pro/liliya/android/runtime/AndroidProductRuntimeProtectedModelSignerTrust.kt \
+            android-runtime/src/main/kotlin/pro/liliya/android/runtime/AndroidProductRuntimeProtectedModelStagingProvisioning.kt \
+            android-runtime/src/androidTest/kotlin/pro/liliya/android/runtime/AndroidProductRuntimeProtectedModelSignerTrustInstrumentedTest.kt
+          test "$(git status --short | wc -l)" -eq 6
+          TREE="$(git write-tree)"
+          echo "ACCEPTED_TREE=$TREE"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          COMMIT="$(printf '%s\n' 'Android protected-model Ed25519 provider boundary v0.1' | git commit-tree "$TREE" -p origin/main)"
+          echo "CANDIDATE_COMMIT=$COMMIT"
+          git push --force origin "$COMMIT":refs/heads/development-android-protected-model-signer-trust-v0.1
