@@ -35,6 +35,16 @@ class LiliyaApplication : Application() {
     ): ProductionAndroidFirstRunProductInstallResult =
         ProductionAndroidFirstRunProductInstall.prepareAndInstall(input)
 
+    internal fun acquireAndConfigureFirstRun(
+        licenseAcquisition: ProductionAndroidFirstRunLicenseAcquisitionPort,
+        productInput: ProductionAndroidFirstRunProductInputPort
+    ): ProductionAndroidFirstRunAcquisitionResult =
+        ProductionAndroidFirstRunAcquisitionOrchestrator.prepareAndInstall(
+            localModelFile = ProductionAndroidLocalModelSelection.current(),
+            licenseAcquisition = licenseAcquisition,
+            productInput = productInput
+        )
+
     fun provisionRuntime(
         ports: AndroidProductRuntimeStartupProvisioningPorts
     ): ProductionAndroidRuntimeStartupInstallResult =
