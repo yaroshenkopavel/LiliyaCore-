@@ -108,7 +108,7 @@ jobs:
           sha256sum "$out"/*.tar.gz > "$out/SHA256SUMS"
           for f in "$out"/*.tar.gz; do
             base="$(basename "$f")"
-            split -b 300M -d -a 2 "$f" "$out/chunks/${base}.part-"
+            split -b 280M -d -a 2 "$f" "$out/chunks/${base}.part-"
           done
           cp "$out/SHA256SUMS" "$out/chunks/"
           cp "$out/environment.txt" "$out/chunks/"
@@ -124,42 +124,122 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-      - name: Upload chunk 00
+      - name: Upload JDK chunk 00
         uses: actions/upload-artifact@v4
         with:
-          name: local-env-chunk-00-78f4b7f5
-          path: .local-env-export/chunks/*.part-00
+          name: local-env-jdk17-p00-78f4b7f5
+          path: .local-env-export/chunks/jdk17.tar.gz.part-00
           if-no-files-found: error
           retention-days: 1
 
-      - name: Upload chunk 01
+      - name: Upload JDK chunk 01
         uses: actions/upload-artifact@v4
         with:
-          name: local-env-chunk-01-78f4b7f5
-          path: .local-env-export/chunks/*.part-01
+          name: local-env-jdk17-p01-78f4b7f5
+          path: .local-env-export/chunks/jdk17.tar.gz.part-01
           if-no-files-found: ignore
           retention-days: 1
 
-      - name: Upload chunk 02
+      - name: Upload Gradle chunk 00
         uses: actions/upload-artifact@v4
         with:
-          name: local-env-chunk-02-78f4b7f5
-          path: .local-env-export/chunks/*.part-02
+          name: local-env-gradle-p00-78f4b7f5
+          path: .local-env-export/chunks/gradle-9.6.1.tar.gz.part-00
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Upload Gradle chunk 01
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-env-gradle-p01-78f4b7f5
+          path: .local-env-export/chunks/gradle-9.6.1.tar.gz.part-01
           if-no-files-found: ignore
           retention-days: 1
 
-      - name: Upload chunk 03
+      - name: Upload SDK build chunk 00
         uses: actions/upload-artifact@v4
         with:
-          name: local-env-chunk-03-78f4b7f5
-          path: .local-env-export/chunks/*.part-03
+          name: local-env-sdk-build-p00-78f4b7f5
+          path: .local-env-export/chunks/android-sdk-build.tar.gz.part-00
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Upload SDK build chunk 01
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-env-sdk-build-p01-78f4b7f5
+          path: .local-env-export/chunks/android-sdk-build.tar.gz.part-01
           if-no-files-found: ignore
           retention-days: 1
 
-      - name: Upload chunk 04
+      - name: Upload native chunk 00
         uses: actions/upload-artifact@v4
         with:
-          name: local-env-chunk-04-78f4b7f5
-          path: .local-env-export/chunks/*.part-04
+          name: local-env-native-p00-78f4b7f5
+          path: .local-env-export/chunks/android-native-toolchain.tar.gz.part-00
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Upload native chunk 01
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-env-native-p01-78f4b7f5
+          path: .local-env-export/chunks/android-native-toolchain.tar.gz.part-01
+          if-no-files-found: ignore
+          retention-days: 1
+
+      - name: Upload native chunk 02
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-env-native-p02-78f4b7f5
+          path: .local-env-export/chunks/android-native-toolchain.tar.gz.part-02
+          if-no-files-found: ignore
+          retention-days: 1
+
+      - name: Upload native chunk 03
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-env-native-p03-78f4b7f5
+          path: .local-env-export/chunks/android-native-toolchain.tar.gz.part-03
+          if-no-files-found: ignore
+          retention-days: 1
+
+      - name: Upload Gradle home chunk 00
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-env-gradle-home-p00-78f4b7f5
+          path: .local-env-export/chunks/gradle-home.tar.gz.part-00
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Upload Gradle home chunk 01
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-env-gradle-home-p01-78f4b7f5
+          path: .local-env-export/chunks/gradle-home.tar.gz.part-01
+          if-no-files-found: ignore
+          retention-days: 1
+
+      - name: Upload Gradle home chunk 02
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-env-gradle-home-p02-78f4b7f5
+          path: .local-env-export/chunks/gradle-home.tar.gz.part-02
+          if-no-files-found: ignore
+          retention-days: 1
+
+      - name: Upload Gradle home chunk 03
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-env-gradle-home-p03-78f4b7f5
+          path: .local-env-export/chunks/gradle-home.tar.gz.part-03
+          if-no-files-found: ignore
+          retention-days: 1
+
+      - name: Upload Gradle home chunk 04
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-env-gradle-home-p04-78f4b7f5
+          path: .local-env-export/chunks/gradle-home.tar.gz.part-04
           if-no-files-found: ignore
           retention-days: 1
