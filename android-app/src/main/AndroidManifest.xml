@@ -7,6 +7,9 @@
         android:supportsRtl="true">
         <activity
             android:name=".LiliyaActivity"
+            android:exported="false" />
+        <activity
+            android:name=".LiliyaProvisioningActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
