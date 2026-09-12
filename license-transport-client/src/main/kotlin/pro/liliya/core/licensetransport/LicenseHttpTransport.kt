@@ -45,14 +45,15 @@ data class LicenseHttpEngineRequest(
     val endpoint: URL,
     val connectTimeoutMillis: Int,
     val readTimeoutMillis: Int,
-    val body: ByteArray
+    val body: ByteArray,
+    val authorizationBearer: ByteArray? = null
 ) {
     override fun toString(): String =
         "LicenseHttpEngineRequest(endpoint=" +
             endpoint.protocol + "://" + endpoint.host + "/<redacted-path>" +
             ",connectTimeoutMillis=" + connectTimeoutMillis +
             ",readTimeoutMillis=" + readTimeoutMillis +
-            ",body=<redacted>)"
+            ",body=<redacted>,authorizationBearer=<redacted>)"
 }
 
 data class LicenseHttpEngineResponse(
@@ -99,6 +100,12 @@ class UrlConnectionLicenseHttpEngine : LicenseHttpEngine {
             activeConnection.doOutput = true
             activeConnection.setRequestProperty("Content-Type", "application/json")
             activeConnection.setRequestProperty("Accept", "application/json")
+            request.authorizationBearer?.let { bearer ->
+                activeConnection.setRequestProperty(
+                    "Authorization",
+                    "Bearer ${bearer.toString(Charsets.UTF_8)}"
+                )
+            }
 
             cancellationRegistration = cancellation.register {
                 activeConnection.disconnect()
@@ -201,6 +208,28 @@ class LicenseHttpTransportClient(
     fun execute(
         request: LicenseServiceTransportRequest,
         cancellation: LicenseTransportCancellation = LicenseTransportCancellation()
+    ): LicenseClientTransportResult =
+        executeInternal(
+            request = request,
+            authentication = null,
+            cancellation = cancellation
+        )
+
+    fun execute(
+        request: LicenseServiceTransportRequest,
+        authentication: LicenseHttpBearerCredential,
+        cancellation: LicenseTransportCancellation = LicenseTransportCancellation()
+    ): LicenseClientTransportResult =
+        executeInternal(
+            request = request,
+            authentication = authentication,
+            cancellation = cancellation
+        )
+
+    private fun executeInternal(
+        request: LicenseServiceTransportRequest,
+        authentication: LicenseHttpBearerCredential?,
+        cancellation: LicenseTransportCancellation
     ): LicenseClientTransportResult {
         if (cancellation.isCancelled()) {
             return LicenseClientTransportResult.Failed(
@@ -216,15 +245,28 @@ class LicenseHttpTransportClient(
             )
         }
 
-        val engineResult = engine.execute(
-            LicenseHttpEngineRequest(
-                endpoint = config.endpoint,
-                connectTimeoutMillis = config.connectTimeoutMillis,
-                readTimeoutMillis = config.readTimeoutMillis,
-                body = body
-            ),
-            cancellation
-        )
+        val bearer = try {
+            authentication?.copyBytes()
+        } catch (_: RuntimeException) {
+            return LicenseClientTransportResult.Failed(
+                LicenseClientTransportFailure.INVALID_LOCAL_REQUEST
+            )
+        }
+
+        val engineResult = try {
+            engine.execute(
+                LicenseHttpEngineRequest(
+                    endpoint = config.endpoint,
+                    connectTimeoutMillis = config.connectTimeoutMillis,
+                    readTimeoutMillis = config.readTimeoutMillis,
+                    body = body,
+                    authorizationBearer = bearer
+                ),
+                cancellation
+            )
+        } finally {
+            bearer?.fill(0)
+        }
 
         if (cancellation.isCancelled()) {
             return LicenseClientTransportResult.Failed(
