@@ -39,6 +39,58 @@ class ProductionAndroidLocalModelSelectionContractTest {
     }
 
     @Test
+    fun exact_user_selection_is_restored_after_process_local_state_is_lost() {
+        val root = Files.createTempDirectory("liliya-model-selection-restart").toFile()
+            .also(roots::add)
+        val bytes = byteArrayOf(9, 8, 7, 6, 5, 4)
+
+        val selected = assertIs<ProductionAndroidLocalModelSelectionResult.Selected>(
+            ProductionAndroidLocalModelSelection.importSelected(root) {
+                ByteArrayInputStream(bytes)
+            }
+        ).file
+
+        ProductionAndroidLocalModelSelection.clearForTests()
+        assertNull(ProductionAndroidLocalModelSelection.current())
+
+        val restored = ProductionAndroidLocalModelSelection.restore(root)
+
+        assertEquals(selected.canonicalFile, restored)
+        assertEquals(selected.canonicalFile, ProductionAndroidLocalModelSelection.current())
+        assertContentEquals(bytes, restored?.readBytes())
+    }
+
+    @Test
+    fun malformed_or_traversing_durable_pointer_fails_closed_without_model_discovery() {
+        val root = Files.createTempDirectory("liliya-model-selection-malformed").toFile()
+            .also(roots::add)
+        val undiscovered = File(root, "model-${"a".repeat(64)}.bin").apply {
+            writeBytes(byteArrayOf(1, 2, 3))
+        }
+        File(root, "selected-model-v1").writeText("../${undiscovered.name}")
+
+        val restored = ProductionAndroidLocalModelSelection.restore(root)
+
+        assertNull(restored)
+        assertNull(ProductionAndroidLocalModelSelection.current())
+        assertTrue(undiscovered.isFile)
+    }
+
+    @Test
+    fun stale_durable_pointer_fails_closed_without_selecting_another_imported_model() {
+        val root = Files.createTempDirectory("liliya-model-selection-stale").toFile()
+            .also(roots::add)
+        val staleName = "model-${"b".repeat(64)}.bin"
+        File(root, "selected-model-v1").writeText(staleName)
+        File(root, "model-${"c".repeat(64)}.bin").writeBytes(byteArrayOf(4, 5, 6))
+
+        val restored = ProductionAndroidLocalModelSelection.restore(root)
+
+        assertNull(restored)
+        assertNull(ProductionAndroidLocalModelSelection.current())
+    }
+
+    @Test
     fun empty_document_is_rejected_without_model_ownership() {
         val root = Files.createTempDirectory("liliya-model-selection-empty").toFile()
             .also(roots::add)
