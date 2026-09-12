@@ -29,6 +29,21 @@ jobs:
         with:
           gradle-version: '9.6.1'
 
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install exact Android components
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager \
+            'platform-tools' \
+            'platforms;android-35' \
+            'build-tools;36.0.0' \
+            'ndk;29.0.13113456' \
+            'cmake;3.31.6'
+
       - name: Apply candidate exact bytes
         shell: bash
         run: |
