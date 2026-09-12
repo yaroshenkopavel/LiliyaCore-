@@ -1,6 +1,8 @@
 package pro.liliya.app
 
 import android.app.Application
+import android.net.Uri
+import java.io.File
 import pro.liliya.android.runtime.AndroidProductRuntimeFirstRunProductInput
 import pro.liliya.android.runtime.AndroidProductRuntimeStartupCompositionRequest
 import pro.liliya.android.runtime.AndroidProductRuntimeStartupProvisioningPorts
@@ -16,6 +18,9 @@ class LiliyaApplication : Application() {
 
     @Volatile
     private var chatTask = ProductionAndroidAppChatTask()
+
+    @Volatile
+    private var localModelImportTask = ProductionAndroidLocalModelImportTask()
 
     fun configureRuntime(sources: ProductionAndroidRuntimeWiringSources): Boolean =
         ProductionAndroidRuntimeConfiguration.install(sources)
@@ -75,6 +80,27 @@ class LiliyaApplication : Application() {
     internal fun consumeApplicationChat(requestId: Long): Boolean =
         chatTask.consume(requestId)
 
+    internal fun requestLocalModelImport(
+        uri: Uri,
+        listener: (ProductionAndroidLocalModelImportTaskSnapshot.Completed) -> Unit
+    ): ProductionAndroidLocalModelImportTaskRequestResult =
+        localModelImportTask.request(
+            importModel = {
+                ProductionAndroidLocalModelSelection.importSelected(
+                    directory = File(filesDir, "models"),
+                    openInput = { contentResolver.openInputStream(uri) }
+                )
+            },
+            listener = listener
+        )
+
+    internal fun observeLocalModelImport(
+        listener: (ProductionAndroidLocalModelImportTaskSnapshot.Completed) -> Unit
+    ): ProductionAndroidLocalModelImportTaskSnapshot = localModelImportTask.observe(listener)
+
+    internal fun consumeLocalModelImport(requestId: Long): Boolean =
+        localModelImportTask.consume(requestId)
+
     @Synchronized
     internal fun replaceStartupTaskForTests(
         replacement: ProductionAndroidAppStartupTask
@@ -90,6 +116,15 @@ class LiliyaApplication : Application() {
     ): ProductionAndroidAppChatTask {
         val previous = chatTask
         chatTask = replacement
+        return previous
+    }
+
+    @Synchronized
+    internal fun replaceLocalModelImportTaskForTests(
+        replacement: ProductionAndroidLocalModelImportTask
+    ): ProductionAndroidLocalModelImportTask {
+        val previous = localModelImportTask
+        localModelImportTask = replacement
         return previous
     }
 

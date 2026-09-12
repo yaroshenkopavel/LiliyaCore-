@@ -11,15 +11,13 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
-import java.io.File
-import java.util.concurrent.Executors
 import pro.liliya.android.runtime.ProductChatResult
 
 class LiliyaActivity : Activity() {
-    private val worker = Executors.newSingleThreadExecutor()
     private lateinit var conversation: ProductConversationTranscript
     private var requestInFlight = false
     private var pendingUserMessage: String? = null
+    private var modelImportInFlight = false
     private var stateSaved = false
 
     private lateinit var status: TextView
@@ -54,6 +52,7 @@ class LiliyaActivity : Activity() {
             input.setText(pendingRetry)
             input.setSelection(pendingRetry.length)
         }
+        restoreLocalModelImportState()
         app.startApplicationRuntimeAsync { result ->
             runOnUiThread {
                 if (isFinishing || isDestroyed || isChangingConfigurations) return@runOnUiThread
@@ -68,6 +67,7 @@ class LiliyaActivity : Activity() {
         stateSaved = false
         if (restoreAfterSavedState && ::conversation.isInitialized && ::input.isInitialized) {
             restoreApplicationChatState()
+            restoreLocalModelImportState()
         }
     }
 
@@ -115,12 +115,6 @@ class LiliyaActivity : Activity() {
         super.onSaveInstanceState(outState)
     }
 
-    override fun onDestroy() {
-        // This worker owns only Activity-scoped model-import work. Chat execution is Application-owned.
-        worker.shutdownNow()
-        super.onDestroy()
-    }
-
     @Deprecated("Legacy activity result API is intentionally bounded to this minimal host.")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
@@ -136,29 +130,23 @@ class LiliyaActivity : Activity() {
             return
         }
 
-        selectModel.isEnabled = false
-        status.text = "Импорт модели…"
-
-        worker.execute {
-            val result = ProductionAndroidLocalModelSelection.importSelected(
-                directory = File(filesDir, "models"),
-                openInput = { contentResolver.openInputStream(uri) }
+        modelImportInFlight = true
+        renderModelImportInFlight()
+        when (
+            app.requestLocalModelImport(
+                uri = uri,
+                listener = ::deliverLocalModelImportCompletion
             )
-            runOnUiThread {
-                if (isFinishing || isDestroyed) return@runOnUiThread
-                selectModel.isEnabled = true
-                when (result) {
-                    is ProductionAndroidLocalModelSelectionResult.Selected -> {
-                        selectModel.text = "Выбрать другую модель"
-                        status.text = "Модель выбрана. Требуются остальные параметры запуска"
-                    }
-                    ProductionAndroidLocalModelSelectionResult.EmptyDocument ->
-                        status.text = "Выбранный файл модели пуст"
-                    ProductionAndroidLocalModelSelectionResult.Failed ->
-                        status.text = "Не удалось импортировать выбранную модель"
-                }
-            }
+        ) {
+            is ProductionAndroidLocalModelImportTaskRequestResult.Started -> Unit
+            ProductionAndroidLocalModelImportTaskRequestResult.Busy ->
+                restoreLocalModelImportState()
         }
+    }
+
+    @Suppress("DEPRECATION")
+    internal fun deliverLocalModelSelectionResultForTests(resultCode: Int, data: Intent?) {
+        onActivityResult(LOCAL_MODEL_DOCUMENT_REQUEST, resultCode, data)
     }
 
     private fun buildContent(): View {
@@ -235,6 +223,7 @@ class LiliyaActivity : Activity() {
     }
 
     private fun launchLocalModelPicker() {
+        if (modelImportInFlight) return
         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
             type = "*/*"
@@ -345,6 +334,55 @@ class LiliyaActivity : Activity() {
         send.isEnabled = ready
     }
 
+    private fun restoreLocalModelImportState() {
+        when (val snapshot = app.observeLocalModelImport(::deliverLocalModelImportCompletion)) {
+            ProductionAndroidLocalModelImportTaskSnapshot.Idle -> {
+                modelImportInFlight = false
+            }
+            is ProductionAndroidLocalModelImportTaskSnapshot.InFlight -> {
+                modelImportInFlight = true
+                renderModelImportInFlight()
+            }
+            is ProductionAndroidLocalModelImportTaskSnapshot.Completed -> {
+                modelImportInFlight = true
+                renderModelImportInFlight()
+                deliverLocalModelImportCompletion(snapshot)
+            }
+        }
+    }
+
+    private fun deliverLocalModelImportCompletion(
+        completed: ProductionAndroidLocalModelImportTaskSnapshot.Completed
+    ) {
+        runOnUiThread {
+            if (isFinishing || isDestroyed || isChangingConfigurations || stateSaved) {
+                return@runOnUiThread
+            }
+            if (!app.consumeLocalModelImport(completed.requestId)) return@runOnUiThread
+            modelImportInFlight = false
+            selectModel.isEnabled = true
+            selectModel.visibility = View.VISIBLE
+            when (completed.result) {
+                is ProductionAndroidLocalModelSelectionResult.Selected -> {
+                    selectModel.text = "Выбрать другую модель"
+                    status.text = "Модель выбрана. Требуются остальные параметры запуска"
+                }
+                ProductionAndroidLocalModelSelectionResult.EmptyDocument ->
+                    status.text = "Выбранный файл модели пуст"
+                ProductionAndroidLocalModelSelectionResult.Failed ->
+                    status.text = "Не удалось импортировать выбранную модель"
+            }
+        }
+    }
+
+    private fun renderModelImportInFlight() {
+        status.text = "Импорт модели…"
+        selectModel.visibility = View.VISIBLE
+        selectModel.isEnabled = false
+        input.isEnabled = false
+        send.isEnabled = false
+    }
+
     private fun renderConversationAndRevealLatest() {
         transcript.text = conversation.render()
         revealLatestTranscriptTurn()
@@ -359,6 +397,10 @@ class LiliyaActivity : Activity() {
     }
 
     private fun renderStartupTaskResult(result: ProductionAndroidAppStartupTaskResult) {
+        if (modelImportInFlight) {
+            renderModelImportInFlight()
+            return
+        }
         when (result) {
             is ProductionAndroidAppStartupTaskResult.Completed ->
                 renderStartupOutcome(result.outcome)
@@ -392,6 +434,10 @@ class LiliyaActivity : Activity() {
     }
 
     private fun renderState(state: ProductionAndroidAppRuntimeState) {
+        if (modelImportInFlight) {
+            renderModelImportInFlight()
+            return
+        }
         if (state == ProductionAndroidAppRuntimeState.READY && requestInFlight) {
             status.text = "Думаю…"
             selectModel.visibility = View.GONE
@@ -416,6 +462,7 @@ class LiliyaActivity : Activity() {
         selectModel.visibility =
             if (state == ProductionAndroidAppRuntimeState.CONFIGURATION_REQUIRED) View.VISIBLE
             else View.GONE
+        selectModel.isEnabled = true
         input.isEnabled = ready
         send.isEnabled = ready
     }
