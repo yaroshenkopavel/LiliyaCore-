@@ -23,6 +23,7 @@ sealed interface ProductionAndroidLocalModelSelectionResult {
  * Local Model Selection != Model Discovery.
  * Local Model Selection != Model Download.
  * Local Model Selection != Model Compatibility Policy.
+ * Durable Selection Pointer != Model Trust or Compatibility Acceptance.
  */
 object ProductionAndroidLocalModelSelection {
     @Volatile
@@ -99,18 +100,93 @@ object ProductionAndroidLocalModelSelection {
                 )
             }
 
+            if (!persistSelectionPointer(directory, exact.name)) {
+                selectedModel = null
+                return ProductionAndroidLocalModelSelectionResult.Failed
+            }
+
             selectedModel = exact
             ProductionAndroidLocalModelSelectionResult.Selected(exact)
         } catch (_: Exception) {
             temp.delete()
+            selectedModel = null
             ProductionAndroidLocalModelSelectionResult.Failed
         }
     }
 
     internal fun current(): File? = selectedModel
 
+    /**
+     * Restores only the exact previously committed user selection.
+     *
+     * This intentionally does not scan the directory or select another model when the durable
+     * pointer is missing, malformed, stale, or escapes the exact model directory.
+     */
+    @Synchronized
+    internal fun restore(directory: File): File? {
+        selectedModel = null
+        val pointer = File(directory, SELECTION_POINTER_FILE)
+        if (!pointer.isFile) return null
+
+        val fileName = try {
+            pointer.readText(Charsets.UTF_8).trim()
+        } catch (_: Exception) {
+            return null
+        }
+        if (!MODEL_FILE_NAME.matches(fileName)) return null
+
+        val root = try {
+            directory.canonicalFile
+        } catch (_: Exception) {
+            return null
+        }
+        val restored = try {
+            File(root, fileName).canonicalFile
+        } catch (_: Exception) {
+            return null
+        }
+        if (restored.parentFile != root || !restored.isFile) return null
+
+        selectedModel = restored
+        return restored
+    }
+
     @Synchronized
     internal fun clearForTests() {
         selectedModel = null
     }
+
+    private fun persistSelectionPointer(directory: File, fileName: String): Boolean {
+        if (!MODEL_FILE_NAME.matches(fileName)) return false
+        val temp = try {
+            File.createTempFile("selected-model-", ".tmp", directory)
+        } catch (_: Exception) {
+            return false
+        }
+        return try {
+            temp.writeText(fileName, Charsets.UTF_8)
+            val pointer = File(directory, SELECTION_POINTER_FILE)
+            try {
+                Files.move(
+                    temp.toPath(),
+                    pointer.toPath(),
+                    StandardCopyOption.ATOMIC_MOVE,
+                    StandardCopyOption.REPLACE_EXISTING
+                )
+            } catch (_: AtomicMoveNotSupportedException) {
+                Files.move(
+                    temp.toPath(),
+                    pointer.toPath(),
+                    StandardCopyOption.REPLACE_EXISTING
+                )
+            }
+            true
+        } catch (_: Exception) {
+            temp.delete()
+            false
+        }
+    }
+
+    private const val SELECTION_POINTER_FILE = "selected-model-v1"
+    private val MODEL_FILE_NAME = Regex("^model-[0-9a-f]{64}\\.bin$")
 }

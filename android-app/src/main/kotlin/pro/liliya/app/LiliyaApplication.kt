@@ -22,6 +22,11 @@ class LiliyaApplication : Application() {
     @Volatile
     private var localModelImportTask = ProductionAndroidLocalModelImportTask()
 
+    override fun onCreate() {
+        super.onCreate()
+        ProductionAndroidLocalModelSelection.restore(File(filesDir, "models"))
+    }
+
     fun configureRuntime(sources: ProductionAndroidRuntimeWiringSources): Boolean =
         ProductionAndroidRuntimeConfiguration.install(sources)
 
