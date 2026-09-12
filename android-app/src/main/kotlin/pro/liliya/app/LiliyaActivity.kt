@@ -20,6 +20,7 @@ class LiliyaActivity : Activity() {
     private lateinit var conversation: ProductConversationTranscript
     private var requestInFlight = false
     private var pendingUserMessage: String? = null
+    private var stateSaved = false
 
     private lateinit var status: TextView
     private lateinit var transcript: TextView
@@ -51,7 +52,17 @@ class LiliyaActivity : Activity() {
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        val restoreAfterSavedState = stateSaved
+        stateSaved = false
+        if (restoreAfterSavedState && ::conversation.isInitialized && ::input.isInitialized) {
+            restoreApplicationChatState()
+        }
+    }
+
     override fun onSaveInstanceState(outState: Bundle) {
+        stateSaved = true
         val pending = pendingUserMessage
         val snapshot = if (requestInFlight && pending != null) {
             conversation.snapshotWithinBudgetExcludingLastUser(
@@ -263,7 +274,10 @@ class LiliyaActivity : Activity() {
         completed: ProductionAndroidAppChatTaskSnapshot.Completed
     ) {
         runOnUiThread {
-            if (isFinishing || isDestroyed || isChangingConfigurations) return@runOnUiThread
+            if (isFinishing || isDestroyed || isChangingConfigurations || stateSaved) {
+                return@runOnUiThread
+            }
+            if (!app.consumeApplicationChat(completed.requestId)) return@runOnUiThread
             applyApplicationChatCompletion(completed)
         }
     }
@@ -300,7 +314,6 @@ class LiliyaActivity : Activity() {
             }
         }
 
-        app.consumeApplicationChat(completed.requestId)
         val ready = app.runtimeOwner.state() == ProductionAndroidAppRuntimeState.READY
         input.isEnabled = ready
         send.isEnabled = ready
