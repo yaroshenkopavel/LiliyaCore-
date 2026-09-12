@@ -18,6 +18,7 @@ class LiliyaActivity : Activity() {
     private var requestInFlight = false
     private var pendingUserMessage: String? = null
     private var modelImportInFlight = false
+    private var firstRunAcquisitionInFlight = false
     private var stateSaved = false
 
     private lateinit var status: TextView
@@ -26,6 +27,7 @@ class LiliyaActivity : Activity() {
     private lateinit var input: EditText
     private lateinit var send: Button
     private lateinit var selectModel: Button
+    private lateinit var prepareFirstRun: Button
 
     private val app: LiliyaApplication
         get() = application as LiliyaApplication
@@ -53,12 +55,8 @@ class LiliyaActivity : Activity() {
             input.setSelection(pendingRetry.length)
         }
         restoreLocalModelImportState()
-        app.startApplicationRuntimeAsync { result ->
-            runOnUiThread {
-                if (isFinishing || isDestroyed || isChangingConfigurations) return@runOnUiThread
-                renderStartupTaskResult(result)
-            }
-        }
+        restoreFirstRunAcquisitionState()
+        requestApplicationStartup()
     }
 
     override fun onStart() {
@@ -68,6 +66,7 @@ class LiliyaActivity : Activity() {
         if (restoreAfterSavedState && ::conversation.isInitialized && ::input.isInitialized) {
             restoreApplicationChatState()
             restoreLocalModelImportState()
+            restoreFirstRunAcquisitionState()
         }
     }
 
@@ -181,6 +180,13 @@ class LiliyaActivity : Activity() {
         }
         root.addView(selectModel)
 
+        prepareFirstRun = Button(this).apply {
+            text = "Подготовить запуск"
+            visibility = View.GONE
+            setOnClickListener { requestFirstRunAcquisition() }
+        }
+        root.addView(prepareFirstRun)
+
         transcript = TextView(this).apply {
             textSize = 16f
             text = conversation.render()
@@ -223,7 +229,7 @@ class LiliyaActivity : Activity() {
     }
 
     private fun launchLocalModelPicker() {
-        if (modelImportInFlight) return
+        if (modelImportInFlight || firstRunAcquisitionInFlight) return
         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
             type = "*/*"
@@ -361,16 +367,19 @@ class LiliyaActivity : Activity() {
             if (!app.consumeLocalModelImport(completed.requestId)) return@runOnUiThread
             modelImportInFlight = false
             selectModel.isEnabled = true
-            selectModel.visibility = View.VISIBLE
             when (completed.result) {
                 is ProductionAndroidLocalModelSelectionResult.Selected -> {
                     selectModel.text = "Выбрать другую модель"
-                    status.text = "Модель выбрана. Требуются остальные параметры запуска"
+                    renderState(ProductionAndroidAppRuntimeState.CONFIGURATION_REQUIRED)
                 }
-                ProductionAndroidLocalModelSelectionResult.EmptyDocument ->
+                ProductionAndroidLocalModelSelectionResult.EmptyDocument -> {
+                    renderState(ProductionAndroidAppRuntimeState.CONFIGURATION_REQUIRED)
                     status.text = "Выбранный файл модели пуст"
-                ProductionAndroidLocalModelSelectionResult.Failed ->
+                }
+                ProductionAndroidLocalModelSelectionResult.Failed -> {
+                    renderState(ProductionAndroidAppRuntimeState.CONFIGURATION_REQUIRED)
                     status.text = "Не удалось импортировать выбранную модель"
+                }
             }
         }
     }
@@ -379,8 +388,120 @@ class LiliyaActivity : Activity() {
         status.text = "Импорт модели…"
         selectModel.visibility = View.VISIBLE
         selectModel.isEnabled = false
+        prepareFirstRun.visibility = View.GONE
+        prepareFirstRun.isEnabled = false
         input.isEnabled = false
         send.isEnabled = false
+    }
+
+    private fun restoreFirstRunAcquisitionState() {
+        when (val snapshot = app.observeFirstRunAcquisition(::deliverFirstRunAcquisitionCompletion)) {
+            ProductionAndroidFirstRunAcquisitionTaskSnapshot.Idle -> {
+                firstRunAcquisitionInFlight = false
+            }
+            is ProductionAndroidFirstRunAcquisitionTaskSnapshot.InFlight -> {
+                firstRunAcquisitionInFlight = true
+                renderFirstRunAcquisitionInFlight()
+            }
+            is ProductionAndroidFirstRunAcquisitionTaskSnapshot.Completed -> {
+                firstRunAcquisitionInFlight = true
+                renderFirstRunAcquisitionInFlight()
+                deliverFirstRunAcquisitionCompletion(snapshot)
+            }
+        }
+    }
+
+    private fun requestFirstRunAcquisition() {
+        if (firstRunAcquisitionInFlight || modelImportInFlight) return
+        firstRunAcquisitionInFlight = true
+        renderFirstRunAcquisitionInFlight()
+        when (
+            app.requestFirstRunAcquisition(::deliverFirstRunAcquisitionCompletion)
+        ) {
+            is ProductionAndroidFirstRunAcquisitionTaskRequestResult.Started -> Unit
+            ProductionAndroidFirstRunAcquisitionTaskRequestResult.Busy ->
+                restoreFirstRunAcquisitionState()
+        }
+    }
+
+    private fun deliverFirstRunAcquisitionCompletion(
+        completed: ProductionAndroidFirstRunAcquisitionTaskSnapshot.Completed
+    ) {
+        runOnUiThread {
+            if (isFinishing || isDestroyed || isChangingConfigurations || stateSaved) {
+                return@runOnUiThread
+            }
+            if (!app.consumeFirstRunAcquisition(completed.requestId)) return@runOnUiThread
+            firstRunAcquisitionInFlight = false
+            applyFirstRunAcquisitionResult(completed.result)
+        }
+    }
+
+    private fun applyFirstRunAcquisitionResult(result: ProductionAndroidFirstRunAcquisitionResult) {
+        when (result) {
+            is ProductionAndroidFirstRunAcquisitionResult.Installed,
+            ProductionAndroidFirstRunAcquisitionResult.AlreadyConfigured -> {
+                status.text = "Конфигурация подготовлена. Запуск…"
+                selectModel.visibility = View.GONE
+                prepareFirstRun.visibility = View.GONE
+                input.isEnabled = false
+                send.isEnabled = false
+                requestApplicationStartup()
+            }
+            ProductionAndroidFirstRunAcquisitionResult.HostConfigurationRequired -> {
+                renderState(ProductionAndroidAppRuntimeState.CONFIGURATION_REQUIRED)
+                status.text = "Требуется конфигурация продукта"
+            }
+            ProductionAndroidFirstRunAcquisitionResult.LocalModelRequired -> {
+                renderState(ProductionAndroidAppRuntimeState.CONFIGURATION_REQUIRED)
+                status.text = "Требуется локальная модель"
+            }
+            is ProductionAndroidFirstRunAcquisitionResult.LicenseServiceRejected -> {
+                renderState(ProductionAndroidAppRuntimeState.CONFIGURATION_REQUIRED)
+                status.text = "Сервис лицензии отклонил запрос"
+            }
+            is ProductionAndroidFirstRunAcquisitionResult.LicenseAcquisitionFailed -> {
+                renderState(ProductionAndroidAppRuntimeState.CONFIGURATION_REQUIRED)
+                status.text = "Не удалось получить лицензию"
+            }
+            is ProductionAndroidFirstRunAcquisitionResult.ProductInputRejected -> {
+                renderState(ProductionAndroidAppRuntimeState.CONFIGURATION_REQUIRED)
+                status.text = "Параметры запуска отклонены"
+            }
+            ProductionAndroidFirstRunAcquisitionResult.TrustVerificationRejected -> {
+                renderState(ProductionAndroidAppRuntimeState.CONFIGURATION_REQUIRED)
+                status.text = "Проверка доверия не пройдена"
+            }
+            is ProductionAndroidFirstRunAcquisitionResult.AuthorityRejected -> {
+                renderState(ProductionAndroidAppRuntimeState.CONFIGURATION_REQUIRED)
+                status.text = "Полномочия запуска отклонены"
+            }
+            ProductionAndroidFirstRunAcquisitionResult.Failed -> {
+                renderState(ProductionAndroidAppRuntimeState.CONFIGURATION_REQUIRED)
+                status.text = "Внутренняя ошибка подготовки запуска"
+            }
+        }
+    }
+
+    private fun renderFirstRunAcquisitionInFlight() {
+        status.text = "Подготовка запуска…"
+        selectModel.visibility = View.VISIBLE
+        selectModel.isEnabled = false
+        prepareFirstRun.visibility = View.VISIBLE
+        prepareFirstRun.isEnabled = false
+        input.isEnabled = false
+        send.isEnabled = false
+    }
+
+    private fun requestApplicationStartup() {
+        app.startApplicationRuntimeAsync { result ->
+            runOnUiThread {
+                if (isFinishing || isDestroyed || isChangingConfigurations || stateSaved) {
+                    return@runOnUiThread
+                }
+                renderStartupTaskResult(result)
+            }
+        }
     }
 
     private fun renderConversationAndRevealLatest() {
@@ -397,6 +518,10 @@ class LiliyaActivity : Activity() {
     }
 
     private fun renderStartupTaskResult(result: ProductionAndroidAppStartupTaskResult) {
+        if (firstRunAcquisitionInFlight) {
+            renderFirstRunAcquisitionInFlight()
+            return
+        }
         if (modelImportInFlight) {
             renderModelImportInFlight()
             return
@@ -407,6 +532,7 @@ class LiliyaActivity : Activity() {
             ProductionAndroidAppStartupTaskResult.Failed -> {
                 status.text = "Внутренняя ошибка запуска"
                 selectModel.visibility = View.GONE
+                prepareFirstRun.visibility = View.GONE
                 input.isEnabled = false
                 send.isEnabled = false
             }
@@ -421,12 +547,14 @@ class LiliyaActivity : Activity() {
             is ProductionAndroidAppStartupOutcome.SourceRejected -> {
                 status.text = "Конфигурация запуска отклонена"
                 selectModel.visibility = View.GONE
+                prepareFirstRun.visibility = View.GONE
                 input.isEnabled = false
                 send.isEnabled = false
             }
             is ProductionAndroidAppStartupOutcome.ProvisioningRejected -> {
                 status.text = "Подготовка запуска отклонена"
                 selectModel.visibility = View.GONE
+                prepareFirstRun.visibility = View.GONE
                 input.isEnabled = false
                 send.isEnabled = false
             }
@@ -434,6 +562,10 @@ class LiliyaActivity : Activity() {
     }
 
     private fun renderState(state: ProductionAndroidAppRuntimeState) {
+        if (firstRunAcquisitionInFlight) {
+            renderFirstRunAcquisitionInFlight()
+            return
+        }
         if (modelImportInFlight) {
             renderModelImportInFlight()
             return
@@ -441,18 +573,20 @@ class LiliyaActivity : Activity() {
         if (state == ProductionAndroidAppRuntimeState.READY && requestInFlight) {
             status.text = "Думаю…"
             selectModel.visibility = View.GONE
+            prepareFirstRun.visibility = View.GONE
             input.isEnabled = false
             send.isEnabled = false
             return
         }
 
+        val modelSelected = ProductionAndroidLocalModelSelection.current() != null
+        val firstRunConfigured = app.hasFirstRunAcquisitionConfiguration()
         status.text = when (state) {
-            ProductionAndroidAppRuntimeState.CONFIGURATION_REQUIRED ->
-                if (ProductionAndroidLocalModelSelection.current() == null) {
-                    "Требуется доверенная конфигурация запуска"
-                } else {
-                    "Модель выбрана. Требуются остальные параметры запуска"
-                }
+            ProductionAndroidAppRuntimeState.CONFIGURATION_REQUIRED -> when {
+                !modelSelected -> "Требуется доверенная конфигурация запуска"
+                !firstRunConfigured -> "Модель выбрана. Требуется конфигурация продукта"
+                else -> "Модель выбрана. Можно подготовить запуск"
+            }
             ProductionAndroidAppRuntimeState.STARTING -> "Запуск…"
             ProductionAndroidAppRuntimeState.READY -> "Готова"
             ProductionAndroidAppRuntimeState.FAILED -> "Запуск отклонён"
@@ -463,6 +597,13 @@ class LiliyaActivity : Activity() {
             if (state == ProductionAndroidAppRuntimeState.CONFIGURATION_REQUIRED) View.VISIBLE
             else View.GONE
         selectModel.isEnabled = true
+        prepareFirstRun.visibility =
+            if (
+                state == ProductionAndroidAppRuntimeState.CONFIGURATION_REQUIRED &&
+                modelSelected &&
+                firstRunConfigured
+            ) View.VISIBLE else View.GONE
+        prepareFirstRun.isEnabled = prepareFirstRun.visibility == View.VISIBLE
         input.isEnabled = ready
         send.isEnabled = ready
     }
