@@ -13,7 +13,9 @@ class LiliyaApplication : Application() {
 
     @Volatile
     private var startupTask = ProductionAndroidAppStartupTask()
-    private val chatTask = ProductionAndroidAppChatTask()
+
+    @Volatile
+    private var chatTask = ProductionAndroidAppChatTask()
 
     fun configureRuntime(sources: ProductionAndroidRuntimeWiringSources): Boolean =
         ProductionAndroidRuntimeConfiguration.install(sources)
@@ -79,6 +81,15 @@ class LiliyaApplication : Application() {
     ): ProductionAndroidAppStartupTask {
         val previous = startupTask
         startupTask = replacement
+        return previous
+    }
+
+    @Synchronized
+    internal fun replaceChatTaskForTests(
+        replacement: ProductionAndroidAppChatTask
+    ): ProductionAndroidAppChatTask {
+        val previous = chatTask
+        chatTask = replacement
         return previous
     }
 
