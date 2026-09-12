@@ -12,6 +12,8 @@ jobs:
     env:
       CANONICAL_SHA: 78f4b7f5333977e6aae26fc890da3599b8d47f97
       GRADLE_USER_HOME: ${{ github.workspace }}/bridge-gradle-home
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+      ANDROID_HOME: /usr/local/lib/android/sdk
     steps:
       - name: Checkout bridge branch with full history
         uses: actions/checkout@v4
@@ -45,8 +47,10 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager \
+          SDKMANAGER="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" \
             "platforms;android-35" \
             "build-tools;35.0.0" \
             "build-tools;36.0.0" \
@@ -70,8 +74,6 @@ jobs:
           rm -rf "$GRADLE_USER_HOME"
           mkdir -p "$GRADLE_USER_HOME"
           cd /tmp/LiliyaCore-local
-          export ANDROID_HOME="$ANDROID_SDK_ROOT"
-          export ANDROID_SDK_ROOT="$ANDROID_SDK_ROOT"
           /tmp/gradle-9.6.1/bin/gradle \
             :android-app:testDebugUnitTest \
             :android-runtime:testDebugUnitTest \
@@ -88,13 +90,13 @@ jobs:
           tar -czf bridge-out/jdk17.tar.gz -C "$(dirname "$JAVA_HOME")" "$(basename "$JAVA_HOME")"
           tar -czf bridge-out/gradle-9.6.1.tar.gz -C /tmp gradle-9.6.1
           tar -czf bridge-out/gradle-home.tar.gz -C "$(dirname "$GRADLE_USER_HOME")" "$(basename "$GRADLE_USER_HOME")"
-          mkdir -p sdk-stage/platforms sdk-stage/build-tools sdk-stage/ndk sdk-stage/cmake
+          mkdir -p sdk-stage/platforms sdk-stage/build-tools
           cp -a "$ANDROID_SDK_ROOT/platform-tools" sdk-stage/
           cp -a "$ANDROID_SDK_ROOT/platforms/android-35" sdk-stage/platforms/
           cp -a "$ANDROID_SDK_ROOT/build-tools/35.0.0" sdk-stage/build-tools/
           cp -a "$ANDROID_SDK_ROOT/build-tools/36.0.0" sdk-stage/build-tools/
           cp -a "$ANDROID_SDK_ROOT/licenses" sdk-stage/ || true
-          tar -czf bridge-out/android-sdk-base.tar.gz -C sdk-stage platform-tools platforms build-tools licenses 2>/dev/null || tar -czf bridge-out/android-sdk-base.tar.gz -C sdk-stage platform-tools platforms build-tools
+          tar -czf bridge-out/android-sdk-base.tar.gz -C sdk-stage .
           tar -czf bridge-out/ndk-29.0.13113456.tar.gz -C "$ANDROID_SDK_ROOT/ndk" 29.0.13113456
           tar -czf bridge-out/cmake-3.31.6.tar.gz -C "$ANDROID_SDK_ROOT/cmake" 3.31.6
           for f in bridge-out/*.tar.gz; do
