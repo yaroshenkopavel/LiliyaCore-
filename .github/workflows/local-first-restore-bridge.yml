@@ -25,27 +25,15 @@ jobs:
         run: |
           set -euxo pipefail
           ls -lh bridge-out
-          test -f bridge-out/android-sdk-base.part.00
-          test -f bridge-out/cmake-3.31.6.part.00
-          test -f bridge-out/gradle-9.6.1.part.00
-          test -f bridge-out/gradle-home.part.00
-          test -f bridge-out/gradle-home.part.01
-          test -f bridge-out/jdk17.part.00
-          test -f bridge-out/ndk-29.0.13113456.part.00
-          test -f bridge-out/ndk-29.0.13113456.part.01
-          test -f bridge-out/ndk-29.0.13113456.part.02
-          cat > expected.sha256 <<'EOF'
-0614a35c24e732e1b8eee44bac9295bfe289330216a02757885e82d61863c06b  bridge-out/android-sdk-base.part.00
-8ada51c4f0eefa8af1b477d0c17d3fb602e44c619ec1cb9fecc8ee27304cfdd2  bridge-out/cmake-3.31.6.part.00
-19c6a57efeda8ee43bfc726c555ebee4ef321f335715a2e698ad6878ebb5090a  bridge-out/gradle-9.6.1.part.00
-3fd63ace272e56198a74d9c8d7171ac211cf5b8848f0a35941a307d5842a999c  bridge-out/gradle-home.part.00
-160aa483ac4e18051bc4334ed04178ff4e2ba41d3284ad43b6dccbafe3f72c02  bridge-out/gradle-home.part.01
-f0a238790eaf0154e2bda393d4010f1bdc23435ff4397ada6a3ae91fbe4aa72d  bridge-out/jdk17.part.00
-d7db7d4d4dafb618343df485b350121d1da14f78f51bfa8485f4bcd49abb01f5  bridge-out/ndk-29.0.13113456.part.00
-17d0a75a01a0c03eb69fd97733f7a0a5a08e48cb56f7935bb344a098bf016261  bridge-out/ndk-29.0.13113456.part.01
-e47a6c59fcc44f0ff9239aec10c0f0c74a54597e16b2e1071332cc787d392394  bridge-out/ndk-29.0.13113456.part.02
-EOF
-          sha256sum -c expected.sha256
+          echo '0614a35c24e732e1b8eee44bac9295bfe289330216a02757885e82d61863c06b  bridge-out/android-sdk-base.part.00' | sha256sum -c -
+          echo '8ada51c4f0eefa8af1b477d0c17d3fb602e44c619ec1cb9fecc8ee27304cfdd2  bridge-out/cmake-3.31.6.part.00' | sha256sum -c -
+          echo '19c6a57efeda8ee43bfc726c555ebee4ef321f335715a2e698ad6878ebb5090a  bridge-out/gradle-9.6.1.part.00' | sha256sum -c -
+          echo '3fd63ace272e56198a74d9c8d7171ac211cf5b8848f0a35941a307d5842a999c  bridge-out/gradle-home.part.00' | sha256sum -c -
+          echo '160aa483ac4e18051bc4334ed04178ff4e2ba41d3284ad43b6dccbafe3f72c02  bridge-out/gradle-home.part.01' | sha256sum -c -
+          echo 'f0a238790eaf0154e2bda393d4010f1bdc23435ff4397ada6a3ae91fbe4aa72d  bridge-out/jdk17.part.00' | sha256sum -c -
+          echo 'd7db7d4d4dafb618343df485b350121d1da14f78f51bfa8485f4bcd49abb01f5  bridge-out/ndk-29.0.13113456.part.00' | sha256sum -c -
+          echo '17d0a75a01a0c03eb69fd97733f7a0a5a08e48cb56f7935bb344a098bf016261  bridge-out/ndk-29.0.13113456.part.01' | sha256sum -c -
+          echo 'e47a6c59fcc44f0ff9239aec10c0f0c74a54597e16b2e1071332cc787d392394  bridge-out/ndk-29.0.13113456.part.02' | sha256sum -c -
 
       - name: Upload Android SDK base
         uses: actions/upload-artifact@v4
