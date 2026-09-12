@@ -105,7 +105,7 @@ class LiliyaProvisioningActivity : Activity() {
 
     private fun restoreImportState() {
         if (app.hasProductAuthCredential()) {
-            openRuntimeHost()
+            openRuntimeIfProductConfigured()
             return
         }
         when (val snapshot = app.observeProductAuthCredentialImport(::deliverImportCompletion)) {
@@ -124,11 +124,32 @@ class LiliyaProvisioningActivity : Activity() {
             if (!app.consumeProductAuthCredentialImport(completed.requestId)) return@runOnUiThread
             when (completed.result) {
                 ProductionAndroidProductAuthImportResult.Imported,
-                ProductionAndroidProductAuthImportResult.AlreadyProvisioned -> openRuntimeHost()
+                ProductionAndroidProductAuthImportResult.AlreadyProvisioned -> openRuntimeIfProductConfigured()
                 ProductionAndroidProductAuthImportResult.Rejected ->
                     renderReadyForImport("Файл доступа продукта отклонён")
                 ProductionAndroidProductAuthImportResult.Failed ->
                     renderReadyForImport("Не удалось импортировать доступ продукта")
+            }
+        }
+    }
+
+    private fun openRuntimeIfProductConfigured() {
+        if (app.hasFirstRunAcquisitionConfiguration()) {
+            openRuntimeHost()
+            return
+        }
+        when (app.configureInstalledAuthenticatedFirstRunProduct()) {
+            ProductionAndroidFirstRunDeploymentBootstrapResult.Installed,
+            ProductionAndroidFirstRunDeploymentBootstrapResult.AlreadyConfigured -> openRuntimeHost()
+            ProductionAndroidFirstRunDeploymentBootstrapResult.ProductProfileRequired -> {
+                status.text = "Требуется профиль продукта"
+                selectCredential.visibility = View.GONE
+                selectCredential.isEnabled = false
+            }
+            ProductionAndroidFirstRunDeploymentBootstrapResult.Failed -> {
+                status.text = "Не удалось настроить профиль продукта"
+                selectCredential.visibility = View.GONE
+                selectCredential.isEnabled = false
             }
         }
     }
