@@ -71,20 +71,13 @@ internal class ProductionAndroidLocalModelImportTask(
         return ProductionAndroidLocalModelImportTaskRequestResult.Started(requestId)
     }
 
+    @Synchronized
     fun observe(
         listener: (ProductionAndroidLocalModelImportTaskSnapshot.Completed) -> Unit
     ): ProductionAndroidLocalModelImportTaskSnapshot {
-        val terminal: ProductionAndroidLocalModelImportTaskSnapshot.Completed?
-        val current: ProductionAndroidLocalModelImportTaskSnapshot
-        synchronized(this) {
-            current = snapshot
-            terminal = current as? ProductionAndroidLocalModelImportTaskSnapshot.Completed
-            if (current is ProductionAndroidLocalModelImportTaskSnapshot.InFlight) {
-                listeners += listener
-            }
-        }
-        terminal?.let { completed ->
-            runCatching { listener(completed) }
+        val current = snapshot
+        if (current is ProductionAndroidLocalModelImportTaskSnapshot.InFlight) {
+            listeners += listener
         }
         return current
     }
