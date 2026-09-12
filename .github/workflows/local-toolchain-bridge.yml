@@ -1,0 +1,162 @@
+name: Local Toolchain Bridge
+
+on:
+  push:
+    branches:
+      - tooling/local-toolchain-bridge-2026-09-12
+    paths:
+      - .github/workflows/local-toolchain-bridge.yml
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout canonical main
+        uses: actions/checkout@v4
+        with:
+          ref: 78f4b7f5333977e6aae26fc890da3599b8d47f97
+          fetch-depth: 1
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Gradle 9.6.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.1'
+          cache-disabled: true
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install exact Android components
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager \
+            'platform-tools' \
+            'platforms;android-35' \
+            'build-tools;36.0.0' \
+            'ndk;29.0.13113456' \
+            'cmake;3.31.6'
+
+      - name: Warm project dependencies and verify remote baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon \
+            :android-app:testDebugUnitTest \
+            :android-runtime:testDebugUnitTest \
+            :core:test \
+            :android-app:compileDebugAndroidTestKotlin \
+            :android-app:assembleDebug
+
+      - name: Package local toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT="$RUNNER_TEMP/liliya-bridge"
+          mkdir -p "$OUT"
+
+          GRADLE_BIN="$(readlink -f "$(command -v gradle)")"
+          GRADLE_HOME="$(cd "$(dirname "$GRADLE_BIN")/.." && pwd)"
+          echo "JAVA_HOME=$JAVA_HOME"
+          echo "GRADLE_HOME=$GRADLE_HOME"
+          echo "ANDROID_HOME=$ANDROID_HOME"
+
+          tar -C "$(dirname "$JAVA_HOME")" -czf "$OUT/jdk17.tar.gz" "$(basename "$JAVA_HOME")"
+          tar -C "$(dirname "$GRADLE_HOME")" -czf "$OUT/gradle-9.6.1.tar.gz" "$(basename "$GRADLE_HOME")"
+
+          tar -C "$ANDROID_HOME" -czf "$OUT/android-core.tar.gz" \
+            platform-tools \
+            platforms/android-35 \
+            build-tools/36.0.0 \
+            cmake/3.31.6 \
+            cmdline-tools/latest \
+            licenses
+
+          tar -C "$ANDROID_HOME" -czf "$OUT/android-ndk29.tar.gz" ndk/29.0.13113456
+
+          tar -C "$HOME/.gradle" -czf "$OUT/gradle-home.tar.gz" \
+            caches \
+            kotlin-profile \
+            notifications 2>/dev/null || \
+          tar -C "$HOME/.gradle" -czf "$OUT/gradle-home.tar.gz" caches
+
+          cd "$OUT"
+          sha256sum *.tar.gz > SHA256SUMS
+          split -b 350m -d -a 2 android-ndk29.tar.gz android-ndk29.part.
+          split -b 350m -d -a 2 gradle-home.tar.gz gradle-home.part.
+          rm android-ndk29.tar.gz gradle-home.tar.gz
+          ls -lh
+
+      - name: Upload small toolchain
+        uses: actions/upload-artifact@v4
+        with:
+          name: liliya-toolchain-small
+          path: |
+            ${{ runner.temp }}/liliya-bridge/jdk17.tar.gz
+            ${{ runner.temp }}/liliya-bridge/gradle-9.6.1.tar.gz
+            ${{ runner.temp }}/liliya-bridge/android-core.tar.gz
+            ${{ runner.temp }}/liliya-bridge/SHA256SUMS
+          compression-level: 0
+          retention-days: 1
+
+      - name: Upload NDK part 00
+        uses: actions/upload-artifact@v4
+        with:
+          name: liliya-ndk29-part-00
+          path: ${{ runner.temp }}/liliya-bridge/android-ndk29.part.00
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: ignore
+
+      - name: Upload NDK part 01
+        uses: actions/upload-artifact@v4
+        with:
+          name: liliya-ndk29-part-01
+          path: ${{ runner.temp }}/liliya-bridge/android-ndk29.part.01
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: ignore
+
+      - name: Upload NDK part 02
+        uses: actions/upload-artifact@v4
+        with:
+          name: liliya-ndk29-part-02
+          path: ${{ runner.temp }}/liliya-bridge/android-ndk29.part.02
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: ignore
+
+      - name: Upload Gradle cache part 00
+        uses: actions/upload-artifact@v4
+        with:
+          name: liliya-gradle-home-part-00
+          path: ${{ runner.temp }}/liliya-bridge/gradle-home.part.00
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: ignore
+
+      - name: Upload Gradle cache part 01
+        uses: actions/upload-artifact@v4
+        with:
+          name: liliya-gradle-home-part-01
+          path: ${{ runner.temp }}/liliya-bridge/gradle-home.part.01
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: ignore
+
+      - name: Upload Gradle cache part 02
+        uses: actions/upload-artifact@v4
+        with:
+          name: liliya-gradle-home-part-02
+          path: ${{ runner.temp }}/liliya-bridge/gradle-home.part.02
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: ignore
