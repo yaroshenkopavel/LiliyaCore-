@@ -122,37 +122,90 @@ jobs:
           path: bridge-out/SHA256SUMS.txt
           retention-days: 1
 
-      - name: Upload toolchain parts 00
+      - name: Upload JDK parts
         uses: actions/upload-artifact@v4
         with:
-          name: local-first-toolchain-part00
-          path: bridge-out/*.part.00
+          name: restore-jdk17
+          path: bridge-out/jdk17.part.*
           retention-days: 1
           compression-level: 0
 
-      - name: Upload toolchain parts 01
-        if: ${{ hashFiles('bridge-out/*.part.01') != '' }}
+      - name: Upload Gradle runtime parts
         uses: actions/upload-artifact@v4
         with:
-          name: local-first-toolchain-part01
-          path: bridge-out/*.part.01
+          name: restore-gradle-runtime
+          path: bridge-out/gradle-9.6.1.part.*
           retention-days: 1
           compression-level: 0
 
-      - name: Upload toolchain parts 02
-        if: ${{ hashFiles('bridge-out/*.part.02') != '' }}
+      - name: Upload Gradle home part 00
         uses: actions/upload-artifact@v4
         with:
-          name: local-first-toolchain-part02
-          path: bridge-out/*.part.02
+          name: restore-gradle-home-00
+          path: bridge-out/gradle-home.part.00
+          retention-days: 1
+          compression-level: 0
+      - name: Upload Gradle home part 01
+        if: ${{ hashFiles('bridge-out/gradle-home.part.01') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: restore-gradle-home-01
+          path: bridge-out/gradle-home.part.01
+          retention-days: 1
+          compression-level: 0
+      - name: Upload Gradle home part 02
+        if: ${{ hashFiles('bridge-out/gradle-home.part.02') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: restore-gradle-home-02
+          path: bridge-out/gradle-home.part.02
           retention-days: 1
           compression-level: 0
 
-      - name: Upload toolchain parts 03
-        if: ${{ hashFiles('bridge-out/*.part.03') != '' }}
+      - name: Upload SDK base part 00
         uses: actions/upload-artifact@v4
         with:
-          name: local-first-toolchain-part03
-          path: bridge-out/*.part.03
+          name: restore-sdk-base-00
+          path: bridge-out/android-sdk-base.part.00
+          retention-days: 1
+          compression-level: 0
+      - name: Upload SDK base part 01
+        if: ${{ hashFiles('bridge-out/android-sdk-base.part.01') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: restore-sdk-base-01
+          path: bridge-out/android-sdk-base.part.01
+          retention-days: 1
+          compression-level: 0
+
+      - name: Upload NDK part 00
+        uses: actions/upload-artifact@v4
+        with:
+          name: restore-ndk-00
+          path: bridge-out/ndk-29.0.13113456.part.00
+          retention-days: 1
+          compression-level: 0
+      - name: Upload NDK part 01
+        if: ${{ hashFiles('bridge-out/ndk-29.0.13113456.part.01') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: restore-ndk-01
+          path: bridge-out/ndk-29.0.13113456.part.01
+          retention-days: 1
+          compression-level: 0
+      - name: Upload NDK part 02
+        if: ${{ hashFiles('bridge-out/ndk-29.0.13113456.part.02') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: restore-ndk-02
+          path: bridge-out/ndk-29.0.13113456.part.02
+          retention-days: 1
+          compression-level: 0
+
+      - name: Upload CMake parts
+        uses: actions/upload-artifact@v4
+        with:
+          name: restore-cmake
+          path: bridge-out/cmake-3.31.6.part.*
           retention-days: 1
           compression-level: 0
