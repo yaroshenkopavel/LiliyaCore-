@@ -10,6 +10,7 @@ import pro.liliya.core.licensetransport.LicenseClientTransportFailure
 import pro.liliya.core.licensetransport.LicenseRemoteServiceFailure
 
 sealed interface ProductionAndroidFirstRunAcquisitionResult {
+    data object HostConfigurationRequired : ProductionAndroidFirstRunAcquisitionResult
     data object LocalModelRequired : ProductionAndroidFirstRunAcquisitionResult
 
     data class Installed(
