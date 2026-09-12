@@ -49,6 +49,24 @@ class ProductConversationTranscriptContractTest {
     }
 
     @Test
+    fun pending_restore_appends_user_only_when_exact_user_tail_is_not_already_present() {
+        val transcript = ProductConversationTranscript()
+        transcript.appendUser("Первый")
+        transcript.appendLiliya("Ответ")
+
+        assertTrue(transcript.appendUserIfNotLast("  Pending  "))
+        assertFalse(transcript.appendUserIfNotLast("Pending"))
+        assertEquals("Вы: Первый\n\nЛилия: Ответ\n\nВы: Pending", transcript.render())
+
+        transcript.appendLiliya("Другой ответ")
+        assertTrue(transcript.appendUserIfNotLast("Pending"))
+        assertEquals(
+            "Вы: Первый\n\nЛилия: Ответ\n\nВы: Pending\n\nЛилия: Другой ответ\n\nВы: Pending",
+            transcript.render()
+        )
+    }
+
+    @Test
     fun matching_newest_user_turn_can_be_rolled_back_for_retry() {
         val transcript = ProductConversationTranscript()
         transcript.appendUser("Первый")

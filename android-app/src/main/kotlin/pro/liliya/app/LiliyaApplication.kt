@@ -13,6 +13,7 @@ class LiliyaApplication : Application() {
 
     @Volatile
     private var startupTask = ProductionAndroidAppStartupTask()
+    private val chatTask = ProductionAndroidAppChatTask()
 
     fun configureRuntime(sources: ProductionAndroidRuntimeWiringSources): Boolean =
         ProductionAndroidRuntimeConfiguration.install(sources)
@@ -54,6 +55,23 @@ class LiliyaApplication : Application() {
             callback = callback
         )
     }
+
+    internal fun requestApplicationChat(
+        message: String,
+        listener: (ProductionAndroidAppChatTaskSnapshot.Completed) -> Unit
+    ): ProductionAndroidAppChatTaskRequestResult =
+        chatTask.request(
+            message = message,
+            send = runtimeOwner::send,
+            listener = listener
+        )
+
+    internal fun observeApplicationChat(
+        listener: (ProductionAndroidAppChatTaskSnapshot.Completed) -> Unit
+    ): ProductionAndroidAppChatTaskSnapshot = chatTask.observe(listener)
+
+    internal fun consumeApplicationChat(requestId: Long): Boolean =
+        chatTask.consume(requestId)
 
     @Synchronized
     internal fun replaceStartupTaskForTests(
