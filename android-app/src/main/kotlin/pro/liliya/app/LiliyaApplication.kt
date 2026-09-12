@@ -22,6 +22,9 @@ class LiliyaApplication : Application() {
     @Volatile
     private var localModelImportTask = ProductionAndroidLocalModelImportTask()
 
+    @Volatile
+    private var firstRunAcquisitionTask = ProductionAndroidFirstRunAcquisitionTask()
+
     override fun onCreate() {
         super.onCreate()
         ProductionAndroidLocalModelSelection.restore(File(filesDir, "models"))
@@ -53,6 +56,21 @@ class LiliyaApplication : Application() {
             licenseAcquisition = licenseAcquisition,
             productInput = productInput
         )
+
+    internal fun requestFirstRunAcquisition(
+        listener: (ProductionAndroidFirstRunAcquisitionTaskSnapshot.Completed) -> Unit
+    ): ProductionAndroidFirstRunAcquisitionTaskRequestResult =
+        firstRunAcquisitionTask.request(
+            acquireAndInstall = ::acquireAndConfigureFirstRun,
+            listener = listener
+        )
+
+    internal fun observeFirstRunAcquisition(
+        listener: (ProductionAndroidFirstRunAcquisitionTaskSnapshot.Completed) -> Unit
+    ): ProductionAndroidFirstRunAcquisitionTaskSnapshot = firstRunAcquisitionTask.observe(listener)
+
+    internal fun consumeFirstRunAcquisition(requestId: Long): Boolean =
+        firstRunAcquisitionTask.consume(requestId)
 
     fun provisionRuntime(
         ports: AndroidProductRuntimeStartupProvisioningPorts
@@ -149,6 +167,15 @@ class LiliyaApplication : Application() {
     ): ProductionAndroidLocalModelImportTask {
         val previous = localModelImportTask
         localModelImportTask = replacement
+        return previous
+    }
+
+    @Synchronized
+    internal fun replaceFirstRunAcquisitionTaskForTests(
+        replacement: ProductionAndroidFirstRunAcquisitionTask
+    ): ProductionAndroidFirstRunAcquisitionTask {
+        val previous = firstRunAcquisitionTask
+        firstRunAcquisitionTask = replacement
         return previous
     }
 
