@@ -59,6 +59,29 @@ class ProductionAndroidLocalModelImportTaskContractTest {
     }
 
     @Test
+    fun observing_retained_terminal_returns_snapshot_without_redelivering_listener() {
+        val task = ProductionAndroidLocalModelImportTask(
+            ProductionAndroidLocalModelImportExecutor { block -> block() }
+        )
+        var terminalRedeliveries = 0
+        val started = assertIs<ProductionAndroidLocalModelImportTaskRequestResult.Started>(
+            task.request(
+                importModel = { ProductionAndroidLocalModelSelectionResult.EmptyDocument },
+                listener = {}
+            )
+        )
+
+        val retained = assertIs<ProductionAndroidLocalModelImportTaskSnapshot.Completed>(
+            task.observe { terminalRedeliveries += 1 }
+        )
+
+        assertEquals(started.requestId, retained.requestId)
+        assertEquals(0, terminalRedeliveries)
+        assertTrue(task.consume(started.requestId))
+        assertIs<ProductionAndroidLocalModelImportTaskSnapshot.Idle>(task.observe {})
+    }
+
+    @Test
     fun second_request_is_busy_while_inflight_or_terminal_unconsumed() {
         val held = AtomicReference<(() -> Unit)?>(null)
         val task = ProductionAndroidLocalModelImportTask(
