@@ -14,6 +14,17 @@ internal class ProductConversationTranscript private constructor(
         append(Speaker.USER, message)
     }
 
+    fun appendUserIfNotLast(message: String): Boolean {
+        val normalized = message.trim()
+        if (normalized.isEmpty()) return false
+
+        val last = entries.lastOrNull()
+        if (last?.speaker == Speaker.USER && last.message == normalized) return false
+
+        entries += Entry(Speaker.USER, normalized)
+        return true
+    }
+
     fun appendLiliya(message: String) {
         append(Speaker.LILIYA, message)
     }
