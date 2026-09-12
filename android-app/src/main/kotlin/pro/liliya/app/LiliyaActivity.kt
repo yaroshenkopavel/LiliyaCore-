@@ -36,6 +36,7 @@ class LiliyaActivity : Activity() {
         super.onCreate(savedInstanceState)
         conversation = restoreConversation(savedInstanceState)
         val restoredDraft = restoreInputDraft(savedInstanceState)
+        val restoredPendingRetry = restorePendingRetry(savedInstanceState)
         setContentView(buildContent())
         if (restoredDraft.isNotEmpty()) {
             input.setText(restoredDraft)
@@ -43,7 +44,16 @@ class LiliyaActivity : Activity() {
         }
         renderState(ProductionAndroidAppRuntimeState.STARTING)
         revealLatestTranscriptTurn()
-        restoreApplicationChatState()
+        val applicationChat = restoreApplicationChatState()
+        val pendingRetry = ProductConversationPendingRetryState.restoreForApplicationState(
+            savedMessage = restoredPendingRetry,
+            applicationChat = applicationChat,
+            maxUtf8Bytes = INPUT_DRAFT_SAVED_STATE_MAX_UTF8_BYTES
+        )
+        if (pendingRetry.isNotEmpty() && input.text.isNullOrEmpty()) {
+            input.setText(pendingRetry)
+            input.setSelection(pendingRetry.length)
+        }
         app.startApplicationRuntimeAsync { result ->
             runOnUiThread {
                 if (isFinishing || isDestroyed || isChangingConfigurations) return@runOnUiThread
@@ -91,6 +101,15 @@ class LiliyaActivity : Activity() {
             )
             if (draft.isNotEmpty()) {
                 outState.putString(INPUT_DRAFT_STATE, draft)
+            }
+        }
+        if (requestInFlight && pending != null) {
+            val retry = ProductConversationPendingRetryState.snapshotWithinBudget(
+                message = pending,
+                maxUtf8Bytes = INPUT_DRAFT_SAVED_STATE_MAX_UTF8_BYTES
+            )
+            if (retry.isNotEmpty()) {
+                outState.putString(PENDING_CHAT_RETRY_STATE, retry)
             }
         }
         super.onSaveInstanceState(outState)
@@ -244,7 +263,13 @@ class LiliyaActivity : Activity() {
             maxUtf8Bytes = INPUT_DRAFT_SAVED_STATE_MAX_UTF8_BYTES
         )
 
-    private fun restoreApplicationChatState() {
+    private fun restorePendingRetry(state: Bundle?): String =
+        ProductConversationPendingRetryState.snapshotWithinBudget(
+            message = state?.getString(PENDING_CHAT_RETRY_STATE).orEmpty(),
+            maxUtf8Bytes = INPUT_DRAFT_SAVED_STATE_MAX_UTF8_BYTES
+        )
+
+    private fun restoreApplicationChatState(): ProductionAndroidAppChatTaskSnapshot {
         val snapshot = app.observeApplicationChat(::deliverApplicationChatCompletion)
         when (snapshot) {
             ProductionAndroidAppChatTaskSnapshot.Idle -> Unit
@@ -255,6 +280,7 @@ class LiliyaActivity : Activity() {
                 deliverApplicationChatCompletion(snapshot)
             }
         }
+        return snapshot
     }
 
     private fun restorePendingChat(message: String) {
@@ -429,6 +455,7 @@ class LiliyaActivity : Activity() {
         const val TRANSCRIPT_SPEAKERS_STATE = "liliya.transcript.speakers"
         const val TRANSCRIPT_MESSAGES_STATE = "liliya.transcript.messages"
         const val INPUT_DRAFT_STATE = "liliya.input.draft"
+        const val PENDING_CHAT_RETRY_STATE = "liliya.input.pending-chat-retry"
         const val TRANSCRIPT_SAVED_STATE_MAX_ENTRIES = 64
         const val TRANSCRIPT_SAVED_STATE_MAX_UTF8_BYTES = 48 * 1024
         const val INPUT_DRAFT_SAVED_STATE_MAX_UTF8_BYTES = 8 * 1024
