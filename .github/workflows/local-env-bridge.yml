@@ -72,12 +72,13 @@ jobs:
             --offline \
             --console=plain
 
-      - name: Pack toolchain and cache
+      - name: Pack toolchain and cache into connector-safe chunks
         shell: bash
         run: |
           set -euo pipefail
-          out="$RUNNER_TEMP/liliya-export"
-          mkdir -p "$out"
+          out="$GITHUB_WORKSPACE/.local-env-export"
+          rm -rf "$out"
+          mkdir -p "$out/chunks"
 
           printf '%s\n' "JAVA_HOME=$JAVA_HOME" > "$out/environment.txt"
           printf '%s\n' "ANDROID_HOME=$ANDROID_HOME" >> "$out/environment.txt"
@@ -96,7 +97,7 @@ jobs:
             build-tools/35.0.0 \
             platform-tools \
             licenses \
-            cmdline-tools || true
+            cmdline-tools
 
           tar -C "$ANDROID_HOME" -czf "$out/android-native-toolchain.tar.gz" \
             ndk/29.0.13113456 \
@@ -105,20 +106,60 @@ jobs:
           tar -C "$RUNNER_TEMP" -czf "$out/gradle-home.tar.gz" liliya-gradle-home
 
           sha256sum "$out"/*.tar.gz > "$out/SHA256SUMS"
-
-          mkdir -p "$out/chunks"
           for f in "$out"/*.tar.gz; do
             base="$(basename "$f")"
-            split -b 400M -d -a 2 "$f" "$out/chunks/${base}.part-"
+            split -b 300M -d -a 2 "$f" "$out/chunks/${base}.part-"
           done
           cp "$out/SHA256SUMS" "$out/chunks/"
           cp "$out/environment.txt" "$out/chunks/"
           ls -lh "$out/chunks"
 
-      - name: Upload environment bridge
+      - name: Upload bridge metadata
         uses: actions/upload-artifact@v4
         with:
-          name: liliyacore-local-env-78f4b7f5
-          path: ${{ runner.temp }}/liliya-export/chunks/*
+          name: local-env-metadata-78f4b7f5
+          path: |
+            .local-env-export/chunks/SHA256SUMS
+            .local-env-export/chunks/environment.txt
           if-no-files-found: error
+          retention-days: 1
+
+      - name: Upload chunk 00
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-env-chunk-00-78f4b7f5
+          path: .local-env-export/chunks/*.part-00
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Upload chunk 01
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-env-chunk-01-78f4b7f5
+          path: .local-env-export/chunks/*.part-01
+          if-no-files-found: ignore
+          retention-days: 1
+
+      - name: Upload chunk 02
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-env-chunk-02-78f4b7f5
+          path: .local-env-export/chunks/*.part-02
+          if-no-files-found: ignore
+          retention-days: 1
+
+      - name: Upload chunk 03
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-env-chunk-03-78f4b7f5
+          path: .local-env-export/chunks/*.part-03
+          if-no-files-found: ignore
+          retention-days: 1
+
+      - name: Upload chunk 04
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-env-chunk-04-78f4b7f5
+          path: .local-env-export/chunks/*.part-04
+          if-no-files-found: ignore
           retention-days: 1
