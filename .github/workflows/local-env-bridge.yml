@@ -59,7 +59,7 @@ jobs:
             :android-app:assembleDebug \
             --console=plain
 
-      - name: Prove exact gate offline
+      - name: Prove same-workspace gate offline
         shell: bash
         run: |
           set -euo pipefail
@@ -72,21 +72,35 @@ jobs:
             --offline \
             --console=plain
 
-      - name: Pack toolchain and cache into connector-safe chunks
+      - name: Prepare exact pinned llama.cpp source cache
+        shell: bash
+        run: |
+          set -euo pipefail
+          llama="$RUNNER_TEMP/llama-cpp-pinned"
+          rm -rf "$llama"
+          git init -q "$llama"
+          git -C "$llama" remote add origin https://github.com/ggml-org/llama.cpp.git
+          git -C "$llama" fetch --depth=1 origin 0f3a71be15af836d277c9f918adfafb45732677e
+          git -C "$llama" checkout -q --detach FETCH_HEAD
+          test "$(git -C "$llama" rev-parse HEAD)" = "0f3a71be15af836d277c9f918adfafb45732677e"
+
+      - name: Pack toolchain, dependency cache and pinned native source
         shell: bash
         run: |
           set -euo pipefail
           out="$GITHUB_WORKSPACE/.local-env-export"
           rm -rf "$out"
-          mkdir -p "$out/chunks"
+          mkdir -p "$out/chunks" "$out/jdk17-root"
 
-          printf '%s\n' "JAVA_HOME=$JAVA_HOME" > "$out/environment.txt"
-          printf '%s\n' "ANDROID_HOME=$ANDROID_HOME" >> "$out/environment.txt"
-          printf '%s\n' "GRADLE=$(readlink -f "$(command -v gradle)")" >> "$out/environment.txt"
+          printf '%s\n' "CANONICAL_MAIN=78f4b7f5333977e6aae26fc890da3599b8d47f97" > "$out/environment.txt"
+          printf '%s\n' "CANONICAL_TREE=59b351cd3bb5bf4e21fde079ba1797a175e9b14a" >> "$out/environment.txt"
+          printf '%s\n' "LLAMA_CPP_COMMIT=0f3a71be15af836d277c9f918adfafb45732677e" >> "$out/environment.txt"
           java -version 2>> "$out/environment.txt"
           gradle --version >> "$out/environment.txt"
 
-          tar -C "$(dirname "$JAVA_HOME")" -czf "$out/jdk17.tar.gz" "$(basename "$JAVA_HOME")"
+          cp -aL "$JAVA_HOME/." "$out/jdk17-root/"
+          tar -C "$out" -czf "$out/jdk17.tar.gz" jdk17-root
+          rm -rf "$out/jdk17-root"
 
           gradle_bin="$(readlink -f "$(command -v gradle)")"
           gradle_root="$(cd "$(dirname "$gradle_bin")/.." && pwd)"
@@ -104,6 +118,7 @@ jobs:
             cmake/3.31.6
 
           tar -C "$RUNNER_TEMP" -czf "$out/gradle-home.tar.gz" liliya-gradle-home
+          tar -C "$RUNNER_TEMP" -czf "$out/llama-cpp-pinned.tar.gz" llama-cpp-pinned
 
           sha256sum "$out"/*.tar.gz > "$out/SHA256SUMS"
           for f in "$out"/*.tar.gz; do
@@ -112,9 +127,9 @@ jobs:
           done
           cp "$out/SHA256SUMS" "$out/chunks/"
           cp "$out/environment.txt" "$out/chunks/"
-          ls -lh "$out/chunks"
+          ls -lh "$out"/*.tar.gz "$out/chunks"/*
 
-      - name: Upload bridge metadata
+      - name: Upload metadata
         uses: actions/upload-artifact@v4
         with:
           name: local-env-metadata-78f4b7f5
@@ -124,7 +139,7 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-      - name: Upload JDK chunk 00
+      - name: Upload JDK p00
         uses: actions/upload-artifact@v4
         with:
           name: local-env-jdk17-p00-78f4b7f5
@@ -132,7 +147,7 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-      - name: Upload JDK chunk 01
+      - name: Upload JDK p01
         uses: actions/upload-artifact@v4
         with:
           name: local-env-jdk17-p01-78f4b7f5
@@ -140,7 +155,7 @@ jobs:
           if-no-files-found: ignore
           retention-days: 1
 
-      - name: Upload Gradle chunk 00
+      - name: Upload Gradle p00
         uses: actions/upload-artifact@v4
         with:
           name: local-env-gradle-p00-78f4b7f5
@@ -148,7 +163,7 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-      - name: Upload Gradle chunk 01
+      - name: Upload Gradle p01
         uses: actions/upload-artifact@v4
         with:
           name: local-env-gradle-p01-78f4b7f5
@@ -156,7 +171,7 @@ jobs:
           if-no-files-found: ignore
           retention-days: 1
 
-      - name: Upload SDK build chunk 00
+      - name: Upload SDK build p00
         uses: actions/upload-artifact@v4
         with:
           name: local-env-sdk-build-p00-78f4b7f5
@@ -164,7 +179,7 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-      - name: Upload SDK build chunk 01
+      - name: Upload SDK build p01
         uses: actions/upload-artifact@v4
         with:
           name: local-env-sdk-build-p01-78f4b7f5
@@ -172,7 +187,7 @@ jobs:
           if-no-files-found: ignore
           retention-days: 1
 
-      - name: Upload native chunk 00
+      - name: Upload native p00
         uses: actions/upload-artifact@v4
         with:
           name: local-env-native-p00-78f4b7f5
@@ -180,7 +195,7 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-      - name: Upload native chunk 01
+      - name: Upload native p01
         uses: actions/upload-artifact@v4
         with:
           name: local-env-native-p01-78f4b7f5
@@ -188,7 +203,7 @@ jobs:
           if-no-files-found: ignore
           retention-days: 1
 
-      - name: Upload native chunk 02
+      - name: Upload native p02
         uses: actions/upload-artifact@v4
         with:
           name: local-env-native-p02-78f4b7f5
@@ -196,7 +211,7 @@ jobs:
           if-no-files-found: ignore
           retention-days: 1
 
-      - name: Upload native chunk 03
+      - name: Upload native p03
         uses: actions/upload-artifact@v4
         with:
           name: local-env-native-p03-78f4b7f5
@@ -204,7 +219,7 @@ jobs:
           if-no-files-found: ignore
           retention-days: 1
 
-      - name: Upload Gradle home chunk 00
+      - name: Upload Gradle home p00
         uses: actions/upload-artifact@v4
         with:
           name: local-env-gradle-home-p00-78f4b7f5
@@ -212,7 +227,7 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-      - name: Upload Gradle home chunk 01
+      - name: Upload Gradle home p01
         uses: actions/upload-artifact@v4
         with:
           name: local-env-gradle-home-p01-78f4b7f5
@@ -220,7 +235,7 @@ jobs:
           if-no-files-found: ignore
           retention-days: 1
 
-      - name: Upload Gradle home chunk 02
+      - name: Upload Gradle home p02
         uses: actions/upload-artifact@v4
         with:
           name: local-env-gradle-home-p02-78f4b7f5
@@ -228,7 +243,7 @@ jobs:
           if-no-files-found: ignore
           retention-days: 1
 
-      - name: Upload Gradle home chunk 03
+      - name: Upload Gradle home p03
         uses: actions/upload-artifact@v4
         with:
           name: local-env-gradle-home-p03-78f4b7f5
@@ -236,10 +251,26 @@ jobs:
           if-no-files-found: ignore
           retention-days: 1
 
-      - name: Upload Gradle home chunk 04
+      - name: Upload Gradle home p04
         uses: actions/upload-artifact@v4
         with:
           name: local-env-gradle-home-p04-78f4b7f5
           path: .local-env-export/chunks/gradle-home.tar.gz.part-04
+          if-no-files-found: ignore
+          retention-days: 1
+
+      - name: Upload llama.cpp p00
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-env-llama-p00-78f4b7f5
+          path: .local-env-export/chunks/llama-cpp-pinned.tar.gz.part-00
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Upload llama.cpp p01
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-env-llama-p01-78f4b7f5
+          path: .local-env-export/chunks/llama-cpp-pinned.tar.gz.part-01
           if-no-files-found: ignore
           retention-days: 1
