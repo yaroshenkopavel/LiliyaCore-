@@ -24,6 +24,9 @@ import pro.liliya.core.diagnostics.InMemoryDiagnosticSink
 import pro.liliya.core.foundation.FoundationComposition
 import pro.liliya.core.learning.LearningApplicationMutationApplicationPort
 import pro.liliya.core.learning.LearningApplicationMutationApplicationResult
+import pro.liliya.core.learning.LearningApplicationMutationRecoveryClassificationPort
+import pro.liliya.core.learning.LearningApplicationMutationRecoveryClassificationResult
+import pro.liliya.core.learning.LearningApplicationMutationRecoverySummary
 import pro.liliya.core.learning.LearningApplicationMutationAuthorizationGate
 import pro.liliya.core.learning.LearningApplicationMutationGeneration
 import pro.liliya.core.learning.LearningApplicationMutationInspectionPort
@@ -406,8 +409,22 @@ class AndroidHeartProductionGovernedLearningAssemblyContractTest {
 
             override fun mutationApplicationPort(
                 authorizationGate: LearningApplicationMutationAuthorizationGate
-            ): LearningApplicationMutationApplicationPort =
-                mutationApplication(authorizationGate)
+            ): LearningApplicationMutationApplicationPort {
+                val delegate = mutationApplication(authorizationGate)
+                return object : LearningApplicationMutationApplicationPort,
+                    LearningApplicationMutationRecoveryClassificationPort {
+                    override fun apply(
+                        reference: pro.liliya.core.learning.LearningApplicationMutationReference
+                    ): LearningApplicationMutationApplicationResult =
+                        delegate.apply(reference)
+
+                    override fun classifyPreparedMutations():
+                        LearningApplicationMutationRecoveryClassificationResult =
+                        LearningApplicationMutationRecoveryClassificationResult.Classified(
+                            LearningApplicationMutationRecoverySummary.Clean
+                        )
+                }
+            }
 
             override fun governedLearning(
                 composition: pro.liliya.core.cognitive.CognitiveGovernedLearningComposition

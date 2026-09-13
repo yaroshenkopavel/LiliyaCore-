@@ -18,6 +18,8 @@ import pro.liliya.core.learning.LearningApplicationMutationApplicationPort
 import pro.liliya.core.learning.LearningApplicationMutationAuthorizationGate
 import pro.liliya.core.learning.LearningApplicationMutationInspectionPort
 import pro.liliya.core.learning.LearningApplicationMutationPreparationPort
+import pro.liliya.core.learning.LearningApplicationMutationRecoveryClassificationPort
+import pro.liliya.core.learning.LearningApplicationMutationRecoveryClassificationResult
 import pro.liliya.core.learning.LearningApplicationPreflightValidator
 import pro.liliya.core.learning.LearningApplicationTarget
 import pro.liliya.core.learning.LearningComposition
@@ -29,6 +31,8 @@ import pro.liliya.core.learning.preparationPort
 
 enum class AndroidHeartProductionGovernedLearningCreateFailure {
     HEART_NOT_READY,
+    MUTATION_RECOVERY_REQUIRED,
+    MUTATION_RECOVERY_CLASSIFICATION_FAILED,
     MUTATION_APPLICATION_UNAVAILABLE,
     COMPOSITION_REJECTED
 }
@@ -201,6 +205,9 @@ object AndroidHeartProductionGovernedLearningAssembly {
                     AndroidHeartProductionGovernedLearningCreateFailure
                         .MUTATION_APPLICATION_UNAVAILABLE
                 )
+            recoveryAdmissionFailure(mutationApplication)?.let { reason ->
+                return rejected(reason)
+            }
 
             val core = CognitiveGovernedLearningComposition(
                 foundation = foundation,
@@ -236,6 +243,32 @@ object AndroidHeartProductionGovernedLearningAssembly {
             rejected(
                 AndroidHeartProductionGovernedLearningCreateFailure.COMPOSITION_REJECTED
             )
+        }
+    }
+
+    internal fun recoveryAdmissionFailure(
+        mutationApplication: LearningApplicationMutationApplicationPort
+    ): AndroidHeartProductionGovernedLearningCreateFailure? {
+        val recoveryPort =
+            mutationApplication as? LearningApplicationMutationRecoveryClassificationPort
+                ?: return AndroidHeartProductionGovernedLearningCreateFailure
+                    .MUTATION_RECOVERY_CLASSIFICATION_FAILED
+        return when (
+            val recovery = try {
+                recoveryPort.classifyPreparedMutations()
+            } catch (_: Exception) {
+                LearningApplicationMutationRecoveryClassificationResult.Failed
+            }
+        ) {
+            LearningApplicationMutationRecoveryClassificationResult.Failed ->
+                AndroidHeartProductionGovernedLearningCreateFailure
+                    .MUTATION_RECOVERY_CLASSIFICATION_FAILED
+            is LearningApplicationMutationRecoveryClassificationResult.Classified ->
+                if (recovery.summary.requiresRecovery) {
+                    AndroidHeartProductionGovernedLearningCreateFailure.MUTATION_RECOVERY_REQUIRED
+                } else {
+                    null
+                }
         }
     }
 
