@@ -11,12 +11,16 @@ class ManualPhysicalLlamaSession private constructor(
     private val ownership: ModelEngineSessionOwnership
 ) : AutoCloseable {
     fun infer(prompt: String): Result<String> = runCatching {
+        val chatPrompt = buildQwenChatPrompt(prompt)
         when (
             val result = ownership.infer(
-                ModelEngineInferenceRequest(prompt = prompt, maxOutputChars = MAX_OUTPUT_CHARS)
+                ModelEngineInferenceRequest(
+                    prompt = chatPrompt,
+                    maxOutputChars = MAX_OUTPUT_CHARS
+                )
             )
         ) {
-            is ModelEngineInferenceResult.Succeeded -> result.output
+            is ModelEngineInferenceResult.Succeeded -> cleanQwenOutput(result.output)
             is ModelEngineInferenceResult.Rejected ->
                 error("Inference rejected: ${result.reason}")
         }
@@ -33,7 +37,7 @@ class ManualPhysicalLlamaSession private constructor(
                 LlamaCppEnginePolicy(
                     contextTokens = 2_048,
                     maxPromptTokens = 1_024,
-                    maxGeneratedTokens = 512,
+                    maxGeneratedTokens = 192,
                     batchTokens = 256,
                     microBatchTokens = 64,
                     threadCount = 2,
@@ -50,6 +54,25 @@ class ManualPhysicalLlamaSession private constructor(
             }
         }
 
-        private const val MAX_OUTPUT_CHARS = 2_048
+        private fun buildQwenChatPrompt(userMessage: String): String {
+            val safeMessage = userMessage
+                .replace("<|im_start|>", "")
+                .replace("<|im_end|>", "")
+            return buildString {
+                append("<|im_start|>system\n")
+                append("Ты Liliya. Отвечай по-русски, кратко и прямо. Не повторяй ответ.")
+                append("<|im_end|>\n<|im_start|>user\n")
+                append(safeMessage)
+                append("<|im_end|>\n<|im_start|>assistant\n")
+            }
+        }
+
+        private fun cleanQwenOutput(output: String): String = output
+            .substringBefore("<|im_end|>")
+            .substringBefore("<|im_start|>")
+            .trim()
+            .ifEmpty { "Модель завершила ответ без текста." }
+
+        private const val MAX_OUTPUT_CHARS = 768
     }
 }
