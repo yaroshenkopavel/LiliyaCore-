@@ -229,7 +229,7 @@ jobs:
           LILIYA_LLAMA_ALLOW_X86_64_API35_TRANSLATION: "1"
         run: gradle :android-app:assembleDebug :android-app:assembleDebugAndroidTest --console=plain
 
-      - name: Run First Working Liliya cold-start instrumentation
+      - name: Run cold-start and capture installed APK launcher
         uses: ReactiveCircus/android-emulator-runner@v2
         env:
           LILIYA_LLAMA_ALLOW_X86_64_API35_TRANSLATION: "1"
@@ -240,9 +240,27 @@ jobs:
           profile: pixel_6
           disable-animations: true
           script: |
-            bash -lc 'set -o pipefail; gradle :android-app:connectedDebugAndroidTest --console=plain 2>&1 | tee "$RUNNER_TEMP/development-first-working-liliya-cold-start.log"'
+            set -euo pipefail
+            set -o pipefail
+            gradle :android-app:connectedDebugAndroidTest --console=plain 2>&1 | tee "$RUNNER_TEMP/development-first-working-liliya-cold-start.log"
+            mkdir -p "$RUNNER_TEMP/liliya-visual"
+            apk='android-app/build/outputs/apk/debug/android-app-debug.apk'
+            test -f "$apk"
+            adb install -r "$apk"
+            adb shell am force-stop pro.liliya.app
+            adb shell monkey -p pro.liliya.app -c android.intent.category.LAUNCHER 1
+            sleep 3
+            adb shell dumpsys window windows | grep -E 'mCurrentFocus|mFocusedApp' > "$RUNNER_TEMP/liliya-visual/window-focus.txt" || true
+            adb exec-out screencap -p > "$RUNNER_TEMP/liliya-visual/launcher.png"
+            adb shell uiautomator dump /sdcard/liliya-window.xml
+            adb pull /sdcard/liliya-window.xml "$RUNNER_TEMP/liliya-visual/window.xml"
+            test -s "$RUNNER_TEMP/liliya-visual/launcher.png"
+            grep -F 'pro.liliya.app' "$RUNNER_TEMP/liliya-visual/window-focus.txt"
+            grep -F 'Liliya — подготовка доступа' "$RUNNER_TEMP/liliya-visual/window.xml"
+            grep -F 'Требуется доступ продукта' "$RUNNER_TEMP/liliya-visual/window.xml"
+            grep -F 'Импортировать доступ продукта' "$RUNNER_TEMP/liliya-visual/window.xml"
 
-      - name: Upload cold-start instrumentation diagnostics
+      - name: Upload cold-start and visual APK evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -251,5 +269,8 @@ jobs:
           retention-days: 7
           path: |
             ${{ runner.temp }}/development-first-working-liliya-cold-start.log
+            ${{ runner.temp }}/liliya-visual/launcher.png
+            ${{ runner.temp }}/liliya-visual/window.xml
+            ${{ runner.temp }}/liliya-visual/window-focus.txt
             android-app/build/outputs/androidTest-results/connected/**
             android-app/build/reports/androidTests/connected/**
