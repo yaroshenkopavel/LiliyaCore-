@@ -27,20 +27,16 @@ jobs:
 
           path = Path('android-app/src/main/kotlin/pro/liliya/app/LiliyaActivity.kt')
           text = path.read_text(encoding='utf-8')
-          old = '''    override fun onStart() {
-              super.onStart()
-              val restoreAfterSavedState = stateSaved
-              stateSaved = false
-              if (restoreAfterSavedState && ::conversation.isInitialized && ::input.isInitialized) {
-                  restoreApplicationChatState()
-                  restoreLocalModelImportState()
-                  restoreFirstRunAcquisitionState()
-              }
-          }
-          '''
-          # Source uses four-space indentation; keep the replacement exact and bounded.
-          old = old.replace('              ', '        ').replace('          }', '    }')
-          new = '''    override fun onStart() {
+          start_marker = '    override fun onStart() {'
+          end_marker = '    override fun onSaveInstanceState(outState: Bundle) {'
+          start = text.find(start_marker)
+          end = text.find(end_marker, start)
+          if start < 0 or end < 0 or end <= start:
+              raise SystemExit('LiliyaActivity lifecycle markers not found')
+          current = text[start:end]
+          if current.count('override fun onStart()') != 1:
+              raise SystemExit('unexpected onStart lifecycle region')
+          replacement = '''    override fun onStart() {
               super.onStart()
               val restoreAfterSavedState = stateSaved
               stateSaved = false
@@ -59,15 +55,14 @@ jobs:
                   renderState(ProductionAndroidAppRuntimeState.READY)
               }
           }
+
           '''
-          new = new.replace('              ', '        ').replace('          }', '    }')
-          if old not in text:
-              raise SystemExit('expected LiliyaActivity.onStart block not found')
-          text = text.replace(old, new, 1)
+          replacement = replacement.replace('              ', '        ').replace('          }', '    }')
+          text = text[:start] + replacement + text[end:]
           path.write_text(text, encoding='utf-8')
           PY
 
-          grep -n -A22 'override fun onStart' android-app/src/main/kotlin/pro/liliya/app/LiliyaActivity.kt
+          grep -n -A24 'override fun onStart' android-app/src/main/kotlin/pro/liliya/app/LiliyaActivity.kt
           grep -Fq 'app.runtimeOwner.state() == ProductionAndroidAppRuntimeState.READY' \
             android-app/src/main/kotlin/pro/liliya/app/LiliyaActivity.kt
 
