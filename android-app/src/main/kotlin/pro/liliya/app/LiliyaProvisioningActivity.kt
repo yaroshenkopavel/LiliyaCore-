@@ -27,6 +27,7 @@ class LiliyaProvisioningActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        actionBar?.hide()
         setContentView(buildContent())
         restoreImportState()
     }
@@ -74,14 +75,29 @@ class LiliyaProvisioningActivity : Activity() {
         onActivityResult(PRODUCT_AUTH_DOCUMENT_REQUEST, resultCode, data)
     }
 
+    @Suppress("DEPRECATION")
     private fun buildContent(): View {
         val density = resources.displayMetrics.density
         fun dp(value: Int): Int = (value * density).toInt()
 
+        val horizontalPadding = dp(20)
+        val topPadding = dp(32)
+        val bottomPadding = dp(20)
+
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(dp(20), dp(32), dp(20), dp(20))
+            setPadding(horizontalPadding, topPadding, horizontalPadding, bottomPadding)
+            setOnApplyWindowInsetsListener { view, insets ->
+                view.setPadding(
+                    horizontalPadding + insets.systemWindowInsetLeft,
+                    topPadding + insets.systemWindowInsetTop,
+                    horizontalPadding + insets.systemWindowInsetRight,
+                    bottomPadding + insets.systemWindowInsetBottom
+                )
+                insets
+            }
+            requestApplyInsets()
 
             addView(TextView(this@LiliyaProvisioningActivity).apply {
                 text = "Liliya — подготовка доступа"
