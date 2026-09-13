@@ -1,0 +1,93 @@
+name: Android VM UI Audit
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/android-vm-ui-audit.yml'
+      - '.github/scripts/android-vm-ui-audit.sh'
+      - 'android-app/**'
+      - 'android-runtime/**'
+
+permissions:
+  contents: read
+
+env:
+  VM_API_LEVEL: '35'
+
+jobs:
+  vm-ui-audit:
+    name: Android VM provisioning UI audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle 9.6.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.1'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install pinned Android build toolchain
+        run: |
+          sdkmanager \
+            "platforms;android-35" \
+            "build-tools;35.0.0" \
+            "platform-tools" \
+            "ndk;29.0.13113456" \
+            "cmake;3.31.6"
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Build exact debug APK
+        env:
+          LILIYA_LLAMA_ALLOW_X86_64_API35_TRANSLATION: '1'
+        run: |
+          set -euo pipefail
+          gradle :android-app:assembleDebug --console=plain
+          apk='android-app/build/outputs/apk/debug/android-app-debug.apk'
+          test -f "$apk"
+          sha256sum "$apk" | tee "$RUNNER_TEMP/android-app-debug.sha256"
+
+      - name: Run provisioning UI audit in Android VM
+        uses: ReactiveCircus/android-emulator-runner@v2
+        env:
+          LILIYA_LLAMA_ALLOW_X86_64_API35_TRANSLATION: '1'
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          disable-animations: true
+          script: bash .github/scripts/android-vm-ui-audit.sh
+
+      - name: Upload VM UI audit evidence and APK
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-vm-ui-audit-${{ github.event.pull_request.head.sha || github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            android-app/build/outputs/apk/debug/android-app-debug.apk
+            ${{ runner.temp }}/android-app-debug.sha256
+            ${{ runner.temp }}/liliya-vm-ui-audit/**
