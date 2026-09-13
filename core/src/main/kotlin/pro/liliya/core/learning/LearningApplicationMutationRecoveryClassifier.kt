@@ -47,6 +47,10 @@ sealed interface LearningApplicationMutationRecoveryClassificationResult {
     data object Failed : LearningApplicationMutationRecoveryClassificationResult
 }
 
+fun interface LearningApplicationMutationRecoveryClassificationPort {
+    fun classifyPreparedMutations(): LearningApplicationMutationRecoveryClassificationResult
+}
+
 /**
  * Read-only classifier for restored Prepared governed-learning mutations.
  *

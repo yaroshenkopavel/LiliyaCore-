@@ -18,13 +18,15 @@ import pro.liliya.core.memory.PersistentMemoryRememberResult
  * If mutation completion cannot commit after a downstream write, exact downstream ownership is
  * compensated. A failed compensation is surfaced as PartialFailure.
  */
-class PersistentEncryptedLearningApplicationMutationApplier(
+class PersistentEncryptedLearningApplicationMutationApplier private constructor(
     private val foundation: FoundationComposition,
     private val mutations: PersistentLearningApplicationMutationClaimPort,
+    private val preparedMutations: () -> List<LearningApplicationMutationSnapshot>,
     private val authorizationGate: LearningApplicationMutationAuthorizationGate,
     private val memory: EncryptedPersistentMemoryComposition,
     private val knowledge: EncryptedPersistentKnowledgeComposition
-) : LearningApplicationMutationApplicationPort {
+) : LearningApplicationMutationApplicationPort,
+    LearningApplicationMutationRecoveryClassificationPort {
     constructor(
         foundation: FoundationComposition,
         mutations: PersistentLearningApplicationMutationComposition,
@@ -34,6 +36,7 @@ class PersistentEncryptedLearningApplicationMutationApplier(
     ) : this(
         foundation = foundation,
         mutations = mutations.claimPort(),
+        preparedMutations = mutations::snapshotEntries,
         authorizationGate = authorizationGate,
         memory = memory,
         knowledge = knowledge
@@ -48,10 +51,20 @@ class PersistentEncryptedLearningApplicationMutationApplier(
     ) : this(
         foundation = foundation,
         mutations = mutations.claimPort(),
+        preparedMutations = mutations::snapshotEntries,
         authorizationGate = authorizationGate,
         memory = memory,
         knowledge = knowledge
     )
+
+
+    override fun classifyPreparedMutations():
+        LearningApplicationMutationRecoveryClassificationResult =
+        LearningApplicationMutationRecoveryClassifier.classify(
+            preparedMutations = preparedMutations(),
+            inspectMemory = memory::inspect,
+            inspectKnowledge = knowledge::inspect
+        )
 
 
     override fun apply(
