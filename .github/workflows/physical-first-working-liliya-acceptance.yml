@@ -13,6 +13,7 @@ on:
       - main
     paths:
       - '.github/workflows/physical-first-working-liliya-acceptance.yml'
+      - 'android-app/src/androidTest/kotlin/pro/liliya/app/PhysicalProductAuthProvisioningToChatInstrumentedTest.kt'
 
 permissions:
   contents: read
@@ -30,21 +31,25 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
-      - name: Validate workflow and cold-start contract
+      - name: Validate workflow, provisioning gate, and cold-start contract
         shell: bash
         run: |
           set -euo pipefail
           workflow='.github/workflows/physical-first-working-liliya-acceptance.yml'
-          test_source='android-app/src/androidTest/kotlin/pro/liliya/app/DevelopmentFirstWorkingLiliyaColdStartInstrumentedTest.kt'
+          provisioning_test='android-app/src/androidTest/kotlin/pro/liliya/app/PhysicalProductAuthProvisioningToChatInstrumentedTest.kt'
+          cold_start_test='android-app/src/androidTest/kotlin/pro/liliya/app/DevelopmentFirstWorkingLiliyaColdStartInstrumentedTest.kt'
 
           test -f "$workflow"
-          test -f "$test_source"
+          test -f "$provisioning_test"
+          test -f "$cold_start_test"
           grep -Fq 'runs-on: [self-hosted, ARM64, android-device]' "$workflow"
           grep -Fq "if: github.event_name == 'workflow_dispatch'" "$workflow"
           grep -Fq 'test "$abi" = "arm64-v8a"' "$workflow"
           grep -Fq 'test "$qemu" != "1"' "$workflow"
+          grep -Fq 'PhysicalProductAuthProvisioningToChatInstrumentedTest' "$workflow"
           grep -Fq 'DevelopmentFirstWorkingLiliyaColdStartInstrumentedTest' "$workflow"
-          grep -Fq 'class DevelopmentFirstWorkingLiliyaColdStartInstrumentedTest' "$test_source"
+          grep -Fq 'class PhysicalProductAuthProvisioningToChatInstrumentedTest' "$provisioning_test"
+          grep -Fq 'class DevelopmentFirstWorkingLiliyaColdStartInstrumentedTest' "$cold_start_test"
 
           forbidden='LILIYA_LLAMA_ALLOW_X86_64_API35_'
           forbidden+='TRANSLATION'
@@ -195,8 +200,19 @@ jobs:
               stream.write("\n")
           PY
 
-      - name: Compile physical cold-start instrumentation
+      - name: Compile physical provisioning and cold-start instrumentation
         run: gradle :android-app:assembleDebug :android-app:assembleDebugAndroidTest --console=plain
+
+      - name: Run physical Product Auth provisioning-to-chat instrumentation
+        shell: bash
+        run: |
+          set -euo pipefail
+          set -o pipefail
+          gradle \
+            :android-app:connectedDebugAndroidTest \
+            -Pandroid.testInstrumentationRunnerArguments.class=pro.liliya.app.PhysicalProductAuthProvisioningToChatInstrumentedTest \
+            --console=plain \
+            2>&1 | tee "$RUNNER_TEMP/physical-product-auth-provisioning-to-chat.log"
 
       - name: Run physical First Working Liliya cold-start instrumentation
         shell: bash
@@ -218,6 +234,7 @@ jobs:
           retention-days: 30
           path: |
             ${{ runner.temp }}/physical-first-working-liliya-device.json
+            ${{ runner.temp }}/physical-product-auth-provisioning-to-chat.log
             ${{ runner.temp }}/physical-first-working-liliya-cold-start.log
             android-app/build/outputs/androidTest-results/connected/**
             android-app/build/reports/androidTests/connected/**
