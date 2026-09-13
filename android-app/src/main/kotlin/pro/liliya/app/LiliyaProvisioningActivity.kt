@@ -2,9 +2,11 @@ package pro.liliya.app
 
 import android.app.Activity
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import android.view.Gravity
 import android.view.View
+import android.view.WindowInsets
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -27,7 +29,10 @@ class LiliyaProvisioningActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(buildContent())
+        actionBar?.hide()
+        val content = buildContent()
+        setContentView(content)
+        content.requestApplyInsets()
         restoreImportState()
     }
 
@@ -78,10 +83,30 @@ class LiliyaProvisioningActivity : Activity() {
         val density = resources.displayMetrics.density
         fun dp(value: Int): Int = (value * density).toInt()
 
+        val horizontalPadding = dp(20)
+        val topPadding = dp(32)
+        val bottomPadding = dp(20)
+
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(dp(20), dp(32), dp(20), dp(20))
+            setPadding(horizontalPadding, topPadding, horizontalPadding, bottomPadding)
+            setOnApplyWindowInsetsListener { view, insets ->
+                @Suppress("DEPRECATION")
+                val systemBars = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    val bars = insets.getInsets(WindowInsets.Type.systemBars())
+                    bars.top to bars.bottom
+                } else {
+                    insets.systemWindowInsetTop to insets.systemWindowInsetBottom
+                }
+                view.setPadding(
+                    horizontalPadding,
+                    topPadding + systemBars.first,
+                    horizontalPadding,
+                    bottomPadding + systemBars.second
+                )
+                insets
+            }
 
             addView(TextView(this@LiliyaProvisioningActivity).apply {
                 text = "Liliya — подготовка доступа"
