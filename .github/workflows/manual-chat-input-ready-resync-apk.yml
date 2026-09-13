@@ -1,0 +1,117 @@
+name: Manual Chat Input READY Resync APK
+
+on:
+  push:
+    branches:
+      - manual-chat-input-ready-resync
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-manual-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@v4
+
+      - name: Patch chat input READY lifecycle resync
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('android-app/src/main/kotlin/pro/liliya/app/LiliyaActivity.kt')
+          text = path.read_text(encoding='utf-8')
+          old = '''    override fun onStart() {
+              super.onStart()
+              val restoreAfterSavedState = stateSaved
+              stateSaved = false
+              if (restoreAfterSavedState && ::conversation.isInitialized && ::input.isInitialized) {
+                  restoreApplicationChatState()
+                  restoreLocalModelImportState()
+                  restoreFirstRunAcquisitionState()
+              }
+          }
+          '''
+          # Source uses four-space indentation; keep the replacement exact and bounded.
+          old = old.replace('              ', '        ').replace('          }', '    }')
+          new = '''    override fun onStart() {
+              super.onStart()
+              val restoreAfterSavedState = stateSaved
+              stateSaved = false
+              if (restoreAfterSavedState && ::conversation.isInitialized && ::input.isInitialized) {
+                  restoreApplicationChatState()
+                  restoreLocalModelImportState()
+                  restoreFirstRunAcquisitionState()
+              }
+              if (
+                  ::input.isInitialized &&
+                  !requestInFlight &&
+                  !modelImportInFlight &&
+                  !firstRunAcquisitionInFlight &&
+                  app.runtimeOwner.state() == ProductionAndroidAppRuntimeState.READY
+              ) {
+                  renderState(ProductionAndroidAppRuntimeState.READY)
+              }
+          }
+          '''
+          new = new.replace('              ', '        ').replace('          }', '    }')
+          if old not in text:
+              raise SystemExit('expected LiliyaActivity.onStart block not found')
+          text = text.replace(old, new, 1)
+          path.write_text(text, encoding='utf-8')
+          PY
+
+          grep -n -A22 'override fun onStart' android-app/src/main/kotlin/pro/liliya/app/LiliyaActivity.kt
+          grep -Fq 'app.runtimeOwner.state() == ProductionAndroidAppRuntimeState.READY' \
+            android-app/src/main/kotlin/pro/liliya/app/LiliyaActivity.kt
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle 9.6.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.1'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install pinned Android build toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager \
+            'platforms;android-35' \
+            'build-tools;35.0.0' \
+            'platform-tools' \
+            'ndk;29.0.13113456' \
+            'cmake;3.31.6'
+
+      - name: Build manual physical-test APK
+        run: gradle :android-app:assembleDebug --console=plain
+
+      - name: Verify APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK='android-app/build/outputs/apk/debug/android-app-debug.apk'
+          test -s "$APK"
+          sha256sum "$APK"
+          unzip -l "$APK" | grep -F 'lib/arm64-v8a/libliliya-llama-jni.so'
+
+      - name: Upload manual physical-test APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: liliyacore-manual-chat-input-ready-resync-apk
+          if-no-files-found: error
+          retention-days: 7
+          path: android-app/build/outputs/apk/debug/android-app-debug.apk
