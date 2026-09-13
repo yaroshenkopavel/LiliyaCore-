@@ -33,6 +33,7 @@ repositories {
 dependencies {
     implementation(project(":android-runtime"))
     implementation(project(":license-transport-client"))
+    debugImplementation(project(":android-llama-cpp-engine"))
 
     testImplementation(kotlin("test"))
     testImplementation("junit:junit:4.13.2")
