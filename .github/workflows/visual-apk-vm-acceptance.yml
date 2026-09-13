@@ -67,7 +67,7 @@ jobs:
           profile: pixel_6
           disable-animations: true
           script: |
-            set -euo pipefail
+            set -eu
             mkdir -p "$RUNNER_TEMP/liliya-visual"
             apk='android-app/build/outputs/apk/debug/android-app-debug.apk'
             test -f "$apk"
