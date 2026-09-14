@@ -168,6 +168,7 @@ private object JniLlamaCppNativeSessionPort : LlamaCppNativeSessionPort {
                 maxPromptUtf8Bytes = policy.maxPromptUtf8Bytes,
                 maxOutputUtf8Bytes = policy.maxOutputUtf8Bytes,
                 useMmap = policy.useMmap,
+                promptFormatPolicy = policy.promptFormatPolicy.nativeCode,
                 outputGrammarUtf8 = grammarUtf8
             )
         } finally {
