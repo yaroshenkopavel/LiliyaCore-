@@ -1,0 +1,434 @@
+name: Qwen3 Russian Context Physical Evidence
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/qwen3-russian-context-physical-evidence.yml'
+      - 'tools/physical-runner/**'
+      - 'android-offline-semantic-provider/src/androidTest/**'
+      - 'android-offline-semantic-provider/build.gradle.kts'
+      - 'android-semantic-test-host/**'
+      - 'android-llama-cpp-engine/**'
+      - 'android-protected-model-staging/**'
+      - 'core/src/main/kotlin/pro/liliya/core/cognitive/**'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/qwen3-russian-context-physical-evidence.yml'
+      - 'tools/physical-runner/**'
+      - 'android-offline-semantic-provider/src/androidTest/**'
+      - 'android-offline-semantic-provider/build.gradle.kts'
+      - 'android-semantic-test-host/**'
+      - 'android-llama-cpp-engine/**'
+      - 'android-protected-model-staging/**'
+      - 'core/src/main/kotlin/pro/liliya/core/cognitive/**'
+  workflow_dispatch:
+    inputs:
+      confirm_large_candidate_download:
+        description: Confirm the physical device may download the exact ~1.28 GB Qwen3 candidate
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  validate-contract:
+    name: Validate Qwen3 Russian/context evidence contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Validate fixed bridge and test invariants
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile tools/physical-runner/liliya_physical_rish_bridge.py
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          bridge = Path('tools/physical-runner/liliya_physical_rish_bridge.py').read_text(encoding='utf-8')
+          test = Path(
+              'android-offline-semantic-provider/src/androidTest/kotlin/pro/liliya/android/semanticprovider/'
+              'Qwen3RussianQualityContextCandidateInstrumentedTest.kt'
+          ).read_text(encoding='utf-8')
+          compiler = Path(
+              'core/src/main/kotlin/pro/liliya/core/cognitive/CognitiveModelRequestCompiler.kt'
+          ).read_text(encoding='utf-8')
+
+          required_bridge = [
+              'HOST = "127.0.0.1"',
+              'Authorization',
+              '/v1/install/semantic-app',
+              '/v1/install/semantic-test',
+              '/v1/reset-semantic-packages',
+              '/v1/instrument/qwen3-russian-context',
+              'Qwen3RussianQualityContextCandidateInstrumentedTest',
+          ]
+          for value in required_bridge:
+              if value not in bridge:
+                  raise SystemExit(f'missing fixed bridge contract: {value}')
+          if re.search(r'/v1/(?:shell|command|exec)(?:["\'/]|$)', bridge):
+              raise SystemExit('bridge must not expose arbitrary shell/command/exec endpoints')
+
+          required_test = [
+              'Qwen3-1.7B-Q4_K_M.gguf',
+              '1_282_439_264L',
+              'd2387ca2dbfee2ffabce7120d3770dadca0b293052bc2f0e138fdc940d9bc7b5',
+              'daeb8e2d528a760970442092f6bf1e55c3b659eb',
+              'LlamaCppPromptFormatPolicy.MODEL_DEFAULT_CHAT_TEMPLATE',
+              'DeterministicCognitiveModelRequestCompiler',
+              'LILIYA-7391',
+              'NOVYI-8427',
+              'QUALITY_MAX_GENERATED_TOKENS = 256',
+              'QUALITY_MAX_OUTPUT_CHARS = 2048',
+              'thinkingMode" to "no_think"',
+          ]
+          for value in required_test:
+              if value not in test:
+                  raise SystemExit(f'quality/context contract drift: {value}')
+
+          if 'request.inference.context.items.forEachIndexed' not in compiler:
+              raise SystemExit('accepted production compiler no longer projects ordered context items')
+          if 'sourceKind(item.source)' not in compiler:
+              raise SystemExit('accepted production compiler source projection drifted')
+          PY
+
+  build-exact-bundle:
+    name: Build exact Qwen3 Russian/context APK bundle
+    needs: validate-contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle 9.6.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.1'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install pinned Android native toolchain
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools" "ndk;29.0.13113456" "cmake;3.31.6"
+
+      - name: Compile exact semantic host and quality/context instrumentation
+        run: |
+          gradle \
+            :android-semantic-test-host:assembleDebug \
+            :android-semantic-test-host:assembleDebugAndroidTest \
+            --console=plain
+
+      - name: Collect exact APK bundle and manifest
+        shell: bash
+        env:
+          EXACT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/qwen3-russian-context-bundle"
+          mkdir -p "$out"
+
+          app_apk="android-semantic-test-host/build/outputs/apk/debug/android-semantic-test-host-debug.apk"
+          test_apk="android-semantic-test-host/build/outputs/apk/androidTest/debug/android-semantic-test-host-debug-androidTest.apk"
+          test -f "$app_apk"
+          test -f "$test_apk"
+          cp "$app_apk" "$out/liliya-semantic-host-debug.apk"
+          cp "$test_apk" "$out/liliya-semantic-host-debug-androidTest.apk"
+
+          SOURCE_TREE="$(git rev-parse HEAD^{tree})" python3 - "$out" <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import sys
+
+          out = Path(sys.argv[1])
+          files = {}
+          for path in sorted(out.iterdir()):
+              if path.is_file():
+                  h = hashlib.sha256()
+                  with path.open('rb') as stream:
+                      for chunk in iter(lambda: stream.read(1024 * 1024), b''):
+                          h.update(chunk)
+                  files[path.name] = {'sha256': h.hexdigest(), 'size': path.stat().st_size}
+
+          manifest = {
+              'evidenceClass': 'qwen3-russian-context-physical-test-bundle-v1',
+              'sourceCommit': os.environ['EXACT_SHA'],
+              'sourceTree': os.environ['SOURCE_TREE'],
+              'candidate': {
+                  'repository': 'ggml-org/Qwen3-1.7B-GGUF',
+                  'revision': 'daeb8e2d528a760970442092f6bf1e55c3b659eb',
+                  'file': 'Qwen3-1.7B-Q4_K_M.gguf',
+                  'bytes': 1282439264,
+                  'sha256': 'd2387ca2dbfee2ffabce7120d3770dadca0b293052bc2f0e138fdc940d9bc7b5',
+                  'quantization': 'Q4_K_M',
+                  'promptFormatPolicy': 'MODEL_DEFAULT_CHAT_TEMPLATE',
+              },
+              'measurementProfile': 'russian-context-v1-256t-2048c',
+              'applicationId': 'pro.liliya.android.semanticprovider',
+              'testApplicationId': 'pro.liliya.android.semanticprovider.test',
+              'instrumentationRunner': 'androidx.test.runner.AndroidJUnitRunner',
+              'files': files,
+          }
+          (out / 'qwen3-russian-context-physical-test-bundle.json').write_text(
+              json.dumps(manifest, indent=2, sort_keys=True) + '\n', encoding='utf-8'
+          )
+          PY
+          cat "$out/qwen3-russian-context-physical-test-bundle.json"
+
+      - name: Publish exact quality/context APK bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen3-russian-context-physical-test-bundle-${{ github.event.pull_request.head.sha || github.sha }}
+          path: ${{ runner.temp }}/qwen3-russian-context-bundle
+          if-no-files-found: error
+          retention-days: 30
+
+  physical-quality-context:
+    name: Physical ARM64 Qwen3 Russian/context evidence
+    if: github.event_name == 'workflow_dispatch'
+    needs: build-exact-bundle
+    runs-on: [self-hosted, ARM64, android-device]
+    timeout-minutes: 120
+    steps:
+      - name: Require explicit large-download confirmation
+        shell: bash
+        run: |
+          set -euo pipefail
+          test '${{ inputs.confirm_large_candidate_download }}' = 'true' || {
+            echo 'Qwen3 Russian/context physical execution requires explicit ~1.28 GB download confirmation.' >&2
+            exit 1
+          }
+
+      - name: Verify pre-provisioned rish bridge
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v python3
+          command -v sha256sum
+          command -v curl
+          token_file='/data/data/com.termux/files/home/.liliya-physical-bridge-token'
+          test -s "$token_file"
+          token="$(cat "$token_file")"
+          curl --fail --silent --show-error \
+            -H "Authorization: Bearer $token" \
+            http://127.0.0.1:18765/v1/probe \
+            > "$RUNNER_TEMP/qwen3-russian-context-probe.json"
+
+      - name: Download exact quality/context APK bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: qwen3-russian-context-physical-test-bundle-${{ github.sha }}
+          path: ${{ runner.temp }}/qwen3-russian-context-bundle
+
+      - name: Verify exact bundle and candidate identity
+        shell: bash
+        env:
+          EXPECTED_SOURCE_COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          BUNDLE_DIR="$RUNNER_TEMP/qwen3-russian-context-bundle" \
+          EXPECTED_SOURCE_COMMIT="$EXPECTED_SOURCE_COMMIT" \
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path(os.environ['BUNDLE_DIR'])
+          manifest = json.loads((root / 'qwen3-russian-context-physical-test-bundle.json').read_text(encoding='utf-8'))
+          if manifest.get('sourceCommit') != os.environ['EXPECTED_SOURCE_COMMIT']:
+              raise SystemExit('source commit mismatch')
+          if not isinstance(manifest.get('sourceTree'), str) or len(manifest['sourceTree']) != 40:
+              raise SystemExit('missing source tree')
+          expected = {
+              'repository': 'ggml-org/Qwen3-1.7B-GGUF',
+              'revision': 'daeb8e2d528a760970442092f6bf1e55c3b659eb',
+              'file': 'Qwen3-1.7B-Q4_K_M.gguf',
+              'bytes': 1282439264,
+              'sha256': 'd2387ca2dbfee2ffabce7120d3770dadca0b293052bc2f0e138fdc940d9bc7b5',
+              'quantization': 'Q4_K_M',
+              'promptFormatPolicy': 'MODEL_DEFAULT_CHAT_TEMPLATE',
+          }
+          if manifest.get('candidate') != expected:
+              raise SystemExit('candidate identity mismatch')
+          if manifest.get('measurementProfile') != 'russian-context-v1-256t-2048c':
+              raise SystemExit('measurement profile mismatch')
+          for name, identity in manifest['files'].items():
+              path = root / name
+              if not path.is_file():
+                  raise SystemExit(f'missing bundle file: {name}')
+              h = hashlib.sha256()
+              with path.open('rb') as stream:
+                  for chunk in iter(lambda: stream.read(1024 * 1024), b''):
+                      h.update(chunk)
+              if h.hexdigest() != identity['sha256'] or path.stat().st_size != identity['size']:
+                  raise SystemExit(f'bundle file mismatch: {name}')
+          PY
+
+      - name: Verify physical ARM64 device
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - "$RUNNER_TEMP/qwen3-russian-context-probe.json" "$RUNNER_TEMP/qwen3-russian-context-device.json" <<'PY'
+          import json
+          import sys
+          probe = json.load(open(sys.argv[1], encoding='utf-8'))
+          facts = {}
+          for key in ('primaryAbi', 'qemu', 'sdk', 'model', 'shellIdentity'):
+              item = probe[key]
+              if item['exit'] != 0:
+                  raise SystemExit(f'bridge probe failed for {key}: {item}')
+              facts[key] = item['output']
+          if facts['primaryAbi'] != 'arm64-v8a':
+              raise SystemExit('not arm64-v8a')
+          if facts['qemu'] == '1':
+              raise SystemExit('emulator is not accepted')
+          if int(facts['sdk']) < 29:
+              raise SystemExit('Android API < 29')
+          if not facts['shellIdentity'].startswith('uid=2000(shell)'):
+              raise SystemExit('rish bridge is not Android shell identity')
+          with open(sys.argv[2], 'w', encoding='utf-8') as stream:
+              json.dump({'evidenceClass':'qwen3-russian-context-device', 'controlBackend':'rish-bridge', **facts}, stream, indent=2, sort_keys=True)
+              stream.write('\n')
+          PY
+
+      - name: Install exact semantic host and instrumentation APKs
+        shell: bash
+        run: |
+          set -euo pipefail
+          token="$(cat /data/data/com.termux/files/home/.liliya-physical-bridge-token)"
+          auth=(-H "Authorization: Bearer $token")
+          bundle="$RUNNER_TEMP/qwen3-russian-context-bundle"
+          curl --fail-with-body --silent --show-error -X POST "${auth[@]}" \
+            http://127.0.0.1:18765/v1/reset-semantic-packages \
+            > "$RUNNER_TEMP/qwen3-russian-context-reset.json"
+          app="$bundle/liliya-semantic-host-debug.apk"
+          app_sha="$(sha256sum "$app" | awk '{print $1}')"
+          curl --fail-with-body --silent --show-error -X POST "${auth[@]}" \
+            -H "X-Liliya-Sha256: $app_sha" \
+            -H 'Content-Type: application/vnd.android.package-archive' \
+            --data-binary "@$app" \
+            http://127.0.0.1:18765/v1/install/semantic-app \
+            > "$RUNNER_TEMP/qwen3-russian-context-install-app.json"
+          test_apk="$bundle/liliya-semantic-host-debug-androidTest.apk"
+          test_sha="$(sha256sum "$test_apk" | awk '{print $1}')"
+          curl --fail-with-body --silent --show-error -X POST "${auth[@]}" \
+            -H "X-Liliya-Sha256: $test_sha" \
+            -H 'Content-Type: application/vnd.android.package-archive' \
+            --data-binary "@$test_apk" \
+            http://127.0.0.1:18765/v1/install/semantic-test \
+            > "$RUNNER_TEMP/qwen3-russian-context-install-test.json"
+
+      - name: Run exact Qwen3 Russian/context instrumentation
+        shell: bash
+        run: |
+          set -euo pipefail
+          token="$(cat /data/data/com.termux/files/home/.liliya-physical-bridge-token)"
+          log="$RUNNER_TEMP/qwen3-russian-context-instrumentation.log"
+          curl --fail-with-body --silent --show-error -X POST \
+            -H "Authorization: Bearer $token" \
+            http://127.0.0.1:18765/v1/instrument/qwen3-russian-context \
+            2>&1 | tee "$log"
+          grep -Fq 'INSTRUMENTATION_CODE: -1' "$log"
+          if grep -Eq 'FAILURES!!!|INSTRUMENTATION_FAILED|Process crashed' "$log"; then
+            echo 'Qwen3 Russian/context instrumentation failed' >&2
+            exit 1
+          fi
+
+      - name: Parse and validate Russian/context evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - "$RUNNER_TEMP/qwen3-russian-context-instrumentation.log" "$RUNNER_TEMP/qwen3-russian-context-evidence.json" <<'PY'
+          import base64
+          import json
+          import sys
+
+          values = {}
+          prefix = 'INSTRUMENTATION_STATUS: qwen3Quality.'
+          for raw in open(sys.argv[1], encoding='utf-8', errors='replace'):
+              line = raw.rstrip('\n')
+              if not line.startswith(prefix):
+                  continue
+              payload = line[len(prefix):]
+              if '=' in payload:
+                  key, value = payload.split('=', 1)
+                  values[key] = value
+
+          expected = {
+              'evidenceClass': 'qwen3-russian-quality-context-candidate-v1',
+              'primaryAbi': 'arm64-v8a',
+              'generationModel': 'Qwen3-1.7B-Q4_K_M.gguf',
+              'generationModelBytes': '1282439264',
+              'generationModelSha256': 'd2387ca2dbfee2ffabce7120d3770dadca0b293052bc2f0e138fdc940d9bc7b5',
+              'generationModelRevision': 'daeb8e2d528a760970442092f6bf1e55c3b659eb',
+              'generationQuantization': 'Q4_K_M',
+              'promptFormatPolicy': 'MODEL_DEFAULT_CHAT_TEMPLATE',
+              'measurementProfile': 'russian-context-v1-256t-2048c',
+              'thinkingMode': 'no_think',
+              'contextCompiler': 'DeterministicCognitiveModelRequestCompiler',
+              'russianArithmeticPassed': 'true',
+              'russianCapitalPassed': 'true',
+              'contextRecallPassed': 'true',
+              'contextOrderPassed': 'true',
+          }
+          for key, wanted in expected.items():
+              if values.get(key) != wanted:
+                  raise SystemExit(f'{key} mismatch: {values.get(key)!r} != {wanted!r}')
+
+          cases = ('russianArithmetic', 'russianCapital', 'contextRecall', 'contextOrder')
+          decoded = {}
+          for case in cases:
+              for suffix in ('Ms', 'Chars', 'OutputBase64'):
+                  key = case + suffix
+                  if key not in values:
+                      raise SystemExit(f'missing evidence field: {key}')
+              if int(values[case + 'Ms']) <= 0 or int(values[case + 'Chars']) <= 0:
+                  raise SystemExit(f'non-positive case evidence: {case}')
+              decoded[case + 'Output'] = base64.b64decode(values[case + 'OutputBase64']).decode('utf-8')
+
+          out = {'raw': values, 'decodedOutputs': decoded}
+          with open(sys.argv[2], 'w', encoding='utf-8') as stream:
+              json.dump(out, stream, ensure_ascii=False, indent=2, sort_keys=True)
+              stream.write('\n')
+          PY
+          cat "$RUNNER_TEMP/qwen3-russian-context-evidence.json"
+
+      - name: Publish physical Russian/context evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen3-russian-context-physical-evidence-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/qwen3-russian-context-bundle/qwen3-russian-context-physical-test-bundle.json
+            ${{ runner.temp }}/qwen3-russian-context-device.json
+            ${{ runner.temp }}/qwen3-russian-context-instrumentation.log
+            ${{ runner.temp }}/qwen3-russian-context-evidence.json
+            ${{ runner.temp }}/qwen3-russian-context-probe.json
+            ${{ runner.temp }}/qwen3-russian-context-reset.json
+            ${{ runner.temp }}/qwen3-russian-context-install-app.json
+            ${{ runner.temp }}/qwen3-russian-context-install-test.json
+          if-no-files-found: warn
+          retention-days: 30
