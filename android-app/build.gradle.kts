@@ -2,6 +2,10 @@ plugins {
     id("com.android.application")
 }
 
+val manualPhysicalGitSha = providers.environmentVariable("GITHUB_SHA")
+    .orElse("local-unpinned")
+    .get()
+
 android {
     namespace = "pro.liliya.app"
     compileSdk = 35
@@ -16,6 +20,12 @@ android {
 
         ndk {
             abiFilters += listOf("arm64-v8a")
+        }
+    }
+
+    buildTypes {
+        getByName("debug") {
+            buildConfigField("String", "MANUAL_PHYSICAL_GIT_SHA", "\"$manualPhysicalGitSha\"")
         }
     }
 
