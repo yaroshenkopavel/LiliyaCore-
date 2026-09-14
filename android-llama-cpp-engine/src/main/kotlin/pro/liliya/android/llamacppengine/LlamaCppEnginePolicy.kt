@@ -1,5 +1,11 @@
 package pro.liliya.android.llamacppengine
 
+/** Engine-local prompt framing. Selection/authorization remains outside this adapter. */
+enum class LlamaCppPromptFormatPolicy(internal val nativeCode: Int) {
+    RAW(0),
+    MODEL_DEFAULT_CHAT_TEMPLATE(1)
+}
+
 /**
  * Caller-supplied resource policy for one llama.cpp engine session.
  *
@@ -18,7 +24,8 @@ data class LlamaCppEnginePolicy(
     val maxPromptUtf8Bytes: Int,
     val maxOutputChars: Int,
     val maxOutputUtf8Bytes: Int,
-    val useMmap: Boolean
+    val useMmap: Boolean,
+    val promptFormatPolicy: LlamaCppPromptFormatPolicy = LlamaCppPromptFormatPolicy.RAW
 ) {
     init {
         require(contextTokens > 0) { "context token budget must be positive" }
