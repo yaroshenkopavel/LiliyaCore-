@@ -26,7 +26,8 @@ class PersistentEncryptedLearningApplicationMutationApplier private constructor(
     private val memory: EncryptedPersistentMemoryComposition,
     private val knowledge: EncryptedPersistentKnowledgeComposition
 ) : LearningApplicationMutationApplicationPort,
-    LearningApplicationMutationRecoveryClassificationPort {
+    LearningApplicationMutationRecoveryClassificationPort,
+    LearningApplicationMutationExactCompletionRecoveryPort {
     constructor(
         foundation: FoundationComposition,
         mutations: PersistentLearningApplicationMutationComposition,
@@ -57,7 +58,6 @@ class PersistentEncryptedLearningApplicationMutationApplier private constructor(
         knowledge = knowledge
     )
 
-
     override fun classifyPreparedMutations():
         LearningApplicationMutationRecoveryClassificationResult =
         LearningApplicationMutationRecoveryClassifier.classify(
@@ -66,6 +66,21 @@ class PersistentEncryptedLearningApplicationMutationApplier private constructor(
             inspectKnowledge = knowledge::inspect
         )
 
+    override fun recoverExactCompletion():
+        LearningApplicationMutationExactCompletionRecoveryResult =
+        LearningApplicationMutationExactCompletionRecovery(
+            mutations = mutations,
+            preparedMutations = preparedMutations,
+            classifyEvidence = LearningApplicationMutationRecoveryEvidencePort {
+                LearningApplicationMutationRecoveryEvidenceClassifier.classify(
+                    preparedMutations = preparedMutations(),
+                    inspectMemory = memory::inspect,
+                    inspectKnowledge = knowledge::inspect
+                )
+            },
+            inspectMemory = memory::inspect,
+            inspectKnowledge = knowledge::inspect
+        ).recover()
 
     override fun apply(
         reference: LearningApplicationMutationReference
