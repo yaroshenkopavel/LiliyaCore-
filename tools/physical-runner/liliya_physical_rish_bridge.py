@@ -43,13 +43,27 @@ SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
 APP_PACKAGE = "pro.liliya.app"
 TEST_PACKAGE = "pro.liliya.app.test"
+SEMANTIC_APP_PACKAGE = "pro.liliya.android.semanticprovider"
+SEMANTIC_TEST_PACKAGE = "pro.liliya.android.semanticprovider.test"
 RUNNER = "androidx.test.runner.AndroidJUnitRunner"
 PROVISIONING_TEST = "pro.liliya.app.PhysicalProductAuthProvisioningToChatInstrumentedTest"
 COLD_START_TEST = "pro.liliya.app.DevelopmentFirstWorkingLiliyaColdStartInstrumentedTest"
+QWEN3_CANDIDATE_TEST = (
+    "pro.liliya.android.semanticprovider."
+    "OfflineSemanticProviderProductionGenerationCandidateInstrumentedTest"
+)
 
 UPLOADS = {
     "/v1/install/app": ("liliya-app-debug.apk", APP_PACKAGE),
     "/v1/install/test": ("liliya-app-debug-androidTest.apk", TEST_PACKAGE),
+    "/v1/install/semantic-app": (
+        "liliya-semantic-host-debug.apk",
+        SEMANTIC_APP_PACKAGE,
+    ),
+    "/v1/install/semantic-test": (
+        "liliya-semantic-host-debug-androidTest.apk",
+        SEMANTIC_TEST_PACKAGE,
+    ),
 }
 
 
@@ -145,17 +159,14 @@ class Handler(BaseHTTPRequestHandler):
         path = urlsplit(self.path).path
 
         if path == "/v1/reset-packages":
-            outputs = []
-            for package in (TEST_PACKAGE, APP_PACKAGE):
-                completed = run_rish(f"pm uninstall {package}", timeout=60)
-                outputs.append(
-                    {
-                        "package": package,
-                        "exit": completed.returncode,
-                        "output": completed.stdout.strip(),
-                    }
-                )
-            self._json(200, {"operation": "reset-packages", "results": outputs})
+            self._reset_packages((TEST_PACKAGE, APP_PACKAGE), "reset-packages")
+            return
+
+        if path == "/v1/reset-semantic-packages":
+            self._reset_packages(
+                (SEMANTIC_TEST_PACKAGE, SEMANTIC_APP_PACKAGE),
+                "reset-semantic-packages",
+            )
             return
 
         if path in UPLOADS:
@@ -170,7 +181,28 @@ class Handler(BaseHTTPRequestHandler):
             self._instrument(COLD_START_TEST)
             return
 
+        if path == "/v1/instrument/qwen3-candidate":
+            self._instrument(
+                QWEN3_CANDIDATE_TEST,
+                test_package=SEMANTIC_TEST_PACKAGE,
+                timeout=3600,
+            )
+            return
+
         self._json(404, {"error": "unknown endpoint"})
+
+    def _reset_packages(self, packages: tuple[str, ...], operation: str) -> None:
+        outputs = []
+        for package in packages:
+            completed = run_rish(f"pm uninstall {package}", timeout=60)
+            outputs.append(
+                {
+                    "package": package,
+                    "exit": completed.returncode,
+                    "output": completed.stdout.strip(),
+                }
+            )
+        self._json(200, {"operation": operation, "results": outputs})
 
     def _install_upload(self, path: str) -> None:
         filename, package = UPLOADS[path]
@@ -248,13 +280,18 @@ class Handler(BaseHTTPRequestHandler):
         ok = completed.returncode == 0 and package_status.returncode == 0 and package_status.stdout.strip().startswith("package:")
         self._json(200 if ok else 500, response)
 
-    def _instrument(self, test_class: str) -> None:
+    def _instrument(
+        self,
+        test_class: str,
+        test_package: str = TEST_PACKAGE,
+        timeout: int = 900,
+    ) -> None:
         command = (
             "am instrument -w -r "
             f"-e class {test_class} "
-            f"{TEST_PACKAGE}/{RUNNER}"
+            f"{test_package}/{RUNNER}"
         )
-        completed = run_rish(command, timeout=900)
+        completed = run_rish(command, timeout=timeout)
         output = completed.stdout
         ok = (
             completed.returncode == 0
