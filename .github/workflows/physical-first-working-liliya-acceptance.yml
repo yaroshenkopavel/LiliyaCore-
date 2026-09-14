@@ -52,7 +52,7 @@ jobs:
           grep -Fq 'PhysicalProductAuthProvisioningToChatInstrumentedTest' "$workflow"
           grep -Fq 'DevelopmentFirstWorkingLiliyaColdStartInstrumentedTest' "$workflow"
           grep -Fq 'MODEL_DEFAULT_CHAT_TEMPLATE' \
-            android-offline-semantic-provider/src/androidTest/kotlin/pro/liliya/android/offlinesemantic/OfflineSemanticProviderProductionGenerationCandidateInstrumentedTest.kt
+            android-offline-semantic-provider/src/androidTest/kotlin/pro/liliya/android/semanticprovider/OfflineSemanticProviderProductionGenerationCandidateInstrumentedTest.kt
           grep -Fq 'class PhysicalProductAuthProvisioningToChatInstrumentedTest' "$provisioning_test"
           grep -Fq 'class DevelopmentFirstWorkingLiliyaColdStartInstrumentedTest' "$cold_start_test"
 
