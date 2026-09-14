@@ -35,7 +35,9 @@ jobs:
           gradle-version: '9.6.1'
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
 
       - name: Install Android API 35
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
@@ -84,7 +86,9 @@ jobs:
           gradle-version: '9.6.1'
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
 
       - name: Install Android API 35
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
@@ -114,7 +118,9 @@ jobs:
           gradle-version: '9.6.1'
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
 
       - name: Install Android API 35
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
@@ -162,7 +168,9 @@ jobs:
           gradle-version: '9.6.1'
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
 
       - name: Install Android API 35
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
@@ -207,7 +215,9 @@ jobs:
           gradle-version: '9.6.1'
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
 
       - name: Install Android API 35
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
@@ -252,7 +262,9 @@ jobs:
           gradle-version: '9.6.1'
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
 
       - name: Install Android API 35
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
@@ -282,7 +294,9 @@ jobs:
           gradle-version: '9.6.1'
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
 
       - name: Install Android API 35
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
@@ -327,7 +341,9 @@ jobs:
           gradle-version: '9.6.1'
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
 
       - name: Install Android API 35
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
@@ -372,7 +388,9 @@ jobs:
           gradle-version: '9.6.1'
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
 
       - name: Install Android API 35
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
@@ -417,7 +435,9 @@ jobs:
           gradle-version: '9.6.1'
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
 
       - name: Install Android API 35, NDK and CMake
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools" "ndk;29.0.13113456" "cmake;3.31.6"

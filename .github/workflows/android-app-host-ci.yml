@@ -73,7 +73,9 @@ jobs:
           gradle-version: '9.6.1'
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
 
       - name: Install pinned Android build toolchain
         run: |
@@ -207,7 +209,9 @@ jobs:
           gradle-version: '9.6.1'
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
 
       - name: Install pinned Android instrumentation toolchain
         run: |
