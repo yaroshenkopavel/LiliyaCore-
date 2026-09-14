@@ -1,0 +1,83 @@
+name: Local First P2.3 Restore
+
+on:
+  push:
+    branches:
+      - tooling/local-first-p2-3-restore-2026-09-14
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CANONICAL_SHA: 5d78546044640f539fe9543ae3543a00e781c9fe
+      CANONICAL_TREE: 994ce88adadad5e39ecdae51608ac60ad238fc93
+      LLAMA_CPP_SHA: 0f3a71be15af836d277c9f918adfafb45732677e
+    steps:
+      - name: Checkout tooling branch with full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Export exact canonical source mirror
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git cat-file -e "${CANONICAL_SHA}^{commit}"
+          test "$(git show -s --format=%T "$CANONICAL_SHA")" = "$CANONICAL_TREE"
+          rm -rf /tmp/LiliyaCore-local
+          git clone --local "$GITHUB_WORKSPACE" /tmp/LiliyaCore-local
+          cd /tmp/LiliyaCore-local
+          git checkout --detach "$CANONICAL_SHA"
+          test "$(git rev-parse HEAD)" = "$CANONICAL_SHA"
+          test "$(git rev-parse HEAD^{tree})" = "$CANONICAL_TREE"
+          rm -rf .gradle
+          find . -type d \( -name build -o -name .cxx \) -prune -exec rm -rf {} + || true
+          cd /tmp
+          tar -czf "$GITHUB_WORKSPACE/liliycore-local-restore-source.tar.gz" LiliyaCore-local
+
+      - name: Export exact pinned llama.cpp git source
+        shell: bash
+        run: |
+          set -euxo pipefail
+          rm -rf /tmp/liliya-llama-cpp-pinned.git
+          git init --bare /tmp/liliya-llama-cpp-pinned.git
+          git -C /tmp/liliya-llama-cpp-pinned.git fetch --depth=1 https://github.com/ggml-org/llama.cpp.git "$LLAMA_CPP_SHA"
+          test "$(git -C /tmp/liliya-llama-cpp-pinned.git rev-parse FETCH_HEAD)" = "$LLAMA_CPP_SHA"
+          git -C /tmp/liliya-llama-cpp-pinned.git update-ref refs/heads/liliya-pinned "$LLAMA_CPP_SHA"
+          tar -czf "$GITHUB_WORKSPACE/liliya-llama-cpp-pinned-git.tar.gz" -C /tmp liliya-llama-cpp-pinned.git
+
+      - name: Write restore manifest
+        shell: bash
+        run: |
+          set -euxo pipefail
+          {
+            echo "CANONICAL_SHA=$CANONICAL_SHA"
+            echo "CANONICAL_TREE=$CANONICAL_TREE"
+            echo "LLAMA_CPP_SHA=$LLAMA_CPP_SHA"
+            sha256sum liliycore-local-restore-source.tar.gz liliya-llama-cpp-pinned-git.tar.gz
+          } > p2-3-restore-manifest.txt
+          cat p2-3-restore-manifest.txt
+
+      - name: Upload canonical source mirror
+        uses: actions/upload-artifact@v4
+        with:
+          name: p2-3-canonical-source
+          path: liliycore-local-restore-source.tar.gz
+          retention-days: 7
+          compression-level: 0
+
+      - name: Upload pinned llama.cpp git source
+        uses: actions/upload-artifact@v4
+        with:
+          name: p2-3-llama-cpp-pinned-git
+          path: liliya-llama-cpp-pinned-git.tar.gz
+          retention-days: 7
+          compression-level: 0
+
+      - name: Upload restore manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: p2-3-restore-manifest
+          path: p2-3-restore-manifest.txt
+          retention-days: 7
