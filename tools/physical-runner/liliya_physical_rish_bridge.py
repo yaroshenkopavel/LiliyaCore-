@@ -37,6 +37,7 @@ STAGING_DIR = Path(
         "/storage/emulated/0/Download/LiliyaPhysicalAcceptance",
     )
 )
+DEVICE_INSTALL_DIR = "/data/local/tmp/liliya-physical-acceptance"
 MAX_APK_BYTES = 512 * 1024 * 1024
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
@@ -220,7 +221,18 @@ class Handler(BaseHTTPRequestHandler):
             self._json(500, {"error": f"upload staging failed: {exc}"})
             return
 
-        completed = run_rish(f"pm install -r -t '{destination}'", timeout=180)
+        device_destination = f"{DEVICE_INSTALL_DIR}/{filename}"
+        install_command = (
+            f"mkdir -p '{DEVICE_INSTALL_DIR}' && "
+            f"rm -f '{device_destination}' && "
+            f"cp '{destination}' '{device_destination}' && "
+            f"chmod 0644 '{device_destination}' && "
+            f"pm install -r -t '{device_destination}'; "
+            "rc=$?; "
+            f"rm -f '{device_destination}'; "
+            "exit $rc"
+        )
+        completed = run_rish(install_command, timeout=180)
         package_status = run_rish(f"pm path {package}", timeout=30)
         response = {
             "operation": "install",
