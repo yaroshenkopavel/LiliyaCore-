@@ -14,6 +14,7 @@ on:
     paths:
       - '.github/workflows/physical-first-working-liliya-acceptance.yml'
       - 'android-app/src/androidTest/kotlin/pro/liliya/app/PhysicalProductAuthProvisioningToChatInstrumentedTest.kt'
+      - 'android-app/src/androidTest/kotlin/pro/liliya/app/DevelopmentFirstWorkingLiliyaColdStartInstrumentedTest.kt'
 
 permissions:
   contents: read
@@ -44,10 +45,14 @@ jobs:
           test -f "$cold_start_test"
           grep -Fq 'runs-on: [self-hosted, ARM64, android-device]' "$workflow"
           grep -Fq "if: github.event_name == 'workflow_dispatch'" "$workflow"
+          grep -Fq 'Build exact physical acceptance APK bundle' "$workflow"
+          grep -Fq 'Verify exact physical acceptance bundle' "$workflow"
           grep -Fq 'test "$abi" = "arm64-v8a"' "$workflow"
           grep -Fq 'test "$qemu" != "1"' "$workflow"
           grep -Fq 'PhysicalProductAuthProvisioningToChatInstrumentedTest' "$workflow"
           grep -Fq 'DevelopmentFirstWorkingLiliyaColdStartInstrumentedTest' "$workflow"
+          grep -Fq 'MODEL_DEFAULT_CHAT_TEMPLATE' \
+            android-offline-semantic-provider/src/androidTest/kotlin/pro/liliya/android/offlinesemantic/OfflineSemanticProviderProductionGenerationCandidateInstrumentedTest.kt
           grep -Fq 'class PhysicalProductAuthProvisioningToChatInstrumentedTest' "$provisioning_test"
           grep -Fq 'class DevelopmentFirstWorkingLiliyaColdStartInstrumentedTest' "$cold_start_test"
 
@@ -58,18 +63,17 @@ jobs:
             exit 1
           fi
 
-  physical-first-working-liliya:
-    name: Physical ARM64 First Working Liliya READY-to-first-chat acceptance
-    if: github.event_name == 'workflow_dispatch'
+  build-physical-acceptance-bundle:
+    name: Build exact physical acceptance APK bundle
     needs: validate-physical-acceptance-contract
-    runs-on: [self-hosted, ARM64, android-device]
-    timeout-minutes: 90
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
 
     steps:
       - name: Checkout exact source
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Download exact semantic provenance bundle
         uses: actions/download-artifact@v4
@@ -77,7 +81,7 @@ jobs:
           name: semantic-onnx-provenance
           path: ${{ runner.temp }}/semantic-onnx-download
           repository: ${{ github.repository }}
-          run-id: ${{ inputs.provenance_run_id }}
+          run-id: ${{ inputs.provenance_run_id || '33981322350' }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Verify and stage exact semantic test assets
@@ -159,6 +163,144 @@ jobs:
             "ndk;29.0.13113456" \
             "cmake;3.31.6"
 
+      - name: Compile physical provisioning and cold-start instrumentation
+        run: gradle :android-app:assembleDebug :android-app:assembleDebugAndroidTest --console=plain
+
+      - name: Build exact physical acceptance APK bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          bundle="$RUNNER_TEMP/physical-first-working-liliya-test-bundle"
+          mkdir -p "$bundle"
+
+          app_apk='android-app/build/outputs/apk/debug/android-app-debug.apk'
+          test_apk='android-app/build/outputs/apk/androidTest/debug/android-app-debug-androidTest.apk'
+          test -f "$app_apk"
+          test -f "$test_apk"
+
+          cp "$app_apk" "$bundle/liliya-app-debug.apk"
+          cp "$test_apk" "$bundle/liliya-app-debug-androidTest.apk"
+
+          SOURCE_COMMIT="$(git rev-parse HEAD)" \
+          SOURCE_TREE="$(git rev-parse HEAD^{tree})" \
+          BUNDLE_DIR="$bundle" \
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path(os.environ["BUNDLE_DIR"])
+          files = {}
+          for name in ("liliya-app-debug.apk", "liliya-app-debug-androidTest.apk"):
+              path = root / name
+              h = hashlib.sha256()
+              with path.open("rb") as stream:
+                  for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                      h.update(chunk)
+              files[name] = {
+                  "sha256": h.hexdigest(),
+                  "size": path.stat().st_size,
+              }
+
+          manifest = {
+              "evidenceClass": "physical-first-working-liliya-test-bundle",
+              "sourceCommit": os.environ["SOURCE_COMMIT"],
+              "sourceTree": os.environ["SOURCE_TREE"],
+              "applicationId": "pro.liliya.app",
+              "testApplicationId": "pro.liliya.app.test",
+              "instrumentationRunner": "androidx.test.runner.AndroidJUnitRunner",
+              "files": files,
+          }
+          (root / "physical-first-working-liliya-test-bundle.json").write_text(
+              json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+          cat "$bundle/physical-first-working-liliya-test-bundle.json"
+
+      - name: Publish exact physical acceptance APK bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: physical-first-working-liliya-test-bundle-${{ github.event.pull_request.head.sha || github.sha }}
+          if-no-files-found: error
+          retention-days: 30
+          path: ${{ runner.temp }}/physical-first-working-liliya-test-bundle/**
+
+  physical-first-working-liliya:
+    name: Physical ARM64 First Working Liliya READY-to-first-chat acceptance
+    if: github.event_name == 'workflow_dispatch'
+    needs:
+      - validate-physical-acceptance-contract
+      - build-physical-acceptance-bundle
+    runs-on: [self-hosted, ARM64, android-device]
+    timeout-minutes: 30
+
+    steps:
+      - name: Verify pre-provisioned ARM64 physical runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$(uname -m)" in
+            aarch64|arm64) ;;
+            *) echo "runner host must be ARM64" >&2; exit 1 ;;
+          esac
+          command -v adb
+          command -v python3
+          command -v sha256sum
+
+      - name: Download exact physical acceptance APK bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: physical-first-working-liliya-test-bundle-${{ github.sha }}
+          path: ${{ runner.temp }}/physical-first-working-liliya-test-bundle
+
+      - name: Verify exact physical acceptance bundle
+        shell: bash
+        env:
+          EXPECTED_SOURCE_COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          BUNDLE_DIR="$RUNNER_TEMP/physical-first-working-liliya-test-bundle" \
+          EXPECTED_SOURCE_COMMIT="$EXPECTED_SOURCE_COMMIT" \
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path(os.environ["BUNDLE_DIR"])
+          manifest_path = root / "physical-first-working-liliya-test-bundle.json"
+          manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+          if manifest.get("sourceCommit") != os.environ["EXPECTED_SOURCE_COMMIT"]:
+              raise SystemExit(
+                  f"source commit mismatch: manifest={manifest.get('sourceCommit')} "
+                  f"expected={os.environ['EXPECTED_SOURCE_COMMIT']}"
+              )
+          source_tree = manifest.get("sourceTree")
+          if not isinstance(source_tree, str) or len(source_tree) != 40:
+              raise SystemExit("missing exact source tree")
+
+          for name, expected in manifest["files"].items():
+              path = root / name
+              if not path.is_file():
+                  raise SystemExit(f"missing bundle file: {name}")
+              h = hashlib.sha256()
+              with path.open("rb") as stream:
+                  for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                      h.update(chunk)
+              actual_sha = h.hexdigest()
+              actual_size = path.stat().st_size
+              if actual_sha != expected["sha256"] or actual_size != expected["size"]:
+                  raise SystemExit(
+                      f"bundle file mismatch for {name}: "
+                      f"sha={actual_sha}/{expected['sha256']} "
+                      f"size={actual_size}/{expected['size']}"
+                  )
+          print(json.dumps(manifest, indent=2, sort_keys=True))
+          PY
+
       - name: Verify one physical ARM64 Android device
         shell: bash
         run: |
@@ -179,10 +321,19 @@ jobs:
           test "$qemu" != "1"
           test "$sdk" -ge 29
           echo "ANDROID_DEVICE_SERIAL=$serial" >> "$GITHUB_ENV"
+
+          BUNDLE_DIR="$RUNNER_TEMP/physical-first-working-liliya-test-bundle" \
           python3 - "$RUNNER_TEMP/physical-first-working-liliya-device.json" "$serial" "$abi" "$qemu" "$sdk" "$model" <<'PY'
           import json
+          import os
           import sys
+          from pathlib import Path
+
           path, serial, abi, qemu, sdk, model = sys.argv[1:]
+          bundle = Path(os.environ["BUNDLE_DIR"])
+          source = json.loads(
+              (bundle / "physical-first-working-liliya-test-bundle.json").read_text(encoding="utf-8")
+          )
           with open(path, "w", encoding="utf-8") as stream:
               json.dump(
                   {
@@ -192,6 +343,10 @@ jobs:
                       "qemu": qemu,
                       "sdk": int(sdk),
                       "model": model,
+                      "sourceCommit": source["sourceCommit"],
+                      "sourceTree": source["sourceTree"],
+                      "appApkSha256": source["files"]["liliya-app-debug.apk"]["sha256"],
+                      "testApkSha256": source["files"]["liliya-app-debug-androidTest.apk"]["sha256"],
                   },
                   stream,
                   indent=2,
@@ -200,30 +355,48 @@ jobs:
               stream.write("\n")
           PY
 
-      - name: Compile physical provisioning and cold-start instrumentation
-        run: gradle :android-app:assembleDebug :android-app:assembleDebugAndroidTest --console=plain
+      - name: Install exact app and instrumentation APKs
+        shell: bash
+        run: |
+          set -euo pipefail
+          bundle="$RUNNER_TEMP/physical-first-working-liliya-test-bundle"
+          serial="$ANDROID_DEVICE_SERIAL"
+          adb -s "$serial" uninstall pro.liliya.app.test >/dev/null 2>&1 || true
+          adb -s "$serial" uninstall pro.liliya.app >/dev/null 2>&1 || true
+          adb -s "$serial" install -r -t "$bundle/liliya-app-debug.apk"
+          adb -s "$serial" install -r -t "$bundle/liliya-app-debug-androidTest.apk"
 
       - name: Run physical Product Auth provisioning-to-chat instrumentation
         shell: bash
         run: |
           set -euo pipefail
           set -o pipefail
-          gradle \
-            :android-app:connectedDebugAndroidTest \
-            -Pandroid.testInstrumentationRunnerArguments.class=pro.liliya.app.PhysicalProductAuthProvisioningToChatInstrumentedTest \
-            --console=plain \
-            2>&1 | tee "$RUNNER_TEMP/physical-product-auth-provisioning-to-chat.log"
+          log="$RUNNER_TEMP/physical-product-auth-provisioning-to-chat.log"
+          adb -s "$ANDROID_DEVICE_SERIAL" shell am instrument -w -r \
+            -e class pro.liliya.app.PhysicalProductAuthProvisioningToChatInstrumentedTest \
+            pro.liliya.app.test/androidx.test.runner.AndroidJUnitRunner \
+            2>&1 | tee "$log"
+          grep -Fq 'INSTRUMENTATION_CODE: -1' "$log"
+          if grep -Eq 'FAILURES!!!|INSTRUMENTATION_FAILED|Process crashed' "$log"; then
+            echo 'physical Product Auth provisioning instrumentation failed' >&2
+            exit 1
+          fi
 
       - name: Run physical First Working Liliya cold-start instrumentation
         shell: bash
         run: |
           set -euo pipefail
           set -o pipefail
-          gradle \
-            :android-app:connectedDebugAndroidTest \
-            -Pandroid.testInstrumentationRunnerArguments.class=pro.liliya.app.DevelopmentFirstWorkingLiliyaColdStartInstrumentedTest \
-            --console=plain \
-            2>&1 | tee "$RUNNER_TEMP/physical-first-working-liliya-cold-start.log"
+          log="$RUNNER_TEMP/physical-first-working-liliya-cold-start.log"
+          adb -s "$ANDROID_DEVICE_SERIAL" shell am instrument -w -r \
+            -e class pro.liliya.app.DevelopmentFirstWorkingLiliyaColdStartInstrumentedTest \
+            pro.liliya.app.test/androidx.test.runner.AndroidJUnitRunner \
+            2>&1 | tee "$log"
+          grep -Fq 'INSTRUMENTATION_CODE: -1' "$log"
+          if grep -Eq 'FAILURES!!!|INSTRUMENTATION_FAILED|Process crashed' "$log"; then
+            echo 'physical First Working Liliya cold-start instrumentation failed' >&2
+            exit 1
+          fi
 
       - name: Publish physical First Working Liliya evidence
         if: always()
@@ -233,8 +406,7 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
           path: |
+            ${{ runner.temp }}/physical-first-working-liliya-test-bundle/physical-first-working-liliya-test-bundle.json
             ${{ runner.temp }}/physical-first-working-liliya-device.json
             ${{ runner.temp }}/physical-product-auth-provisioning-to-chat.log
             ${{ runner.temp }}/physical-first-working-liliya-cold-start.log
-            android-app/build/outputs/androidTest-results/connected/**
-            android-app/build/reports/androidTests/connected/**
