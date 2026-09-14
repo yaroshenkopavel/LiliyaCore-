@@ -22,6 +22,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import pro.liliya.android.llamacppengine.AndroidLlamaCppCognitiveModelAssembly
 import pro.liliya.android.llamacppengine.LlamaCppEnginePolicy
+import pro.liliya.android.llamacppengine.LlamaCppPromptFormatPolicy
 import pro.liliya.android.protectedmodel.staging.AndroidProtectedModelStagingPolicy
 import pro.liliya.core.cognitive.CognitiveCompiledModelRequest
 import pro.liliya.core.cognitive.CognitiveContextSnapshot
@@ -101,6 +102,7 @@ class OfflineSemanticProviderProductionGenerationCandidateInstrumentedTest {
                 "generationModelSha256" to QWEN_SHA256,
                 "generationModelRevision" to QWEN_REVISION,
                 "generationQuantization" to "Q4_K_M",
+                "promptFormatPolicy" to "MODEL_DEFAULT_CHAT_TEMPLATE",
                 "targetProductionLlmEvidence" to "candidate-physical"
             )
 
@@ -304,9 +306,9 @@ class OfflineSemanticProviderProductionGenerationCandidateInstrumentedTest {
         val legacyLoader = ModelEngineLoaderPort { _, _ ->
             ModelEngineLoadResult.Rejected(ModelEngineLoadFailure.LOAD_REJECTED)
         }
-        val compiler = CognitiveModelRequestCompilerPort {
+        val compiler = CognitiveModelRequestCompilerPort { request ->
             CognitiveModelRequestCompilerResult.Compiled(
-                CognitiveCompiledModelRequest(QWEN_NON_THINKING_PROMPT)
+                CognitiveCompiledModelRequest(request.inference.input.text)
             )
         }
         return AndroidLlamaCppCognitiveModelAssembly.create(
@@ -330,7 +332,8 @@ class OfflineSemanticProviderProductionGenerationCandidateInstrumentedTest {
                 maxPromptUtf8Bytes = 32768,
                 maxOutputChars = 512,
                 maxOutputUtf8Bytes = 2048,
-                useMmap = true
+                useMmap = true,
+                promptFormatPolicy = LlamaCppPromptFormatPolicy.MODEL_DEFAULT_CHAT_TEMPLATE
             ),
             foundation = foundation,
             protectedAccess = protectedAccess,
@@ -353,7 +356,7 @@ class OfflineSemanticProviderProductionGenerationCandidateInstrumentedTest {
         )
         return CognitiveInferenceRequest(
             turn = turn,
-            input = CognitiveInput("What is two plus two?"),
+            input = CognitiveInput("What is two plus two? /no_think"),
             context = CognitiveContextSnapshot(turn, emptyList()),
             maxOutputChars = 512
         )
@@ -469,11 +472,6 @@ class OfflineSemanticProviderProductionGenerationCandidateInstrumentedTest {
             "https://huggingface.co/ggml-org/Qwen3-1.7B-GGUF/resolve/" +
                 QWEN_REVISION + "/" + QWEN_FILE_NAME + "?download=true"
 
-        const val QWEN_NON_THINKING_PROMPT =
-            "<|im_start|>system\n" +
-                "You are Liliya, a concise local assistant. Answer directly and briefly.<|im_end|>\n" +
-                "<|im_start|>user\nWhat is two plus two? /no_think<|im_end|>\n" +
-                "<|im_start|>assistant\n<think>\n\n</think>\n\n"
 
         const val SEGMENT_BYTES = 4 * 1024 * 1024
         const val CONNECT_TIMEOUT_MS = 30_000
