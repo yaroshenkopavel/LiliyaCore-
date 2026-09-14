@@ -23,6 +23,10 @@ android {
         }
     }
 
+    buildFeatures {
+        buildConfig = true
+    }
+
     buildTypes {
         getByName("debug") {
             buildConfigField("String", "MANUAL_PHYSICAL_GIT_SHA", "\"$manualPhysicalGitSha\"")
