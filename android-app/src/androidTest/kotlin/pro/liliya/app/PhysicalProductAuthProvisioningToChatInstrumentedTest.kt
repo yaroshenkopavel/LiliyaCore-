@@ -2,8 +2,8 @@ package pro.liliya.app
 
 import android.app.Activity
 import android.app.Application
-import android.content.Intent
 import android.os.Bundle
+import android.os.ParcelFileDescriptor
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
@@ -92,13 +92,15 @@ class PhysicalProductAuthProvisioningToChatInstrumentedTest {
                 )
             )
 
-            instrumentation.runOnMainSync {
-                instrumentation.targetContext.startActivity(
-                    Intent(instrumentation.targetContext, LiliyaProvisioningActivity::class.java).apply {
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    }
+            val launchOutput = ParcelFileDescriptor.AutoCloseInputStream(
+                instrumentation.uiAutomation.executeShellCommand(
+                    "am start -n pro.liliya.app/.LiliyaProvisioningActivity"
                 )
-            }
+            ).bufferedReader().use { reader -> reader.readText() }
+            assertTrue(
+                !launchOutput.contains("Error:"),
+                "Product Auth provisioning launch failed: ${launchOutput.trim()}"
+            )
             assertTrue(
                 openedChat.await(10, TimeUnit.SECONDS),
                 "Product Auth provisioning did not open LiliyaActivity"
