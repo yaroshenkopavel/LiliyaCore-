@@ -92,11 +92,13 @@ class PhysicalProductAuthProvisioningToChatInstrumentedTest {
                 )
             )
 
-            instrumentation.startActivitySync(
-                Intent(instrumentation.targetContext, LiliyaProvisioningActivity::class.java).apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-            )
+            instrumentation.runOnMainSync {
+                instrumentation.targetContext.startActivity(
+                    Intent(instrumentation.targetContext, LiliyaProvisioningActivity::class.java).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                )
+            }
             assertTrue(
                 openedChat.await(10, TimeUnit.SECONDS),
                 "Product Auth provisioning did not open LiliyaActivity"
