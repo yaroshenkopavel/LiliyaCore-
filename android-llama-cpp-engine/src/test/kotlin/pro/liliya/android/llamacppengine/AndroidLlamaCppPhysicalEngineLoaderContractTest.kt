@@ -63,6 +63,23 @@ class AndroidLlamaCppPhysicalEngineLoaderContractTest {
     }
 
     @Test
+    fun explicitly_selected_prompt_format_policy_is_forwarded_to_native_port_unchanged() {
+        val selected = policy().copy(
+            promptFormatPolicy = LlamaCppPromptFormatPolicy.MODEL_DEFAULT_CHAT_TEMPLATE
+        )
+        val native = FakeNativePort().apply {
+            loadResult = LlamaCppNativeLoadResult.Rejected(
+                ModelEngineLoadFailure.UNSUPPORTED_MODEL
+            )
+        }
+
+        AndroidLlamaCppPhysicalEngineLoader(selected, native)
+            .loadValidatedPhysicalSource(File("/private/model.gguf"))
+
+        assertEquals(selected, native.loadedPolicy)
+    }
+
+    @Test
     fun provider_exception_and_invalid_native_session_id_fail_closed_without_private_message() {
         val privateMessage = "/data/user/0/private/model.gguf secret"
         val throwing = FakeNativePort().apply {
