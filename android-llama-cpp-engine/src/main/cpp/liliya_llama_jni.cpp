@@ -35,6 +35,11 @@ constexpr jint CLOSE_FAILED = 1;
 constexpr jint CLOSE_PROVIDER_FAILED = 2;
 constexpr size_t MAX_OUTPUT_GRAMMAR_UTF8_BYTES = 65536U;
 
+enum class PromptFormatPolicy : int32_t {
+    RAW = 0,
+    MODEL_DEFAULT_CHAT_TEMPLATE = 1
+};
+
 struct NativeSession {
     llama_model * model = nullptr;
     llama_context * context = nullptr;
@@ -44,6 +49,8 @@ struct NativeSession {
     int32_t batch_tokens = 0;
     int32_t max_prompt_utf8_bytes = 0;
     int32_t max_output_utf8_bytes = 0;
+    PromptFormatPolicy prompt_format_policy = PromptFormatPolicy::RAW;
+    std::string chat_template;
     std::string output_grammar;
     std::mutex execution_mutex;
 
@@ -57,6 +64,8 @@ struct NativeSession {
             model = nullptr;
         }
         vocab = nullptr;
+        std::fill(chat_template.begin(), chat_template.end(), '\0');
+        chat_template.clear();
     }
 
     ~NativeSession() {
@@ -114,6 +123,96 @@ struct ByteScrubber {
     }
     std::vector<uint8_t> & bytes;
 };
+
+enum class PromptFormatResult {
+    OK,
+    RESOURCE_REJECTED,
+    REQUEST_REJECTED,
+    OPERATION_FAILED
+};
+
+PromptFormatResult format_prompt_for_session(
+    const NativeSession * session,
+    const std::vector<uint8_t> & incoming,
+    std::vector<uint8_t> & formatted
+) {
+    if (session == nullptr) {
+        return PromptFormatResult::OPERATION_FAILED;
+    }
+    if (incoming.size() > static_cast<size_t>(session->max_prompt_utf8_bytes)) {
+        return PromptFormatResult::RESOURCE_REJECTED;
+    }
+
+    if (session->prompt_format_policy == PromptFormatPolicy::RAW) {
+        formatted = incoming;
+        return PromptFormatResult::OK;
+    }
+
+    if (
+        session->prompt_format_policy != PromptFormatPolicy::MODEL_DEFAULT_CHAT_TEMPLATE ||
+        session->chat_template.empty()
+    ) {
+        return PromptFormatResult::OPERATION_FAILED;
+    }
+    if (
+        std::find(incoming.begin(), incoming.end(), static_cast<uint8_t>(0)) !=
+        incoming.end()
+    ) {
+        return PromptFormatResult::REQUEST_REJECTED;
+    }
+
+    std::vector<uint8_t> content(incoming);
+    ByteScrubber content_scrubber(content);
+    content.push_back(0);
+    const llama_chat_message message{
+        "user",
+        reinterpret_cast<const char *>(content.data())
+    };
+
+    const int32_t required = llama_chat_apply_template(
+        session->chat_template.c_str(),
+        &message,
+        1,
+        true,
+        nullptr,
+        0
+    );
+    if (required <= 0) {
+        return PromptFormatResult::OPERATION_FAILED;
+    }
+    if (static_cast<size_t>(required) > static_cast<size_t>(session->max_prompt_utf8_bytes)) {
+        return PromptFormatResult::RESOURCE_REJECTED;
+    }
+
+    formatted.resize(static_cast<size_t>(required));
+    const int32_t actual = llama_chat_apply_template(
+        session->chat_template.c_str(),
+        &message,
+        1,
+        true,
+        reinterpret_cast<char *>(formatted.data()),
+        required
+    );
+    if (actual < 0 || actual != required) {
+        std::fill(formatted.begin(), formatted.end(), static_cast<uint8_t>(0));
+        formatted.clear();
+        return PromptFormatResult::OPERATION_FAILED;
+    }
+    return PromptFormatResult::OK;
+}
+
+jbyte prompt_format_failure_status(PromptFormatResult result) {
+    switch (result) {
+        case PromptFormatResult::RESOURCE_REJECTED:
+            return INFER_RESOURCE_REJECTED;
+        case PromptFormatResult::REQUEST_REJECTED:
+            return INFER_REQUEST_REJECTED;
+        case PromptFormatResult::OPERATION_FAILED:
+        case PromptFormatResult::OK:
+        default:
+            return INFER_OPERATION_FAILED;
+    }
+}
 
 jbyteArray make_infer_packet(
     JNIEnv * env,
@@ -400,6 +499,7 @@ Java_pro_liliya_android_llamacppengine_LlamaCppNativeBridge_nativeLoad(
     jint max_prompt_utf8_bytes,
     jint max_output_utf8_bytes,
     jboolean use_mmap,
+    jint prompt_format_policy,
     jbyteArray output_grammar_utf8
 ) {
     if (
@@ -418,6 +518,12 @@ Java_pro_liliya_android_llamacppengine_LlamaCppNativeBridge_nativeLoad(
         micro_batch_tokens > batch_tokens
     ) {
         return LOAD_RESOURCE_REJECTED;
+    }
+    if (
+        prompt_format_policy != static_cast<jint>(PromptFormatPolicy::RAW) &&
+        prompt_format_policy != static_cast<jint>(PromptFormatPolicy::MODEL_DEFAULT_CHAT_TEMPLATE)
+    ) {
+        return LOAD_REJECTED;
     }
 
     try {
@@ -479,6 +585,28 @@ Java_pro_liliya_android_llamacppengine_LlamaCppNativeBridge_nativeLoad(
             return LOAD_UNSUPPORTED;
         }
 
+        const auto format_policy = static_cast<PromptFormatPolicy>(prompt_format_policy);
+        std::string chat_template;
+        if (format_policy == PromptFormatPolicy::MODEL_DEFAULT_CHAT_TEMPLATE) {
+            const char * model_template = llama_model_chat_template(model.get(), nullptr);
+            if (model_template == nullptr || *model_template == '\0') {
+                return LOAD_UNSUPPORTED;
+            }
+            const llama_chat_message probe{"user", "probe"};
+            const int32_t probe_size = llama_chat_apply_template(
+                model_template,
+                &probe,
+                1,
+                true,
+                nullptr,
+                0
+            );
+            if (probe_size <= 0) {
+                return LOAD_UNSUPPORTED;
+            }
+            chat_template.assign(model_template);
+        }
+
         llama_context_params context_params = llama_context_default_params();
         context_params.n_ctx = static_cast<uint32_t>(context_tokens);
         context_params.n_batch = static_cast<uint32_t>(batch_tokens);
@@ -504,6 +632,8 @@ Java_pro_liliya_android_llamacppengine_LlamaCppNativeBridge_nativeLoad(
         session->batch_tokens = batch_tokens;
         session->max_prompt_utf8_bytes = max_prompt_utf8_bytes;
         session->max_output_utf8_bytes = max_output_utf8_bytes;
+        session->prompt_format_policy = format_policy;
+        session->chat_template = chat_template;
         if (!grammar_bytes.empty()) {
             session->output_grammar.assign(
                 reinterpret_cast<const char *>(grammar_bytes.data()),
@@ -572,11 +702,22 @@ Java_pro_liliya_android_llamacppengine_LlamaCppNativeBridge_nativeInfer(
         }
         ByteScrubber prompt_scrubber(prompt);
 
+        std::vector<uint8_t> formatted_prompt;
+        ByteScrubber formatted_prompt_scrubber(formatted_prompt);
+        const PromptFormatResult format_result = format_prompt_for_session(
+            session,
+            prompt,
+            formatted_prompt
+        );
+        if (format_result != PromptFormatResult::OK) {
+            return make_infer_packet(env, prompt_format_failure_status(format_result));
+        }
+
         try {
             int32_t token_count = llama_tokenize(
                 session->vocab,
-                reinterpret_cast<const char *>(prompt.data()),
-                static_cast<int32_t>(prompt.size()),
+                reinterpret_cast<const char *>(formatted_prompt.data()),
+                static_cast<int32_t>(formatted_prompt.size()),
                 nullptr,
                 0,
                 true,
@@ -598,8 +739,8 @@ Java_pro_liliya_android_llamacppengine_LlamaCppNativeBridge_nativeInfer(
             std::vector<llama_token> tokens(static_cast<size_t>(token_count));
             const int32_t actual = llama_tokenize(
                 session->vocab,
-                reinterpret_cast<const char *>(prompt.data()),
-                static_cast<int32_t>(prompt.size()),
+                reinterpret_cast<const char *>(formatted_prompt.data()),
+                static_cast<int32_t>(formatted_prompt.size()),
                 tokens.data(),
                 token_count,
                 true,
@@ -739,11 +880,22 @@ Java_pro_liliya_android_llamacppengine_LlamaCppNativeBridge_nativeInferStreaming
         }
         ByteScrubber prompt_scrubber(prompt);
 
+        std::vector<uint8_t> formatted_prompt;
+        ByteScrubber formatted_prompt_scrubber(formatted_prompt);
+        const PromptFormatResult format_result = format_prompt_for_session(
+            session,
+            prompt,
+            formatted_prompt
+        );
+        if (format_result != PromptFormatResult::OK) {
+            return make_infer_packet(env, prompt_format_failure_status(format_result));
+        }
+
         try {
             int32_t token_count = llama_tokenize(
                 session->vocab,
-                reinterpret_cast<const char *>(prompt.data()),
-                static_cast<int32_t>(prompt.size()),
+                reinterpret_cast<const char *>(formatted_prompt.data()),
+                static_cast<int32_t>(formatted_prompt.size()),
                 nullptr,
                 0,
                 true,
@@ -765,8 +917,8 @@ Java_pro_liliya_android_llamacppengine_LlamaCppNativeBridge_nativeInferStreaming
             std::vector<llama_token> tokens(static_cast<size_t>(token_count));
             const int32_t actual = llama_tokenize(
                 session->vocab,
-                reinterpret_cast<const char *>(prompt.data()),
-                static_cast<int32_t>(prompt.size()),
+                reinterpret_cast<const char *>(formatted_prompt.data()),
+                static_cast<int32_t>(formatted_prompt.size()),
                 tokens.data(),
                 token_count,
                 true,
