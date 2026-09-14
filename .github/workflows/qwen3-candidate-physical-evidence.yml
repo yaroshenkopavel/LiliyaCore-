@@ -83,7 +83,7 @@ jobs:
 
           required_candidate = [
               'Qwen3-1.7B-Q4_K_M.gguf',
-              '1282439264L',
+              '1_282_439_264L',
               'd2387ca2dbfee2ffabce7120d3770dadca0b293052bc2f0e138fdc940d9bc7b5',
               'daeb8e2d528a760970442092f6bf1e55c3b659eb',
               'LlamaCppPromptFormatPolicy.MODEL_DEFAULT_CHAT_TEMPLATE',
@@ -461,7 +461,7 @@ jobs:
               if actual != expected_value:
                   raise SystemExit(f'{key} mismatch: {actual!r} != {expected_value!r}')
 
-          required_positive = (
+          required = (
               'semanticLoadMs',
               'semanticRebuild20kMs',
               'semanticReadyPssBytes',
@@ -476,7 +476,7 @@ jobs:
               'combinedAfterInferencePssBytes',
               'afterBothClosedPssBytes',
           )
-          missing = [key for key in required_positive if key not in values]
+          missing = [key for key in required if key not in values]
           if missing:
               raise SystemExit(f'missing candidate evidence fields: {missing}')
           if int(values['generationOutputChars']) <= 0:
