@@ -37,7 +37,6 @@ import pro.liliya.core.license.JcaEcdsaP256LicenseSignatureVerifier
 import pro.liliya.core.license.LicenseAlgorithm
 import pro.liliya.core.license.LicenseAuthorityComposition
 import pro.liliya.core.license.LicenseAuthorityRequest
-import pro.liliya.core.license.LicenseHttpTransportClient
 import pro.liliya.core.license.LicenseKeyId
 import pro.liliya.core.license.LicensePolicyContext
 import pro.liliya.core.license.LicensePolicyRequest
@@ -51,6 +50,7 @@ import pro.liliya.core.license.LicenseTrustedVerificationKey
 import pro.liliya.core.license.LicenseVerificationResult
 import pro.liliya.core.license.LicenseVerifier
 import pro.liliya.core.license.LicenseVersion
+import pro.liliya.core.licensetransport.LicenseHttpTransportClient
 import pro.liliya.core.licensetransport.LicenseHttpTransportConfig
 import pro.liliya.core.licensetransport.LicenseServiceTransportRequest
 import pro.liliya.core.logging.CorrelationIdGenerator
