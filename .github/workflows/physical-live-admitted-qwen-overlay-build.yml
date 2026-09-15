@@ -1,0 +1,127 @@
+name: Physical Live Admitted Qwen Execution Overlay Build
+
+on:
+  push:
+    branches:
+      - acceptance/physical-live-admitted-qwen-30b9ad
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  FROZEN_SHA: 30b9ad2853bf31f17a84b524a6f643ee1d23d72f
+
+jobs:
+  build-android-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout acceptance overlay
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify frozen RC ancestry and cumulative overlay boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git merge-base --is-ancestor "$FROZEN_SHA" HEAD
+
+          changed="$(git diff --name-only "$FROZEN_SHA"..HEAD)"
+          printf '%s\n' "$changed"
+
+          unexpected="$(
+            printf '%s\n' "$changed" |
+            grep -v -E \
+              '^(android-app/src/androidTest/kotlin/pro/liliya/app/PhysicalLiveAuthorityAdmissionInstrumentedTest\.kt|android-app/src/androidTest/kotlin/pro/liliya/app/PhysicalLiveStartupAdmissionGateInstrumentedTest\.kt|android-app/src/androidTest/kotlin/pro/liliya/app/PhysicalLiveAdmittedQwenExecutionInstrumentedTest\.kt|\.github/workflows/physical-live-authority-overlay-build\.yml|\.github/workflows/physical-live-startup-gate-overlay-build\.yml|\.github/workflows/physical-live-admitted-qwen-overlay-build\.yml)$' \
+              || true
+          )"
+
+          test -z "$unexpected"
+          echo "FROZEN_RC_PRODUCTION_SOURCE_UNCHANGED=YES"
+          echo "OVERLAY_SCOPE=AUTHORITY_PLUS_STARTUP_GATE_PLUS_ADMITTED_QWEN_TEST_ONLY"
+
+      - name: Verify exact Qwen candidate identity in test source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test_file='android-app/src/androidTest/kotlin/pro/liliya/app/PhysicalLiveAdmittedQwenExecutionInstrumentedTest.kt'
+          grep -Fq 'Qwen3-1.7B-Q4_K_M.gguf' "$test_file"
+          grep -Fq '1_282_439_264L' "$test_file"
+          grep -Fq 'd2387ca2dbfee2ffabce7120d3770dadca0b293052bc2f0e138fdc940d9bc7b5' "$test_file"
+          grep -Fq 'daeb8e2d528a760970442092f6bf1e55c3b659eb' "$test_file"
+          grep -Fq 'LlamaCppPromptFormatPolicy.MODEL_DEFAULT_CHAT_TEMPLATE' "$test_file"
+          grep -Fq 'What is two plus two? /no_think' "$test_file"
+          echo "QWEN_CANDIDATE_IDENTITY_PINNED=YES"
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle 9.6.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.1'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
+
+      - name: Install pinned native Android toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager \
+            "platforms;android-35" \
+            "build-tools;35.0.0" \
+            "ndk;29.0.13113456" \
+            "cmake;3.31.6"
+
+      - name: Build admitted-Qwen acceptance instrumentation APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle \
+            :android-app:assembleDebugAndroidTest \
+            --console=plain \
+            --no-daemon \
+            --max-workers=2
+
+      - name: Record APK identity
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          apk="$(
+            find android-app/build/outputs/apk/androidTest \
+              -type f -name '*.apk' |
+              head -1
+          )"
+
+          test -n "$apk"
+          test -f "$apk"
+
+          out="$RUNNER_TEMP/physical-live-admitted-qwen-overlay"
+          mkdir -p "$out"
+          cp "$apk" "$out/physical-live-admitted-qwen-androidTest.apk"
+
+          sha256sum "$out/physical-live-admitted-qwen-androidTest.apk" \
+            | tee "$out/SHA256SUMS"
+
+          printf '%s\n' "$FROZEN_SHA" > "$out/FROZEN_SHA"
+          printf '%s\n' "$(git rev-parse HEAD)" > "$out/OVERLAY_SHA"
+          printf '%s\n' "$(git rev-parse HEAD^{tree})" > "$out/OVERLAY_TREE"
+
+      - name: Upload instrumentation APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: physical-live-admitted-qwen-overlay-${{ github.sha }}
+          retention-days: 7
+          if-no-files-found: error
+          path: ${{ runner.temp }}/physical-live-admitted-qwen-overlay/**
