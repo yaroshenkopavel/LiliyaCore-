@@ -1,0 +1,180 @@
+name: Frozen RC Release APK Evidence
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  FROZEN_REF: rc/30b9ad-acceptance
+  FROZEN_SHA: 30b9ad2853bf31f17a84b524a6f643ee1d23d72f
+  FROZEN_TREE: 232837c30ec576f9e62015154a2516028eec970b
+  LLAMA_CPP_COMMIT: 0f3a71be15af836d277c9f918adfafb45732677e
+
+jobs:
+  retain-unsigned-release-apk:
+    name: Build and retain exact frozen RC unsigned release APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Record evidence tooling identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s\n' "${GITHUB_SHA}" > "$RUNNER_TEMP/evidence-tooling-sha.txt"
+
+      - name: Checkout frozen RC implementation
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.FROZEN_REF }}
+
+      - name: Verify exact frozen source
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual_sha="$(git rev-parse HEAD)"
+          actual_tree="$(git rev-parse HEAD^{tree})"
+          test "$actual_sha" = "$FROZEN_SHA"
+          test "$actual_tree" = "$FROZEN_TREE"
+          printf 'source sha: %s\nsource tree: %s\n' "$actual_sha" "$actual_tree"
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle 9.6.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.1'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
+
+      - name: Install pinned Android release toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager \
+            "platforms;android-35" \
+            "build-tools;35.0.0" \
+            "platform-tools" \
+            "ndk;29.0.13113456" \
+            "cmake;3.31.6"
+
+      - name: Build exact frozen RC release APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle :android-app:assembleRelease --console=plain
+
+      - name: Verify release payload boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="android-app/build/outputs/apk/release/android-app-release-unsigned.apk"
+          test -f "$apk"
+          listing="$RUNNER_TEMP/android-app-release-files.txt"
+          unzip -Z1 "$apk" > "$listing"
+
+          if grep -E \
+              'stories15M-q4_0\\.gguf|multilingual-e5-small-liliya-v0\\.1\\.onnx|multilingual-e5-small-tokenizer-v0\\.1\\.onnx' \
+              "$listing"; then
+            echo "test model asset leaked into production release APK" >&2
+            exit 1
+          fi
+
+          while IFS= read -r dex; do
+            if unzip -p "$apk" "$dex" | strings | grep -Fq \
+                'pro/liliya/packager/ProtectedModelOfflinePackager'; then
+              echo "offline protected-model packager leaked into production release APK: $dex" >&2
+              exit 1
+            fi
+          done < <(grep -E '^classes([0-9]+)?\\.dex$' "$listing")
+
+      - name: Record exact unsigned APK identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="android-app/build/outputs/apk/release/android-app-release-unsigned.apk"
+          out="$RUNNER_TEMP/frozen-rc-release-apk-evidence"
+          mkdir -p "$out"
+
+          cp "$apk" "$out/android-app-release-unsigned.apk"
+          cp "$RUNNER_TEMP/android-app-release-files.txt" "$out/android-app-release-files.txt"
+
+          sha="$(sha256sum "$apk" | awk '{print $1}')"
+          size="$(stat --format=%s "$apk")"
+          aapt="$ANDROID_HOME/build-tools/35.0.0/aapt"
+          badging="$RUNNER_TEMP/android-app-release-badging.txt"
+          "$aapt" dump badging "$apk" > "$badging"
+          cp "$badging" "$out/android-app-release-badging.txt"
+
+          package_line="$(grep -m1 '^package:' "$badging")"
+          native_line="$(grep -m1 '^native-code:' "$badging" || true)"
+          test -n "$package_line"
+          echo "$package_line" | grep -Fq "name='pro.liliya.app'"
+          echo "$package_line" | grep -Fq "versionCode='1'"
+          echo "$package_line" | grep -Fq "versionName='0.1'"
+          echo "$native_line" | grep -Fq "'arm64-v8a'"
+          if echo "$native_line" | grep -Eq "'armeabi|x86"; then
+            echo "unexpected non-arm64 native ABI in release APK: $native_line" >&2
+            exit 1
+          fi
+
+          TOOLING_SHA="$(cat "$RUNNER_TEMP/evidence-tooling-sha.txt")" \
+          APK_SHA="$sha" APK_SIZE="$size" PACKAGE_LINE="$package_line" NATIVE_LINE="$native_line" \
+          python3 - "$out/frozen-rc-release-apk-manifest.json" <<'PY'
+          import json
+          import os
+          import sys
+
+          manifest = {
+              "evidenceClass": "frozen-rc-unsigned-release-apk",
+              "testedSourceRef": os.environ["FROZEN_REF"],
+              "testedSourceCommit": os.environ["FROZEN_SHA"],
+              "testedSourceTree": os.environ["FROZEN_TREE"],
+              "evidenceToolingCommit": os.environ["TOOLING_SHA"],
+              "llamaCppCommit": os.environ["LLAMA_CPP_COMMIT"],
+              "toolchain": {
+                  "java": "17",
+                  "gradle": "9.6.1",
+                  "compileSdk": 35,
+                  "buildTools": "35.0.0",
+                  "ndk": "29.0.13113456",
+                  "cmake": "3.31.6",
+              },
+              "artifact": {
+                  "file": "android-app-release-unsigned.apk",
+                  "sha256": os.environ["APK_SHA"],
+                  "bytes": int(os.environ["APK_SIZE"]),
+                  "applicationId": "pro.liliya.app",
+                  "versionCode": 1,
+                  "versionName": "0.1",
+                  "targetAbi": "arm64-v8a",
+                  "signingState": "UNSIGNED",
+              },
+              "aaptPackageLine": os.environ["PACKAGE_LINE"],
+              "aaptNativeCodeLine": os.environ["NATIVE_LINE"],
+              "privateSigningMaterialPresent": False,
+          }
+          with open(sys.argv[1], "w", encoding="utf-8") as stream:
+              json.dump(manifest, stream, indent=2, sort_keys=True)
+              stream.write("\n")
+          PY
+
+          cat "$out/frozen-rc-release-apk-manifest.json"
+          echo "$sha  android-app-release-unsigned.apk" > "$out/SHA256SUMS"
+
+      - name: Upload exact frozen RC unsigned release APK evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: frozen-rc-unsigned-release-apk-${{ env.FROZEN_SHA }}
+          retention-days: 30
+          if-no-files-found: error
+          path: ${{ runner.temp }}/frozen-rc-release-apk-evidence/**
