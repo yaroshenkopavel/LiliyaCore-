@@ -1,0 +1,348 @@
+name: Qwen3 Frozen RC Resource Metrics
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/qwen3-rc-resource-metrics.yml'
+      - 'tools/physical-runner/liliya_qwen3_resource_metrics_bridge.py'
+  workflow_dispatch:
+    inputs:
+      confirm_large_candidate_download:
+        description: Confirm the physical device may download the exact ~1.28 GB Qwen3 candidate
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: qwen3-frozen-rc-resource-metrics
+  cancel-in-progress: false
+
+env:
+  RC_REF: rc/30b9ad-acceptance
+  RC_SHA: 30b9ad2853bf31f17a84b524a6f643ee1d23d72f
+  RC_TREE: 232837c30ec576f9e62015154a2516028eec970b
+  PRIMARY_BRIDGE_URL: http://127.0.0.1:18765
+  METRICS_BRIDGE_URL: http://127.0.0.1:18766
+
+jobs:
+  validate-tooling:
+    name: Validate bounded resource evidence tooling
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Validate metrics bridge and frozen target constants
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile tools/physical-runner/liliya_qwen3_resource_metrics_bridge.py
+          python3 - <<'PY'
+          from pathlib import Path
+
+          bridge = Path('tools/physical-runner/liliya_qwen3_resource_metrics_bridge.py').read_text(encoding='utf-8')
+          workflow = Path('.github/workflows/qwen3-rc-resource-metrics.yml').read_text(encoding='utf-8')
+
+          required_bridge = (
+              'HOST = "127.0.0.1"',
+              '18766',
+              'Qwen3RussianQualityContextCandidateInstrumentedTest',
+              '/v1/instrument/qwen3-russian-context-resources',
+              'dumpsys meminfo',
+              'dumpsys thermalservice',
+              'dumpsys battery',
+              'MEASUREMENT_LOCK',
+          )
+          for value in required_bridge:
+              if value not in bridge:
+                  raise SystemExit(f'missing fixed bridge contract: {value}')
+
+          for forbidden in ('/v1/shell', '/v1/command', '/v1/exec'):
+              if forbidden in bridge:
+                  raise SystemExit(f'arbitrary route forbidden: {forbidden}')
+
+          required_target = (
+              'RC_REF: rc/30b9ad-acceptance',
+              'RC_SHA: 30b9ad2853bf31f17a84b524a6f643ee1d23d72f',
+              'RC_TREE: 232837c30ec576f9e62015154a2516028eec970b',
+          )
+          for value in required_target:
+              if value not in workflow:
+                  raise SystemExit(f'frozen target drift: {value}')
+          PY
+
+  build-frozen-rc-bundle:
+    name: Build exact frozen RC Qwen3 APK bundle
+    needs: validate-tooling
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout frozen RC implementation
+        uses: actions/checkout@v4
+        with:
+          ref: rc/30b9ad-acceptance
+
+      - name: Verify exact frozen source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$RC_SHA"
+          test "$(git rev-parse HEAD^{tree})" = "$RC_TREE"
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.1'
+
+      - uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
+
+      - name: Install pinned Android native toolchain
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools" "ndk;29.0.13113456" "cmake;3.31.6"
+
+      - name: Build exact semantic host and instrumentation
+        run: |
+          gradle \
+            :android-semantic-test-host:assembleDebug \
+            :android-semantic-test-host:assembleDebugAndroidTest \
+            --console=plain
+
+      - name: Collect bundle with exact identities
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/qwen3-frozen-rc-resource-bundle"
+          mkdir -p "$out"
+          cp android-semantic-test-host/build/outputs/apk/debug/android-semantic-test-host-debug.apk \
+             "$out/liliya-semantic-host-debug.apk"
+          cp android-semantic-test-host/build/outputs/apk/androidTest/debug/android-semantic-test-host-debug-androidTest.apk \
+             "$out/liliya-semantic-host-debug-androidTest.apk"
+
+          python3 - "$out" "$RC_SHA" "$RC_TREE" <<'PY'
+          import hashlib, json, sys
+          from pathlib import Path
+          root = Path(sys.argv[1])
+          files = {}
+          for path in sorted(root.iterdir()):
+              if path.is_file():
+                  h = hashlib.sha256(path.read_bytes()).hexdigest()
+                  files[path.name] = {'sha256': h, 'size': path.stat().st_size}
+          manifest = {
+              'evidenceClass': 'qwen3-frozen-rc-resource-test-bundle-v1',
+              'sourceCommit': sys.argv[2],
+              'sourceTree': sys.argv[3],
+              'sourceRef': 'rc/30b9ad-acceptance',
+              'candidate': {
+                  'repository': 'ggml-org/Qwen3-1.7B-GGUF',
+                  'revision': 'daeb8e2d528a760970442092f6bf1e55c3b659eb',
+                  'file': 'Qwen3-1.7B-Q4_K_M.gguf',
+                  'bytes': 1282439264,
+                  'sha256': 'd2387ca2dbfee2ffabce7120d3770dadca0b293052bc2f0e138fdc940d9bc7b5',
+                  'quantization': 'Q4_K_M',
+                  'promptFormatPolicy': 'MODEL_DEFAULT_CHAT_TEMPLATE',
+              },
+              'measurementProfile': 'russian-context-resource-metrics-v1',
+              'files': files,
+          }
+          (root / 'qwen3-frozen-rc-resource-bundle.json').write_text(
+              json.dumps(manifest, indent=2, sort_keys=True) + '\n', encoding='utf-8'
+          )
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qwen3-frozen-rc-resource-bundle-30b9ad2853bf31f17a84b524a6f643ee1d23d72f
+          path: ${{ runner.temp }}/qwen3-frozen-rc-resource-bundle
+          if-no-files-found: error
+          retention-days: 30
+
+  physical-resource-metrics:
+    name: Physical ARM64 frozen RC Qwen3 resource metrics
+    if: github.event_name == 'workflow_dispatch'
+    needs: build-frozen-rc-bundle
+    runs-on: [self-hosted, ARM64, android-device]
+    timeout-minutes: 120
+    steps:
+      - name: Require explicit large-download confirmation
+        shell: bash
+        run: |
+          set -euo pipefail
+          test '${{ inputs.confirm_large_candidate_download }}' = 'true'
+
+      - name: Verify fixed bridges
+        shell: bash
+        run: |
+          set -euo pipefail
+          token_file='/data/data/com.termux/files/home/.liliya-physical-bridge-token'
+          test -s "$token_file"
+          token="$(cat "$token_file")"
+          curl --fail --silent --show-error -H "Authorization: Bearer $token" \
+            "$PRIMARY_BRIDGE_URL/v1/probe" > "$RUNNER_TEMP/qwen3-resource-primary-probe.json"
+          curl --fail --silent --show-error -H "Authorization: Bearer $token" \
+            "$METRICS_BRIDGE_URL/v1/probe" > "$RUNNER_TEMP/qwen3-resource-metrics-probe.json"
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: qwen3-frozen-rc-resource-bundle-30b9ad2853bf31f17a84b524a6f643ee1d23d72f
+          path: ${{ runner.temp }}/qwen3-frozen-rc-resource-bundle
+
+      - name: Verify bundle and physical device
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - \
+            "$RUNNER_TEMP/qwen3-frozen-rc-resource-bundle" \
+            "$RUNNER_TEMP/qwen3-resource-metrics-probe.json" <<'PY'
+          import hashlib, json, sys
+          from pathlib import Path
+          root = Path(sys.argv[1])
+          probe = json.load(open(sys.argv[2], encoding='utf-8'))
+          manifest = json.loads((root / 'qwen3-frozen-rc-resource-bundle.json').read_text(encoding='utf-8'))
+          if manifest['sourceCommit'] != '30b9ad2853bf31f17a84b524a6f643ee1d23d72f':
+              raise SystemExit('source commit mismatch')
+          if manifest['sourceTree'] != '232837c30ec576f9e62015154a2516028eec970b':
+              raise SystemExit('source tree mismatch')
+          for name, identity in manifest['files'].items():
+              path = root / name
+              if not path.is_file():
+                  raise SystemExit(f'missing bundle file: {name}')
+              if hashlib.sha256(path.read_bytes()).hexdigest() != identity['sha256']:
+                  raise SystemExit(f'hash mismatch: {name}')
+              if path.stat().st_size != identity['size']:
+                  raise SystemExit(f'size mismatch: {name}')
+          facts = {key: probe[key] for key in ('primaryAbi','qemu','sdk','model','shellIdentity')}
+          if any(value['exit'] != 0 for value in facts.values()):
+              raise SystemExit('device probe command failed')
+          if facts['primaryAbi']['output'] != 'arm64-v8a' or facts['qemu']['output'] == '1':
+              raise SystemExit('real ARM64 device required')
+          if int(facts['sdk']['output']) < 29:
+              raise SystemExit('Android API < 29')
+          if not facts['shellIdentity']['output'].startswith('uid=2000(shell)'):
+              raise SystemExit('Android shell identity required')
+          Path(sys.argv[2]).with_name('qwen3-resource-device.json').write_text(
+              json.dumps({
+                  'evidenceClass':'qwen3-frozen-rc-resource-device-v1',
+                  'sourceCommit':'30b9ad2853bf31f17a84b524a6f643ee1d23d72f',
+                  'sourceTree':'232837c30ec576f9e62015154a2516028eec970b',
+                  **{k:v['output'] for k,v in facts.items()},
+              }, indent=2, sort_keys=True) + '\n', encoding='utf-8'
+          )
+          PY
+
+      - name: Reset and install exact frozen RC APKs
+        shell: bash
+        run: |
+          set -euo pipefail
+          token="$(cat /data/data/com.termux/files/home/.liliya-physical-bridge-token)"
+          auth=(-H "Authorization: Bearer $token")
+          bundle="$RUNNER_TEMP/qwen3-frozen-rc-resource-bundle"
+          curl --fail-with-body --silent --show-error -X POST "${auth[@]}" \
+            "$PRIMARY_BRIDGE_URL/v1/reset-semantic-packages" > "$RUNNER_TEMP/qwen3-resource-reset.json"
+          for spec in \
+            "semantic-app:liliya-semantic-host-debug.apk" \
+            "semantic-test:liliya-semantic-host-debug-androidTest.apk"; do
+            endpoint="${spec%%:*}"
+            filename="${spec#*:}"
+            apk="$bundle/$filename"
+            sha="$(sha256sum "$apk" | awk '{print $1}')"
+            curl --fail-with-body --silent --show-error -X POST "${auth[@]}" \
+              -H "X-Liliya-Sha256: $sha" \
+              -H 'Content-Type: application/vnd.android.package-archive' \
+              --data-binary "@$apk" \
+              "$PRIMARY_BRIDGE_URL/v1/install/$endpoint" \
+              > "$RUNNER_TEMP/qwen3-resource-install-$endpoint.json"
+          done
+
+      - name: Run fixed instrumentation with resource sampling
+        shell: bash
+        run: |
+          set -euo pipefail
+          token="$(cat /data/data/com.termux/files/home/.liliya-physical-bridge-token)"
+          curl --fail-with-body --silent --show-error --max-time 3700 -X POST \
+            -H "Authorization: Bearer $token" \
+            "$METRICS_BRIDGE_URL/v1/instrument/qwen3-russian-context-resources" \
+            > "$RUNNER_TEMP/qwen3-frozen-rc-resource-metrics.json"
+
+      - name: Validate and summarize resource evidence
+        shell: bash
+        env:
+          TOOLING_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          python3 - \
+            "$RUNNER_TEMP/qwen3-frozen-rc-resource-metrics.json" \
+            "$RUNNER_TEMP/qwen3-resource-device.json" \
+            "$RUNNER_TEMP/qwen3-frozen-rc-resource-bundle/qwen3-frozen-rc-resource-bundle.json" \
+            "$RUNNER_TEMP/qwen3-frozen-rc-resource-summary.json" \
+            "$TOOLING_SHA" <<'PY'
+          import hashlib, json, sys
+          from pathlib import Path
+          metrics_path, device_path, bundle_path, output_path = map(Path, sys.argv[1:5])
+          metrics = json.loads(metrics_path.read_text(encoding='utf-8'))
+          device = json.loads(device_path.read_text(encoding='utf-8'))
+          bundle = json.loads(bundle_path.read_text(encoding='utf-8'))
+          if not metrics.get('instrumentationPassed'):
+              raise SystemExit('instrumentation failed')
+          if metrics.get('sampleCount', 0) < 1 or metrics.get('peakTotalPssKb') is None:
+              raise SystemExit('peak memory evidence missing')
+          before = metrics.get('batteryBefore', {}).get('parsed', {})
+          after = metrics.get('batteryAfter', {}).get('parsed', {})
+          delta = None
+          if isinstance(before.get('level'), int) and isinstance(after.get('level'), int):
+              delta = after['level'] - before['level']
+          raw_sha = hashlib.sha256(metrics_path.read_bytes()).hexdigest()
+          summary = {
+              'evidenceClass':'qwen3-frozen-rc-resource-summary-v1',
+              'sourceCommit':'30b9ad2853bf31f17a84b524a6f643ee1d23d72f',
+              'sourceTree':'232837c30ec576f9e62015154a2516028eec970b',
+              'sourceRef':'rc/30b9ad-acceptance',
+              'evidenceToolingCommit':sys.argv[5],
+              'candidate':bundle['candidate'],
+              'device':device,
+              'instrumentationPassed':True,
+              'elapsedMillis':metrics.get('elapsedMillis'),
+              'sampleCount':metrics.get('sampleCount'),
+              'sampleIntervalSeconds':metrics.get('sampleIntervalSeconds'),
+              'peakTotalPssKb':metrics.get('peakTotalPssKb'),
+              'peakTotalRssKb':metrics.get('peakTotalRssKb'),
+              'batteryBefore':before,
+              'batteryAfter':after,
+              'batteryLevelDelta':delta,
+              'thermalBeforeAvailable':metrics.get('thermalBefore',{}).get('exit') == 0,
+              'thermalAfterAvailable':metrics.get('thermalAfter',{}).get('exit') == 0,
+              'storageBeforeAvailable':metrics.get('storageBefore',{}).get('exit') == 0,
+              'storageAfterAvailable':metrics.get('storageAfter',{}).get('exit') == 0,
+              'rawMetricsSha256':raw_sha,
+              'verdict':'MEASURED_NO_PRODUCT_BUDGET_APPLIED',
+          }
+          output_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + '\n', encoding='utf-8')
+          print(json.dumps(summary, indent=2, sort_keys=True))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qwen3-frozen-rc-resource-evidence-30b9ad2853bf31f17a84b524a6f643ee1d23d72f
+          path: |
+            ${{ runner.temp }}/qwen3-frozen-rc-resource-bundle/qwen3-frozen-rc-resource-bundle.json
+            ${{ runner.temp }}/qwen3-resource-primary-probe.json
+            ${{ runner.temp }}/qwen3-resource-metrics-probe.json
+            ${{ runner.temp }}/qwen3-resource-device.json
+            ${{ runner.temp }}/qwen3-resource-reset.json
+            ${{ runner.temp }}/qwen3-resource-install-semantic-app.json
+            ${{ runner.temp }}/qwen3-resource-install-semantic-test.json
+            ${{ runner.temp }}/qwen3-frozen-rc-resource-metrics.json
+            ${{ runner.temp }}/qwen3-frozen-rc-resource-summary.json
+          if-no-files-found: error
+          retention-days: 30
