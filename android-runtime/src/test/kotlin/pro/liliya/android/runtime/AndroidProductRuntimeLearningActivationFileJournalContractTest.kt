@@ -1,5 +1,6 @@
 package pro.liliya.android.runtime
 
+import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -76,7 +77,10 @@ class AndroidProductRuntimeLearningActivationFileJournalContractTest {
 
     @Test
     fun corrupt_state_fails_closed_and_cannot_be_overwritten_as_clean() = withRoot { root ->
-        Files.writeString(root.toPath().resolve("activation.state"), "corrupt\n")
+        Files.write(
+            root.toPath().resolve("activation.state"),
+            "corrupt\n".toByteArray(StandardCharsets.UTF_8)
+        )
         val journal = AndroidProductRuntimeLearningActivationFileJournal.createForDirectory(root)
 
         assertEquals(AndroidProductRuntimeLearningActivationJournalLoadResult.Failed, journal.load())
