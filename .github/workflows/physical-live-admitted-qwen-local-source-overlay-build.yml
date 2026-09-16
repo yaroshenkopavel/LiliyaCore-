@@ -1,0 +1,178 @@
+name: Physical Live Admitted Qwen Local Source Overlay Build
+
+on:
+  push:
+    branches:
+      - acceptance/physical-live-admitted-qwen-30b9ad
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  FROZEN_SHA: 30b9ad2853bf31f17a84b524a6f643ee1d23d72f
+
+jobs:
+  build-android-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout acceptance overlay
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify frozen RC ancestry and cumulative overlay boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor "$FROZEN_SHA" HEAD
+          changed="$(git diff --name-only "$FROZEN_SHA"..HEAD)"
+          printf '%s\n' "$changed"
+          unexpected="$(
+            printf '%s\n' "$changed" |
+            grep -v -E \
+              '^(android-app/src/androidTest/kotlin/pro/liliya/app/PhysicalLiveAuthorityAdmissionInstrumentedTest\.kt|android-app/src/androidTest/kotlin/pro/liliya/app/PhysicalLiveStartupAdmissionGateInstrumentedTest\.kt|android-app/src/androidTest/kotlin/pro/liliya/app/PhysicalLiveAdmittedQwenExecutionInstrumentedTest\.kt|\.github/workflows/physical-live-authority-overlay-build\.yml|\.github/workflows/physical-live-startup-gate-overlay-build\.yml|\.github/workflows/physical-live-admitted-qwen-overlay-build\.yml|\.github/workflows/physical-live-admitted-qwen-local-source-overlay-build\.yml)$' \
+              || true
+          )"
+          test -z "$unexpected"
+          echo "FROZEN_RC_PRODUCTION_SOURCE_UNCHANGED=YES"
+          echo "OVERLAY_SCOPE=TEST_ONLY_WITH_LOCAL_QWEN_SOURCE_BUILD_PATCH"
+
+      - name: Verify exact Qwen candidate identity in committed test source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test_file='android-app/src/androidTest/kotlin/pro/liliya/app/PhysicalLiveAdmittedQwenExecutionInstrumentedTest.kt'
+          grep -Fq 'Qwen3-1.7B-Q4_K_M.gguf' "$test_file"
+          grep -Fq '1_282_439_264L' "$test_file"
+          grep -Fq 'd2387ca2dbfee2ffabce7120d3770dadca0b293052bc2f0e138fdc940d9bc7b5' "$test_file"
+          grep -Fq 'daeb8e2d528a760970442092f6bf1e55c3b659eb' "$test_file"
+          grep -Fq 'LlamaCppPromptFormatPolicy.MODEL_DEFAULT_CHAT_TEMPLATE' "$test_file"
+          grep -Fq 'What is two plus two? /no_think' "$test_file"
+          echo "QWEN_CANDIDATE_IDENTITY_PINNED=YES"
+
+      - name: Patch instrumentation to permit verified loopback Qwen source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path('android-app/src/androidTest/kotlin/pro/liliya/app/PhysicalLiveAdmittedQwenExecutionInstrumentedTest.kt')
+          s = p.read_text()
+
+          def replace_once(old: str, new: str):
+              global s
+              count = s.count(old)
+              if count != 1:
+                  raise SystemExit(f'expected exactly one replacement, found {count}: {old[:80]!r}')
+              s = s.replace(old, new, 1)
+
+          replace_once(
+              'import java.net.URL\n',
+              'import java.net.HttpURLConnection\nimport java.net.URL\n'
+          )
+
+          replace_once(
+              '        val publicNetworkSslSocketFactory = HttpsURLConnection.getDefaultSSLSocketFactory()\n',
+              '''        val publicNetworkSslSocketFactory = HttpsURLConnection.getDefaultSSLSocketFactory()\n        val qwenCandidateUrl = arguments.getString(ARG_QWEN_CANDIDATE_URL)\n            ?.takeIf { it.isNotBlank() }\n            ?.let(::URL)\n            ?: URL(QWEN_URL)\n        val isPinnedRemote = qwenCandidateUrl.toString() == QWEN_URL\n        val isLoopbackHttp = qwenCandidateUrl.protocol == "http" &&\n            (qwenCandidateUrl.host == "127.0.0.1" || qwenCandidateUrl.host == "localhost")\n        assertTrue(isPinnedRemote || isLoopbackHttp)\n'''
+          )
+
+          replace_once(
+              '                        publicNetworkSslSocketFactory = publicNetworkSslSocketFactory\n',
+              '                        publicNetworkSslSocketFactory = publicNetworkSslSocketFactory,\n                        candidateUrl = qwenCandidateUrl\n'
+          )
+
+          replace_once(
+              '        publicNetworkSslSocketFactory: SSLSocketFactory\n',
+              '        publicNetworkSslSocketFactory: SSLSocketFactory,\n        candidateUrl: URL\n'
+          )
+
+          replace_once(
+              '''            val connection = (URL(QWEN_URL).openConnection() as HttpsURLConnection).apply {\n                sslSocketFactory = publicNetworkSslSocketFactory\n                instanceFollowRedirects = true\n                connectTimeout = CONNECT_TIMEOUT_MS\n                readTimeout = READ_TIMEOUT_MS\n                requestMethod = "GET"\n                setRequestProperty("Accept-Encoding", "identity")\n            }\n''',
+              '''            val connection = (candidateUrl.openConnection() as HttpURLConnection).apply {\n                if (this is HttpsURLConnection) {\n                    sslSocketFactory = publicNetworkSslSocketFactory\n                }\n                instanceFollowRedirects = true\n                connectTimeout = CONNECT_TIMEOUT_MS\n                readTimeout = READ_TIMEOUT_MS\n                requestMethod = "GET"\n                setRequestProperty("Accept-Encoding", "identity")\n            }\n'''
+          )
+
+          replace_once(
+              '                assertEquals(HttpsURLConnection.HTTP_OK, connection.responseCode)\n',
+              '                assertEquals(HttpURLConnection.HTTP_OK, connection.responseCode)\n'
+          )
+
+          replace_once(
+              '        const val ARG_ENTITLEMENT_KEY_BASE64 = "liveEntitlementKeyBase64"\n',
+              '        const val ARG_ENTITLEMENT_KEY_BASE64 = "liveEntitlementKeyBase64"\n        const val ARG_QWEN_CANDIDATE_URL = "qwenCandidateUrl"\n'
+          )
+
+          p.write_text(s)
+          PY
+
+          test_file='android-app/src/androidTest/kotlin/pro/liliya/app/PhysicalLiveAdmittedQwenExecutionInstrumentedTest.kt'
+          grep -Fq 'ARG_QWEN_CANDIDATE_URL = "qwenCandidateUrl"' "$test_file"
+          grep -Fq 'qwenCandidateUrl.host == "127.0.0.1"' "$test_file"
+          grep -Fq 'candidateUrl.openConnection() as HttpURLConnection' "$test_file"
+          grep -Fq 'QWEN_SHA256 = "d2387ca2dbfee2ffabce7120d3770dadca0b293052bc2f0e138fdc940d9bc7b5"' "$test_file"
+          sha256sum "$test_file" | tee /tmp/PATCHED_TEST_SHA256
+          echo "LOCAL_QWEN_SOURCE_PATCH=PASS"
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle 9.6.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.1'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
+
+      - name: Install pinned native Android toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager \
+            "platforms;android-35" \
+            "build-tools;35.0.0" \
+            "ndk;29.0.13113456" \
+            "cmake;3.31.6"
+
+      - name: Build local-source admitted-Qwen instrumentation APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle \
+            :android-app:assembleDebugAndroidTest \
+            --console=plain \
+            --no-daemon \
+            --max-workers=2
+
+      - name: Record APK identity and patched test identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="$(find android-app/build/outputs/apk/androidTest -type f -name '*.apk' | head -1)"
+          test -n "$apk"
+          test -f "$apk"
+          out="$RUNNER_TEMP/physical-live-admitted-qwen-local-source-overlay"
+          mkdir -p "$out"
+          cp "$apk" "$out/physical-live-admitted-qwen-local-source-androidTest.apk"
+          sha256sum "$out/physical-live-admitted-qwen-local-source-androidTest.apk" | tee "$out/SHA256SUMS"
+          cp /tmp/PATCHED_TEST_SHA256 "$out/PATCHED_TEST_SHA256"
+          printf '%s\n' "$FROZEN_SHA" > "$out/FROZEN_SHA"
+          printf '%s\n' "$(git rev-parse HEAD)" > "$out/OVERLAY_SHA"
+          printf '%s\n' "$(git rev-parse HEAD^{tree})" > "$out/OVERLAY_TREE"
+          printf '%s\n' 'qwenCandidateUrl permits only pinned remote URL or loopback http://127.0.0.1|localhost' > "$out/LOCAL_SOURCE_POLICY"
+
+      - name: Upload instrumentation APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: physical-live-admitted-qwen-local-source-overlay-${{ github.sha }}
+          retention-days: 7
+          if-no-files-found: error
+          path: ${{ runner.temp }}/physical-live-admitted-qwen-local-source-overlay/**
