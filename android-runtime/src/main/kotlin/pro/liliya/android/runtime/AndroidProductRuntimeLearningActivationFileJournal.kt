@@ -5,24 +5,32 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
 import java.nio.channels.FileChannel
+import java.nio.channels.OverlappingFileLockException
 import java.nio.charset.StandardCharsets
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.nio.file.StandardOpenOption
 import java.security.MessageDigest
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * App-private crash-durable activation journal.
  *
  * Publication is file-fsynced and atomic. Corrupt/incompatible state fails closed through the
  * journal contract. The file contains only activation lifecycle state, never Authority or secrets.
+ *
+ * FileChannel locks coordinate separate processes, while the canonical-path process lock prevents
+ * two journal instances in the same JVM from racing into OverlappingFileLockException or both
+ * observing CLEAN before publication. The compare-and-set contract therefore has one serialization
+ * boundary across all journal instances that target the same app-private journal directory.
  */
 class AndroidProductRuntimeLearningActivationFileJournal private constructor(
     private val root: File
 ) : AndroidProductRuntimeLearningActivationJournal {
     private val stateFile = File(root, STATE_FILE)
     private val lockFile = File(root, LOCK_FILE)
+    private val processLock = processLockFor(lockFile)
 
     override fun load(): AndroidProductRuntimeLearningActivationJournalLoadResult =
         withLock {
@@ -101,19 +109,25 @@ class AndroidProductRuntimeLearningActivationFileJournal private constructor(
     }
 
     private fun <T> withLock(block: () -> T): T? =
-        try {
-            if (!lockFile.exists()) lockFile.createNewFile()
-            FileChannel.open(
-                lockFile.toPath(),
-                StandardOpenOption.CREATE,
-                StandardOpenOption.WRITE
-            ).use { channel ->
-                channel.lock().use { block() }
+        synchronized(processLock) {
+            try {
+                if (!lockFile.exists()) lockFile.createNewFile()
+                FileChannel.open(
+                    lockFile.toPath(),
+                    StandardOpenOption.CREATE,
+                    StandardOpenOption.WRITE
+                ).use { channel ->
+                    channel.lock().use { block() }
+                }
+            } catch (_: IOException) {
+                null
+            } catch (_: SecurityException) {
+                null
+            } catch (_: OverlappingFileLockException) {
+                // The process lock should prevent this for matching canonical paths. Fail closed if
+                // a platform-specific lock implementation still reports an overlap.
+                null
             }
-        } catch (_: IOException) {
-            null
-        } catch (_: SecurityException) {
-            null
         }
 
     private fun syncDirectoryBestEffort() {
@@ -139,6 +153,7 @@ class AndroidProductRuntimeLearningActivationFileJournal private constructor(
         private const val TEMP_SUFFIX = ".tmp"
         private const val MAGIC = "LILA1"
         private const val MAX_STATE_BYTES = 256L
+        private val processLocks = ConcurrentHashMap<String, Any>()
 
         fun create(
             context: Context,
@@ -164,6 +179,9 @@ class AndroidProductRuntimeLearningActivationFileJournal private constructor(
             ensureDirectory(root)
             return AndroidProductRuntimeLearningActivationFileJournal(root)
         }
+
+        private fun processLockFor(lockFile: File): Any =
+            processLocks.computeIfAbsent(lockFile.canonicalPath) { Any() }
 
         private fun ensureDirectory(root: File) {
             if (!root.exists()) check(root.mkdirs()) {
