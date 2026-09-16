@@ -73,6 +73,8 @@ import pro.liliya.android.runtime.AndroidHeartProductionGovernedLearningComposit
 import pro.liliya.android.runtime.AndroidHeartProductionGovernedLearningProcessResult
 import pro.liliya.android.runtime.AndroidProductRuntimeGovernedLearningActivationAssembly
 import pro.liliya.android.runtime.AndroidProductRuntimeLearningActivationFileJournal
+import pro.liliya.android.runtime.AndroidProductRuntimeLearningActivationRecoverySafetyPort
+import pro.liliya.android.runtime.AndroidProductRuntimeLearningActivationRecoverySafetyResult
 import pro.liliya.android.runtime.AndroidProductRuntimeLearningActivationSessionResult
 import pro.liliya.android.runtime.AndroidProductRuntimeLearningEnablementEvidence
 import pro.liliya.android.runtime.HeartRuntimeCloseResult
@@ -854,39 +856,44 @@ class AndroidHeartRuntimeColdStartInstrumentedTest {
             )
         )
 
-        val governedLearningSession = AndroidProductRuntimeGovernedLearningActivationAssembly.create(
-            heart = heart,
-            foundation = foundation,
-            scope = CognitiveRuntimeScopeId("heart-h4d-runtime"),
-            learning = learning,
-            policies = policies,
-            policyReference = LearningPolicyReference(policy.policy.id, policy.generation),
-            authority = authority,
-            principal = principal,
-            governance = CognitiveLearningGovernancePort {
-                CognitiveLearningGovernanceResult.Approved(
-                    target = LearningApplicationTarget.MEMORY,
-                    rationale = "physical trusted approval"
-                )
-            },
-            materialization = CognitiveLearningApplicationMaterializationPort {
-                CognitiveLearningApplicationMaterializationResult.Succeeded(LEARNED_EVIDENCE)
-            },
-            mutations = encryptedMutations,
-            artifactIds = CognitiveArtifactIdSource { kind ->
-                "heart-h4d-learning-" + kind.name.lowercase() + "-" + ids.incrementAndGet()
-            },
-            timestamps = CognitiveTimestampSource { BASE.plusSeconds(12) },
-            journal = AndroidProductRuntimeLearningActivationFileJournal.create(
-                context = targetContext,
-                directoryName = LEARNING_ACTIVATION_DIRECTORY_H4D
-            ),
-            limits = cognitiveLimits()
+        val activationJournal = AndroidProductRuntimeLearningActivationFileJournal.create(
+            context = targetContext,
+            directoryName = LEARNING_ACTIVATION_DIRECTORY_H4D
         )
+        val governedLearningLifecycle =
+            AndroidProductRuntimeGovernedLearningActivationAssembly.createLifecycle(
+                heart = heart,
+                foundation = foundation,
+                scope = CognitiveRuntimeScopeId("heart-h4d-runtime"),
+                learning = learning,
+                policies = policies,
+                policyReference = LearningPolicyReference(policy.policy.id, policy.generation),
+                authority = authority,
+                principal = principal,
+                governance = CognitiveLearningGovernancePort {
+                    CognitiveLearningGovernanceResult.Approved(
+                        target = LearningApplicationTarget.MEMORY,
+                        rationale = "physical trusted approval"
+                    )
+                },
+                materialization = CognitiveLearningApplicationMaterializationPort {
+                    CognitiveLearningApplicationMaterializationResult.Succeeded(LEARNED_EVIDENCE)
+                },
+                mutations = encryptedMutations,
+                artifactIds = CognitiveArtifactIdSource { kind ->
+                    "heart-h4d-learning-" + kind.name.lowercase() + "-" + ids.incrementAndGet()
+                },
+                timestamps = CognitiveTimestampSource { BASE.plusSeconds(12) },
+                journal = activationJournal,
+                recoverySafety = AndroidProductRuntimeLearningActivationRecoverySafetyPort {
+                    AndroidProductRuntimeLearningActivationRecoverySafetyResult.Blocked
+                },
+                limits = cognitiveLimits()
+            )
         val activated = assertIs<
             AndroidProductRuntimeLearningActivationSessionResult.Activated<*>
         >(
-            governedLearningSession.activate(
+            governedLearningLifecycle.start(
                 AndroidProductRuntimeLearningEnablementEvidence(
                     productPolicyApproved = true,
                     poisoningResistanceAccepted = true,
