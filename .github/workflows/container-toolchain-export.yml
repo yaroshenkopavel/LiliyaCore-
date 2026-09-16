@@ -1,0 +1,87 @@
+name: Container Toolchain Export
+
+on:
+  push:
+    branches:
+      - ops/container-restore-151187f
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact source for dependency warmup
+        uses: actions/checkout@v4
+        with:
+          ref: 151187f16488e4e97d84763bfc60883dfb99941b
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle 9.6.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.1'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
+
+      - name: Install exact Android toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools" "ndk;29.0.13113456" "cmake;3.31.6"
+
+      - name: Warm exact Gradle dependency cache
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle :android-runtime:testDebugUnitTest :android-semantic-test-host:assembleDebugAndroidTest --console=plain
+
+      - name: Stage portable local toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          stage="$RUNNER_TEMP/local-toolchain"
+          mkdir -p "$stage/java" "$stage/gradle" "$stage/android-sdk" "$stage/gradle-home"
+
+          java_home="$(dirname "$(dirname "$(readlink -f "$(command -v java)")")")"
+          gradle_bin="$(readlink -f "$(command -v gradle)")"
+          gradle_home="$(dirname "$(dirname "$gradle_bin")")"
+
+          cp -a "$java_home"/. "$stage/java/"
+          cp -a "$gradle_home"/. "$stage/gradle/"
+          cp -a "$ANDROID_HOME/licenses" "$stage/android-sdk/"
+          cp -a "$ANDROID_HOME/platform-tools" "$stage/android-sdk/"
+          mkdir -p "$stage/android-sdk/platforms" "$stage/android-sdk/build-tools" "$stage/android-sdk/ndk" "$stage/android-sdk/cmake"
+          cp -a "$ANDROID_HOME/platforms/android-35" "$stage/android-sdk/platforms/"
+          cp -a "$ANDROID_HOME/build-tools/35.0.0" "$stage/android-sdk/build-tools/"
+          cp -a "$ANDROID_HOME/ndk/29.0.13113456" "$stage/android-sdk/ndk/"
+          cp -a "$ANDROID_HOME/cmake/3.31.6" "$stage/android-sdk/cmake/"
+          cp -a "$HOME/.gradle/caches" "$stage/gradle-home/"
+          cp -a "$HOME/.gradle/native" "$stage/gradle-home/" 2>/dev/null || true
+
+          tar -C "$RUNNER_TEMP" -czf "$RUNNER_TEMP/liliya-local-base-toolchain.tar.gz" local-toolchain
+          sha256sum "$RUNNER_TEMP/liliya-local-base-toolchain.tar.gz" > "$RUNNER_TEMP/liliya-local-base-toolchain.tar.gz.sha256"
+          split -b 450M -d -a 2 "$RUNNER_TEMP/liliya-local-base-toolchain.tar.gz" "$RUNNER_TEMP/liliya-local-base-toolchain.tar.gz.part-"
+          rm "$RUNNER_TEMP/liliya-local-base-toolchain.tar.gz"
+          ls -lh "$RUNNER_TEMP"/liliya-local-base-toolchain.tar.gz.part-* "$RUNNER_TEMP/liliya-local-base-toolchain.tar.gz.sha256
+"
+
+      - name: Upload portable toolchain parts
+        uses: actions/upload-artifact@v4
+        with:
+          name: liliya-local-base-toolchain-151187f
+          path: |
+            ${{ runner.temp }}/liliya-local-base-toolchain.tar.gz.part-*
+            ${{ runner.temp }}/liliya-local-base-toolchain.tar.gz.sha256
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 3
