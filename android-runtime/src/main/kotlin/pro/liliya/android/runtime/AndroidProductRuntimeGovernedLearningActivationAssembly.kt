@@ -19,7 +19,10 @@ import pro.liliya.core.learning.LearningPolicyReference
  *
  * The underlying governed-learning composition is intentionally not created until complete
  * [AndroidProductRuntimeLearningEnablementEvidence] has been accepted by the one-shot activation
- * session. Evidence is not Authority: the resulting composition still performs the existing Core
+ * session. Public product wiring must also supply an activation journal so an interrupted activation
+ * cannot silently become a fresh attempt after process restart.
+ *
+ * Evidence is not Authority: the resulting composition still performs the existing Core
  * per-mutation authorization path and this assembly never mints capabilities.
  */
 object AndroidProductRuntimeGovernedLearningActivationAssembly {
@@ -38,9 +41,10 @@ object AndroidProductRuntimeGovernedLearningActivationAssembly {
         mutations: EncryptedPersistentLearningApplicationMutationComposition,
         artifactIds: CognitiveArtifactIdSource,
         timestamps: CognitiveTimestampSource,
+        journal: AndroidProductRuntimeLearningActivationJournal,
         limits: CognitiveRuntimeLimits = CognitiveRuntimeLimits()
     ): AndroidProductRuntimeLearningActivationSession<AndroidHeartProductionGovernedLearningComposition> =
-        createSession {
+        createSession(journal) {
             when (
                 val created = AndroidHeartProductionGovernedLearningAssembly.create(
                     heart = heart,
@@ -66,9 +70,14 @@ object AndroidProductRuntimeGovernedLearningActivationAssembly {
         }
 
     internal fun createSession(
+        journal: AndroidProductRuntimeLearningActivationJournal =
+            InMemoryAndroidProductRuntimeLearningActivationJournal(),
         createComposition: () -> AndroidHeartProductionGovernedLearningComposition
     ): AndroidProductRuntimeLearningActivationSession<AndroidHeartProductionGovernedLearningComposition> =
-        AndroidProductRuntimeLearningActivationSession(createComposition)
+        AndroidProductRuntimeLearningActivationSession(
+            activation = createComposition,
+            journal = journal
+        )
 
     private class GovernedLearningActivationCreationRejected(
         val reason: AndroidHeartProductionGovernedLearningCreateFailure
