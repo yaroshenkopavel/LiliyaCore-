@@ -262,42 +262,64 @@ object AndroidHeartProductionGovernedLearningAssembly {
 
         val before = safeRecoveryClassification(classification)
         when (before) {
-            null -> return AndroidHeartProductionGovernedLearningCreateFailure
-                .MUTATION_RECOVERY_CLASSIFICATION_FAILED
-            LearningApplicationMutationRecoveryClassificationResult.CLEAN -> return null
-            LearningApplicationMutationRecoveryClassificationResult.EXACT_COMPLETION_REQUIRED -> Unit
-            LearningApplicationMutationRecoveryClassificationResult.ROLLBACK_REQUIRED ->
+            LearningApplicationMutationRecoveryClassificationResult.Failed ->
+                return AndroidHeartProductionGovernedLearningCreateFailure
+                    .MUTATION_RECOVERY_CLASSIFICATION_FAILED
+
+            is LearningApplicationMutationRecoveryClassificationResult.Classified ->
+                if (!before.summary.requiresRecovery) return null
+        }
+
+        val exactRecovery =
+            mutationApplication as? LearningApplicationMutationExactCompletionRecoveryPort
+                ?: return AndroidHeartProductionGovernedLearningCreateFailure.MUTATION_RECOVERY_REQUIRED
+
+        when (safeExactCompletionRecovery(exactRecovery)) {
+            is LearningApplicationMutationExactCompletionRecoveryResult.Blocked,
+            is LearningApplicationMutationExactCompletionRecoveryResult.StaleEvidence,
+            is LearningApplicationMutationExactCompletionRecoveryResult.CompletionFailed ->
                 return AndroidHeartProductionGovernedLearningCreateFailure.MUTATION_RECOVERY_REQUIRED
+
+            LearningApplicationMutationExactCompletionRecoveryResult.NoRecoveryRequired,
+            is LearningApplicationMutationExactCompletionRecoveryResult.Completed -> Unit
         }
 
-        val exact = mutationApplication as? LearningApplicationMutationExactCompletionRecoveryPort
-            ?: return AndroidHeartProductionGovernedLearningCreateFailure.MUTATION_RECOVERY_REQUIRED
-        val recovered = try {
-            exact.recoverExactCompletion()
-        } catch (_: Exception) {
-            return AndroidHeartProductionGovernedLearningCreateFailure.MUTATION_RECOVERY_REQUIRED
-        }
-        if (recovered != LearningApplicationMutationExactCompletionRecoveryResult.RECOVERED) {
-            return AndroidHeartProductionGovernedLearningCreateFailure.MUTATION_RECOVERY_REQUIRED
-        }
+        return when (val after = safeRecoveryClassification(classification)) {
+            LearningApplicationMutationRecoveryClassificationResult.Failed ->
+                AndroidHeartProductionGovernedLearningCreateFailure
+                    .MUTATION_RECOVERY_CLASSIFICATION_FAILED
 
-        return when (safeRecoveryClassification(classification)) {
-            LearningApplicationMutationRecoveryClassificationResult.CLEAN -> null
-            else -> AndroidHeartProductionGovernedLearningCreateFailure.MUTATION_RECOVERY_REQUIRED
+            is LearningApplicationMutationRecoveryClassificationResult.Classified ->
+                if (after.summary.requiresRecovery) {
+                    AndroidHeartProductionGovernedLearningCreateFailure.MUTATION_RECOVERY_REQUIRED
+                } else {
+                    null
+                }
         }
     }
 
     private fun safeRecoveryClassification(
-        classification: LearningApplicationMutationRecoveryClassificationPort
-    ): LearningApplicationMutationRecoveryClassificationResult? =
+        port: LearningApplicationMutationRecoveryClassificationPort
+    ): LearningApplicationMutationRecoveryClassificationResult =
         try {
-            classification.classifyRecovery()
+            port.classifyPreparedMutations()
         } catch (_: Exception) {
-            null
+            LearningApplicationMutationRecoveryClassificationResult.Failed
+        }
+
+    private fun safeExactCompletionRecovery(
+        port: LearningApplicationMutationExactCompletionRecoveryPort
+    ): LearningApplicationMutationExactCompletionRecoveryResult =
+        try {
+            port.recoverExactCompletion()
+        } catch (_: Exception) {
+            LearningApplicationMutationExactCompletionRecoveryResult.CompletionFailed(
+                completedCount = 0
+            )
         }
 
     private fun rejected(
         reason: AndroidHeartProductionGovernedLearningCreateFailure
-    ): AndroidHeartProductionGovernedLearningCreateResult =
+    ): AndroidHeartProductionGovernedLearningCreateResult.Rejected =
         AndroidHeartProductionGovernedLearningCreateResult.Rejected(reason)
 }
