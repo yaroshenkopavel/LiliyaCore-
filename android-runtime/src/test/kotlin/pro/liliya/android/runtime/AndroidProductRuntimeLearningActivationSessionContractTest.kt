@@ -62,19 +62,25 @@ class AndroidProductRuntimeLearningActivationSessionContractTest {
     }
 
     @Test
-    fun concurrent_activation_has_exactly_one_activation_winner() {
+    fun concurrent_process_sessions_have_exactly_one_activation_winner() {
         var calls = 0
         val lock = Any()
-        val session = AndroidProductRuntimeLearningActivationSession {
-            synchronized(lock) {
-                calls += 1
-            }
-            Any()
-        }
+        val journal = InMemoryAndroidProductRuntimeLearningActivationJournal()
         val results = java.util.Collections.synchronizedList(
             mutableListOf<AndroidProductRuntimeLearningActivationSessionResult<Any>>()
         )
-        val threads = List(8) {
+        val sessions = List(8) {
+            AndroidProductRuntimeLearningActivationSession(
+                activation = {
+                    synchronized(lock) {
+                        calls += 1
+                    }
+                    Any()
+                },
+                journal = journal
+            )
+        }
+        val threads = sessions.map { session ->
             Thread {
                 results += session.activate(evidence())
             }
@@ -90,6 +96,75 @@ class AndroidProductRuntimeLearningActivationSessionContractTest {
             it is AndroidProductRuntimeLearningActivationSessionResult.AlreadyActivated
         })
         assertEquals(1, calls)
+    }
+
+    @Test
+    fun process_restart_after_completed_activation_never_reinvokes_activation() {
+        val journal = InMemoryAndroidProductRuntimeLearningActivationJournal()
+        var calls = 0
+        val first = AndroidProductRuntimeLearningActivationSession(
+            activation = {
+                calls += 1
+                Any()
+            },
+            journal = journal
+        )
+
+        assertIs<AndroidProductRuntimeLearningActivationSessionResult.Activated<Any>>(
+            first.activate(evidence())
+        )
+
+        val restarted = AndroidProductRuntimeLearningActivationSession(
+            activation = {
+                calls += 1
+                Any()
+            },
+            journal = journal
+        )
+        assertIs<AndroidProductRuntimeLearningActivationSessionResult.AlreadyActivated>(
+            restarted.activate(evidence())
+        )
+        assertEquals(1, calls)
+    }
+
+    @Test
+    fun process_restart_during_activation_requires_explicit_recovery_and_never_retries() {
+        val journal = InMemoryAndroidProductRuntimeLearningActivationJournal(
+            AndroidProductRuntimeLearningActivationJournalState.ACTIVATING
+        )
+        var calls = 0
+        val restarted = AndroidProductRuntimeLearningActivationSession(
+            activation = {
+                calls += 1
+                Any()
+            },
+            journal = journal
+        )
+
+        assertIs<AndroidProductRuntimeLearningActivationSessionResult.RecoveryRequired>(
+            restarted.activate(evidence())
+        )
+        assertEquals(0, calls)
+    }
+
+    @Test
+    fun process_restart_after_failed_activation_requires_explicit_recovery_and_never_retries() {
+        val journal = InMemoryAndroidProductRuntimeLearningActivationJournal(
+            AndroidProductRuntimeLearningActivationJournalState.FAILED
+        )
+        var calls = 0
+        val restarted = AndroidProductRuntimeLearningActivationSession(
+            activation = {
+                calls += 1
+                Any()
+            },
+            journal = journal
+        )
+
+        assertIs<AndroidProductRuntimeLearningActivationSessionResult.RecoveryRequired>(
+            restarted.activate(evidence())
+        )
+        assertEquals(0, calls)
     }
 
     private fun evidence() = AndroidProductRuntimeLearningEnablementEvidence(
