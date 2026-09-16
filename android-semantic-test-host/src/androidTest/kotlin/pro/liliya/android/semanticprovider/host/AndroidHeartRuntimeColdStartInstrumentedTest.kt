@@ -69,9 +69,12 @@ import pro.liliya.android.runtime.learningFollowUpReference
 import pro.liliya.android.runtime.AndroidHeartProductionPersonaDefinition
 import pro.liliya.android.runtime.AndroidHeartProductionPersonaRuntimeFactory
 import pro.liliya.android.runtime.AndroidHeartProductionPersonaRuntimeFactoryCreateResult
-import pro.liliya.android.runtime.AndroidHeartProductionGovernedLearningAssembly
-import pro.liliya.android.runtime.AndroidHeartProductionGovernedLearningCreateResult
+import pro.liliya.android.runtime.AndroidHeartProductionGovernedLearningComposition
 import pro.liliya.android.runtime.AndroidHeartProductionGovernedLearningProcessResult
+import pro.liliya.android.runtime.AndroidProductRuntimeGovernedLearningActivationAssembly
+import pro.liliya.android.runtime.AndroidProductRuntimeLearningActivationFileJournal
+import pro.liliya.android.runtime.AndroidProductRuntimeLearningActivationSessionResult
+import pro.liliya.android.runtime.AndroidProductRuntimeLearningEnablementEvidence
 import pro.liliya.android.runtime.HeartRuntimeCloseResult
 import pro.liliya.android.runtime.HeartRuntimeStartResult
 import pro.liliya.android.runtime.HeartRuntimeState
@@ -665,6 +668,7 @@ class AndroidHeartRuntimeColdStartInstrumentedTest {
 
         File(targetContext.filesDir, STORAGE_DIRECTORY_H4D).deleteRecursively()
         File(targetContext.filesDir, SEMANTIC_ROOT_H4D).deleteRecursively()
+        File(targetContext.filesDir, LEARNING_ACTIVATION_DIRECTORY_H4D).deleteRecursively()
 
         val first = assertIs<AndroidCognitiveStorageOpenResult.Ready>(
             AndroidCognitiveStorageAssembly.open(
@@ -850,33 +854,51 @@ class AndroidHeartRuntimeColdStartInstrumentedTest {
             )
         )
 
-        val governed = assertIs<AndroidHeartProductionGovernedLearningCreateResult.Ready>(
-            AndroidHeartProductionGovernedLearningAssembly.create(
-                heart = heart,
-                foundation = foundation,
-                scope = CognitiveRuntimeScopeId("heart-h4d-runtime"),
-                learning = learning,
-                policies = policies,
-                policyReference = LearningPolicyReference(policy.policy.id, policy.generation),
-                authority = authority,
-                principal = principal,
-                governance = CognitiveLearningGovernancePort {
-                    CognitiveLearningGovernanceResult.Approved(
-                        target = LearningApplicationTarget.MEMORY,
-                        rationale = "physical trusted approval"
-                    )
-                },
-                materialization = CognitiveLearningApplicationMaterializationPort {
-                    CognitiveLearningApplicationMaterializationResult.Succeeded(LEARNED_EVIDENCE)
-                },
-                mutations = encryptedMutations,
-                artifactIds = CognitiveArtifactIdSource { kind ->
-                    "heart-h4d-learning-" + kind.name.lowercase() + "-" + ids.incrementAndGet()
-                },
-                timestamps = CognitiveTimestampSource { BASE.plusSeconds(12) },
-                limits = cognitiveLimits()
+        val governedLearningSession = AndroidProductRuntimeGovernedLearningActivationAssembly.create(
+            heart = heart,
+            foundation = foundation,
+            scope = CognitiveRuntimeScopeId("heart-h4d-runtime"),
+            learning = learning,
+            policies = policies,
+            policyReference = LearningPolicyReference(policy.policy.id, policy.generation),
+            authority = authority,
+            principal = principal,
+            governance = CognitiveLearningGovernancePort {
+                CognitiveLearningGovernanceResult.Approved(
+                    target = LearningApplicationTarget.MEMORY,
+                    rationale = "physical trusted approval"
+                )
+            },
+            materialization = CognitiveLearningApplicationMaterializationPort {
+                CognitiveLearningApplicationMaterializationResult.Succeeded(LEARNED_EVIDENCE)
+            },
+            mutations = encryptedMutations,
+            artifactIds = CognitiveArtifactIdSource { kind ->
+                "heart-h4d-learning-" + kind.name.lowercase() + "-" + ids.incrementAndGet()
+            },
+            timestamps = CognitiveTimestampSource { BASE.plusSeconds(12) },
+            journal = AndroidProductRuntimeLearningActivationFileJournal.create(
+                context = targetContext,
+                directoryName = LEARNING_ACTIVATION_DIRECTORY_H4D
+            ),
+            limits = cognitiveLimits()
+        )
+        val activated = assertIs<
+            AndroidProductRuntimeLearningActivationSessionResult.Activated<*>
+        >(
+            governedLearningSession.activate(
+                AndroidProductRuntimeLearningEnablementEvidence(
+                    productPolicyApproved = true,
+                    poisoningResistanceAccepted = true,
+                    freshAuthorityPerMutationAccepted = true,
+                    rollbackCompensationAccepted = true,
+                    durableCrashSemanticsAccepted = true
+                )
             )
-        ).composition
+        )
+        val governed = assertIs<AndroidHeartProductionGovernedLearningComposition>(
+            activated.value
+        )
         val learned = assertIs<AndroidHeartProductionGovernedLearningProcessResult.Processed>(
             governed.process(finalizedA.learning)
         ).result
@@ -1251,6 +1273,7 @@ class AndroidHeartRuntimeColdStartInstrumentedTest {
 
         const val STORAGE_DIRECTORY_H4D = "heart-h4d-storage"
         const val SEMANTIC_ROOT_H4D = "heart-h4d-semantic"
+        const val LEARNING_ACTIVATION_DIRECTORY_H4D = "heart-h4d-learning-activation"
         const val LEARNED_EVIDENCE = "The emergency code word is violet."
 
         const val STORAGE_DIRECTORY = "heart-h3-storage"

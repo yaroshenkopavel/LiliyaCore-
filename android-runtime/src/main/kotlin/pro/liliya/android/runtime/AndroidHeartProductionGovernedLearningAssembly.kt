@@ -107,20 +107,13 @@ class AndroidHeartProductionGovernedLearningComposition internal constructor(
  * v0.1 is MEMORY-only. Policy and Capability Authority are supplied by an outer trusted owner.
  * This assembly never creates or grants Authority permissions.
  *
- * Product wiring must enter through [AndroidProductRuntimeGovernedLearningActivationAssembly].
- * The low-level [create] entry point remains public temporarily because the separate physical
- * semantic-test-host module still compiles the accepted H4D regression path against it. It is an
- * acceptance compatibility seam, not a product enablement API. Migrating that host to the product
- * activation API is required before this seam can be made internal without breaking cross-module
- * physical acceptance compilation.
+ * Product code must enter through [AndroidProductRuntimeGovernedLearningActivationAssembly].
+ * Keeping this creator internal prevents an accidental product-side bypass of the explicit
+ * learning-enablement evidence gate.
  */
 object AndroidHeartProductionGovernedLearningAssembly {
 
-    @Deprecated(
-        message = "Low-level physical-acceptance seam; product code must use AndroidProductRuntimeGovernedLearningActivationAssembly",
-        level = DeprecationLevel.WARNING
-    )
-    fun create(
+    internal fun create(
         heart: AndroidHeartRuntimeAssembly,
         foundation: FoundationComposition,
         scope: CognitiveRuntimeScopeId,
