@@ -33,10 +33,10 @@ sealed interface AndroidProductRuntimeLearningActivationSessionResult<out T> {
 }
 
 class AndroidProductRuntimeLearningActivationSession<T : Any>(
-    private val activation: () -> T,
     private val journal: AndroidProductRuntimeLearningActivationJournal =
         InMemoryAndroidProductRuntimeLearningActivationJournal(),
-    private val restoration: () -> T = activation
+    private val restoration: (() -> T)? = null,
+    private val activation: () -> T
 ) {
     private sealed interface State<out T> {
         data object Initial : State<Nothing>
@@ -156,7 +156,7 @@ class AndroidProductRuntimeLearningActivationSession<T : Any>(
         }
 
         val value = try {
-            restoration()
+            (restoration ?: activation)()
         } catch (_: Exception) {
             markFailed(AndroidProductRuntimeLearningActivationJournalState.RESTORING)
             return failLocal()
