@@ -27,6 +27,48 @@ import pro.liliya.core.learning.LearningPolicyReference
  */
 object AndroidProductRuntimeGovernedLearningActivationAssembly {
 
+    fun createLifecycle(
+        heart: AndroidHeartRuntimeAssembly,
+        foundation: FoundationComposition,
+        scope: CognitiveRuntimeScopeId,
+        learning: LearningComposition,
+        policies: LearningPolicyComposition,
+        policyReference: LearningPolicyReference,
+        authority: CapabilityAuthorityComposition,
+        principal: AuthorityPrincipal,
+        governance: CognitiveLearningGovernancePort,
+        materialization: CognitiveLearningApplicationMaterializationPort,
+        mutations: EncryptedPersistentLearningApplicationMutationComposition,
+        artifactIds: CognitiveArtifactIdSource,
+        timestamps: CognitiveTimestampSource,
+        journal: AndroidProductRuntimeLearningActivationJournal,
+        recoverySafety: AndroidProductRuntimeLearningActivationRecoverySafetyPort,
+        limits: CognitiveRuntimeLimits = CognitiveRuntimeLimits()
+    ): AndroidProductRuntimeLearningActivationLifecycle<AndroidHeartProductionGovernedLearningComposition> {
+        val session = create(
+            heart = heart,
+            foundation = foundation,
+            scope = scope,
+            learning = learning,
+            policies = policies,
+            policyReference = policyReference,
+            authority = authority,
+            principal = principal,
+            governance = governance,
+            materialization = materialization,
+            mutations = mutations,
+            artifactIds = artifactIds,
+            timestamps = timestamps,
+            journal = journal,
+            limits = limits
+        )
+        return AndroidProductRuntimeLearningActivationLifecycle(
+            session = session,
+            journal = journal,
+            recoverySafety = recoverySafety
+        )
+    }
+
     fun create(
         heart: AndroidHeartRuntimeAssembly,
         foundation: FoundationComposition,
