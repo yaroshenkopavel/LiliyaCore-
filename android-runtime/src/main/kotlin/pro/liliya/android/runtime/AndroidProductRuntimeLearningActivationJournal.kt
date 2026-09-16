@@ -4,6 +4,7 @@ enum class AndroidProductRuntimeLearningActivationJournalState {
     CLEAN,
     ACTIVATING,
     ACTIVATED,
+    RESTORING,
     FAILED
 }
 
