@@ -1,0 +1,45 @@
+name: Container Restore Exact Snapshot
+
+on:
+  push:
+    branches:
+      - ops/container-restore-151187f
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact governed-learning handoff HEAD
+        uses: actions/checkout@v4
+        with:
+          ref: 151187f16488e4e97d84763bfc60883dfb99941b
+          fetch-depth: 0
+
+      - name: Verify exact source identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "151187f16488e4e97d84763bfc60883dfb99941b"
+          git status --short
+          git rev-parse HEAD
+          git rev-parse HEAD^{tree}
+
+      - name: Pack exact source including git metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar --exclude='./.gradle' --exclude='./**/build' -czf "$RUNNER_TEMP/liliycore-local-restore-source-151187f.tar.gz" .
+          sha256sum "$RUNNER_TEMP/liliycore-local-restore-source-151187f.tar.gz" > "$RUNNER_TEMP/liliycore-local-restore-source-151187f.tar.gz.sha256"
+
+      - name: Upload exact restore artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: liliycore-local-restore-source-151187f
+          path: |
+            ${{ runner.temp }}/liliycore-local-restore-source-151187f.tar.gz
+            ${{ runner.temp }}/liliycore-local-restore-source-151187f.tar.gz.sha256
+          if-no-files-found: error
+          retention-days: 3
