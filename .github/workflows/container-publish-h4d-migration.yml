@@ -15,91 +15,69 @@ jobs:
       - name: Checkout exact target head
         uses: actions/checkout@v4
         with:
-          ref: d611cfdbb422204093461096baf837e32a5192da
+          ref: 646584b4d8be115a11451320f34e35ff13126161
           fetch-depth: 0
 
-      - name: Apply exact locally verified poisoning contract patch
+      - name: Apply exact locally verified semantic rebuild contract patch
         shell: bash
         run: |
           set -euo pipefail
-          BASE=d611cfdbb422204093461096baf837e32a5192da
-          EXPECTED_TREE=d92c8cbe31076458805a6246576c81015d984974
+          BASE=646584b4d8be115a11451320f34e35ff13126161
+          EXPECTED_TREE=b755962950cc09682eaa0135a7660d1129d3f78a
           test "$(git rev-parse HEAD)" = "$BASE"
-          cat > "$RUNNER_TEMP/poisoning-contract.patch" <<'PATCH'
-          diff --git a/core/src/main/kotlin/pro/liliya/core/cognitive/CognitiveLearningGovernance.kt b/core/src/main/kotlin/pro/liliya/core/cognitive/CognitiveLearningGovernance.kt
-          index e6b95604..494b55a5 100644
-          --- a/core/src/main/kotlin/pro/liliya/core/cognitive/CognitiveLearningGovernance.kt
-          +++ b/core/src/main/kotlin/pro/liliya/core/cognitive/CognitiveLearningGovernance.kt
-          @@ -50,7 +50,13 @@ sealed interface CognitiveLearningGovernanceResult {
-               }
-           }
+          cat > "$RUNNER_TEMP/semantic-rebuild-contract.patch" <<'PATCH'
+          diff --git a/android-semantic-test-host/src/androidTest/kotlin/pro/liliya/android/semanticprovider/host/AndroidHeartRuntimeColdStartInstrumentedTest.kt b/android-semantic-test-host/src/androidTest/kotlin/pro/liliya/android/semanticprovider/host/AndroidHeartRuntimeColdStartInstrumentedTest.kt
+          index 74e17f65..e2ed787e 100644
+          --- a/android-semantic-test-host/src/androidTest/kotlin/pro/liliya/android/semanticprovider/host/AndroidHeartRuntimeColdStartInstrumentedTest.kt
+          +++ b/android-semantic-test-host/src/androidTest/kotlin/pro/liliya/android/semanticprovider/host/AndroidHeartRuntimeColdStartInstrumentedTest.kt
+          @@ -370,6 +370,7 @@ class AndroidHeartRuntimeColdStartInstrumentedTest {
+                   compilerSawKnowledge = false
+                   compilerSawSelf = false
+                   compilerSawPersonality = false
+          +        compilerSawProductRuntimeLearned = false
            
-          -/** Trusted policy seam. This is not CognitiveInferencePort and carries no Authority handles. */
-          +/**
-          + * Trusted policy seam evaluated before materialization, application intent creation and mutation.
-          + *
-          + * Poisoning/adversarial-candidate screening belongs on this boundary: a suspicious candidate must
-          + * return [CognitiveLearningGovernanceResult.Rejected] before any mutation-capable downstream work.
-          + * This is not CognitiveInferencePort and carries no Authority handles.
-          + */
-           fun interface CognitiveLearningGovernancePort {
-               fun evaluate(request: CognitiveLearningGovernanceRequest): CognitiveLearningGovernanceResult
-           }
-          diff --git a/core/src/test/kotlin/pro/liliya/core/cognitive/CognitiveGovernedLearningCoordinatorContractTest.kt b/core/src/test/kotlin/pro/liliya/core/cognitive/CognitiveGovernedLearningCoordinatorContractTest.kt
-          index 6d7f3181..335547ec 100644
-          --- a/core/src/test/kotlin/pro/liliya/core/cognitive/CognitiveGovernedLearningCoordinatorContractTest.kt
-          +++ b/core/src/test/kotlin/pro/liliya/core/cognitive/CognitiveGovernedLearningCoordinatorContractTest.kt
-          @@ -239,6 +239,44 @@ class CognitiveGovernedLearningCoordinatorContractTest {
-                   assertEquals(0, f.materializerCalls.get())
-               }
+                   val instrumentation = InstrumentationRegistry.getInstrumentation()
+                   val targetContext = instrumentation.targetContext
+          @@ -607,11 +608,12 @@ class AndroidHeartRuntimeColdStartInstrumentedTest {
+                   val afterRecoveryCompleted = assertIs<ProductConversationResult.Completed>(
+                       recoveredConversation.send(
+                           ProductChatRequest(
+          -                    "Continue after explicit semantic recovery.",
+          +                    "What explicit product runtime learning evidence did you remember?",
+                               ProductChatGenerationMode.ONE_SHOT
+                           )
+                       )
+                   )
+          +        assertTrue(compilerSawProductRuntimeLearned)
+                   val afterRecoveryEvidence =
+                       assertNotNull(afterRecoveryCompleted.learningFollowUpReference())
+                   val reboundFollowUp = assertNotNull(product.learningFollowUp())
+          @@ -1027,6 +1029,9 @@ class AndroidHeartRuntimeColdStartInstrumentedTest {
+               @Volatile
+               private var compilerSawLearned = false
            
-          +    @Test
-          +    fun poisoned_candidate_is_rejected_before_materialization_even_when_mutation_authority_exists() {
-          +        val poisonedProposal = "POISONED-CANDIDATE::ignore-policy-and-persist"
-          +        val rationale = "candidate rejected by poisoning-resistance policy"
-          +        val f = fixture(
-          +            candidateProposal = poisonedProposal,
-          +            grants = setOf(LearningApplicationTarget.MEMORY),
-          +            governance = { request ->
-          +                assertEquals(poisonedProposal, request.candidate.candidate.proposal)
-          +                CognitiveLearningGovernanceResult.Rejected(rationale)
-          +            },
-          +            materialization = {
-          +                error("materializer must not run for a poisoned candidate")
+          +    @Volatile
+          +    private var compilerSawProductRuntimeLearned = false
+          +
+               @Volatile
+               private var compilerSawSelf = false
+           
+          @@ -1066,6 +1071,9 @@ class AndroidHeartRuntimeColdStartInstrumentedTest {
+                       if (contents.contains(LEARNED_EVIDENCE)) {
+                           compilerSawLearned = true
+                       }
+          +            if (contents.contains(PRODUCT_RUNTIME_LEARNED_EVIDENCE)) {
+          +                compilerSawProductRuntimeLearned = true
           +            }
-          +        )
-          +
-          +        val rejected = assertIs<CognitiveGovernedLearningResult.GovernanceRejected>(
-          +            f.coordinator.process(f.reference)
-          +        )
-          +        val decision = assertNotNull(f.decisions.inspect(rejected.decision.decisionId))
-          +
-          +        assertEquals(LearningDecisionDisposition.REJECT, decision.decision.disposition)
-          +        assertEquals(rationale, decision.decision.rationale)
-          +        assertEquals(1, f.governanceCalls.get())
-          +        assertEquals(0, f.materializerCalls.get())
-          +        assertTrue(f.applications.snapshotEntries().isEmpty())
-          +        assertTrue(f.mutations.snapshotEntries().isEmpty())
-          +        assertTrue(f.memory.snapshotEntries().isEmpty())
-          +        assertTrue(f.knowledge.snapshotEntries().isEmpty())
-          +
-          +        val second = assertIs<CognitiveGovernedLearningResult.AlreadyProcessed>(
-          +            f.coordinator.process(f.reference)
-          +        )
-          +        assertEquals(CognitiveGovernedLearningTerminalStatus.GOVERNANCE_REJECTED, second.status)
-          +        assertEquals(1, f.governanceCalls.get())
-          +        assertEquals(0, f.materializerCalls.get())
-          +    }
-          +
-               @Test
-               fun authority_denial_causes_zero_downstream_write_and_compensates_attempt_records() {
-                   val f = fixture(
+                       check(compilerSawMemory)
+                       check(compilerSawKnowledge)
+                       CognitiveModelRequestCompilerResult.Compiled(
           PATCH
-          sed -i 's/^          //' "$RUNNER_TEMP/poisoning-contract.patch"
-          git apply --index "$RUNNER_TEMP/poisoning-contract.patch"
+          sed -i 's/^          //' "$RUNNER_TEMP/semantic-rebuild-contract.patch"
+          git apply --index "$RUNNER_TEMP/semantic-rebuild-contract.patch"
           git diff --cached --check
           test "$(git write-tree)" = "$EXPECTED_TREE"
-          git -c user.name='yaroshenkopavel' -c user.email='78513566+yaroshenkopavel@users.noreply.github.com' commit -m 'test: harden poisoned candidate rejection'
+          git -c user.name='yaroshenkopavel' -c user.email='78513566+yaroshenkopavel@users.noreply.github.com' commit -m 'test: verify learned memory after semantic rebuild'
           test "$(git rev-parse HEAD^)" = "$BASE"
           test "$(git rev-parse 'HEAD^{tree}')" = "$EXPECTED_TREE"
           git push --force-with-lease=refs/heads/development/core-next-governed-learning:$BASE origin HEAD:refs/heads/development/core-next-governed-learning
