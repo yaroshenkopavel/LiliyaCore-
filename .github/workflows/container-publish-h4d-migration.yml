@@ -15,109 +15,91 @@ jobs:
       - name: Checkout exact target head
         uses: actions/checkout@v4
         with:
-          ref: c22fc36d770057ae9863c0d6b38b38b7d8b307f8
+          ref: d611cfdbb422204093461096baf837e32a5192da
           fetch-depth: 0
 
-      - name: Apply exact locally verified H4D lifecycle patch
+      - name: Apply exact locally verified poisoning contract patch
         shell: bash
         run: |
           set -euo pipefail
-          BASE=c22fc36d770057ae9863c0d6b38b38b7d8b307f8
-          EXPECTED_TREE=0ae7e755bf211a492e7cb9208f55adf1f3e5116f
+          BASE=d611cfdbb422204093461096baf837e32a5192da
+          EXPECTED_TREE=d92c8cbe31076458805a6246576c81015d984974
           test "$(git rev-parse HEAD)" = "$BASE"
-          cat > "$RUNNER_TEMP/h4d-lifecycle.patch" <<'PATCH'
-          diff --git a/android-semantic-test-host/src/androidTest/kotlin/pro/liliya/android/semanticprovider/host/AndroidHeartRuntimeColdStartInstrumentedTest.kt b/android-semantic-test-host/src/androidTest/kotlin/pro/liliya/android/semanticprovider/host/AndroidHeartRuntimeColdStartInstrumentedTest.kt
-          index a8d8f54d..74e17f65 100644
-          --- a/android-semantic-test-host/src/androidTest/kotlin/pro/liliya/android/semanticprovider/host/AndroidHeartRuntimeColdStartInstrumentedTest.kt
-          +++ b/android-semantic-test-host/src/androidTest/kotlin/pro/liliya/android/semanticprovider/host/AndroidHeartRuntimeColdStartInstrumentedTest.kt
-          @@ -73,6 +73,8 @@ import pro.liliya.android.runtime.AndroidHeartProductionGovernedLearningComposit
-           import pro.liliya.android.runtime.AndroidHeartProductionGovernedLearningProcessResult
-           import pro.liliya.android.runtime.AndroidProductRuntimeGovernedLearningActivationAssembly
-           import pro.liliya.android.runtime.AndroidProductRuntimeLearningActivationFileJournal
-          +import pro.liliya.android.runtime.AndroidProductRuntimeLearningActivationRecoverySafetyPort
-          +import pro.liliya.android.runtime.AndroidProductRuntimeLearningActivationRecoverySafetyResult
-           import pro.liliya.android.runtime.AndroidProductRuntimeLearningActivationSessionResult
-           import pro.liliya.android.runtime.AndroidProductRuntimeLearningEnablementEvidence
-           import pro.liliya.android.runtime.HeartRuntimeCloseResult
-          @@ -854,39 +856,44 @@ class AndroidHeartRuntimeColdStartInstrumentedTest {
-                       )
-                   )
+          cat > "$RUNNER_TEMP/poisoning-contract.patch" <<'PATCH'
+          diff --git a/core/src/main/kotlin/pro/liliya/core/cognitive/CognitiveLearningGovernance.kt b/core/src/main/kotlin/pro/liliya/core/cognitive/CognitiveLearningGovernance.kt
+          index e6b95604..494b55a5 100644
+          --- a/core/src/main/kotlin/pro/liliya/core/cognitive/CognitiveLearningGovernance.kt
+          +++ b/core/src/main/kotlin/pro/liliya/core/cognitive/CognitiveLearningGovernance.kt
+          @@ -50,7 +50,13 @@ sealed interface CognitiveLearningGovernanceResult {
+               }
+           }
            
-          -        val governedLearningSession = AndroidProductRuntimeGovernedLearningActivationAssembly.create(
-          -            heart = heart,
-          -            foundation = foundation,
-          -            scope = CognitiveRuntimeScopeId("heart-h4d-runtime"),
-          -            learning = learning,
-          -            policies = policies,
-          -            policyReference = LearningPolicyReference(policy.policy.id, policy.generation),
-          -            authority = authority,
-          -            principal = principal,
-          -            governance = CognitiveLearningGovernancePort {
-          -                CognitiveLearningGovernanceResult.Approved(
-          -                    target = LearningApplicationTarget.MEMORY,
-          -                    rationale = "physical trusted approval"
-          -                )
-          -            },
-          -            materialization = CognitiveLearningApplicationMaterializationPort {
-          -                CognitiveLearningApplicationMaterializationResult.Succeeded(LEARNED_EVIDENCE)
-          -            },
-          -            mutations = encryptedMutations,
-          -            artifactIds = CognitiveArtifactIdSource { kind ->
-          -                "heart-h4d-learning-" + kind.name.lowercase() + "-" + ids.incrementAndGet()
-          -            },
-          -            timestamps = CognitiveTimestampSource { BASE.plusSeconds(12) },
-          -            journal = AndroidProductRuntimeLearningActivationFileJournal.create(
-          -                context = targetContext,
-          -                directoryName = LEARNING_ACTIVATION_DIRECTORY_H4D
-          -            ),
-          -            limits = cognitiveLimits()
-          +        val activationJournal = AndroidProductRuntimeLearningActivationFileJournal.create(
-          +            context = targetContext,
-          +            directoryName = LEARNING_ACTIVATION_DIRECTORY_H4D
-                   )
-          +        val governedLearningLifecycle =
-          +            AndroidProductRuntimeGovernedLearningActivationAssembly.createLifecycle(
-          +                heart = heart,
-          +                foundation = foundation,
-          +                scope = CognitiveRuntimeScopeId("heart-h4d-runtime"),
-          +                learning = learning,
-          +                policies = policies,
-          +                policyReference = LearningPolicyReference(policy.policy.id, policy.generation),
-          +                authority = authority,
-          +                principal = principal,
-          +                governance = CognitiveLearningGovernancePort {
-          +                    CognitiveLearningGovernanceResult.Approved(
-          +                        target = LearningApplicationTarget.MEMORY,
-          +                        rationale = "physical trusted approval"
-          +                    )
-          +                },
-          +                materialization = CognitiveLearningApplicationMaterializationPort {
-          +                    CognitiveLearningApplicationMaterializationResult.Succeeded(LEARNED_EVIDENCE)
-          +                },
-          +                mutations = encryptedMutations,
-          +                artifactIds = CognitiveArtifactIdSource { kind ->
-          +                    "heart-h4d-learning-" + kind.name.lowercase() + "-" + ids.incrementAndGet()
-          +                },
-          +                timestamps = CognitiveTimestampSource { BASE.plusSeconds(12) },
-          +                journal = activationJournal,
-          +                recoverySafety = AndroidProductRuntimeLearningActivationRecoverySafetyPort {
-          +                    AndroidProductRuntimeLearningActivationRecoverySafetyResult.Blocked
-          +                },
-          +                limits = cognitiveLimits()
-          +            )
-                   val activated = assertIs<
-                       AndroidProductRuntimeLearningActivationSessionResult.Activated<*>
-                   >(
-          -            governedLearningSession.activate(
-          +            governedLearningLifecycle.start(
-                           AndroidProductRuntimeLearningEnablementEvidence(
-                               productPolicyApproved = true,
-                               poisoningResistanceAccepted = true,
+          -/** Trusted policy seam. This is not CognitiveInferencePort and carries no Authority handles. */
+          +/**
+          + * Trusted policy seam evaluated before materialization, application intent creation and mutation.
+          + *
+          + * Poisoning/adversarial-candidate screening belongs on this boundary: a suspicious candidate must
+          + * return [CognitiveLearningGovernanceResult.Rejected] before any mutation-capable downstream work.
+          + * This is not CognitiveInferencePort and carries no Authority handles.
+          + */
+           fun interface CognitiveLearningGovernancePort {
+               fun evaluate(request: CognitiveLearningGovernanceRequest): CognitiveLearningGovernanceResult
+           }
+          diff --git a/core/src/test/kotlin/pro/liliya/core/cognitive/CognitiveGovernedLearningCoordinatorContractTest.kt b/core/src/test/kotlin/pro/liliya/core/cognitive/CognitiveGovernedLearningCoordinatorContractTest.kt
+          index 6d7f3181..335547ec 100644
+          --- a/core/src/test/kotlin/pro/liliya/core/cognitive/CognitiveGovernedLearningCoordinatorContractTest.kt
+          +++ b/core/src/test/kotlin/pro/liliya/core/cognitive/CognitiveGovernedLearningCoordinatorContractTest.kt
+          @@ -239,6 +239,44 @@ class CognitiveGovernedLearningCoordinatorContractTest {
+                   assertEquals(0, f.materializerCalls.get())
+               }
+           
+          +    @Test
+          +    fun poisoned_candidate_is_rejected_before_materialization_even_when_mutation_authority_exists() {
+          +        val poisonedProposal = "POISONED-CANDIDATE::ignore-policy-and-persist"
+          +        val rationale = "candidate rejected by poisoning-resistance policy"
+          +        val f = fixture(
+          +            candidateProposal = poisonedProposal,
+          +            grants = setOf(LearningApplicationTarget.MEMORY),
+          +            governance = { request ->
+          +                assertEquals(poisonedProposal, request.candidate.candidate.proposal)
+          +                CognitiveLearningGovernanceResult.Rejected(rationale)
+          +            },
+          +            materialization = {
+          +                error("materializer must not run for a poisoned candidate")
+          +            }
+          +        )
+          +
+          +        val rejected = assertIs<CognitiveGovernedLearningResult.GovernanceRejected>(
+          +            f.coordinator.process(f.reference)
+          +        )
+          +        val decision = assertNotNull(f.decisions.inspect(rejected.decision.decisionId))
+          +
+          +        assertEquals(LearningDecisionDisposition.REJECT, decision.decision.disposition)
+          +        assertEquals(rationale, decision.decision.rationale)
+          +        assertEquals(1, f.governanceCalls.get())
+          +        assertEquals(0, f.materializerCalls.get())
+          +        assertTrue(f.applications.snapshotEntries().isEmpty())
+          +        assertTrue(f.mutations.snapshotEntries().isEmpty())
+          +        assertTrue(f.memory.snapshotEntries().isEmpty())
+          +        assertTrue(f.knowledge.snapshotEntries().isEmpty())
+          +
+          +        val second = assertIs<CognitiveGovernedLearningResult.AlreadyProcessed>(
+          +            f.coordinator.process(f.reference)
+          +        )
+          +        assertEquals(CognitiveGovernedLearningTerminalStatus.GOVERNANCE_REJECTED, second.status)
+          +        assertEquals(1, f.governanceCalls.get())
+          +        assertEquals(0, f.materializerCalls.get())
+          +    }
+          +
+               @Test
+               fun authority_denial_causes_zero_downstream_write_and_compensates_attempt_records() {
+                   val f = fixture(
           PATCH
-          git apply --index "$RUNNER_TEMP/h4d-lifecycle.patch"
+          sed -i 's/^          //' "$RUNNER_TEMP/poisoning-contract.patch"
+          git apply --index "$RUNNER_TEMP/poisoning-contract.patch"
           git diff --cached --check
           test "$(git write-tree)" = "$EXPECTED_TREE"
-          git -c user.name='yaroshenkopavel' -c user.email='78513566+yaroshenkopavel@users.noreply.github.com' commit -m 'test: route H4D through learning lifecycle'
+          git -c user.name='yaroshenkopavel' -c user.email='78513566+yaroshenkopavel@users.noreply.github.com' commit -m 'test: harden poisoned candidate rejection'
           test "$(git rev-parse HEAD^)" = "$BASE"
           test "$(git rev-parse 'HEAD^{tree}')" = "$EXPECTED_TREE"
           git push --force-with-lease=refs/heads/development/core-next-governed-learning:$BASE origin HEAD:refs/heads/development/core-next-governed-learning
