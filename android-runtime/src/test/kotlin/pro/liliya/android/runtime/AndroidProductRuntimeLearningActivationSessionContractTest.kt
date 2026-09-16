@@ -93,7 +93,8 @@ class AndroidProductRuntimeLearningActivationSessionContractTest {
             it is AndroidProductRuntimeLearningActivationSessionResult.Activated
         })
         assertEquals(7, results.count {
-            it is AndroidProductRuntimeLearningActivationSessionResult.AlreadyActivated
+            it is AndroidProductRuntimeLearningActivationSessionResult.AlreadyActivated ||
+                it is AndroidProductRuntimeLearningActivationSessionResult.RecoveryRequired
         })
         assertEquals(1, calls)
     }
