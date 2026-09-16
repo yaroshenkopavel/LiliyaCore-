@@ -22,13 +22,15 @@ jobs:
       SOURCE_RUN_ID: '35142990151'
       ARTIFACT_NAME: post-rc-governed-learning-semantic-rebuild-f3d7fcbfd25e8a90b90c2d7458f417e70e73038c
       EXPECTED_ARTIFACT_DIGEST: sha256:6e627f94b905c10b43e8f1566518eeeff94e955c074eea60846f84200b5d023b
+      TERMUX_HOME: /data/data/com.termux/files/home
+      TERMUX_TOKEN_FILE: /data/data/com.termux/files/home/.liliya-physical-bridge-token
     steps:
       - name: Checkout exact candidate source
         uses: actions/checkout@v4
         with:
           ref: f3d7fcbfd25e8a90b90c2d7458f417e70e73038c
 
-      - name: Install exact fixed local bridge
+      - name: Verify native Termux physical bridge
         shell: bash
         run: |
           set -euo pipefail
@@ -40,24 +42,18 @@ jobs:
             echo 'bridge must not expose arbitrary command execution' >&2
             exit 1
           fi
-          token_file="$HOME/.liliya-physical-bridge-token"
-          test -s "$token_file"
-          cp "$bridge" "$HOME/liliya_physical_rish_bridge.py"
-          pkill -f '[l]iliya_physical_rish_bridge.py' 2>/dev/null || true
-          nohup python3 "$HOME/liliya_physical_rish_bridge.py" > "$HOME/liliya-physical-bridge.log" 2>&1 &
-          for _ in 1 2 3 4 5 6 7 8 9 10; do
-            token="$(cat "$token_file")"
-            if curl --fail --silent --show-error -H "Authorization: Bearer $token" http://127.0.0.1:18765/v1/probe > "$RUNNER_TEMP/probe.json"; then
-              break
-            fi
-            sleep 1
-          done
+          test -s "$TERMUX_TOKEN_FILE"
+          token="$(cat "$TERMUX_TOKEN_FILE")"
+          curl --fail --silent --show-error \
+            -H "Authorization: Bearer $token" \
+            http://127.0.0.1:18765/v1/probe > "$RUNNER_TEMP/probe.json"
           python3 - <<'PY'
           import json, os
           from pathlib import Path
           p = json.loads((Path(os.environ['RUNNER_TEMP']) / 'probe.json').read_text())
           if p['primaryAbi']['output'] != 'arm64-v8a': raise SystemExit('physical device must be arm64-v8a')
           if p['qemu']['output'] == '1': raise SystemExit('emulator is not accepted')
+          if 'uid=2000(shell)' not in p['shellIdentity']['output']: raise SystemExit('bridge must execute as Android shell')
           PY
 
       - name: Download exact candidate APK pair
@@ -96,7 +92,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          token="$(cat "$HOME/.liliya-physical-bridge-token")"
+          token="$(cat "$TERMUX_TOKEN_FILE")"
           root="$RUNNER_TEMP/post-rc-governed-learning-semantic-rebuild"
           curl --fail --silent --show-error -X POST -H "Authorization: Bearer $token" \
             http://127.0.0.1:18765/v1/reset-semantic-packages > "$RUNNER_TEMP/reset.json"
@@ -119,7 +115,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          token="$(cat "$HOME/.liliya-physical-bridge-token")"
+          token="$(cat "$TERMUX_TOKEN_FILE")"
           curl --fail --silent --show-error -X POST \
             -H "Authorization: Bearer $token" \
             http://127.0.0.1:18765/v1/instrument/governed-learning-semantic-rebuild \
