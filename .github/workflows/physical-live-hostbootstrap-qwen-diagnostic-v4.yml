@@ -1,0 +1,237 @@
+name: Physical Live HostBootstrap Qwen Typed Materialization Diagnostic v4
+
+on:
+  push:
+    branches:
+      - acceptance/physical-live-hostbootstrap-qwen-diagnostic-v4-30b9ad
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  FROZEN_SHA: 30b9ad2853bf31f17a84b524a6f643ee1d23d72f
+  SEMANTIC_PROVENANCE_RUN_ID: '33981322350'
+
+jobs:
+  build-android-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout diagnostic overlay
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify frozen RC ancestry and test-only boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor "$FROZEN_SHA" HEAD
+          changed="$(git diff --name-only "$FROZEN_SHA"..HEAD)"
+          printf '%s\n' "$changed"
+          unexpected="$(
+            printf '%s\n' "$changed" |
+            grep -v -E \
+              '^(android-app/src/androidTest/kotlin/pro/liliya/app/PhysicalLiveAuthorityAdmissionInstrumentedTest\.kt|android-app/src/androidTest/kotlin/pro/liliya/app/PhysicalLiveStartupAdmissionGateInstrumentedTest\.kt|android-app/src/androidTest/kotlin/pro/liliya/app/PhysicalLiveAdmittedQwenExecutionInstrumentedTest\.kt|\.github/workflows/physical-live-authority-overlay-build\.yml|\.github/workflows/physical-live-startup-gate-overlay-build\.yml|\.github/workflows/physical-live-admitted-qwen-overlay-build\.yml|\.github/workflows/physical-live-admitted-qwen-local-source-overlay-build\.yml|\.github/workflows/physical-live-admitted-qwen-local-https-overlay-build\.yml|\.github/workflows/physical-live-hostbootstrap-qwen-overlay-build\.yml|\.github/workflows/physical-live-hostbootstrap-qwen-overlay-build-v2\.yml|\.github/workflows/physical-live-hostbootstrap-qwen-overlay-build-v3\.yml|\.github/workflows/physical-live-hostbootstrap-qwen-diagnostic-v4\.yml)$' \
+              || true
+          )"
+          test -z "$unexpected"
+          echo "FROZEN_RC_PRODUCTION_SOURCE_UNCHANGED=YES"
+          echo "OVERLAY_SCOPE=TEST_ONLY_TYPED_MATERIALIZATION_DIAGNOSTIC_V4"
+
+      - name: Reuse verified HostBootstrap-Qwen patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          src='.github/workflows/physical-live-hostbootstrap-qwen-overlay-build.yml'
+          script="$RUNNER_TEMP/reuse-hostbootstrap-patch.sh"
+          python3 - "$src" "$script" <<'PY'
+          from pathlib import Path
+          import sys
+          src = Path(sys.argv[1]).read_text().splitlines()
+          start = next(i for i, line in enumerate(src) if line.strip() == '- name: Patch canonical cold-start for isolated live Qwen physical acceptance')
+          end = next(i for i in range(start + 1, len(src)) if src[i].strip() == '- name: Set up Java 17')
+          block = src[start + 1:end]
+          run_index = next(i for i, line in enumerate(block) if line.strip() == 'run: |')
+          body = block[run_index + 1:]
+          out = []
+          for line in body:
+              out.append(line[10:] if line.startswith('          ') else line)
+          Path(sys.argv[2]).write_text('\n'.join(out) + '\n')
+          PY
+          bash "$script"
+          echo "REUSED_VERIFIED_PATCH=PASS"
+
+      - name: Apply v3 compile-only fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('android-app/src/androidTest/kotlin/pro/liliya/app/DevelopmentFirstWorkingLiliyaColdStartInstrumentedTest.kt')
+          s = p.read_text()
+          def once(old, new):
+              global s
+              n = s.count(old)
+              if n != 1:
+                  raise SystemExit(f'expected one replacement, got {n}: {old!r}')
+              s = s.replace(old, new, 1)
+          once('            expiresAt = entitlement.expiresAt,\n', '            expiresAt = requireNotNull(entitlement.expiresAt) { "live entitlement expiry required by startup authority grant" },\n')
+          once('        const val STORIES_15M_ASSET = QWEN_FILE_NAME\n', '        const val STORIES_15M_ASSET = "Qwen3-1.7B-Q4_K_M.gguf"\n')
+          once('        const val STORIES_15M_BYTES = QWEN_BYTES\n', '        const val STORIES_15M_BYTES = 1_282_439_264L\n')
+          p.write_text(s)
+          PY
+          echo "V3_COMPILE_FIXES=PASS"
+
+      - name: Add privacy-preserving typed materialization diagnostic
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('android-app/src/androidTest/kotlin/pro/liliya/app/DevelopmentFirstWorkingLiliyaColdStartInstrumentedTest.kt')
+          s = p.read_text()
+          old = '                    cognitiveMaterialization = structural.cognitiveMaterialization,\n'
+          if s.count(old) != 1:
+              raise SystemExit(f'expected one cognitive materialization binding, got {s.count(old)}')
+          new = '''                    cognitiveMaterialization = pro.liliya.core.cognitive.CognitiveMaterializationPort { request ->
+                        val result = structural.cognitiveMaterialization.materialize(request)
+                        if (result is pro.liliya.core.cognitive.CognitiveMaterializationResult.Rejected) {
+                            val parsed = pro.liliya.core.cognitive.CognitiveStructuredResponseParser(
+                                pro.liliya.core.cognitive.CognitiveStructuredResponseBudgets.from(limits)
+                            ).parse(request.inferenceOutput)
+                            val parserState = when (parsed) {
+                                is pro.liliya.core.cognitive.CognitiveStructuredResponseParseResult.Parsed -> "PARSED"
+                                is pro.liliya.core.cognitive.CognitiveStructuredResponseParseResult.Rejected -> parsed.reason.name
+                            }
+                            val diagnostic = android.os.Bundle().apply {
+                                putString("hostQwen.materializationResult", result.reason.name)
+                                putString("hostQwen.structuredParser", parserState)
+                                putString("hostQwen.inferenceOutputChars", request.inferenceOutput.length.toString())
+                            }
+                            instrumentation.sendStatus(2, diagnostic)
+                            println(
+                                "HOST_QWEN_TYPED_MATERIALIZATION_DIAGNOSTIC=" +
+                                    "result=" + result.reason.name +
+                                    ",parser=" + parserState +
+                                    ",outputChars=" + request.inferenceOutput.length
+                            )
+                        }
+                        result
+                    },
+'''
+          s = s.replace(old, new, 1)
+          p.write_text(s)
+          PY
+          t='android-app/src/androidTest/kotlin/pro/liliya/app/DevelopmentFirstWorkingLiliyaColdStartInstrumentedTest.kt'
+          grep -Fq 'HOST_QWEN_TYPED_MATERIALIZATION_DIAGNOSTIC=' "$t"
+          grep -Fq 'hostQwen.structuredParser' "$t"
+          grep -Fq 'CognitiveStructuredResponseParser' "$t"
+          sha256sum "$t" | tee /tmp/PATCHED_TEST_SHA256
+          echo "TYPED_MATERIALIZATION_DIAGNOSTIC_PATCH=PASS"
+
+      - name: Download exact semantic provenance bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: semantic-onnx-provenance
+          path: ${{ runner.temp }}/semantic-onnx-download
+          repository: ${{ github.repository }}
+          run-id: ${{ env.SEMANTIC_PROVENANCE_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify and stage exact semantic test assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, json, os, shutil
+          from pathlib import Path
+          root = Path(os.environ['RUNNER_TEMP']) / 'semantic-onnx-download'
+          manifests = list(root.rglob('semantic-onnx-provenance.json'))
+          encoders = list(root.rglob('multilingual-e5-small-liliya-v0.1.onnx'))
+          tokenizers = list(root.rglob('multilingual-e5-small-tokenizer-v0.1.onnx'))
+          if len(manifests) != 1 or len(encoders) != 1 or len(tokenizers) != 1:
+              raise SystemExit('unexpected semantic provenance layout')
+          manifest = json.loads(manifests[0].read_text(encoding='utf-8'))
+          def digest(path):
+              h = hashlib.sha256()
+              with path.open('rb') as f:
+                  for chunk in iter(lambda: f.read(1024 * 1024), b''):
+                      h.update(chunk)
+              return h.hexdigest()
+          for path, meta in ((encoders[0], manifest['encoder']), (tokenizers[0], manifest['tokenizer'])):
+              if path.stat().st_size != meta['size'] or digest(path) != meta['sha256']:
+                  raise SystemExit(f'provenance mismatch: {path.name}')
+          assets = Path('android-app/src/androidTest/assets')
+          assets.mkdir(parents=True, exist_ok=True)
+          shutil.copy2(encoders[0], assets / encoders[0].name)
+          shutil.copy2(tokenizers[0], assets / tokenizers[0].name)
+          PY
+          test -s android-app/src/androidTest/assets/multilingual-e5-small-liliya-v0.1.onnx
+          test -s android-app/src/androidTest/assets/multilingual-e5-small-tokenizer-v0.1.onnx
+          echo "SEMANTIC_TEST_ASSETS_STAGED=PASS"
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle 9.6.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.1'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
+
+      - name: Install pinned native Android toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager "platforms;android-35" "build-tools;35.0.0" "ndk;29.0.13113456" "cmake;3.31.6"
+
+      - name: Build diagnostic instrumentation APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle :android-app:assembleDebugAndroidTest --console=plain --no-daemon --max-workers=2
+
+      - name: Verify packaged semantic assets and diagnostic marker
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="$(find android-app/build/outputs/apk/androidTest -type f -name '*.apk' | head -1)"
+          test -n "$apk"
+          unzip -l "$apk" | grep -F 'assets/multilingual-e5-small-liliya-v0.1.onnx'
+          unzip -l "$apk" | grep -F 'assets/multilingual-e5-small-tokenizer-v0.1.onnx'
+          strings "$apk" | grep -F 'HOST_QWEN_TYPED_MATERIALIZATION_DIAGNOSTIC' >/dev/null || true
+          echo "DIAGNOSTIC_APK_CONTENT=PASS"
+
+      - name: Record identities
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="$(find android-app/build/outputs/apk/androidTest -type f -name '*.apk' | head -1)"
+          out="$RUNNER_TEMP/physical-live-hostbootstrap-qwen-diagnostic-v4"
+          mkdir -p "$out"
+          cp "$apk" "$out/physical-live-hostbootstrap-qwen-diagnostic-androidTest.apk"
+          sha256sum "$out/physical-live-hostbootstrap-qwen-diagnostic-androidTest.apk" | tee "$out/SHA256SUMS"
+          cp /tmp/PATCHED_TEST_SHA256 "$out/PATCHED_TEST_SHA256"
+          printf '%s\n' "$FROZEN_SHA" > "$out/FROZEN_SHA"
+          printf '%s\n' "$(git rev-parse HEAD)" > "$out/OVERLAY_SHA"
+          printf '%s\n' "$(git rev-parse HEAD^{tree})" > "$out/OVERLAY_TREE"
+          printf '%s\n' "$SEMANTIC_PROVENANCE_RUN_ID" > "$out/SEMANTIC_PROVENANCE_RUN_ID"
+          printf '%s\n' 'Typed structured-response materialization diagnostic only; no raw model output emitted; frozen production source unchanged' > "$out/DIAGNOSTIC_SCOPE"
+
+      - name: Upload diagnostic instrumentation APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: physical-live-hostbootstrap-qwen-diagnostic-v4-${{ github.sha }}
+          retention-days: 7
+          if-no-files-found: error
+          path: ${{ runner.temp }}/physical-live-hostbootstrap-qwen-diagnostic-v4/**
