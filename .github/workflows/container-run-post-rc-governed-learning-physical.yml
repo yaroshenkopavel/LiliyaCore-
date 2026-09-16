@@ -17,18 +17,18 @@ jobs:
     runs-on: [self-hosted, ARM64, android-device]
     timeout-minutes: 40
     env:
-      SOURCE_COMMIT: f3d7fcbfd25e8a90b90c2d7458f417e70e73038c
-      SOURCE_TREE: 58e2009af5302733e05a1368d235cd4eb2a259c4
-      SOURCE_RUN_ID: '35142990151'
-      ARTIFACT_NAME: post-rc-governed-learning-semantic-rebuild-f3d7fcbfd25e8a90b90c2d7458f417e70e73038c
-      EXPECTED_ARTIFACT_DIGEST: sha256:6e627f94b905c10b43e8f1566518eeeff94e955c074eea60846f84200b5d023b
+      SOURCE_COMMIT: 6578b7a7da9e855e7659e3f48043f0e0b6bad178
+      SOURCE_TREE: 42633277e2ecf99d04c162ea10a782df7f4e3a57
+      SOURCE_RUN_ID: '35153001893'
+      ARTIFACT_NAME: post-rc-governed-learning-semantic-rebuild-6578b7a7da9e855e7659e3f48043f0e0b6bad178
+      EXPECTED_ARTIFACT_DIGEST: sha256:92bc1f1f2c896cc9651187413176c92488d9151e6d0b573e0c4340d9dbd6942f
       TERMUX_HOME: /data/data/com.termux/files/home
       TERMUX_TOKEN_FILE: /data/data/com.termux/files/home/.liliya-physical-bridge-token
     steps:
       - name: Checkout exact candidate source
         uses: actions/checkout@v4
         with:
-          ref: f3d7fcbfd25e8a90b90c2d7458f417e70e73038c
+          ref: 6578b7a7da9e855e7659e3f48043f0e0b6bad178
 
       - name: Verify native Termux physical bridge
         shell: bash
@@ -59,10 +59,10 @@ jobs:
       - name: Download exact candidate APK pair
         uses: actions/download-artifact@v4
         with:
-          name: post-rc-governed-learning-semantic-rebuild-f3d7fcbfd25e8a90b90c2d7458f417e70e73038c
+          name: post-rc-governed-learning-semantic-rebuild-6578b7a7da9e855e7659e3f48043f0e0b6bad178
           path: ${{ runner.temp }}/post-rc-governed-learning-semantic-rebuild
           repository: ${{ github.repository }}
-          run-id: '35142990151'
+          run-id: '35153001893'
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Verify exact candidate manifest and APKs
@@ -149,7 +149,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: post-rc-governed-learning-physical-f3d7fcb
+          name: post-rc-governed-learning-physical-6578b7a
           retention-days: 30
           if-no-files-found: warn
           path: |
