@@ -1,0 +1,76 @@
+package pro.liliya.android.runtime
+
+import pro.liliya.core.authority.AuthorityPrincipal
+import pro.liliya.core.authority.CapabilityAuthorityComposition
+import pro.liliya.core.cognitive.CognitiveArtifactIdSource
+import pro.liliya.core.cognitive.CognitiveLearningApplicationMaterializationPort
+import pro.liliya.core.cognitive.CognitiveLearningGovernancePort
+import pro.liliya.core.cognitive.CognitiveRuntimeLimits
+import pro.liliya.core.cognitive.CognitiveRuntimeScopeId
+import pro.liliya.core.cognitive.CognitiveTimestampSource
+import pro.liliya.core.foundation.FoundationComposition
+import pro.liliya.core.learning.EncryptedPersistentLearningApplicationMutationComposition
+import pro.liliya.core.learning.LearningComposition
+import pro.liliya.core.learning.LearningPolicyComposition
+import pro.liliya.core.learning.LearningPolicyReference
+
+/**
+ * Product-owned entry point for enabling mutation-capable governed learning.
+ *
+ * The underlying governed-learning composition is intentionally not created until complete
+ * [AndroidProductRuntimeLearningEnablementEvidence] has been accepted by the one-shot activation
+ * session. Evidence is not Authority: the resulting composition still performs the existing Core
+ * per-mutation authorization path and this assembly never mints capabilities.
+ */
+object AndroidProductRuntimeGovernedLearningActivationAssembly {
+
+    fun create(
+        heart: AndroidHeartRuntimeAssembly,
+        foundation: FoundationComposition,
+        scope: CognitiveRuntimeScopeId,
+        learning: LearningComposition,
+        policies: LearningPolicyComposition,
+        policyReference: LearningPolicyReference,
+        authority: CapabilityAuthorityComposition,
+        principal: AuthorityPrincipal,
+        governance: CognitiveLearningGovernancePort,
+        materialization: CognitiveLearningApplicationMaterializationPort,
+        mutations: EncryptedPersistentLearningApplicationMutationComposition,
+        artifactIds: CognitiveArtifactIdSource,
+        timestamps: CognitiveTimestampSource,
+        limits: CognitiveRuntimeLimits = CognitiveRuntimeLimits()
+    ): AndroidProductRuntimeLearningActivationSession<AndroidHeartProductionGovernedLearningComposition> =
+        createSession {
+            when (
+                val created = AndroidHeartProductionGovernedLearningAssembly.create(
+                    heart = heart,
+                    foundation = foundation,
+                    scope = scope,
+                    learning = learning,
+                    policies = policies,
+                    policyReference = policyReference,
+                    authority = authority,
+                    principal = principal,
+                    governance = governance,
+                    materialization = materialization,
+                    mutations = mutations,
+                    artifactIds = artifactIds,
+                    timestamps = timestamps,
+                    limits = limits
+                )
+            ) {
+                is AndroidHeartProductionGovernedLearningCreateResult.Ready -> created.composition
+                is AndroidHeartProductionGovernedLearningCreateResult.Rejected ->
+                    throw GovernedLearningActivationCreationRejected(created.reason)
+            }
+        }
+
+    internal fun createSession(
+        createComposition: () -> AndroidHeartProductionGovernedLearningComposition
+    ): AndroidProductRuntimeLearningActivationSession<AndroidHeartProductionGovernedLearningComposition> =
+        AndroidProductRuntimeLearningActivationSession(createComposition)
+
+    private class GovernedLearningActivationCreationRejected(
+        val reason: AndroidHeartProductionGovernedLearningCreateFailure
+    ) : IllegalStateException("governed learning activation creation rejected")
+}
