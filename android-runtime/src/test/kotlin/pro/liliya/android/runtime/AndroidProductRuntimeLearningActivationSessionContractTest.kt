@@ -100,32 +100,103 @@ class AndroidProductRuntimeLearningActivationSessionContractTest {
     }
 
     @Test
-    fun process_restart_after_completed_activation_never_reinvokes_activation() {
+    fun completed_activation_restores_process_local_owners_after_restart() {
         val journal = InMemoryAndroidProductRuntimeLearningActivationJournal()
-        var calls = 0
+        var activationCalls = 0
+        var restorationCalls = 0
         val first = AndroidProductRuntimeLearningActivationSession(
             activation = {
-                calls += 1
+                activationCalls += 1
                 Any()
             },
             journal = journal
         )
-
         assertIs<AndroidProductRuntimeLearningActivationSessionResult.Activated<Any>>(
             first.activate(evidence())
         )
 
         val restarted = AndroidProductRuntimeLearningActivationSession(
-            activation = {
-                calls += 1
+            activation = { error("fresh activation must not run after restart") },
+            journal = journal,
+            restoration = {
+                restorationCalls += 1
                 Any()
-            },
-            journal = journal
+            }
         )
-        assertIs<AndroidProductRuntimeLearningActivationSessionResult.AlreadyActivated>(
-            restarted.activate(evidence())
+        assertIs<AndroidProductRuntimeLearningActivationSessionResult.Restored<Any>>(
+            restarted.restore()
         )
-        assertEquals(1, calls)
+        assertEquals(1, activationCalls)
+        assertEquals(1, restorationCalls)
+        assertEquals(
+            AndroidProductRuntimeLearningActivationJournalLoadResult.Loaded(
+                AndroidProductRuntimeLearningActivationJournalState.ACTIVATED
+            ),
+            journal.load()
+        )
+    }
+
+    @Test
+    fun restore_from_clean_state_does_not_construct_owners() {
+        var restorationCalls = 0
+        val session = AndroidProductRuntimeLearningActivationSession(
+            activation = { Any() },
+            restoration = {
+                restorationCalls += 1
+                Any()
+            }
+        )
+
+        assertIs<AndroidProductRuntimeLearningActivationSessionResult.NotActivated>(session.restore())
+        assertEquals(0, restorationCalls)
+    }
+
+    @Test
+    fun interrupted_restore_requires_explicit_recovery_and_never_retries() {
+        val journal = InMemoryAndroidProductRuntimeLearningActivationJournal(
+            AndroidProductRuntimeLearningActivationJournalState.RESTORING
+        )
+        var restorationCalls = 0
+        val restarted = AndroidProductRuntimeLearningActivationSession(
+            activation = { Any() },
+            journal = journal,
+            restoration = {
+                restorationCalls += 1
+                Any()
+            }
+        )
+
+        assertIs<AndroidProductRuntimeLearningActivationSessionResult.RecoveryRequired>(
+            restarted.restore()
+        )
+        assertEquals(0, restorationCalls)
+    }
+
+    @Test
+    fun restoration_failure_is_marked_failed_and_not_retried() {
+        val journal = InMemoryAndroidProductRuntimeLearningActivationJournal(
+            AndroidProductRuntimeLearningActivationJournalState.ACTIVATED
+        )
+        var restorationCalls = 0
+        val restarted = AndroidProductRuntimeLearningActivationSession<Any>(
+            activation = { Any() },
+            journal = journal,
+            restoration = {
+                restorationCalls += 1
+                error("synthetic restoration failure")
+            }
+        )
+
+        assertIs<AndroidProductRuntimeLearningActivationSessionResult.ActivationFailed>(
+            restarted.restore()
+        )
+        assertEquals(1, restorationCalls)
+        assertEquals(
+            AndroidProductRuntimeLearningActivationJournalLoadResult.Loaded(
+                AndroidProductRuntimeLearningActivationJournalState.FAILED
+            ),
+            journal.load()
+        )
     }
 
     @Test
