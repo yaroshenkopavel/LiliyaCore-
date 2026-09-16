@@ -12,25 +12,113 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout exact PR head
+      - name: Checkout exact target head
         uses: actions/checkout@v4
         with:
-          ref: 151187f16488e4e97d84763bfc60883dfb99941b
+          ref: c22fc36d770057ae9863c0d6b38b38b7d8b307f8
           fetch-depth: 0
 
-      - name: Apply locally verified H4D migration and publish one exact-tree commit
+      - name: Apply exact locally verified H4D lifecycle patch
         shell: bash
-        env:
-          PATCH_B64: ZGlmZiAtLWdpdCBhL2FuZHJvaWQtcnVudGltZS9zcmMvbWFpbi9rb3RsaW4vcHJvL2xpbGl5YS9hbmRyb2lkL3J1bnRpbWUvQW5kcm9pZEhlYXJ0UHJvZHVjdGlvbkdvdmVybmVkTGVhcm5pbmdBc3NlbWJseS5rdCBiL2FuZHJvaWQtcnVudGltZS9zcmMvbWFpbi9rb3RsaW4vcHJvL2xpbGl5YS9hbmRyb2lkL3J1bnRpbWUvQW5kcm9pZEhlYXJ0UHJvZHVjdGlvbkdvdmVybmVkTGVhcm5pbmdBc3NlbWJseS5rdAppbmRleCAxYTY0YmUxNS4uNTM3ZjYyYTEgMTAwNjQ0Ci0tLSBhL2FuZHJvaWQtcnVudGltZS9zcmMvbWFpbi9rb3RsaW4vcHJvL2xpbGl5YS9hbmRyb2lkL3J1bnRpbWUvQW5kcm9pZEhlYXJ0UHJvZHVjdGlvbkdvdmVybmVkTGVhcm5pbmdBc3NlbWJseS5rdAorKysgYi9hbmRyb2lkLXJ1bnRpbWUvc3JjL21haW4va290bGluL3Byby9saWxpeWEvYW5kcm9pZC9ydW50aW1lL0FuZHJvaWRIZWFydFByb2R1Y3Rpb25Hb3Zlcm5lZExlYXJuaW5nQXNzZW1ibHkua3QKQEAgLTEwNywyMCArMTA3LDEzIEBAIGNsYXNzIEFuZHJvaWRIZWFydFByb2R1Y3Rpb25Hb3Zlcm5lZExlYXJuaW5nQ29tcG9zaXRpb24gaW50ZXJuYWwgY29uc3RydWN0b3IoCiAgKiB2MC4xIGlzIE1FTU9SWS1vbmx5LiBQb2xpY3kgYW5kIENhcGFiaWxpdHkgQXV0aG9yaXR5IGFyZSBzdXBwbGllZCBieSBhbiBvdXRlciB0cnVzdGVkIG93bmVyLgogICogVGhpcyBhc3NlbWJseSBuZXZlciBjcmVhdGVzIG9yIGdyYW50cyBBdXRob3JpdHkgcGVybWlzc2lvbnMuCiAgKgotICogUHJvZHVjdCB3aXJpbmcgbXVzdCBlbnRlciB0aHJvdWdoIFtBbmRyb2lkUHJvZHVjdFJ1bnRpbWVHb3Zlcm5lZExlYXJuaW5nQWN0aXZhdGlvbkFzc2VtYmx5XS4KLSAqIFRoZSBsb3ctbGV2ZWwgW2NyZWF0ZV0gZW50cnkgcG9pbnQgcmVtYWlucyBwdWJsaWMgdGVtcG9yYXJpbHkgYmVjYXVzZSB0aGUgc2VwYXJhdGUgcGh5c2ljYWwKLSAqIHNlbWFudGljLXRlc3QtaG9zdCBtb2R1bGUgc3RpbGwgY29tcGlsZXMgdGhlIGFjY2VwdGVkIEg0RCByZWdyZXNzaW9uIHBhdGggYWdhaW5zdCBpdC4gSXQgaXMgYW4KLSAqIGFjY2VwdGFuY2UgY29tcGF0aWJpbGl0eSBzZWFtLCBub3QgYSBwcm9kdWN0IGVuYWJsZW1lbnQgQVBJLiBNaWdyYXRpbmcgdGhhdCBob3N0IHRvIHRoZSBwcm9kdWN0Ci0gKiBhY3RpdmF0aW9uIEFQSSBpcyByZXF1aXJlZCBiZWZvcmUgdGhpcyBzZWFtIGNhbiBiZSBtYWRlIGludGVybmFsIHdpdGhvdXQgYnJlYWtpbmcgY3Jvc3MtbW9kdWxlCi0gKiBwaHlzaWNhbCBhY2NlcHRhbmNlIGNvbXBpbGF0aW9uLgorICogUHJvZHVjdCBjb2RlIG11c3QgZW50ZXIgdGhyb3VnaCBbQW5kcm9pZFByb2R1Y3RSdW50aW1lR292ZXJuZWRMZWFybmluZ0FjdGl2YXRpb25Bc3NlbWJseV0uCisgKiBLZWVwaW5nIHRoaXMgY3JlYXRvciBpbnRlcm5hbCBwcmV2ZW50cyBhbiBhY2NpZGVudGFsIHByb2R1Y3Qtc2lkZSBieXBhc3Mgb2YgdGhlIGV4cGxpY2l0CisgKiBsZWFybmluZy1lbmFibGVtZW50IGV2aWRlbmNlIGdhdGUuCiAgKi8KIG9iamVjdCBBbmRyb2lkSGVhcnRQcm9kdWN0aW9uR292ZXJuZWRMZWFybmluZ0Fzc2VtYmx5IHsKIAotICAgIEBEZXByZWNhdGVkKAotICAgICAgICBtZXNzYWdlID0gIkxvdy1sZXZlbCBwaHlzaWNhbC1hY2NlcHRhbmNlIHNlYW07IHByb2R1Y3QgY29kZSBtdXN0IHVzZSBBbmRyb2lkUHJvZHVjdFJ1bnRpbWVHb3Zlcm5lZExlYXJuaW5nQWN0aXZhdGlvbkFzc2VtYmx5IiwKLSAgICAgICAgbGV2ZWwgPSBEZXByZWNhdGlvbkxldmVsLldBUk5JTkcKLSAgICApCi0gICAgZnVuIGNyZWF0ZSgKKyAgICBpbnRlcm5hbCBmdW4gY3JlYXRlKAogICAgICAgICBoZWFydDogQW5kcm9pZEhlYXJ0UnVudGltZUFzc2VtYmx5LAogICAgICAgICBmb3VuZGF0aW9uOiBGb3VuZGF0aW9uQ29tcG9zaXRpb24sCiAgICAgICAgIHNjb3BlOiBDb2duaXRpdmVSdW50aW1lU2NvcGVJZCwKZGlmZiAtLWdpdCBhL2FuZHJvaWQtc2VtYW50aWMtdGVzdC1ob3N0L3NyYy9hbmRyb2lkVGVzdC9rb3RsaW4vcHJvL2xpbGl5YS9hbmRyb2lkL3NlbWFudGljcHJvdmlkZXIvaG9zdC9BbmRyb2lkSGVhcnRSdW50aW1lQ29sZFN0YXJ0SW5zdHJ1bWVudGVkVGVzdC5rdCBiL2FuZHJvaWQtc2VtYW50aWMtdGVzdC1ob3N0L3NyYy9hbmRyb2lkVGVzdC9rb3RsaW4vcHJvL2xpbGl5YS9hbmRyb2lkL3NlbWFudGljcHJvdmlkZXIvaG9zdC9BbmRyb2lkSGVhcnRSdW50aW1lQ29sZFN0YXJ0SW5zdHJ1bWVudGVkVGVzdC5rdAppbmRleCBjNzhhNGI3Yi4uYThkOGY1NGQgMTAwNjQ0Ci0tLSBhL2FuZHJvaWQtc2VtYW50aWMtdGVzdC1ob3N0L3NyYy9hbmRyb2lkVGVzdC9rb3RsaW4vcHJvL2xpbGl5YS9hbmRyb2lkL3NlbWFudGljcHJvdmlkZXIvaG9zdC9BbmRyb2lkSGVhcnRSdW50aW1lQ29sZFN0YXJ0SW5zdHJ1bWVudGVkVGVzdC5rdAorKysgYi9hbmRyb2lkLXNlbWFudGljLXRlc3QtaG9zdC9zcmMvYW5kcm9pZFRlc3Qva290bGluL3Byby9saWxpeWEvYW5kcm9pZC9zZW1hbnRpY3Byb3ZpZGVyL2hvc3QvQW5kcm9pZEhlYXJ0UnVudGltZUNvbGRTdGFydEluc3RydW1lbnRlZFRlc3Qua3QKQEAgLTY5LDkgKzY5LDEyIEBAIGltcG9ydCBwcm8ubGlsaXlhLmFuZHJvaWQucnVudGltZS5sZWFybmluZ0ZvbGxvd1VwUmVmZXJlbmNlCiBpbXBvcnQgcHJvLmxpbGl5YS5hbmRyb2lkLnJ1bnRpbWUuQW5kcm9pZEhlYXJ0UHJvZHVjdGlvblBlcnNvbmFEZWZpbml0aW9uCiBpbXBvcnQgcHJvLmxpbGl5YS5hbmRyb2lkLnJ1bnRpbWUuQW5kcm9pZEhlYXJ0UHJvZHVjdGlvblBlcnNvbmFSdW50aW1lRmFjdG9yeQogaW1wb3J0IHByby5saWxpeWEuYW5kcm9pZC5ydW50aW1lLkFuZHJvaWRIZWFydFByb2R1Y3Rpb25QZXJzb25hUnVudGltZUZhY3RvcnlDcmVhdGVSZXN1bHQKLWltcG9ydCBwcm8ubGlsaXlhLmFuZHJvaWQucnVudGltZS5BbmRyb2lkSGVhcnRQcm9kdWN0aW9uR292ZXJuZWRMZWFybmluZ0Fzc2VtYmx5Ci1pbXBvcnQgcHJvLmxpbGl5YS5hbmRyb2lkLnJ1bnRpbWUuQW5kcm9pZEhlYXJ0UHJvZHVjdGlvbkdvdmVybmVkTGVhcm5pbmdDcmVhdGVSZXN1bHQKK2ltcG9ydCBwcm8ubGlsaXlhLmFuZHJvaWQucnVudGltZS5BbmRyb2lkSGVhcnRQcm9kdWN0aW9uR292ZXJuZWRMZWFybmluZ0NvbXBvc2l0aW9uCiBpbXBvcnQgcHJvLmxpbGl5YS5hbmRyb2lkLnJ1bnRpbWUuQW5kcm9pZEhlYXJ0UHJvZHVjdGlvbkdvdmVybmVkTGVhcm5pbmdQcm9jZXNzUmVzdWx0CitpbXBvcnQgcHJvLmxpbGl5YS5hbmRyb2lkLnJ1bnRpbWUuQW5kcm9pZFByb2R1Y3RSdW50aW1lR292ZXJuZWRMZWFybmluZ0FjdGl2YXRpb25Bc3NlbWJseQoraW1wb3J0IHByby5saWxpeWEuYW5kcm9pZC5ydW50aW1lLkFuZHJvaWRQcm9kdWN0UnVudGltZUxlYXJuaW5nQWN0aXZhdGlvbkZpbGVKb3VybmFsCitpbXBvcnQgcHJvLmxpbGl5YS5hbmRyb2lkLnJ1bnRpbWUuQW5kcm9pZFByb2R1Y3RSdW50aW1lTGVhcm5pbmdBY3RpdmF0aW9uU2Vzc2lvblJlc3VsdAoraW1wb3J0IHByby5saWxpeWEuYW5kcm9pZC5ydW50aW1lLkFuZHJvaWRQcm9kdWN0UnVudGltZUxlYXJuaW5nRW5hYmxlbWVudEV2aWRlbmNlCiBpbXBvcnQgcHJvLmxpbGl5YS5hbmRyb2lkLnJ1bnRpbWUuSGVhcnRSdW50aW1lQ2xvc2VSZXN1bHQKIGltcG9ydCBwcm8ubGlsaXlhLmFuZHJvaWQucnVudGltZS5IZWFydFJ1bnRpbWVTdGFydFJlc3VsdAogaW1wb3J0IHByby5saWxpeWEuYW5kcm9pZC5ydW50aW1lLkhlYXJ0UnVudGltZVN0YXRlCkBAIC02NjUsNiArNjY4LDcgQEAgY2xhc3MgQW5kcm9pZEhlYXJ0UnVudGltZUNvbGRTdGFydEluc3RydW1lbnRlZFRlc3QgewogCiAgICAgICAgIEZpbGUodGFyZ2V0Q29udGV4dC5maWxlc0RpciwgU1RPUkFHRV9ESVJFQ1RPUllfSDREKS5kZWxldGVSZWN1cnNpdmVseSgpCiAgICAgICAgIEZpbGUodGFyZ2V0Q29udGV4dC5maWxlc0RpciwgU0VNQU5USUNfUk9PVF9INEQpLmRlbGV0ZVJlY3Vyc2l2ZWx5KCkKKyAgICAgICAgRmlsZSh0YXJnZXRDb250ZXh0LmZpbGVzRGlyLCBMRUFSTklOR19BQ1RJVkFUSU9OX0RJUkVDVE9SWV9INEQpLmRlbGV0ZVJlY3Vyc2l2ZWx5KCkKIAogICAgICAgICB2YWwgZmlyc3QgPSBhc3NlcnRJczxBbmRyb2lkQ29nbml0aXZlU3RvcmFnZU9wZW5SZXN1bHQuUmVhZHk+KAogICAgICAgICAgICAgQW5kcm9pZENvZ25pdGl2ZVN0b3JhZ2VBc3NlbWJseS5vcGVuKApAQCAtODUwLDMzICs4NTQsNTEgQEAgY2xhc3MgQW5kcm9pZEhlYXJ0UnVudGltZUNvbGRTdGFydEluc3RydW1lbnRlZFRlc3QgewogICAgICAgICAgICAgKQogICAgICAgICApCiAKLSAgICAgICAgdmFsIGdvdmVybmVkID0gYXNzZXJ0SXM8QW5kcm9pZEhlYXJ0UHJvZHVjdGlvbkdvdmVybmVkTGVhcm5pbmdDcmVhdGVSZXN1bHQuUmVhZHk+KAotICAgICAgICAgICAgQW5kcm9pZEhlYXJ0UHJvZHVjdGlvbkdvdmVybmVkTGVhcm5pbmdBc3NlbWJseS5jcmVhdGUoCi0gICAgICAgICAgICAgICAgaGVhcnQgPSBoZWFydCwKLSAgICAgICAgICAgICAgICBmb3VuZGF0aW9uID0gZm91bmRhdGlvbiwKLSAgICAgICAgICAgICAgICBzY29wZSA9IENvZ25pdGl2ZVJ1bnRpbWVTY29wZUlkKCJoZWFydC1oNGQtcnVudGltZSIpLAotICAgICAgICAgICAgICAgIGxlYXJuaW5nID0gbGVhcm5pbmcsCi0gICAgICAgICAgICAgICAgcG9saWNpZXMgPSBwb2xpY2llcywKLSAgICAgICAgICAgICAgICBwb2xpY3lSZWZlcmVuY2UgPSBMZWFybmluZ1BvbGljeVJlZmVyZW5jZShwb2xpY3kucG9saWN5LmlkLCBwb2xpY3kuZ2VuZXJhdGlvbiksCi0gICAgICAgICAgICAgICAgYXV0aG9yaXR5ID0gYXV0aG9yaXR5LAotICAgICAgICAgICAgICAgIHByaW5jaXBhbCA9IHByaW5jaXBhbCwKLSAgICAgICAgICAgICAgICBnb3Zlcm5hbmNlID0gQ29nbml0aXZlTGVhcm5pbmdHb3Zlcm5hbmNlUG9ydCB7Ci0gICAgICAgICAgICAgICAgICAgIENvZ25pdGl2ZUxlYXJuaW5nR292ZXJuYW5jZVJlc3VsdC5BcHByb3ZlZCgKLSAgICAgICAgICAgICAgICAgICAgICAgIHRhcmdldCA9IExlYXJuaW5nQXBwbGljYXRpb25UYXJnZXQuTUVNT1JZLAotICAgICAgICAgICAgICAgICAgICAgICAgcmF0aW9uYWxlID0gInBoeXNpY2FsIHRydXN0ZWQgYXBwcm92YWwiCi0gICAgICAgICAgICAgICAgICAgICkKLSAgICAgICAgICAgICAgICB9LAotICAgICAgICAgICAgICAgIG1hdGVyaWFsaXphdGlvbiA9IENvZ25pdGl2ZUxlYXJuaW5nQXBwbGljYXRpb25NYXRlcmlhbGl6YXRpb25Qb3J0IHsKLSAgICAgICAgICAgICAgICAgICAgQ29nbml0aXZlTGVhcm5pbmdBcHBsaWNhdGlvbk1hdGVyaWFsaXphdGlvblJlc3VsdC5TdWNjZWVkZWQoTEVBUk5FRF9FVklERU5DRSkKLSAgICAgICAgICAgICAgICB9LAotICAgICAgICAgICAgICAgIG11dGF0aW9ucyA9IGVuY3J5cHRlZE11dGF0aW9ucywKLSAgICAgICAgICAgICAgICBhcnRpZmFjdElkcyA9IENvZ25pdGl2ZUFydGlmYWN0SWRTb3VyY2UgeyBraW5kIC0+Ci0gICAgICAgICAgICAgICAgICAgICJoZWFydC1oNGQtbGVhcm5pbmctIiArIGtpbmQubmFtZS5sb3dlcmNhc2UoKSArICItIiArIGlkcy5pbmNyZW1lbnRBbmRHZXQoKQotICAgICAgICAgICAgICAgIH0sCi0gICAgICAgICAgICAgICAgdGltZXN0YW1wcyA9IENvZ25pdGl2ZVRpbWVzdGFtcFNvdXJjZSB7IEJBU0UucGx1c1NlY29uZHMoMTIpIH0sCi0gICAgICAgICAgICAgICAgbGltaXRzID0gY29nbml0aXZlTGltaXRzKCkKKyAgICAgICAgdmFsIGdvdmVybmVkTGVhcm5pbmdTZXNzaW9uID0gQW5kcm9pZFByb2R1Y3RSdW50aW1lR292ZXJuZWRMZWFybmluZ0FjdGl2YXRpb25Bc3NlbWJseS5jcmVhdGUoCisgICAgICAgICAgICBoZWFydCA9IGhlYXJ0LAorICAgICAgICAgICAgZm91bmRhdGlvbiA9IGZvdW5kYXRpb24sCisgICAgICAgICAgICBzY29wZSA9IENvZ25pdGl2ZVJ1bnRpbWVTY29wZUlkKCJoZWFydC1oNGQtcnVudGltZSIpLAorICAgICAgICAgICAgbGVhcm5pbmcgPSBsZWFybmluZywKKyAgICAgICAgICAgIHBvbGljaWVzID0gcG9saWNpZXMsCisgICAgICAgICAgICBwb2xpY3lSZWZlcmVuY2UgPSBMZWFybmluZ1BvbGljeVJlZmVyZW5jZShwb2xpY3kucG9saWN5LmlkLCBwb2xpY3kuZ2VuZXJhdGlvbiksCisgICAgICAgICAgICBhdXRob3JpdHkgPSBhdXRob3JpdHksCisgICAgICAgICAgICBwcmluY2lwYWwgPSBwcmluY2lwYWwsCisgICAgICAgICAgICBnb3Zlcm5hbmNlID0gQ29nbml0aXZlTGVhcm5pbmdHb3Zlcm5hbmNlUG9ydCB7CisgICAgICAgICAgICAgICAgQ29nbml0aXZlTGVhcm5pbmdHb3Zlcm5hbmNlUmVzdWx0LkFwcHJvdmVkKAorICAgICAgICAgICAgICAgICAgICB0YXJnZXQgPSBMZWFybmluZ0FwcGxpY2F0aW9uVGFyZ2V0Lk1FTU9SWSwKKyAgICAgICAgICAgICAgICAgICAgcmF0aW9uYWxlID0gInBoeXNpY2FsIHRydXN0ZWQgYXBwcm92YWwiCisgICAgICAgICAgICAgICAgKQorICAgICAgICAgICAgfSwKKyAgICAgICAgICAgIG1hdGVyaWFsaXphdGlvbiA9IENvZ25pdGl2ZUxlYXJuaW5nQXBwbGljYXRpb25NYXRlcmlhbGl6YXRpb25Qb3J0IHsKKyAgICAgICAgICAgICAgICBDb2duaXRpdmVMZWFybmluZ0FwcGxpY2F0aW9uTWF0ZXJpYWxpemF0aW9uUmVzdWx0LlN1Y2NlZWRlZChMRUFSTkVEX0VWSURFTkNFKQorICAgICAgICAgICAgfSwKKyAgICAgICAgICAgIG11dGF0aW9ucyA9IGVuY3J5cHRlZE11dGF0aW9ucywKKyAgICAgICAgICAgIGFydGlmYWN0SWRzID0gQ29nbml0aXZlQXJ0aWZhY3RJZFNvdXJjZSB7IGtpbmQgLT4KKyAgICAgICAgICAgICAgICAiaGVhcnQtaDRkLWxlYXJuaW5nLSIgKyBraW5kLm5hbWUubG93ZXJjYXNlKCkgKyAiLSIgKyBpZHMuaW5jcmVtZW50QW5kR2V0KCkKKyAgICAgICAgICAgIH0sCisgICAgICAgICAgICB0aW1lc3RhbXBzID0gQ29nbml0aXZlVGltZXN0YW1wU291cmNlIHsgQkFTRS5wbHVzU2Vjb25kcygxMikgfSwKKyAgICAgICAgICAgIGpvdXJuYWwgPSBBbmRyb2lkUHJvZHVjdFJ1bnRpbWVMZWFybmluZ0FjdGl2YXRpb25GaWxlSm91cm5hbC5jcmVhdGUoCisgICAgICAgICAgICAgICAgY29udGV4dCA9IHRhcmdldENvbnRleHQsCisgICAgICAgICAgICAgICAgZGlyZWN0b3J5TmFtZSA9IExFQVJOSU5HX0FDVElWQVRJT05fRElSRUNUT1JZX0g0RAorICAgICAgICAgICAgKSwKKyAgICAgICAgICAgIGxpbWl0cyA9IGNvZ25pdGl2ZUxpbWl0cygpCisgICAgICAgICkKKyAgICAgICAgdmFsIGFjdGl2YXRlZCA9IGFzc2VydElzPAorICAgICAgICAgICAgQW5kcm9pZFByb2R1Y3RSdW50aW1lTGVhcm5pbmdBY3RpdmF0aW9uU2Vzc2lvblJlc3VsdC5BY3RpdmF0ZWQ8Kj4KKyAgICAgICAgPigKKyAgICAgICAgICAgIGdvdmVybmVkTGVhcm5pbmdTZXNzaW9uLmFjdGl2YXRlKAorICAgICAgICAgICAgICAgIEFuZHJvaWRQcm9kdWN0UnVudGltZUxlYXJuaW5nRW5hYmxlbWVudEV2aWRlbmNlKAorICAgICAgICAgICAgICAgICAgICBwcm9kdWN0UG9saWN5QXBwcm92ZWQgPSB0cnVlLAorICAgICAgICAgICAgICAgICAgICBwb2lzb25pbmdSZXNpc3RhbmNlQWNjZXB0ZWQgPSB0cnVlLAorICAgICAgICAgICAgICAgICAgICBmcmVzaEF1dGhvcml0eVBlck11dGF0aW9uQWNjZXB0ZWQgPSB0cnVlLAorICAgICAgICAgICAgICAgICAgICByb2xsYmFja0NvbXBlbnNhdGlvbkFjY2VwdGVkID0gdHJ1ZSwKKyAgICAgICAgICAgICAgICAgICAgZHVyYWJsZUNyYXNoU2VtYW50aWNzQWNjZXB0ZWQgPSB0cnVlCisgICAgICAgICAgICAgICAgKQogICAgICAgICAgICAgKQotICAgICAgICApLmNvbXBvc2l0aW9uCisgICAgICAgICkKKyAgICAgICAgdmFsIGdvdmVybmVkID0gYXNzZXJ0SXM8QW5kcm9pZEhlYXJ0UHJvZHVjdGlvbkdvdmVybmVkTGVhcm5pbmdDb21wb3NpdGlvbj4oCisgICAgICAgICAgICBhY3RpdmF0ZWQudmFsdWUKKyAgICAgICAgKQogICAgICAgICB2YWwgbGVhcm5lZCA9IGFzc2VydElzPEFuZHJvaWRIZWFydFByb2R1Y3Rpb25Hb3Zlcm5lZExlYXJuaW5nUHJvY2Vzc1Jlc3VsdC5Qcm9jZXNzZWQ+KAogICAgICAgICAgICAgZ292ZXJuZWQucHJvY2VzcyhmaW5hbGl6ZWRBLmxlYXJuaW5nKQogICAgICAgICApLnJlc3VsdApAQCAtMTI1MSw2ICsxMjczLDcgQEAgY2xhc3MgQW5kcm9pZEhlYXJ0UnVudGltZUNvbGRTdGFydEluc3RydW1lbnRlZFRlc3QgewogCiAgICAgICAgIGNvbnN0IHZhbCBTVE9SQUdFX0RJUkVDVE9SWV9INEQgPSAiaGVhcnQtaDRkLXN0b3JhZ2UiCiAgICAgICAgIGNvbnN0IHZhbCBTRU1BTlRJQ19ST09UX0g0RCA9ICJoZWFydC1oNGQtc2VtYW50aWMiCisgICAgICAgIGNvbnN0IHZhbCBMRUFSTklOR19BQ1RJVkFUSU9OX0RJUkVDVE9SWV9INEQgPSAiaGVhcnQtaDRkLWxlYXJuaW5nLWFjdGl2YXRpb24iCiAgICAgICAgIGNvbnN0IHZhbCBMRUFSTkVEX0VWSURFTkNFID0gIlRoZSBlbWVyZ2VuY3kgY29kZSB3b3JkIGlzIHZpb2xldC4iCiAKICAgICAgICAgY29uc3QgdmFsIFNUT1JBR0VfRElSRUNUT1JZID0gImhlYXJ0LWgzLXN0b3JhZ2UiCg==
         run: |
           set -euo pipefail
-          BASE=151187f16488e4e97d84763bfc60883dfb99941b
-          EXPECTED_TREE=555366e6fbe6568eba8edbc21e98e46cbcf8eb79
+          BASE=c22fc36d770057ae9863c0d6b38b38b7d8b307f8
+          EXPECTED_TREE=0ae7e755bf211a492e7cb9208f55adf1f3e5116f
           test "$(git rev-parse HEAD)" = "$BASE"
-          printf '%s' "$PATCH_B64" | base64 -d > "$RUNNER_TEMP/h4d.patch"
-          git apply --index "$RUNNER_TEMP/h4d.patch"
+          cat > "$RUNNER_TEMP/h4d-lifecycle.patch" <<'PATCH'
+          diff --git a/android-semantic-test-host/src/androidTest/kotlin/pro/liliya/android/semanticprovider/host/AndroidHeartRuntimeColdStartInstrumentedTest.kt b/android-semantic-test-host/src/androidTest/kotlin/pro/liliya/android/semanticprovider/host/AndroidHeartRuntimeColdStartInstrumentedTest.kt
+          index a8d8f54d..74e17f65 100644
+          --- a/android-semantic-test-host/src/androidTest/kotlin/pro/liliya/android/semanticprovider/host/AndroidHeartRuntimeColdStartInstrumentedTest.kt
+          +++ b/android-semantic-test-host/src/androidTest/kotlin/pro/liliya/android/semanticprovider/host/AndroidHeartRuntimeColdStartInstrumentedTest.kt
+          @@ -73,6 +73,8 @@ import pro.liliya.android.runtime.AndroidHeartProductionGovernedLearningComposit
+           import pro.liliya.android.runtime.AndroidHeartProductionGovernedLearningProcessResult
+           import pro.liliya.android.runtime.AndroidProductRuntimeGovernedLearningActivationAssembly
+           import pro.liliya.android.runtime.AndroidProductRuntimeLearningActivationFileJournal
+          +import pro.liliya.android.runtime.AndroidProductRuntimeLearningActivationRecoverySafetyPort
+          +import pro.liliya.android.runtime.AndroidProductRuntimeLearningActivationRecoverySafetyResult
+           import pro.liliya.android.runtime.AndroidProductRuntimeLearningActivationSessionResult
+           import pro.liliya.android.runtime.AndroidProductRuntimeLearningEnablementEvidence
+           import pro.liliya.android.runtime.HeartRuntimeCloseResult
+          @@ -854,39 +856,44 @@ class AndroidHeartRuntimeColdStartInstrumentedTest {
+                       )
+                   )
+           
+          -        val governedLearningSession = AndroidProductRuntimeGovernedLearningActivationAssembly.create(
+          -            heart = heart,
+          -            foundation = foundation,
+          -            scope = CognitiveRuntimeScopeId("heart-h4d-runtime"),
+          -            learning = learning,
+          -            policies = policies,
+          -            policyReference = LearningPolicyReference(policy.policy.id, policy.generation),
+          -            authority = authority,
+          -            principal = principal,
+          -            governance = CognitiveLearningGovernancePort {
+          -                CognitiveLearningGovernanceResult.Approved(
+          -                    target = LearningApplicationTarget.MEMORY,
+          -                    rationale = "physical trusted approval"
+          -                )
+          -            },
+          -            materialization = CognitiveLearningApplicationMaterializationPort {
+          -                CognitiveLearningApplicationMaterializationResult.Succeeded(LEARNED_EVIDENCE)
+          -            },
+          -            mutations = encryptedMutations,
+          -            artifactIds = CognitiveArtifactIdSource { kind ->
+          -                "heart-h4d-learning-" + kind.name.lowercase() + "-" + ids.incrementAndGet()
+          -            },
+          -            timestamps = CognitiveTimestampSource { BASE.plusSeconds(12) },
+          -            journal = AndroidProductRuntimeLearningActivationFileJournal.create(
+          -                context = targetContext,
+          -                directoryName = LEARNING_ACTIVATION_DIRECTORY_H4D
+          -            ),
+          -            limits = cognitiveLimits()
+          +        val activationJournal = AndroidProductRuntimeLearningActivationFileJournal.create(
+          +            context = targetContext,
+          +            directoryName = LEARNING_ACTIVATION_DIRECTORY_H4D
+                   )
+          +        val governedLearningLifecycle =
+          +            AndroidProductRuntimeGovernedLearningActivationAssembly.createLifecycle(
+          +                heart = heart,
+          +                foundation = foundation,
+          +                scope = CognitiveRuntimeScopeId("heart-h4d-runtime"),
+          +                learning = learning,
+          +                policies = policies,
+          +                policyReference = LearningPolicyReference(policy.policy.id, policy.generation),
+          +                authority = authority,
+          +                principal = principal,
+          +                governance = CognitiveLearningGovernancePort {
+          +                    CognitiveLearningGovernanceResult.Approved(
+          +                        target = LearningApplicationTarget.MEMORY,
+          +                        rationale = "physical trusted approval"
+          +                    )
+          +                },
+          +                materialization = CognitiveLearningApplicationMaterializationPort {
+          +                    CognitiveLearningApplicationMaterializationResult.Succeeded(LEARNED_EVIDENCE)
+          +                },
+          +                mutations = encryptedMutations,
+          +                artifactIds = CognitiveArtifactIdSource { kind ->
+          +                    "heart-h4d-learning-" + kind.name.lowercase() + "-" + ids.incrementAndGet()
+          +                },
+          +                timestamps = CognitiveTimestampSource { BASE.plusSeconds(12) },
+          +                journal = activationJournal,
+          +                recoverySafety = AndroidProductRuntimeLearningActivationRecoverySafetyPort {
+          +                    AndroidProductRuntimeLearningActivationRecoverySafetyResult.Blocked
+          +                },
+          +                limits = cognitiveLimits()
+          +            )
+                   val activated = assertIs<
+                       AndroidProductRuntimeLearningActivationSessionResult.Activated<*>
+                   >(
+          -            governedLearningSession.activate(
+          +            governedLearningLifecycle.start(
+                           AndroidProductRuntimeLearningEnablementEvidence(
+                               productPolicyApproved = true,
+                               poisoningResistanceAccepted = true,
+          PATCH
+          sed -i 's/^          //' "$RUNNER_TEMP/h4d-lifecycle.patch"
+          git apply --index "$RUNNER_TEMP/h4d-lifecycle.patch"
           git diff --cached --check
-          git -c user.name='yaroshenkopavel' -c user.email='78513566+yaroshenkopavel@users.noreply.github.com' commit -m 'fix: route H4D acceptance through activation gate'
+          test "$(git write-tree)" = "$EXPECTED_TREE"
+          git -c user.name='yaroshenkopavel' -c user.email='78513566+yaroshenkopavel@users.noreply.github.com' commit -m 'test: route H4D through learning lifecycle'
           test "$(git rev-parse HEAD^)" = "$BASE"
           test "$(git rev-parse 'HEAD^{tree}')" = "$EXPECTED_TREE"
-          git push origin HEAD:development/core-next-governed-learning
+          git push --force-with-lease=refs/heads/development/core-next-governed-learning:$BASE origin HEAD:refs/heads/development/core-next-governed-learning
