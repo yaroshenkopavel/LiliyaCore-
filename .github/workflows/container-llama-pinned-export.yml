@@ -17,9 +17,13 @@ jobs:
         run: |
           set -euo pipefail
           PIN=0f3a71be15af836d277c9f918adfafb45732677e
-          git clone --mirror https://github.com/ggml-org/llama.cpp.git "$RUNNER_TEMP/llama.cpp.git"
-          git --git-dir="$RUNNER_TEMP/llama.cpp.git" cat-file -e "$PIN^{commit}"
-          git --git-dir="$RUNNER_TEMP/llama.cpp.git" rev-parse "$PIN"
+          repo="$RUNNER_TEMP/llama.cpp.git"
+          git init --bare "$repo"
+          git --git-dir="$repo" remote add origin https://github.com/ggml-org/llama.cpp.git
+          git --git-dir="$repo" fetch --depth=1 origin "$PIN"
+          git --git-dir="$repo" update-ref refs/heads/pinned FETCH_HEAD
+          git --git-dir="$repo" cat-file -e "$PIN^{commit}"
+          test "$(git --git-dir="$repo" rev-parse refs/heads/pinned)" = "$PIN"
           tar -C "$RUNNER_TEMP" -czf "$RUNNER_TEMP/llama-cpp-pinned-git.tar.gz" llama.cpp.git
           sha256sum "$RUNNER_TEMP/llama-cpp-pinned-git.tar.gz" > "$RUNNER_TEMP/llama-cpp-pinned-git.tar.gz.sha256"
       - name: Upload mirror
