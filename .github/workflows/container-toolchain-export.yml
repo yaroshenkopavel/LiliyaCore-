@@ -72,8 +72,7 @@ jobs:
           sha256sum "$RUNNER_TEMP/liliya-local-base-toolchain.tar.gz" > "$RUNNER_TEMP/liliya-local-base-toolchain.tar.gz.sha256"
           split -b 450M -d -a 2 "$RUNNER_TEMP/liliya-local-base-toolchain.tar.gz" "$RUNNER_TEMP/liliya-local-base-toolchain.tar.gz.part-"
           rm "$RUNNER_TEMP/liliya-local-base-toolchain.tar.gz"
-          ls -lh "$RUNNER_TEMP"/liliya-local-base-toolchain.tar.gz.part-* "$RUNNER_TEMP/liliya-local-base-toolchain.tar.gz.sha256
-"
+          ls -lh "$RUNNER_TEMP"/liliya-local-base-toolchain.tar.gz.part-* "$RUNNER_TEMP"/liliya-local-base-toolchain.tar.gz.sha256
 
       - name: Upload portable toolchain parts
         uses: actions/upload-artifact@v4
