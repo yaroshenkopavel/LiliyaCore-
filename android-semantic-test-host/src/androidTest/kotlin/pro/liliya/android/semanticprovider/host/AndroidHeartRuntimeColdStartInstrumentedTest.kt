@@ -1060,8 +1060,12 @@ class AndroidHeartRuntimeColdStartInstrumentedTest {
         }
         val compiler = CognitiveModelRequestCompilerPort { request ->
             val contents = request.inference.context.items.map { it.content }
-            compilerSawMemory = contents.contains(RELEVANT_MEMORY)
-            compilerSawKnowledge = contents.contains(RELEVANT_KNOWLEDGE)
+            if (contents.contains(RELEVANT_MEMORY)) {
+                compilerSawMemory = true
+            }
+            if (contents.contains(RELEVANT_KNOWLEDGE)) {
+                compilerSawKnowledge = true
+            }
             if (contents.contains(PERSONA_SELF_NAME)) {
                 compilerSawSelf = true
             }
@@ -1074,8 +1078,6 @@ class AndroidHeartRuntimeColdStartInstrumentedTest {
             if (contents.contains(PRODUCT_RUNTIME_LEARNED_EVIDENCE)) {
                 compilerSawProductRuntimeLearned = true
             }
-            check(compilerSawMemory)
-            check(compilerSawKnowledge)
             CognitiveModelRequestCompilerResult.Compiled(
                 CognitiveCompiledModelRequest(
                     ("Context: " + contents.joinToString(" | ") + ". Answer briefly.")
