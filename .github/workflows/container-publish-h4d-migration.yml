@@ -114,7 +114,6 @@ jobs:
                                productPolicyApproved = true,
                                poisoningResistanceAccepted = true,
           PATCH
-          sed -i 's/^          //' "$RUNNER_TEMP/h4d-lifecycle.patch"
           git apply --index "$RUNNER_TEMP/h4d-lifecycle.patch"
           git diff --cached --check
           test "$(git write-tree)" = "$EXPECTED_TREE"
