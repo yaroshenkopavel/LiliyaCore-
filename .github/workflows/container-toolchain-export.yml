@@ -1,4 +1,4 @@
-name: Container Toolchain Export
+name: Container Toolchain Repack
 
 on:
   push:
@@ -6,196 +6,69 @@ on:
       - ops/container-restore-151187f
 
 permissions:
+  actions: read
   contents: read
 
 jobs:
-  export:
+  repack:
     runs-on: ubuntu-latest
-    env:
-      LILIYA_GRADLE_HOME: ${{ runner.temp }}/liliya-gradle-home
     steps:
-      - name: Checkout exact source for dependency warmup
-        uses: actions/checkout@v4
+      - name: Download already-built toolchain artifact
+        uses: actions/download-artifact@v4
         with:
-          ref: 151187f16488e4e97d84763bfc60883dfb99941b
-          fetch-depth: 0
+          name: liliya-local-base-toolchain-151187f
+          path: ${{ runner.temp }}/parts
+          github-token: ${{ github.token }}
+          run-id: 35122319216
 
-      - name: Set up Java 17
-        uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - name: Set up Gradle 9.6.1
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '9.6.1'
-
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v4
-        with:
-          packages: platform-tools
-
-      - name: Install exact Android toolchain
+      - name: Verify expected split files
         shell: bash
         run: |
           set -euo pipefail
-          sdkmanager \
-            "platforms;android-35" \
-            "build-tools;35.0.0" \
-            "build-tools;36.0.0" \
-            "platform-tools" \
-            "ndk;29.0.13113456" \
-            "cmake;3.31.6"
+          cd "$RUNNER_TEMP/parts"
+          test -f liliya-local-base-toolchain.tar.gz.part-00
+          test -f liliya-local-base-toolchain.tar.gz.part-01
+          test -f liliya-local-base-toolchain.tar.gz.part-02
+          test -f liliya-local-base-toolchain.tar.gz.part-03
+          test -f liliya-local-base-toolchain.tar.gz.sha256
+          ls -lh
 
-      - name: Warm project-only Gradle cache
-        shell: bash
-        run: |
-          set -euo pipefail
-          rm -rf "$LILIYA_GRADLE_HOME"
-          mkdir -p "$LILIYA_GRADLE_HOME"
-          GRADLE_USER_HOME="$LILIYA_GRADLE_HOME" gradle \
-            :core:test \
-            :android-runtime:testDebugUnitTest \
-            :android-app:testDebugUnitTest \
-            :android-app:compileDebugAndroidTestKotlin \
-            :android-semantic-test-host:assembleDebugAndroidTest \
-            --console=plain --no-daemon
-
-      - name: Prove offline cache
-        shell: bash
-        run: |
-          set -euo pipefail
-          GRADLE_USER_HOME="$LILIYA_GRADLE_HOME" gradle \
-            :core:test \
-            :android-runtime:testDebugUnitTest \
-            :android-app:testDebugUnitTest \
-            :android-app:compileDebugAndroidTestKotlin \
-            :android-semantic-test-host:assembleDebugAndroidTest \
-            --offline --console=plain --no-daemon
-
-      - name: Stage portable components
-        shell: bash
-        run: |
-          set -euo pipefail
-          out="$RUNNER_TEMP/export"
-          mkdir -p "$out"
-
-          java_home="$(dirname "$(dirname "$(readlink -f "$(command -v java)")")")"
-          gradle_bin="$(readlink -f "$(command -v gradle)")"
-          gradle_home="$(dirname "$(dirname "$gradle_bin")")"
-
-          tar -C "$java_home" -czf "$out/jdk17.tar.gz" .
-          tar -C "$gradle_home" -czf "$out/gradle-9.6.1.tar.gz" .
-          tar -C "$(dirname "$LILIYA_GRADLE_HOME")" -czf "$out/gradle-home.tar.gz" "$(basename "$LILIYA_GRADLE_HOME")"
-
-          sdkstage="$RUNNER_TEMP/android-sdk-compile"
-          mkdir -p "$sdkstage/platforms" "$sdkstage/build-tools"
-          cp -a "$ANDROID_HOME/licenses" "$sdkstage/"
-          cp -a "$ANDROID_HOME/platform-tools" "$sdkstage/"
-          cp -a "$ANDROID_HOME/platforms/android-35" "$sdkstage/platforms/"
-          cp -a "$ANDROID_HOME/build-tools/35.0.0" "$sdkstage/build-tools/"
-          cp -a "$ANDROID_HOME/build-tools/36.0.0" "$sdkstage/build-tools/"
-          tar -C "$sdkstage" -czf "$out/android-sdk-compile.tar.gz" .
-
-          tar -C "$ANDROID_HOME/ndk" -czf "$out/ndk-29.0.13113456.tar.gz" 29.0.13113456
-          tar -C "$ANDROID_HOME/cmake" -czf "$out/cmake-3.31.6.tar.gz" 3.31.6
-
-          split -b 400M -d -a 2 "$out/gradle-home.tar.gz" "$out/gradle-home.part."
-          split -b 400M -d -a 2 "$out/ndk-29.0.13113456.tar.gz" "$out/ndk.part."
-          rm "$out/gradle-home.tar.gz" "$out/ndk-29.0.13113456.tar.gz"
-
-          (cd "$out" && sha256sum *.tar.gz gradle-home.part.* ndk.part.* > SHA256SUMS)
-          ls -lh "$out"
-
-      - name: Upload JDK17
+      - name: Upload part 00
         uses: actions/upload-artifact@v4
         with:
-          name: liliya-toolchain-jdk17
-          path: ${{ runner.temp }}/export/jdk17.tar.gz
+          name: liliya-local-base-toolchain-151187f-part-00
+          path: ${{ runner.temp }}/parts/liliya-local-base-toolchain.tar.gz.part-00
           compression-level: 0
           retention-days: 3
 
-      - name: Upload Gradle runtime
+      - name: Upload part 01
         uses: actions/upload-artifact@v4
         with:
-          name: liliya-toolchain-gradle-9.6.1
-          path: ${{ runner.temp }}/export/gradle-9.6.1.tar.gz
+          name: liliya-local-base-toolchain-151187f-part-01
+          path: ${{ runner.temp }}/parts/liliya-local-base-toolchain.tar.gz.part-01
           compression-level: 0
           retention-days: 3
 
-      - name: Upload Android compile SDK
+      - name: Upload part 02
         uses: actions/upload-artifact@v4
         with:
-          name: liliya-toolchain-android-sdk-compile
-          path: ${{ runner.temp }}/export/android-sdk-compile.tar.gz
+          name: liliya-local-base-toolchain-151187f-part-02
+          path: ${{ runner.temp }}/parts/liliya-local-base-toolchain.tar.gz.part-02
           compression-level: 0
           retention-days: 3
 
-      - name: Upload CMake
+      - name: Upload part 03
         uses: actions/upload-artifact@v4
         with:
-          name: liliya-toolchain-cmake-3.31.6
-          path: ${{ runner.temp }}/export/cmake-3.31.6.tar.gz
+          name: liliya-local-base-toolchain-151187f-part-03
+          path: ${{ runner.temp }}/parts/liliya-local-base-toolchain.tar.gz.part-03
           compression-level: 0
           retention-days: 3
 
-      - name: Upload Gradle home part 00
+      - name: Upload checksum
         uses: actions/upload-artifact@v4
         with:
-          name: liliya-toolchain-gradle-home-00
-          path: ${{ runner.temp }}/export/gradle-home.part.00
-          compression-level: 0
-          retention-days: 3
-
-      - name: Upload Gradle home part 01
-        if: ${{ hashFiles(format('{0}/export/gradle-home.part.01', runner.temp)) != '' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: liliya-toolchain-gradle-home-01
-          path: ${{ runner.temp }}/export/gradle-home.part.01
-          compression-level: 0
-          retention-days: 3
-
-      - name: Upload Gradle home part 02
-        if: ${{ hashFiles(format('{0}/export/gradle-home.part.02', runner.temp)) != '' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: liliya-toolchain-gradle-home-02
-          path: ${{ runner.temp }}/export/gradle-home.part.02
-          compression-level: 0
-          retention-days: 3
-
-      - name: Upload NDK part 00
-        uses: actions/upload-artifact@v4
-        with:
-          name: liliya-toolchain-ndk-00
-          path: ${{ runner.temp }}/export/ndk.part.00
-          compression-level: 0
-          retention-days: 3
-
-      - name: Upload NDK part 01
-        if: ${{ hashFiles(format('{0}/export/ndk.part.01', runner.temp)) != '' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: liliya-toolchain-ndk-01
-          path: ${{ runner.temp }}/export/ndk.part.01
-          compression-level: 0
-          retention-days: 3
-
-      - name: Upload NDK part 02
-        if: ${{ hashFiles(format('{0}/export/ndk.part.02', runner.temp)) != '' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: liliya-toolchain-ndk-02
-          path: ${{ runner.temp }}/export/ndk.part.02
-          compression-level: 0
-          retention-days: 3
-
-      - name: Upload checksums
-        uses: actions/upload-artifact@v4
-        with:
-          name: liliya-toolchain-checksums
-          path: ${{ runner.temp }}/export/SHA256SUMS
+          name: liliya-local-base-toolchain-151187f-sha256
+          path: ${{ runner.temp }}/parts/liliya-local-base-toolchain.tar.gz.sha256
           compression-level: 0
           retention-days: 3
