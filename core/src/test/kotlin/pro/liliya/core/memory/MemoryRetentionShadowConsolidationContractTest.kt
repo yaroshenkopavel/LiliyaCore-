@@ -4,6 +4,7 @@ import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import kotlin.test.assertFailsWith
 
 class MemoryRetentionShadowConsolidationContractTest {
@@ -44,6 +45,12 @@ class MemoryRetentionShadowConsolidationContractTest {
             MemoryRecordId("episode-new"),
             first.ledger.entries.single { it.recordId == MemoryRecordId("episode-duplicate") }.duplicateOf
         )
+        first.ledger.entries.forEach { entry ->
+            assertEquals(
+                entry.disposition != MemoryRetentionDisposition.RETAINED,
+                entry.requiresPruneAuthority
+            )
+        }
     }
 
     @Test
@@ -60,6 +67,7 @@ class MemoryRetentionShadowConsolidationContractTest {
         assertEquals(MemoryRetentionLedgerSummary(1, 0, 1, 0), report.ledger.summary(MemoryRetentionClass.WORKING))
         assertEquals(MemoryRetentionLedgerSummary(1, 1, 0, 0), report.ledger.summary(MemoryRetentionClass.EPISODIC))
         assertEquals(MemoryRetentionLedgerSummary(0, 0, 0, 0), report.ledger.summary(MemoryRetentionClass.SEMANTIC))
+        assertTrue(report.ledger.entries.any { it.action == MemoryRetentionShadowAction.PRUNE_CANDIDATE })
     }
 
     @Test

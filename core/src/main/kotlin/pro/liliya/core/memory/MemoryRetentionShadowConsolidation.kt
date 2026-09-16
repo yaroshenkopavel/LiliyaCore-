@@ -1,14 +1,32 @@
 package pro.liliya.core.memory
 
+enum class MemoryRetentionShadowAction {
+    KEEP,
+    PRUNE_CANDIDATE
+}
+
 data class MemoryRetentionLedgerEntry(
     val recordId: MemoryRecordId,
     val generation: MemoryGeneration,
     val retentionClass: MemoryRetentionClass,
     val disposition: MemoryRetentionDisposition,
+    val action: MemoryRetentionShadowAction,
     val duplicateOf: MemoryRecordId? = null
 ) {
+    init {
+        require((disposition == MemoryRetentionDisposition.RETAINED) == (action == MemoryRetentionShadowAction.KEEP)) {
+            "retained disposition must map exactly to keep action"
+        }
+        require((disposition == MemoryRetentionDisposition.DUPLICATE_SUPPRESSED) == (duplicateOf != null)) {
+            "duplicate reference must exist exactly for duplicate-suppressed entries"
+        }
+    }
+
+    val requiresPruneAuthority: Boolean
+        get() = action == MemoryRetentionShadowAction.PRUNE_CANDIDATE
+
     override fun toString(): String =
-        "MemoryRetentionLedgerEntry(recordId=$recordId, generation=$generation, retentionClass=$retentionClass, disposition=$disposition, duplicateOf=$duplicateOf)"
+        "MemoryRetentionLedgerEntry(recordId=$recordId, generation=$generation, retentionClass=$retentionClass, disposition=$disposition, action=$action, duplicateOf=$duplicateOf)"
 }
 
 data class MemoryRetentionLedgerSummary(
@@ -78,6 +96,11 @@ class MemoryRetentionShadowConsolidator(
                 generation = candidate.snapshot.generation,
                 retentionClass = decision.retentionClass,
                 disposition = decision.disposition,
+                action = if (decision.disposition == MemoryRetentionDisposition.RETAINED) {
+                    MemoryRetentionShadowAction.KEEP
+                } else {
+                    MemoryRetentionShadowAction.PRUNE_CANDIDATE
+                },
                 duplicateOf = decision.duplicateOf
             )
         }
