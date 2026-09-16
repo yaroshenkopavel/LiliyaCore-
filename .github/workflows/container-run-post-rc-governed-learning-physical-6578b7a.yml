@@ -1,0 +1,155 @@
+name: Container Run Post-RC Governed Learning Physical Candidate 6578b7a7
+
+on:
+  push:
+    branches:
+      - ops/container-restore-151187f
+    paths:
+      - '.github/workflows/container-run-post-rc-governed-learning-physical-6578b7a.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  physical:
+    name: Exact physical ARM64 governed-learning semantic rebuild
+    runs-on: [self-hosted, ARM64, android-device]
+    timeout-minutes: 40
+    env:
+      SOURCE_COMMIT: 6578b7a7da9e855e7659e3f48043f0e0b6bad178
+      SOURCE_TREE: 42633277e2ecf99d04c162ea10a782df7f4e3a57
+      SOURCE_RUN_ID: '35153001893'
+      EXPECTED_ARTIFACT_DIGEST: sha256:92bc1f1f2c896cc9651187413176c92488d9151e6d0b573e0c4340d9dbd6942f
+      TERMUX_TOKEN_FILE: /data/data/com.termux/files/home/.liliya-physical-bridge-token
+    steps:
+      - name: Checkout exact candidate source
+        uses: actions/checkout@v4
+        with:
+          ref: 6578b7a7da9e855e7659e3f48043f0e0b6bad178
+
+      - name: Verify native Termux physical bridge
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$(uname -m)" in aarch64|arm64) ;; *) echo 'runner host must be ARM64' >&2; exit 1;; esac
+          bridge='tools/physical-runner/liliya_physical_rish_bridge.py'
+          grep -Fq 'GOVERNED_LEARNING_SEMANTIC_REBUILD_TEST' "$bridge"
+          grep -Fq '/v1/instrument/governed-learning-semantic-rebuild' "$bridge"
+          if grep -Eq '/v1/(shell|command|exec)' "$bridge"; then
+            echo 'bridge must not expose arbitrary command execution' >&2
+            exit 1
+          fi
+          test -s "$TERMUX_TOKEN_FILE"
+          token="$(cat "$TERMUX_TOKEN_FILE")"
+          curl --fail --silent --show-error -H "Authorization: Bearer $token" \
+            http://127.0.0.1:18765/v1/probe > "$RUNNER_TEMP/probe.json"
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          p = json.loads((Path(os.environ['RUNNER_TEMP']) / 'probe.json').read_text())
+          if p['primaryAbi']['output'] != 'arm64-v8a': raise SystemExit('physical device must be arm64-v8a')
+          if p['qemu']['output'] == '1': raise SystemExit('emulator is not accepted')
+          if 'uid=2000(shell)' not in p['shellIdentity']['output']: raise SystemExit('bridge must execute as Android shell')
+          PY
+
+      - name: Download exact candidate APK pair
+        uses: actions/download-artifact@v4
+        with:
+          name: post-rc-governed-learning-semantic-rebuild-6578b7a7da9e855e7659e3f48043f0e0b6bad178
+          path: ${{ runner.temp }}/post-rc-governed-learning-semantic-rebuild
+          repository: ${{ github.repository }}
+          run-id: '35153001893'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify exact candidate manifest and APKs
+        shell: bash
+        run: |
+          set -euo pipefail
+          BUNDLE_DIR="$RUNNER_TEMP/post-rc-governed-learning-semantic-rebuild" SOURCE_COMMIT="$SOURCE_COMMIT" SOURCE_TREE="$SOURCE_TREE" python3 - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          root = Path(os.environ['BUNDLE_DIR'])
+          m = json.loads((root / 'manifest.json').read_text(encoding='utf-8'))
+          if m.get('acceptanceEvidence') is not False: raise SystemExit('candidate manifest must remain non-acceptance before execution')
+          if m.get('sourceCommit') != os.environ['SOURCE_COMMIT']: raise SystemExit('source commit mismatch')
+          if m.get('sourceTree') != os.environ['SOURCE_TREE']: raise SystemExit('source tree mismatch')
+          expected_test = 'AndroidHeartRuntimeColdStartInstrumentedTest#product_runtime_assembly_routes_conversation_evidence_to_explicit_governed_learning'
+          if m.get('test') != expected_test: raise SystemExit('test identity mismatch')
+          for name, expected in m['files'].items():
+              path = root / name
+              if not path.is_file(): raise SystemExit(f'missing {name}')
+              h = hashlib.sha256(path.read_bytes()).hexdigest()
+              if h != expected['sha256'] or path.stat().st_size != expected['size']:
+                  raise SystemExit(f'APK mismatch: {name}')
+          print(json.dumps(m, indent=2, sort_keys=True))
+          PY
+
+      - name: Install exact semantic APK pair
+        shell: bash
+        run: |
+          set -euo pipefail
+          token="$(cat "$TERMUX_TOKEN_FILE")"
+          root="$RUNNER_TEMP/post-rc-governed-learning-semantic-rebuild"
+          curl --fail --silent --show-error -X POST -H "Authorization: Bearer $token" \
+            http://127.0.0.1:18765/v1/reset-semantic-packages > "$RUNNER_TEMP/reset.json"
+          for spec in \
+            'semantic-app:liliya-semantic-host-debug.apk' \
+            'semantic-test:liliya-semantic-host-debug-androidTest.apk'; do
+            endpoint="${spec%%:*}"
+            file="${spec#*:}"
+            path="$root/$file"
+            sha="$(sha256sum "$path" | awk '{print $1}')"
+            curl --fail --silent --show-error -X POST \
+              -H "Authorization: Bearer $token" \
+              -H "X-Liliya-Sha256: $sha" \
+              --data-binary "@$path" \
+              "http://127.0.0.1:18765/v1/install/$endpoint" > "$RUNNER_TEMP/install-$endpoint.json"
+          done
+
+      - name: Run exact governed-learning semantic rebuild test
+        shell: bash
+        run: |
+          set -euo pipefail
+          token="$(cat "$TERMUX_TOKEN_FILE")"
+          curl --fail --silent --show-error -X POST -H "Authorization: Bearer $token" \
+            http://127.0.0.1:18765/v1/instrument/governed-learning-semantic-rebuild \
+            | tee "$RUNNER_TEMP/governed-learning-semantic-rebuild.txt"
+          grep -Fq 'OK (1 test)' "$RUNNER_TEMP/governed-learning-semantic-rebuild.txt"
+
+      - name: Record exact physical evidence metadata
+        if: always()
+        shell: bash
+        run: |
+          SOURCE_COMMIT="$SOURCE_COMMIT" SOURCE_TREE="$SOURCE_TREE" SOURCE_RUN_ID="$SOURCE_RUN_ID" EXPECTED_ARTIFACT_DIGEST="$EXPECTED_ARTIFACT_DIGEST" python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          root = Path(os.environ['RUNNER_TEMP'])
+          result = root / 'governed-learning-semantic-rebuild.txt'
+          payload = {
+              'evidenceClass': 'post-rc-governed-learning-semantic-rebuild-physical-candidate',
+              'sourceCommit': os.environ['SOURCE_COMMIT'],
+              'sourceTree': os.environ['SOURCE_TREE'],
+              'sourceBundleRunId': int(os.environ['SOURCE_RUN_ID']),
+              'sourceArtifactDigest': os.environ['EXPECTED_ARTIFACT_DIGEST'],
+              'test': 'AndroidHeartRuntimeColdStartInstrumentedTest#product_runtime_assembly_routes_conversation_evidence_to_explicit_governed_learning',
+              'instrumentationOutputPresent': result.is_file(),
+              'instrumentationPassed': result.is_file() and 'OK (1 test)' in result.read_text(errors='replace'),
+          }
+          (root / 'physical-evidence.json').write_text(json.dumps(payload, indent=2, sort_keys=True) + '\n')
+          print(json.dumps(payload, indent=2, sort_keys=True))
+          PY
+
+      - name: Upload exact physical candidate evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: post-rc-governed-learning-physical-6578b7a
+          retention-days: 30
+          if-no-files-found: warn
+          path: |
+            ${{ runner.temp }}/probe.json
+            ${{ runner.temp }}/reset.json
+            ${{ runner.temp }}/install-*.json
+            ${{ runner.temp }}/governed-learning-semantic-rebuild.txt
+            ${{ runner.temp }}/physical-evidence.json
