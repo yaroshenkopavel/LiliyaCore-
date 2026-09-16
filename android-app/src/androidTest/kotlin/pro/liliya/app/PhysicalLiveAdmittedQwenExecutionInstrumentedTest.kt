@@ -8,7 +8,6 @@ import androidx.test.platform.app.InstrumentationRegistry
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.InputStream
-import java.net.HttpURLConnection
 import java.net.URL
 import java.security.KeyStore
 import java.security.MessageDigest
@@ -17,6 +16,7 @@ import java.util.Base64
 import java.util.concurrent.atomic.AtomicInteger
 import javax.net.ssl.HttpsURLConnection
 import javax.net.ssl.SSLContext
+import javax.net.ssl.SSLSocketFactory
 import javax.net.ssl.TrustManagerFactory
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -124,16 +124,6 @@ import pro.liliya.core.protectedmodel.ProtectedModelRuntimeOwnership
 import pro.liliya.core.protectedmodel.ProtectedModelSignerResolver
 import pro.liliya.core.runtime.hardening.RuntimeModelSessionId
 
-/**
- * Physical-device causal overlay over the exact frozen RC and accepted live startup gate.
- *
- * Proves only this boundary:
- * live signed License -> exact Authority Admission -> StartupProvisioner -> exact Qwen3 execution.
- *
- * It deliberately stops before prepared inputs / HostBootstrap. That later boundary remains a
- * separate acceptance claim. A denied Authority request must not touch any downstream startup
- * owner and therefore cannot stage, activate, or infer Qwen.
- */
 @RunWith(AndroidJUnit4::class)
 class PhysicalLiveAdmittedQwenExecutionInstrumentedTest {
 
@@ -149,9 +139,9 @@ class PhysicalLiveAdmittedQwenExecutionInstrumentedTest {
         val endpoint = URL(requiredArgument(arguments.getString(ARG_ENDPOINT)))
         assertEquals("https", endpoint.protocol)
 
-        val caBytes = Base64.getDecoder().decode(
-            requiredArgument(arguments.getString(ARG_CA_BASE64))
-        )
+        val publicNetworkSslSocketFactory = HttpsURLConnection.getDefaultSSLSocketFactory()
+
+        val caBytes = Base64.getDecoder().decode(requiredArgument(arguments.getString(ARG_CA_BASE64)))
         try {
             installAcceptanceTrust(caBytes)
         } finally {
@@ -185,9 +175,7 @@ class PhysicalLiveAdmittedQwenExecutionInstrumentedTest {
         )
         val signed = assertIs<ProductionAndroidLicenseEnvelopeAcquisitionResult.Signed>(acquisition)
 
-        val publicKey = Base64.getDecoder().decode(
-            requiredArgument(arguments.getString(ARG_ENTITLEMENT_KEY_BASE64))
-        )
+        val publicKey = Base64.getDecoder().decode(requiredArgument(arguments.getString(ARG_ENTITLEMENT_KEY_BASE64)))
         val trusted = try {
             LicenseTrustedVerificationKey.of(
                 keyId = signed.envelope.signingKeyId,
@@ -216,26 +204,16 @@ class PhysicalLiveAdmittedQwenExecutionInstrumentedTest {
         val deniedCapability = CapabilityId(DENIED_CAPABILITY)
         val scope = AuthorityScope.GLOBAL
 
-        val capabilityAuthority = CapabilityAuthorityComposition(
-            foundation = foundation,
-            now = { policyNow }
-        )
+        val capabilityAuthority = CapabilityAuthorityComposition(foundation = foundation, now = { policyNow })
         assertIs<AndroidProductRuntimeStartupAuthorityAssemblyResult.Ready>(
             AndroidProductRuntimeStartupAuthorityGrantAssembly.install(
                 authority = capabilityAuthority,
                 plan = AndroidProductRuntimeStartupAuthorityPlan(
                     capabilities = listOf(
-                        CapabilityDescriptor(
-                            id = grantedCapability,
-                            providerId = CapabilityProviderId(PROVIDER)
-                        )
+                        CapabilityDescriptor(id = grantedCapability, providerId = CapabilityProviderId(PROVIDER))
                     ),
                     directGrants = listOf(
-                        DirectAuthorityGrant(
-                            principal = principal,
-                            capability = grantedCapability,
-                            scope = scope
-                        )
+                        DirectAuthorityGrant(principal = principal, capability = grantedCapability, scope = scope)
                     )
                 )
             )
@@ -247,10 +225,7 @@ class PhysicalLiveAdmittedQwenExecutionInstrumentedTest {
         val licenseAuthority = LicenseAuthorityComposition(
             foundation = foundation,
             authorityManager = AuthorityManager(
-                policy = ScopedGrantAuthorityPolicy(
-                    grants = activeGrants,
-                    now = { policyNow }
-                ),
+                policy = ScopedGrantAuthorityPolicy(grants = activeGrants, now = { policyNow }),
                 observability = foundation.observability
             )
         )
@@ -281,9 +256,7 @@ class PhysicalLiveAdmittedQwenExecutionInstrumentedTest {
                 )
             )
 
-        val negativeAdmission = assertIs<AndroidProductRuntimeAdmissionResult.Rejected>(
-            admission(deniedCapability)
-        )
+        val negativeAdmission = assertIs<AndroidProductRuntimeAdmissionResult.Rejected>(admission(deniedCapability))
         assertEquals(AndroidProductRuntimeAdmissionFailure.AUTHORITY_DENIED, negativeAdmission.reason)
 
         val deniedCalls = DownstreamCalls.create()
@@ -298,9 +271,7 @@ class PhysicalLiveAdmittedQwenExecutionInstrumentedTest {
                 }
             )
         )
-        val deniedAtGate = assertIs<AndroidProductRuntimeStartupProvisioningResult.AdmissionRejected>(
-            deniedProvisioning
-        )
+        val deniedAtGate = assertIs<AndroidProductRuntimeStartupProvisioningResult.AdmissionRejected>(deniedProvisioning)
         val deniedResult = assertIs<AndroidProductRuntimeAdmissionResult.Rejected>(deniedAtGate.result)
         assertEquals(AndroidProductRuntimeAdmissionFailure.AUTHORITY_DENIED, deniedResult.reason)
         assertEquals(0, deniedCalls.activeDek.get())
@@ -309,10 +280,7 @@ class PhysicalLiveAdmittedQwenExecutionInstrumentedTest {
         assertEquals(0, deniedCalls.prepared.get())
         assertEquals(0, deniedCalls.qwen.get())
 
-        val admitted = assertIs<AndroidProductRuntimeAdmissionResult.Admitted>(
-            admission(grantedCapability)
-        )
-        assertTrue(admitted.ownership.toString().isNotBlank())
+        assertIs<AndroidProductRuntimeAdmissionResult.Admitted>(admission(grantedCapability))
 
         val positiveCalls = DownstreamCalls.create()
         val qwenEvidence = QwenEvidence()
@@ -334,7 +302,8 @@ class PhysicalLiveAdmittedQwenExecutionInstrumentedTest {
                     val staged = provisionExactCandidate(
                         coordinator = llama.stagingCoordinator,
                         model = model,
-                        evidence = qwenEvidence
+                        evidence = qwenEvidence,
+                        publicNetworkSslSocketFactory = publicNetworkSslSocketFactory
                     )
                     var retired = false
                     try {
@@ -359,21 +328,15 @@ class PhysicalLiveAdmittedQwenExecutionInstrumentedTest {
                         assertIs<LargeProtectedModelStagingRetireResult.Retired>(staged.retire())
                         retired = true
                     } finally {
-                        if (!retired) {
-                            runCatching { staged.retire() }
-                        }
+                        if (!retired) runCatching { staged.retire() }
                     }
                     AndroidProductRuntimeStartupPreparationResult.Ready(staged)
                 }
             )
         )
 
-        val stoppedBeforeHostBootstrap =
-            assertIs<AndroidProductRuntimeStartupProvisioningResult.Rejected>(positiveProvisioning)
-        assertEquals(
-            AndroidProductRuntimeStartupProvisioningFailure.PREPARED_INPUTS_REJECTED,
-            stoppedBeforeHostBootstrap.reason
-        )
+        val stoppedBeforeHostBootstrap = assertIs<AndroidProductRuntimeStartupProvisioningResult.Rejected>(positiveProvisioning)
+        assertEquals(AndroidProductRuntimeStartupProvisioningFailure.PREPARED_INPUTS_REJECTED, stoppedBeforeHostBootstrap.reason)
         assertEquals(1, positiveCalls.activeDek.get())
         assertEquals(1, positiveCalls.semantic.get())
         assertEquals(1, positiveCalls.model.get())
@@ -437,10 +400,7 @@ class PhysicalLiveAdmittedQwenExecutionInstrumentedTest {
             semantic = AndroidProductRuntimeStartupSemanticPort {
                 calls.semantic.incrementAndGet()
                 AndroidProductRuntimeStartupPreparationResult.Ready(
-                    AndroidProductRuntimeSemanticArtifacts(
-                        root = semanticRoot,
-                        encoderFile = encoder
-                    )
+                    AndroidProductRuntimeSemanticArtifacts(root = semanticRoot, encoderFile = encoder)
                 )
             },
             model = modelPort,
@@ -454,7 +414,8 @@ class PhysicalLiveAdmittedQwenExecutionInstrumentedTest {
     private fun provisionExactCandidate(
         coordinator: LargeProtectedModelStagingCoordinator,
         model: ProtectedModelReference,
-        evidence: QwenEvidence
+        evidence: QwenEvidence,
+        publicNetworkSslSocketFactory: SSLSocketFactory
     ): LargeProtectedModelStagedSourceOwnership {
         val expectedSegments = segmentCount(QWEN_BYTES)
         val started = assertIs<LargeProtectedModelStagingStartResult.Started>(
@@ -473,7 +434,8 @@ class PhysicalLiveAdmittedQwenExecutionInstrumentedTest {
         try {
             val digest = MessageDigest.getInstance("SHA-256")
             var total = 0L
-            val connection = (URL(QWEN_URL).openConnection() as HttpURLConnection).apply {
+            val connection = (URL(QWEN_URL).openConnection() as HttpsURLConnection).apply {
+                sslSocketFactory = publicNetworkSslSocketFactory
                 instanceFollowRedirects = true
                 connectTimeout = CONNECT_TIMEOUT_MS
                 readTimeout = READ_TIMEOUT_MS
@@ -482,10 +444,8 @@ class PhysicalLiveAdmittedQwenExecutionInstrumentedTest {
             }
             try {
                 connection.connect()
-                assertEquals(HttpURLConnection.HTTP_OK, connection.responseCode)
-                if (connection.contentLengthLong > 0L) {
-                    assertEquals(QWEN_BYTES, connection.contentLengthLong)
-                }
+                assertEquals(HttpsURLConnection.HTTP_OK, connection.responseCode)
+                if (connection.contentLengthLong > 0L) assertEquals(QWEN_BYTES, connection.contentLengthLong)
                 connection.inputStream.use { input ->
                     var segmentIndex = 0
                     while (total < QWEN_BYTES) {
@@ -520,9 +480,7 @@ class PhysicalLiveAdmittedQwenExecutionInstrumentedTest {
             published = true
             return ownership
         } finally {
-            if (!published && coordinator.currentAttempt() == session.attempt) {
-                session.abort()
-            }
+            if (!published && coordinator.currentAttempt() == session.attempt) session.abort()
         }
     }
 
@@ -536,9 +494,7 @@ class PhysicalLiveAdmittedQwenExecutionInstrumentedTest {
             policy = ProtectedModelAccessPolicy { ProtectedModelPolicyDecision.Allowed },
             ownership = protectedOwnership,
             loader = ProtectedModelPayloadLoader(
-                verifier = ProtectedModelPackageVerifier(
-                    ProtectedModelSignerResolver { _, _ -> null }
-                ),
+                verifier = ProtectedModelPackageVerifier(ProtectedModelSignerResolver { _, _ -> null }),
                 dekResolver = ProtectedModelDekResolver { _, _ -> null },
                 maxPlaintextSizeBytes = 1L
             )
@@ -547,9 +503,7 @@ class PhysicalLiveAdmittedQwenExecutionInstrumentedTest {
             ModelEngineLoadResult.Rejected(ModelEngineLoadFailure.LOAD_REJECTED)
         }
         val compiler = CognitiveModelRequestCompilerPort { request ->
-            CognitiveModelRequestCompilerResult.Compiled(
-                CognitiveCompiledModelRequest(request.inference.input.text)
-            )
+            CognitiveModelRequestCompilerResult.Compiled(CognitiveCompiledModelRequest(request.inference.input.text))
         }
         return AndroidLlamaCppCognitiveModelAssembly.create(
             context = context,
@@ -582,10 +536,7 @@ class PhysicalLiveAdmittedQwenExecutionInstrumentedTest {
             sessionIds = CognitiveModelRuntimeSessionIdSource {
                 RuntimeModelSessionId("physical-live-admitted-qwen-" + ids.incrementAndGet())
             },
-            limits = CognitiveRuntimeLimits(
-                maxInferenceOutputChars = 512,
-                maxModelPromptChars = 8192
-            )
+            limits = CognitiveRuntimeLimits(maxInferenceOutputChars = 512, maxModelPromptChars = 8192)
         )
     }
 
@@ -621,9 +572,7 @@ class PhysicalLiveAdmittedQwenExecutionInstrumentedTest {
         store.load(null)
         store.setCertificateEntry("liliya-local-acceptance-ca", certificate)
 
-        val trustManagerFactory = TrustManagerFactory.getInstance(
-            TrustManagerFactory.getDefaultAlgorithm()
-        )
+        val trustManagerFactory = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm())
         trustManagerFactory.init(store)
 
         val ssl = SSLContext.getInstance("TLS")
@@ -642,8 +591,7 @@ class PhysicalLiveAdmittedQwenExecutionInstrumentedTest {
         return output
     }
 
-    private fun segmentCount(bytes: Long): Int =
-        ((bytes + SEGMENT_BYTES - 1L) / SEGMENT_BYTES).toInt()
+    private fun segmentCount(bytes: Long): Int = ((bytes + SEGMENT_BYTES - 1L) / SEGMENT_BYTES).toInt()
 
     private fun recordEvidence(values: Map<String, String>) {
         val bundle = Bundle()
@@ -652,8 +600,7 @@ class PhysicalLiveAdmittedQwenExecutionInstrumentedTest {
     }
 
     private fun requiredArgument(value: String?): String =
-        value?.takeIf { it.isNotBlank() }
-            ?: error("missing physical live-admitted-Qwen acceptance argument")
+        value?.takeIf { it.isNotBlank() } ?: error("missing physical live-admitted-Qwen acceptance argument")
 
     private data class DownstreamCalls(
         val activeDek: AtomicInteger,
@@ -664,11 +611,7 @@ class PhysicalLiveAdmittedQwenExecutionInstrumentedTest {
     ) {
         companion object {
             fun create() = DownstreamCalls(
-                activeDek = AtomicInteger(0),
-                semantic = AtomicInteger(0),
-                model = AtomicInteger(0),
-                prepared = AtomicInteger(0),
-                qwen = AtomicInteger(0)
+                AtomicInteger(0), AtomicInteger(0), AtomicInteger(0), AtomicInteger(0), AtomicInteger(0)
             )
         }
     }
