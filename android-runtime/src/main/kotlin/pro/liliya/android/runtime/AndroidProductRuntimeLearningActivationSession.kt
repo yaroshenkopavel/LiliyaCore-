@@ -1,18 +1,21 @@
 package pro.liliya.android.runtime
 
 /**
- * One-shot product-owned learning activation session.
+ * Product-owned governed-learning activation session with explicit crash/restart checkpoints.
  *
- * Evidence rejection is non-terminal because no activation side effect has been attempted. Before
- * invoking activation, the session atomically claims CLEAN -> ACTIVATING in its journal. A process
- * restart that observes ACTIVATING or FAILED stays fail-closed and never retries an ambiguous
- * activation. Successful activation is exposed only after ACTIVATING -> ACTIVATED is durably
- * acknowledged by the supplied journal.
+ * Initial activation claims CLEAN -> ACTIVATING before owner construction and publishes success only
+ * after ACTIVATING -> ACTIVATED. Restart restoration separately claims ACTIVATED -> RESTORING before
+ * rebuilding process-local owners. A restart observing ACTIVATING, RESTORING or FAILED never retries
+ * implicitly and reports RecoveryRequired.
  *
  * This object does not mint Authority, grant capabilities or execute a learning mutation.
  */
 sealed interface AndroidProductRuntimeLearningActivationSessionResult<out T> {
     data class Activated<T>(
+        val value: T
+    ) : AndroidProductRuntimeLearningActivationSessionResult<T>
+
+    data class Restored<T>(
         val value: T
     ) : AndroidProductRuntimeLearningActivationSessionResult<T>
 
@@ -22,6 +25,8 @@ sealed interface AndroidProductRuntimeLearningActivationSessionResult<out T> {
 
     data object AlreadyActivated : AndroidProductRuntimeLearningActivationSessionResult<Nothing>
 
+    data object NotActivated : AndroidProductRuntimeLearningActivationSessionResult<Nothing>
+
     data object RecoveryRequired : AndroidProductRuntimeLearningActivationSessionResult<Nothing>
 
     data object ActivationFailed : AndroidProductRuntimeLearningActivationSessionResult<Nothing>
@@ -30,7 +35,8 @@ sealed interface AndroidProductRuntimeLearningActivationSessionResult<out T> {
 class AndroidProductRuntimeLearningActivationSession<T : Any>(
     private val activation: () -> T,
     private val journal: AndroidProductRuntimeLearningActivationJournal =
-        InMemoryAndroidProductRuntimeLearningActivationJournal()
+        InMemoryAndroidProductRuntimeLearningActivationJournal(),
+    private val restoration: () -> T = activation
 ) {
     private sealed interface State<out T> {
         data object Initial : State<Nothing>
@@ -70,6 +76,7 @@ class AndroidProductRuntimeLearningActivationSession<T : Any>(
                     AndroidProductRuntimeLearningActivationJournalState.ACTIVATED ->
                         return AndroidProductRuntimeLearningActivationSessionResult.AlreadyActivated
                     AndroidProductRuntimeLearningActivationJournalState.ACTIVATING,
+                    AndroidProductRuntimeLearningActivationJournalState.RESTORING,
                     AndroidProductRuntimeLearningActivationJournalState.FAILED ->
                         return AndroidProductRuntimeLearningActivationSessionResult.RecoveryRequired
                     AndroidProductRuntimeLearningActivationJournalState.CLEAN -> Unit
@@ -86,23 +93,13 @@ class AndroidProductRuntimeLearningActivationSession<T : Any>(
             AndroidProductRuntimeLearningActivationJournalTransitionResult.Failed ->
                 return failLocal()
             is AndroidProductRuntimeLearningActivationJournalTransitionResult.Conflict ->
-                return when (claimed.actual) {
-                    AndroidProductRuntimeLearningActivationJournalState.ACTIVATED ->
-                        AndroidProductRuntimeLearningActivationSessionResult.AlreadyActivated
-                    AndroidProductRuntimeLearningActivationJournalState.ACTIVATING,
-                    AndroidProductRuntimeLearningActivationJournalState.FAILED ->
-                        AndroidProductRuntimeLearningActivationSessionResult.RecoveryRequired
-                    AndroidProductRuntimeLearningActivationJournalState.CLEAN -> failLocal()
-                }
+                return resultForConflict(claimed.actual)
         }
 
         val value = try {
             activation()
         } catch (_: Exception) {
-            journal.compareAndSet(
-                expected = AndroidProductRuntimeLearningActivationJournalState.ACTIVATING,
-                next = AndroidProductRuntimeLearningActivationJournalState.FAILED
-            )
+            markFailed(AndroidProductRuntimeLearningActivationJournalState.ACTIVATING)
             return failLocal()
         }
 
@@ -121,6 +118,85 @@ class AndroidProductRuntimeLearningActivationSession<T : Any>(
         }
     }
 
+    @Synchronized
+    fun restore(): AndroidProductRuntimeLearningActivationSessionResult<T> {
+        when (state) {
+            is State.Activated ->
+                return AndroidProductRuntimeLearningActivationSessionResult.AlreadyActivated
+            State.Failed ->
+                return AndroidProductRuntimeLearningActivationSessionResult.ActivationFailed
+            State.Initial -> Unit
+        }
+
+        val loaded = when (val result = journal.load()) {
+            AndroidProductRuntimeLearningActivationJournalLoadResult.Failed -> return failLocal()
+            is AndroidProductRuntimeLearningActivationJournalLoadResult.Loaded -> result.state
+        }
+        when (loaded) {
+            AndroidProductRuntimeLearningActivationJournalState.CLEAN ->
+                return AndroidProductRuntimeLearningActivationSessionResult.NotActivated
+            AndroidProductRuntimeLearningActivationJournalState.ACTIVATING,
+            AndroidProductRuntimeLearningActivationJournalState.RESTORING,
+            AndroidProductRuntimeLearningActivationJournalState.FAILED ->
+                return AndroidProductRuntimeLearningActivationSessionResult.RecoveryRequired
+            AndroidProductRuntimeLearningActivationJournalState.ACTIVATED -> Unit
+        }
+
+        when (
+            val claimed = journal.compareAndSet(
+                expected = AndroidProductRuntimeLearningActivationJournalState.ACTIVATED,
+                next = AndroidProductRuntimeLearningActivationJournalState.RESTORING
+            )
+        ) {
+            AndroidProductRuntimeLearningActivationJournalTransitionResult.Updated -> Unit
+            AndroidProductRuntimeLearningActivationJournalTransitionResult.Failed ->
+                return failLocal()
+            is AndroidProductRuntimeLearningActivationJournalTransitionResult.Conflict ->
+                return resultForConflict(claimed.actual)
+        }
+
+        val value = try {
+            restoration()
+        } catch (_: Exception) {
+            markFailed(AndroidProductRuntimeLearningActivationJournalState.RESTORING)
+            return failLocal()
+        }
+
+        return when (
+            journal.compareAndSet(
+                expected = AndroidProductRuntimeLearningActivationJournalState.RESTORING,
+                next = AndroidProductRuntimeLearningActivationJournalState.ACTIVATED
+            )
+        ) {
+            AndroidProductRuntimeLearningActivationJournalTransitionResult.Updated -> {
+                state = State.Activated(value)
+                AndroidProductRuntimeLearningActivationSessionResult.Restored(value)
+            }
+            AndroidProductRuntimeLearningActivationJournalTransitionResult.Failed,
+            is AndroidProductRuntimeLearningActivationJournalTransitionResult.Conflict -> failLocal()
+        }
+    }
+
+    private fun resultForConflict(
+        actual: AndroidProductRuntimeLearningActivationJournalState
+    ): AndroidProductRuntimeLearningActivationSessionResult<T> =
+        when (actual) {
+            AndroidProductRuntimeLearningActivationJournalState.ACTIVATED ->
+                AndroidProductRuntimeLearningActivationSessionResult.AlreadyActivated
+            AndroidProductRuntimeLearningActivationJournalState.ACTIVATING,
+            AndroidProductRuntimeLearningActivationJournalState.RESTORING,
+            AndroidProductRuntimeLearningActivationJournalState.FAILED ->
+                AndroidProductRuntimeLearningActivationSessionResult.RecoveryRequired
+            AndroidProductRuntimeLearningActivationJournalState.CLEAN -> failLocal()
+        }
+
+    private fun markFailed(expected: AndroidProductRuntimeLearningActivationJournalState) {
+        journal.compareAndSet(
+            expected = expected,
+            next = AndroidProductRuntimeLearningActivationJournalState.FAILED
+        )
+    }
+
     private fun failLocal(): AndroidProductRuntimeLearningActivationSessionResult.ActivationFailed {
         state = State.Failed
         return AndroidProductRuntimeLearningActivationSessionResult.ActivationFailed
@@ -133,5 +209,5 @@ class AndroidProductRuntimeLearningActivationSession<T : Any>(
                 is State.Activated -> "ACTIVATED"
                 State.Failed -> "FAILED"
             } +
-            ",activation=<redacted>,journal=<redacted>)"
+            ",activation=<redacted>,restoration=<redacted>,journal=<redacted>)"
 }
