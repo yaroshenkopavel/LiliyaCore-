@@ -11,8 +11,6 @@ permissions:
 jobs:
   export:
     runs-on: ubuntu-latest
-    env:
-      LILIYA_GRADLE_HOME: ${{ runner.temp }}/liliya-gradle-home
     steps:
       - name: Checkout exact governed-learning head
         uses: actions/checkout@v4
@@ -59,6 +57,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          LILIYA_GRADLE_HOME="$RUNNER_TEMP/liliya-gradle-home"
           rm -rf "$LILIYA_GRADLE_HOME"
           mkdir -p "$LILIYA_GRADLE_HOME"
           GRADLE_USER_HOME="$LILIYA_GRADLE_HOME" gradle \
@@ -73,6 +72,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          LILIYA_GRADLE_HOME="$RUNNER_TEMP/liliya-gradle-home"
           GRADLE_USER_HOME="$LILIYA_GRADLE_HOME" gradle \
             :core:test \
             :android-runtime:testDebugUnitTest \
@@ -85,6 +85,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          LILIYA_GRADLE_HOME="$RUNNER_TEMP/liliya-gradle-home"
           out="$RUNNER_TEMP/liliya-runbook-export"
           mkdir -p "$out"
           java_home="$(dirname "$(dirname "$(readlink -f "$(command -v java)")")")"
