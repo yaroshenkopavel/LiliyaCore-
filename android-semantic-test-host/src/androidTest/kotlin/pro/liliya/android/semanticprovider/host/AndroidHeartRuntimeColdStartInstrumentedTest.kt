@@ -370,6 +370,7 @@ class AndroidHeartRuntimeColdStartInstrumentedTest {
         compilerSawKnowledge = false
         compilerSawSelf = false
         compilerSawPersonality = false
+        compilerSawProductRuntimeLearned = false
 
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val targetContext = instrumentation.targetContext
@@ -607,11 +608,12 @@ class AndroidHeartRuntimeColdStartInstrumentedTest {
         val afterRecoveryCompleted = assertIs<ProductConversationResult.Completed>(
             recoveredConversation.send(
                 ProductChatRequest(
-                    "Continue after explicit semantic recovery.",
+                    "What explicit product runtime learning evidence did you remember?",
                     ProductChatGenerationMode.ONE_SHOT
                 )
             )
         )
+        assertTrue(compilerSawProductRuntimeLearned)
         val afterRecoveryEvidence =
             assertNotNull(afterRecoveryCompleted.learningFollowUpReference())
         val reboundFollowUp = assertNotNull(product.learningFollowUp())
@@ -1028,6 +1030,9 @@ class AndroidHeartRuntimeColdStartInstrumentedTest {
     private var compilerSawLearned = false
 
     @Volatile
+    private var compilerSawProductRuntimeLearned = false
+
+    @Volatile
     private var compilerSawSelf = false
 
     @Volatile
@@ -1065,6 +1070,9 @@ class AndroidHeartRuntimeColdStartInstrumentedTest {
             }
             if (contents.contains(LEARNED_EVIDENCE)) {
                 compilerSawLearned = true
+            }
+            if (contents.contains(PRODUCT_RUNTIME_LEARNED_EVIDENCE)) {
+                compilerSawProductRuntimeLearned = true
             }
             check(compilerSawMemory)
             check(compilerSawKnowledge)
