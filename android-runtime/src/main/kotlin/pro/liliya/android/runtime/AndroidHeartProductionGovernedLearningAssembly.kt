@@ -106,10 +106,14 @@ class AndroidHeartProductionGovernedLearningComposition internal constructor(
  *
  * v0.1 is MEMORY-only. Policy and Capability Authority are supplied by an outer trusted owner.
  * This assembly never creates or grants Authority permissions.
+ *
+ * Product code must enter through [AndroidProductRuntimeGovernedLearningActivationAssembly].
+ * Keeping this creator internal prevents an accidental product-side bypass of the explicit
+ * learning-enablement evidence gate.
  */
 object AndroidHeartProductionGovernedLearningAssembly {
 
-    fun create(
+    internal fun create(
         heart: AndroidHeartRuntimeAssembly,
         foundation: FoundationComposition,
         scope: CognitiveRuntimeScopeId,
@@ -258,64 +262,42 @@ object AndroidHeartProductionGovernedLearningAssembly {
 
         val before = safeRecoveryClassification(classification)
         when (before) {
-            LearningApplicationMutationRecoveryClassificationResult.Failed ->
-                return AndroidHeartProductionGovernedLearningCreateFailure
-                    .MUTATION_RECOVERY_CLASSIFICATION_FAILED
-
-            is LearningApplicationMutationRecoveryClassificationResult.Classified ->
-                if (!before.summary.requiresRecovery) return null
-        }
-
-        val exactRecovery =
-            mutationApplication as? LearningApplicationMutationExactCompletionRecoveryPort
-                ?: return AndroidHeartProductionGovernedLearningCreateFailure.MUTATION_RECOVERY_REQUIRED
-
-        when (safeExactCompletionRecovery(exactRecovery)) {
-            is LearningApplicationMutationExactCompletionRecoveryResult.Blocked,
-            is LearningApplicationMutationExactCompletionRecoveryResult.StaleEvidence,
-            is LearningApplicationMutationExactCompletionRecoveryResult.CompletionFailed ->
+            null -> return AndroidHeartProductionGovernedLearningCreateFailure
+                .MUTATION_RECOVERY_CLASSIFICATION_FAILED
+            LearningApplicationMutationRecoveryClassificationResult.CLEAN -> return null
+            LearningApplicationMutationRecoveryClassificationResult.EXACT_COMPLETION_REQUIRED -> Unit
+            LearningApplicationMutationRecoveryClassificationResult.ROLLBACK_REQUIRED ->
                 return AndroidHeartProductionGovernedLearningCreateFailure.MUTATION_RECOVERY_REQUIRED
-
-            LearningApplicationMutationExactCompletionRecoveryResult.NoRecoveryRequired,
-            is LearningApplicationMutationExactCompletionRecoveryResult.Completed -> Unit
         }
 
-        return when (val after = safeRecoveryClassification(classification)) {
-            LearningApplicationMutationRecoveryClassificationResult.Failed ->
-                AndroidHeartProductionGovernedLearningCreateFailure
-                    .MUTATION_RECOVERY_CLASSIFICATION_FAILED
+        val exact = mutationApplication as? LearningApplicationMutationExactCompletionRecoveryPort
+            ?: return AndroidHeartProductionGovernedLearningCreateFailure.MUTATION_RECOVERY_REQUIRED
+        val recovered = try {
+            exact.recoverExactCompletion()
+        } catch (_: Exception) {
+            return AndroidHeartProductionGovernedLearningCreateFailure.MUTATION_RECOVERY_REQUIRED
+        }
+        if (recovered != LearningApplicationMutationExactCompletionRecoveryResult.RECOVERED) {
+            return AndroidHeartProductionGovernedLearningCreateFailure.MUTATION_RECOVERY_REQUIRED
+        }
 
-            is LearningApplicationMutationRecoveryClassificationResult.Classified ->
-                if (after.summary.requiresRecovery) {
-                    AndroidHeartProductionGovernedLearningCreateFailure.MUTATION_RECOVERY_REQUIRED
-                } else {
-                    null
-                }
+        return when (safeRecoveryClassification(classification)) {
+            LearningApplicationMutationRecoveryClassificationResult.CLEAN -> null
+            else -> AndroidHeartProductionGovernedLearningCreateFailure.MUTATION_RECOVERY_REQUIRED
         }
     }
 
     private fun safeRecoveryClassification(
-        port: LearningApplicationMutationRecoveryClassificationPort
-    ): LearningApplicationMutationRecoveryClassificationResult =
+        classification: LearningApplicationMutationRecoveryClassificationPort
+    ): LearningApplicationMutationRecoveryClassificationResult? =
         try {
-            port.classifyPreparedMutations()
+            classification.classifyRecovery()
         } catch (_: Exception) {
-            LearningApplicationMutationRecoveryClassificationResult.Failed
-        }
-
-    private fun safeExactCompletionRecovery(
-        port: LearningApplicationMutationExactCompletionRecoveryPort
-    ): LearningApplicationMutationExactCompletionRecoveryResult =
-        try {
-            port.recoverExactCompletion()
-        } catch (_: Exception) {
-            LearningApplicationMutationExactCompletionRecoveryResult.CompletionFailed(
-                completedCount = 0
-            )
+            null
         }
 
     private fun rejected(
         reason: AndroidHeartProductionGovernedLearningCreateFailure
-    ): AndroidHeartProductionGovernedLearningCreateResult.Rejected =
+    ): AndroidHeartProductionGovernedLearningCreateResult =
         AndroidHeartProductionGovernedLearningCreateResult.Rejected(reason)
 }
