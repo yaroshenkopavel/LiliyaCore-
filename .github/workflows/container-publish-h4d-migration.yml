@@ -73,7 +73,6 @@ jobs:
                        check(compilerSawKnowledge)
                        CognitiveModelRequestCompilerResult.Compiled(
           PATCH
-          sed -i 's/^          //' "$RUNNER_TEMP/semantic-rebuild-contract.patch"
           git apply --index "$RUNNER_TEMP/semantic-rebuild-contract.patch"
           git diff --cached --check
           test "$(git write-tree)" = "$EXPECTED_TREE"
