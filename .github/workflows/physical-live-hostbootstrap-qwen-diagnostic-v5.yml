@@ -32,141 +32,17 @@ jobs:
           git merge-base --is-ancestor "$FROZEN_SHA" HEAD
           changed="$(git diff --name-only "$FROZEN_SHA"..HEAD)"
           printf '%s\n' "$changed"
-          unexpected="$(
-            printf '%s\n' "$changed" |
-            grep -v -E \
-              '^(android-app/src/androidTest/kotlin/pro/liliya/app/PhysicalLiveAuthorityAdmissionInstrumentedTest\.kt|android-app/src/androidTest/kotlin/pro/liliya/app/PhysicalLiveStartupAdmissionGateInstrumentedTest\.kt|android-app/src/androidTest/kotlin/pro/liliya/app/PhysicalLiveAdmittedQwenExecutionInstrumentedTest\.kt|android-app/src/androidTest/kotlin/pro/liliya/app/TypedDiagnosticCognitiveMaterializationPort\.kt|android-app/src/androidTest/kotlin/pro/liliya/app/AcceptanceCognitiveProtectorCleanup\.kt|\.github/workflows/physical-live-authority-overlay-build\.yml|\.github/workflows/physical-live-startup-gate-overlay-build\.yml|\.github/workflows/physical-live-admitted-qwen-overlay-build\.yml|\.github/workflows/physical-live-admitted-qwen-local-source-overlay-build\.yml|\.github/workflows/physical-live-admitted-qwen-local-https-overlay-build\.yml|\.github/workflows/physical-live-hostbootstrap-qwen-overlay-build\.yml|\.github/workflows/physical-live-hostbootstrap-qwen-overlay-build-v2\.yml|\.github/workflows/physical-live-hostbootstrap-qwen-overlay-build-v3\.yml|\.github/workflows/physical-live-hostbootstrap-qwen-diagnostic-v4\.yml|\.github/workflows/physical-live-hostbootstrap-qwen-diagnostic-v5\.yml)$' \
-              || true
-          )"
+          unexpected="$(printf '%s\n' "$changed" | grep -v -E '^(android-app/src/androidTest/kotlin/pro/liliya/app/PhysicalLiveAuthorityAdmissionInstrumentedTest\.kt|android-app/src/androidTest/kotlin/pro/liliya/app/PhysicalLiveStartupAdmissionGateInstrumentedTest\.kt|android-app/src/androidTest/kotlin/pro/liliya/app/PhysicalLiveAdmittedQwenExecutionInstrumentedTest\.kt|android-app/src/androidTest/kotlin/pro/liliya/app/TypedDiagnosticCognitiveMaterializationPort\.kt|android-app/src/androidTest/kotlin/pro/liliya/app/AcceptanceCognitiveProtectorCleanup\.kt|\.github/scripts/prepare-hostbootstrap-qwen-v5\.py|\.github/scripts/stage-semantic-provenance-v5\.py|\.github/workflows/physical-live-authority-overlay-build\.yml|\.github/workflows/physical-live-startup-gate-overlay-build\.yml|\.github/workflows/physical-live-admitted-qwen-overlay-build\.yml|\.github/workflows/physical-live-admitted-qwen-local-source-overlay-build\.yml|\.github/workflows/physical-live-admitted-qwen-local-https-overlay-build\.yml|\.github/workflows/physical-live-hostbootstrap-qwen-overlay-build\.yml|\.github/workflows/physical-live-hostbootstrap-qwen-overlay-build-v2\.yml|\.github/workflows/physical-live-hostbootstrap-qwen-overlay-build-v3\.yml|\.github/workflows/physical-live-hostbootstrap-qwen-diagnostic-v4\.yml|\.github/workflows/physical-live-hostbootstrap-qwen-diagnostic-v5\.yml)$' || true)"
           test -z "$unexpected"
           echo "FROZEN_RC_PRODUCTION_SOURCE_UNCHANGED=YES"
-          echo "OVERLAY_SCOPE=TEST_ONLY_TYPED_MATERIALIZATION_DIAGNOSTIC_V5"
 
-      - name: Reuse verified HostBootstrap-Qwen patch
+      - name: Prepare exact v5 diagnostic patch
         shell: bash
         run: |
           set -euo pipefail
-          src='.github/workflows/physical-live-hostbootstrap-qwen-overlay-build.yml'
-          script="$RUNNER_TEMP/reuse-hostbootstrap-patch.sh"
-          python3 - "$src" "$script" <<'PY'
-          from pathlib import Path
-          import sys
-
-          src = Path(sys.argv[1]).read_text().splitlines()
-          start = next(i for i, line in enumerate(src) if line.strip() == '- name: Patch canonical cold-start for isolated live Qwen physical acceptance')
-          end = next(i for i in range(start + 1, len(src)) if src[i].strip() == '- name: Set up Java 17')
-          block = src[start + 1:end]
-          run_index = next(i for i, line in enumerate(block) if line.strip() == 'run: |')
-          body = block[run_index + 1:]
-          out = []
-          for line in body:
-              out.append(line[10:] if line.startswith('          ') else line)
-          Path(sys.argv[2]).write_text('\n'.join(out) + '\n')
-          PY
-          bash "$script"
-          echo "REUSED_VERIFIED_PATCH=PASS"
-
-      - name: Apply v5 exact protector isolation and typed diagnostic binding
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-
-          p = Path('android-app/src/androidTest/kotlin/pro/liliya/app/DevelopmentFirstWorkingLiliyaColdStartInstrumentedTest.kt')
-          s = p.read_text()
-
-          def once(old, new):
-              global s
-              n = s.count(old)
-              if n != 1:
-                  raise SystemExit(f'expected one replacement, got {n}: {old!r}')
-              s = s.replace(old, new, 1)
-
-          once(
-              '            expiresAt = entitlement.expiresAt,\n',
-              '            expiresAt = requireNotNull(entitlement.expiresAt) { "live entitlement expiry required by startup authority grant" },\n'
-          )
-          once(
-              '        const val STORIES_15M_ASSET = QWEN_FILE_NAME\n',
-              '        const val STORIES_15M_ASSET = "Qwen3-1.7B-Q4_K_M.gguf"\n'
-          )
-          once(
-              '        const val STORIES_15M_BYTES = QWEN_BYTES\n',
-              '        const val STORIES_15M_BYTES = 1_282_439_264L\n'
-          )
-          once(
-              '                    cognitiveMaterialization = structural.cognitiveMaterialization,\n',
-              '                    cognitiveMaterialization = TypedDiagnosticCognitiveMaterializationPort(structural.cognitiveMaterialization, limits, instrumentation),\n'
-          )
-          once(
-              '                    protectorId = "first-working-liliya-cognitive-protector",\n',
-              '                    protectorId = ACCEPTANCE_COGNITIVE_PROTECTOR_ID,\n'
-          )
-          once(
-              '        val testContext = instrumentation.context\n        val fixtureRoot = File(targetContext.filesDir, "cold-start")\n',
-              '''        val testContext = instrumentation.context
-        val previousProtectorCleanup = AcceptanceCognitiveProtectorCleanup.retireExactIfPresent(
-            application,
-            "first-working-liliya-cognitive-protector",
-            1L
-        )
-        require(previousProtectorCleanup == "ABSENT" || previousProtectorCleanup == "RETIRED") {
-            "previous acceptance cognitive protector cleanup rejected: $previousProtectorCleanup"
-        }
-        val v5ProtectorCleanup = AcceptanceCognitiveProtectorCleanup.retireExactIfPresent(
-            application,
-            ACCEPTANCE_COGNITIVE_PROTECTOR_ID,
-            1L
-        )
-        require(v5ProtectorCleanup == "ABSENT" || v5ProtectorCleanup == "RETIRED") {
-            "v5 acceptance cognitive protector pre-clean rejected: $v5ProtectorCleanup"
-        }
-        val protectorEvidence = android.os.Bundle().apply {
-            putString("hostQwen.v5PreviousProtectorCleanup", previousProtectorCleanup)
-            putString("hostQwen.v5ProtectorPreCleanup", v5ProtectorCleanup)
-        }
-        instrumentation.sendStatus(2, protectorEvidence)
-        val fixtureRoot = File(targetContext.filesDir, "cold-start")
-'''
-          )
-          once(
-              '            application.runtimeOwner.close()\n            fixtureRoot.deleteRecursively()\n',
-              '''            application.runtimeOwner.close()
-            val v5ProtectorFinalCleanup = runCatching {
-                AcceptanceCognitiveProtectorCleanup.retireExactIfPresent(
-                    application,
-                    ACCEPTANCE_COGNITIVE_PROTECTOR_ID,
-                    1L
-                )
-            }.getOrElse { "CLEANUP_EXCEPTION_" + it.javaClass.simpleName }
-            val cleanupEvidence = android.os.Bundle().apply {
-                putString("hostQwen.v5ProtectorFinalCleanup", v5ProtectorFinalCleanup)
-            }
-            instrumentation.sendStatus(2, cleanupEvidence)
-            println("HOST_QWEN_V5_COGNITIVE_PROTECTOR_FINAL_CLEANUP=$v5ProtectorFinalCleanup")
-            fixtureRoot.deleteRecursively()
-'''
-          )
-          once(
-              '        const val PRODUCT_ID = "liliya-core"\n',
-              '        const val ACCEPTANCE_COGNITIVE_PROTECTOR_ID = "first-working-liliya-cognitive-protector-v5"\n        const val PRODUCT_ID = "liliya-core"\n'
-          )
-
-          p.write_text(s)
-          PY
-
-          t='android-app/src/androidTest/kotlin/pro/liliya/app/DevelopmentFirstWorkingLiliyaColdStartInstrumentedTest.kt'
-          grep -Fq 'ACCEPTANCE_COGNITIVE_PROTECTOR_ID = "first-working-liliya-cognitive-protector-v5"' "$t"
-          grep -Fq 'hostQwen.v5PreviousProtectorCleanup' "$t"
-          grep -Fq 'HOST_QWEN_V5_COGNITIVE_PROTECTOR_FINAL_CLEANUP=' "$t"
-          grep -Fq 'TypedDiagnosticCognitiveMaterializationPort(structural.cognitiveMaterialization, limits, instrumentation)' "$t"
-          grep -Fq 'application.startApplicationRuntime()' "$t"
-          grep -Fq 'application.runtimeOwner.send("Hello Liliya /no_think")' "$t"
-          grep -Fq 'HOST_QWEN_TYPED_MATERIALIZATION_DIAGNOSTIC=' android-app/src/androidTest/kotlin/pro/liliya/app/TypedDiagnosticCognitiveMaterializationPort.kt
-          sha256sum "$t" | tee /tmp/PATCHED_TEST_SHA256
+          python3 .github/scripts/prepare-hostbootstrap-qwen-v5.py
+          sha256sum android-app/src/androidTest/kotlin/pro/liliya/app/DevelopmentFirstWorkingLiliyaColdStartInstrumentedTest.kt | tee /tmp/PATCHED_TEST_SHA256
           sha256sum android-app/src/androidTest/kotlin/pro/liliya/app/AcceptanceCognitiveProtectorCleanup.kt | tee /tmp/CLEANUP_HELPER_SHA256
-          echo "HOSTBOOTSTRAP_QWEN_V5_EXACT_PROTECTOR_ISOLATION=PASS"
 
       - name: Download exact semantic provenance bundle
         uses: actions/download-artifact@v4
@@ -181,38 +57,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          import hashlib
-          import json
-          import os
-          from pathlib import Path
-          import shutil
-
-          root = Path(os.environ['RUNNER_TEMP']) / 'semantic-onnx-download'
-          manifests = list(root.rglob('semantic-onnx-provenance.json'))
-          encoders = list(root.rglob('multilingual-e5-small-liliya-v0.1.onnx'))
-          tokenizers = list(root.rglob('multilingual-e5-small-tokenizer-v0.1.onnx'))
-          if len(manifests) != 1 or len(encoders) != 1 or len(tokenizers) != 1:
-              raise SystemExit('unexpected semantic provenance layout')
-          manifest = json.loads(manifests[0].read_text(encoding='utf-8'))
-          def digest(path):
-              h = hashlib.sha256()
-              with path.open('rb') as stream:
-                  for chunk in iter(lambda: stream.read(1024 * 1024), b''):
-                      h.update(chunk)
-              return h.hexdigest()
-          if encoders[0].stat().st_size != manifest['encoder']['size'] or digest(encoders[0]) != manifest['encoder']['sha256']:
-              raise SystemExit('encoder provenance mismatch')
-          if tokenizers[0].stat().st_size != manifest['tokenizer']['size'] or digest(tokenizers[0]) != manifest['tokenizer']['sha256']:
-              raise SystemExit('tokenizer provenance mismatch')
-          assets = Path('android-app/src/androidTest/assets')
-          assets.mkdir(parents=True, exist_ok=True)
-          shutil.copy2(encoders[0], assets / encoders[0].name)
-          shutil.copy2(tokenizers[0], assets / tokenizers[0].name)
-          PY
-          test -s android-app/src/androidTest/assets/multilingual-e5-small-liliya-v0.1.onnx
-          test -s android-app/src/androidTest/assets/multilingual-e5-small-tokenizer-v0.1.onnx
-          echo "SEMANTIC_TEST_ASSETS_STAGED=PASS"
+          python3 .github/scripts/stage-semantic-provenance-v5.py
 
       - name: Set up Java 17
         uses: actions/setup-java@v5
@@ -265,8 +110,8 @@ jobs:
           cp /tmp/PATCHED_TEST_SHA256 "$out/PATCHED_TEST_SHA256"
           cp /tmp/CLEANUP_HELPER_SHA256 "$out/CLEANUP_HELPER_SHA256"
           printf '%s\n' "$FROZEN_SHA" > "$out/FROZEN_SHA"
-          printf '%s\n' "$(git rev-parse HEAD)" > "$out/OVERLAY_SHA"
-          printf '%s\n' "$(git rev-parse HEAD^{tree})" > "$out/OVERLAY_TREE"
+          git rev-parse HEAD > "$out/OVERLAY_SHA"
+          git rev-parse 'HEAD^{tree}' > "$out/OVERLAY_TREE"
           printf '%s\n' "$SEMANTIC_PROVENANCE_RUN_ID" > "$out/SEMANTIC_PROVENANCE_RUN_ID"
           printf '%s\n' 'V5 typed materialization diagnostic with exact acceptance cognitive-protector isolation and cleanup; no raw model output; frozen production source unchanged' > "$out/DIAGNOSTIC_SCOPE"
 
