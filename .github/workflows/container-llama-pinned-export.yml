@@ -1,0 +1,33 @@
+name: Container Pinned Llama Export
+
+on:
+  push:
+    branches:
+      - ops/container-restore-151187f
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Export exact pinned llama.cpp git mirror
+        shell: bash
+        run: |
+          set -euo pipefail
+          PIN=0f3a71be15af836d277c9f918adfafb45732677e
+          git clone --mirror https://github.com/ggml-org/llama.cpp.git "$RUNNER_TEMP/llama.cpp.git"
+          git --git-dir="$RUNNER_TEMP/llama.cpp.git" cat-file -e "$PIN^{commit}"
+          git --git-dir="$RUNNER_TEMP/llama.cpp.git" rev-parse "$PIN"
+          tar -C "$RUNNER_TEMP" -czf "$RUNNER_TEMP/llama-cpp-pinned-git.tar.gz" llama.cpp.git
+          sha256sum "$RUNNER_TEMP/llama-cpp-pinned-git.tar.gz" > "$RUNNER_TEMP/llama-cpp-pinned-git.tar.gz.sha256"
+      - name: Upload mirror
+        uses: actions/upload-artifact@v4
+        with:
+          name: liliya-llama-cpp-pinned-git-0f3a71be
+          path: |
+            ${{ runner.temp }}/llama-cpp-pinned-git.tar.gz
+            ${{ runner.temp }}/llama-cpp-pinned-git.tar.gz.sha256
+          compression-level: 0
+          retention-days: 3
