@@ -20,7 +20,8 @@ object MemoryRetentionAuthorityContract {
 }
 
 data class MemoryRetentionPruneRequest(
-    val snapshot: MemoryRecordSnapshot,
+    val recordId: MemoryRecordId,
+    val generation: MemoryGeneration,
     val retentionClass: MemoryRetentionClass,
     val disposition: MemoryRetentionDisposition
 ) {
@@ -31,7 +32,7 @@ data class MemoryRetentionPruneRequest(
     }
 
     override fun toString(): String =
-        "MemoryRetentionPruneRequest(recordId=${snapshot.record.id}, generation=${snapshot.generation}, retentionClass=$retentionClass, disposition=$disposition)"
+        "MemoryRetentionPruneRequest(recordId=$recordId, generation=$generation, retentionClass=$retentionClass, disposition=$disposition)"
 }
 
 data class MemoryRetentionAuthorizationReceipt(
@@ -60,7 +61,7 @@ class MemoryRetentionAuthorizer(
                 principal = principal,
                 capability = capability,
                 scope = scope,
-                reason = "bounded retention prune ${request.snapshot.record.id.value}"
+                reason = "bounded retention prune ${request.recordId.value} generation ${request.generation.value}"
             )
         )
         return when (decision) {
