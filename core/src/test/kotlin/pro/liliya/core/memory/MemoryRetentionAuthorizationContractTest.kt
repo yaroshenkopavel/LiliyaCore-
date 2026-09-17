@@ -1,6 +1,5 @@
 package pro.liliya.core.memory
 
-import java.time.Instant
 import pro.liliya.core.authority.AuthorityPrincipal
 import pro.liliya.core.authority.CapabilityAuthorityComposition
 import pro.liliya.core.authority.CapabilityOwnershipResult
@@ -17,6 +16,7 @@ import pro.liliya.core.logging.StructuredLogger
 import pro.liliya.core.observability.LoggerProvider
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 
 class MemoryRetentionAuthorizationContractTest {
@@ -43,7 +43,7 @@ class MemoryRetentionAuthorizationContractTest {
     }
 
     @Test
-    fun exact_retention_scope_authorizes_without_minting_or_reclassifying() {
+    fun exact_retention_scope_authorizes_without_memory_content_or_minting() {
         val authority = configuredAuthority(MemoryRetentionClass.EPISODIC)
         val authorizer = MemoryRetentionAuthorizer(authority)
         val request = request(MemoryRetentionClass.EPISODIC)
@@ -59,6 +59,7 @@ class MemoryRetentionAuthorizationContractTest {
             MemoryRetentionAuthorityContract.scopeFor(MemoryRetentionClass.EPISODIC),
             authorized.receipt.scope
         )
+        assertFalse(request.toString().contains("private memory content"))
     }
 
     private fun configuredAuthority(grantedClass: MemoryRetentionClass): CapabilityAuthorityComposition {
@@ -93,15 +94,8 @@ class MemoryRetentionAuthorizationContractTest {
     }
 
     private fun request(retentionClass: MemoryRetentionClass) = MemoryRetentionPruneRequest(
-        snapshot = MemoryRecordSnapshot(
-            record = MemoryRecord(
-                id = MemoryRecordId("prune-contract"),
-                sourceId = MemorySourceId("retention-contract"),
-                content = "private memory content",
-                createdAt = Instant.parse("2026-09-01T10:00:00Z")
-            ),
-            generation = MemoryGeneration(7)
-        ),
+        recordId = MemoryRecordId("prune-contract"),
+        generation = MemoryGeneration(7),
         retentionClass = retentionClass,
         disposition = MemoryRetentionDisposition.RECORD_BUDGET_REJECTED
     )
