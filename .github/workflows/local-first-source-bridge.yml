@@ -37,7 +37,8 @@ jobs:
             --exclude='*/build' \
             --exclude='*/.cxx' \
             -czf /tmp/LiliyaCore-local-e803ae3.tar.gz .
-          tar -tzf /tmp/LiliyaCore-local-e803ae3.tar.gz | grep -q '^./.git/'
+          tar -tzf /tmp/LiliyaCore-local-e803ae3.tar.gz > /tmp/LiliyaCore-local-archive-list.txt
+          grep -q '^./.git/' /tmp/LiliyaCore-local-archive-list.txt
           gzip -t /tmp/LiliyaCore-local-e803ae3.tar.gz
           ls -lh /tmp/LiliyaCore-local-e803ae3.tar.gz
 
