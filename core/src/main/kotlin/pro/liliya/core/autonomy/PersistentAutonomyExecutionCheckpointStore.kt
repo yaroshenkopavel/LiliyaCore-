@@ -40,8 +40,11 @@ import pro.liliya.core.reasoning.ReasoningGeneration
  */
 enum class AutonomyExecutionCheckpointState {
     PENDING,
+    EXECUTING,
     COMPLETED,
-    CANCELLED
+    CANCELLED,
+    REJECTED,
+    RECOVERY_REQUIRED
 }
 
 data class AutonomyExecutionCheckpoint(
@@ -107,6 +110,18 @@ class PersistentAutonomyExecutionCheckpointStore private constructor(
             ?.let { AutonomyExecutionCheckpointSnapshot(it, snapshot.generation) }
     }
 
+    fun markExecuting(
+        intentId: OrchestrationIntentId,
+        generation: PersistentGeneration,
+        now: Instant
+    ): AutonomyExecutionCheckpointWriteResult = transition(
+        intentId,
+        generation,
+        expected = AutonomyExecutionCheckpointState.PENDING,
+        target = AutonomyExecutionCheckpointState.EXECUTING,
+        now = now
+    )
+
     fun markCompleted(
         intentId: OrchestrationIntentId,
         generation: PersistentGeneration,
@@ -114,8 +129,33 @@ class PersistentAutonomyExecutionCheckpointStore private constructor(
     ): AutonomyExecutionCheckpointWriteResult = transition(
         intentId,
         generation,
-        AutonomyExecutionCheckpointState.COMPLETED,
-        now
+        expected = AutonomyExecutionCheckpointState.EXECUTING,
+        target = AutonomyExecutionCheckpointState.COMPLETED,
+        now = now
+    )
+
+    fun markRejected(
+        intentId: OrchestrationIntentId,
+        generation: PersistentGeneration,
+        now: Instant
+    ): AutonomyExecutionCheckpointWriteResult = transition(
+        intentId,
+        generation,
+        expected = AutonomyExecutionCheckpointState.EXECUTING,
+        target = AutonomyExecutionCheckpointState.REJECTED,
+        now = now
+    )
+
+    fun markRecoveryRequired(
+        intentId: OrchestrationIntentId,
+        generation: PersistentGeneration,
+        now: Instant
+    ): AutonomyExecutionCheckpointWriteResult = transition(
+        intentId,
+        generation,
+        expected = AutonomyExecutionCheckpointState.EXECUTING,
+        target = AutonomyExecutionCheckpointState.RECOVERY_REQUIRED,
+        now = now
     )
 
     fun cancel(
@@ -125,13 +165,25 @@ class PersistentAutonomyExecutionCheckpointStore private constructor(
     ): AutonomyExecutionCheckpointWriteResult = transition(
         intentId,
         generation,
-        AutonomyExecutionCheckpointState.CANCELLED,
-        now
+        expected = AutonomyExecutionCheckpointState.PENDING,
+        target = AutonomyExecutionCheckpointState.CANCELLED,
+        now = now
     )
+
+    fun recoveryRequired(): List<AutonomyExecutionCheckpointSnapshot> = store.snapshotEntries().mapNotNull { snapshot ->
+        val decoded = Codec.decode(snapshot.record) as? DecodeResult.Decoded ?: return@mapNotNull null
+        decoded.checkpoint
+            .takeIf {
+                it.state == AutonomyExecutionCheckpointState.EXECUTING ||
+                    it.state == AutonomyExecutionCheckpointState.RECOVERY_REQUIRED
+            }
+            ?.let { AutonomyExecutionCheckpointSnapshot(it, snapshot.generation) }
+    }
 
     private fun transition(
         intentId: OrchestrationIntentId,
         generation: PersistentGeneration,
+        expected: AutonomyExecutionCheckpointState,
         target: AutonomyExecutionCheckpointState,
         now: Instant
     ): AutonomyExecutionCheckpointWriteResult {
@@ -145,8 +197,10 @@ class PersistentAutonomyExecutionCheckpointStore private constructor(
             DecodeResult.Corrupt -> return AutonomyExecutionCheckpointWriteResult.Failed("autonomy execution checkpoint is corrupt")
             is DecodeResult.Incompatible -> return AutonomyExecutionCheckpointWriteResult.Failed(result.reason)
         }
-        if (decoded.state != AutonomyExecutionCheckpointState.PENDING) {
-            return AutonomyExecutionCheckpointWriteResult.Rejected("autonomy execution checkpoint is not pending")
+        if (decoded.state != expected) {
+            return AutonomyExecutionCheckpointWriteResult.Rejected(
+                "autonomy execution checkpoint state ${decoded.state} does not allow transition to $target"
+            )
         }
         val replacement = decoded.copy(state = target, updatedAt = now)
         return when (

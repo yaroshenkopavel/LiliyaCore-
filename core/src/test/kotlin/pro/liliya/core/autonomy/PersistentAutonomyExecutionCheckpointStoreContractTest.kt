@@ -98,10 +98,17 @@ class PersistentAutonomyExecutionCheckpointStoreContractTest {
             store.prepare(request(), createdAt)
         ).snapshot
 
-        val completed = assertIs<AutonomyExecutionCheckpointWriteResult.Written>(
-            store.markCompleted(
+        val executing = assertIs<AutonomyExecutionCheckpointWriteResult.Written>(
+            store.markExecuting(
                 prepared.checkpoint.request.orchestrationIntentId,
                 prepared.generation,
+                createdAt.plusSeconds(30)
+            )
+        ).snapshot
+        val completed = assertIs<AutonomyExecutionCheckpointWriteResult.Written>(
+            store.markCompleted(
+                executing.checkpoint.request.orchestrationIntentId,
+                executing.generation,
                 completedAt
             )
         ).snapshot
