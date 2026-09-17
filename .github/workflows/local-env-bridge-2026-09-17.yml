@@ -43,7 +43,8 @@ jobs:
           REAL_JAVA_HOME="$(readlink -f "$JAVA_HOME")"
           test -x "$REAL_JAVA_HOME/bin/java"
           tar -C "$(dirname "$REAL_JAVA_HOME")" -czf "$RUNNER_TEMP/export/jdk17-real.tar.gz" "$(basename "$REAL_JAVA_HOME")"
-          tar -tzf "$RUNNER_TEMP/export/jdk17-real.tar.gz" | grep -q '/bin/java$'
+          tar -tzf "$RUNNER_TEMP/export/jdk17-real.tar.gz" > "$RUNNER_TEMP/export/jdk17-real.list"
+          grep -q '/bin/java$' "$RUNNER_TEMP/export/jdk17-real.list"
           sha256sum "$RUNNER_TEMP/export/jdk17-real.tar.gz" > "$RUNNER_TEMP/export/jdk17-real.sha256"
           "$REAL_JAVA_HOME/bin/java" -version
 
