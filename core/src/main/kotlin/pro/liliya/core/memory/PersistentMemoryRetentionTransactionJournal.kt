@@ -248,6 +248,7 @@ class PersistentMemoryRetentionTransactionJournal private constructor(
                     to == MemoryRetentionTransactionState.RECOVERY_REQUIRED
             MemoryRetentionTransactionState.RECOVERY_REQUIRED ->
                 to == MemoryRetentionTransactionState.AUTHORIZED ||
+                    to == MemoryRetentionTransactionState.COMMITTED ||
                     to == MemoryRetentionTransactionState.REJECTED
             MemoryRetentionTransactionState.COMMITTED,
             MemoryRetentionTransactionState.REJECTED -> false
