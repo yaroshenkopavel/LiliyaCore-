@@ -1,0 +1,52 @@
+name: Local First Source Bridge
+
+on:
+  push:
+    branches:
+      - bridge/local-first-e803ae3
+
+permissions:
+  contents: read
+
+jobs:
+  export-source:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@v4
+        with:
+          ref: e803ae3430535c13931ea9a1d1b81ae0e7f85f69
+          fetch-depth: 0
+
+      - name: Verify exact source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "e803ae3430535c13931ea9a1d1b81ae0e7f85f69"
+          {
+            echo "HEAD=$(git rev-parse HEAD)"
+            echo "TREE=$(git rev-parse HEAD^{tree})"
+          } | tee /tmp/LiliyaCore-local-source.txt
+
+      - name: Pack repository mirror
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar \
+            --exclude='./.gradle' \
+            --exclude='*/build' \
+            --exclude='*/.cxx' \
+            -czf /tmp/LiliyaCore-local-e803ae3.tar.gz .
+          tar -tzf /tmp/LiliyaCore-local-e803ae3.tar.gz | grep -q '^./.git/'
+          gzip -t /tmp/LiliyaCore-local-e803ae3.tar.gz
+          ls -lh /tmp/LiliyaCore-local-e803ae3.tar.gz
+
+      - name: Upload source mirror
+        uses: actions/upload-artifact@v4
+        with:
+          name: LiliyaCore-local-e803ae3
+          path: |
+            /tmp/LiliyaCore-local-e803ae3.tar.gz
+            /tmp/LiliyaCore-local-source.txt
+          retention-days: 1
+          if-no-files-found: error
