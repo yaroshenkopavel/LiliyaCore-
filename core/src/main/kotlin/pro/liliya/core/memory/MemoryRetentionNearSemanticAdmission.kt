@@ -77,7 +77,8 @@ sealed interface MemoryRetentionNearSemanticAdmissionResult {
  *
  * Only baseline budget-rejected entries may be candidates and only baseline RETAINED entries
  * may be anchors. Canonical DUPLICATE_SUPPRESSED decisions are never reinterpreted. Admitted
- * candidates never become anchors, preventing transitive chaining. This class has no Authority,
+ * candidates never become anchors, preventing transitive chaining. Evaluation indexes evidence
+ * in one bounded pass and does not perform an all-pairs ledger scan. This class has no Authority,
  * Memory, model, persistence, or mutation dependency.
  */
 class MemoryRetentionNearSemanticAdmission(
@@ -103,7 +104,8 @@ class MemoryRetentionNearSemanticAdmission(
             .filter { it.disposition == MemoryRetentionDisposition.RETAINED }
             .mapTo(HashSet()) { it.recordId }
 
-        val indexed = HashMap<PairKey, MemoryRetentionNearSemanticEvidence>(evidence.size)
+        val seenPairs = HashSet<PairKey>(evidence.size)
+        val matchesByCandidate = HashMap<MemoryRecordId, MutableList<AnchorMatch>>()
         for (item in evidence) {
             if (!item.similarity.isFinite()) {
                 return rejected(MemoryRetentionNearSemanticFailure.NON_FINITE_SIMILARITY)
@@ -126,41 +128,42 @@ class MemoryRetentionNearSemanticAdmission(
                 return rejected(MemoryRetentionNearSemanticFailure.CROSS_CLASS_PAIR)
             }
 
-            val leftCandidate = item.left.recordId in candidateIds
-            val rightCandidate = item.right.recordId in candidateIds
-            val leftAnchor = item.left.recordId in anchorIds
-            val rightAnchor = item.right.recordId in anchorIds
-            if (!((leftCandidate && rightAnchor) || (rightCandidate && leftAnchor))) {
-                return rejected(MemoryRetentionNearSemanticFailure.INELIGIBLE_PAIR)
-            }
-
             val key = PairKey.of(item.left.recordId, item.right.recordId)
-            if (indexed.put(key, item) != null) {
+            if (!seenPairs.add(key)) {
                 return rejected(MemoryRetentionNearSemanticFailure.DUPLICATE_PAIR)
             }
+
+            val candidateEntry: MemoryRetentionLedgerEntry
+            val anchorEntry: MemoryRetentionLedgerEntry
+            when {
+                item.left.recordId in candidateIds && item.right.recordId in anchorIds -> {
+                    candidateEntry = left
+                    anchorEntry = right
+                }
+                item.right.recordId in candidateIds && item.left.recordId in anchorIds -> {
+                    candidateEntry = right
+                    anchorEntry = left
+                }
+                else -> return rejected(MemoryRetentionNearSemanticFailure.INELIGIBLE_PAIR)
+            }
+
+            matchesByCandidate
+                .getOrPut(candidateEntry.recordId) { ArrayList() }
+                .add(AnchorMatch(anchorEntry.reference(), item.similarity))
         }
 
         val decisions = candidates
             .sortedWith(compareBy<MemoryRetentionLedgerEntry>({ it.retentionClass.ordinal }, { it.recordId.value }))
-            .map { candidate -> evaluateCandidate(candidate, entries, indexed) }
+            .map { candidate -> evaluateCandidate(candidate, matchesByCandidate[candidate.recordId].orEmpty()) }
         return MemoryRetentionNearSemanticAdmissionResult.Evaluated(decisions)
     }
 
     private fun evaluateCandidate(
         candidate: MemoryRetentionLedgerEntry,
-        entries: List<MemoryRetentionLedgerEntry>,
-        evidence: Map<PairKey, MemoryRetentionNearSemanticEvidence>
+        matches: List<AnchorMatch>
     ): MemoryRetentionNearSemanticDecision {
-        val match = entries.asSequence()
-            .filter {
-                it.retentionClass == candidate.retentionClass &&
-                    it.disposition == MemoryRetentionDisposition.RETAINED
-            }
-            .mapNotNull { anchor ->
-                val item = evidence[PairKey.of(candidate.recordId, anchor.recordId)] ?: return@mapNotNull null
-                if (item.similarity < policy.minimumSimilarity) return@mapNotNull null
-                AnchorMatch(anchor.reference(), item.similarity)
-            }
+        val match = matches.asSequence()
+            .filter { it.similarity >= policy.minimumSimilarity }
             .sortedWith(
                 compareByDescending<AnchorMatch> { it.similarity }
                     .thenBy { it.anchor.recordId.value }
