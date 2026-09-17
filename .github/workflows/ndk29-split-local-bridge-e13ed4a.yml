@@ -1,0 +1,71 @@
+name: NDK29 Split Local Bridge e13ed4a
+
+on:
+  push:
+    branches:
+      - bridge/ndk29-split-e13ed4a
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package-ndk29:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+        with:
+          ref: e13ed4a35eeca2692fb97bb1dc7759abfa7b77d3
+          fetch-depth: 1
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
+
+      - name: Install exact NDK 29
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager "ndk;29.0.13113456"
+          test -d "$ANDROID_HOME/ndk/29.0.13113456"
+
+      - name: Package and split exact NDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar -czf /tmp/android-ndk29.tar.gz -C "$ANDROID_HOME/ndk" 29.0.13113456
+          sha256sum /tmp/android-ndk29.tar.gz > /tmp/android-ndk29.sha256
+          split -b 300M -d -a 2 /tmp/android-ndk29.tar.gz /tmp/android-ndk29.part.
+          ls -lh /tmp/android-ndk29.part.*
+          test "$(find /tmp -maxdepth 1 -name 'android-ndk29.part.*' | wc -l)" -le 3
+
+      - name: Upload NDK part 00
+        uses: actions/upload-artifact@v4
+        with:
+          name: ndk29-e13ed4a-part-00
+          path: /tmp/android-ndk29.part.00
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload NDK part 01
+        uses: actions/upload-artifact@v4
+        with:
+          name: ndk29-e13ed4a-part-01
+          path: /tmp/android-ndk29.part.01
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload NDK part 02 and checksum
+        uses: actions/upload-artifact@v4
+        with:
+          name: ndk29-e13ed4a-part-02-proof
+          path: |
+            /tmp/android-ndk29.part.02
+            /tmp/android-ndk29.sha256
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 7
