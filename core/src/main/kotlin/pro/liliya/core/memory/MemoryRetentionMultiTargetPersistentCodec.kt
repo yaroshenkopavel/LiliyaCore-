@@ -101,7 +101,7 @@ internal object MemoryRetentionMultiTargetPersistentCodec {
             val state = enumValue<MemoryRetentionMultiTargetState>(data.readUnsignedByte())
             val createdAt = Instant.ofEpochSecond(data.readLong(), data.readInt().toLong())
             val targetCount = data.readInt()
-            if (targetCount < 2 || targetCount > 100_000) {
+            if (targetCount < 1 || targetCount > 100_000) {
                 return MemoryRetentionMultiTargetPersistentDecodeResult.Corrupt
             }
             val targets = ArrayList<MemoryRetentionTransactionTarget>(targetCount)
