@@ -204,34 +204,38 @@ class PersistentMemoryRetentionMultiTargetJournal private constructor(
             foundation: FoundationComposition,
             storeId: PersistentStoreId,
             backend: PersistentRecordBackend
-        ): PersistentMemoryRetentionMultiTargetJournalOpenResult = when (
-            val opened = PersistentRecordStore.open(foundation, storeId, backend)
-        ) {
-            is PersistentStoreOpenResult.Opened -> {
-                for (entry in opened.store.snapshotEntries()) {
-                    when (val decoded = MemoryRetentionMultiTargetPersistentCodec.decode(entry.record)) {
-                        MemoryRetentionMultiTargetPersistentDecodeResult.Corrupt ->
-                            return PersistentMemoryRetentionMultiTargetJournalOpenResult.Corrupt
-                        is MemoryRetentionMultiTargetPersistentDecodeResult.Incompatible ->
-                            return PersistentMemoryRetentionMultiTargetJournalOpenResult.Incompatible(
-                                decoded.reason
-                            )
-                        is MemoryRetentionMultiTargetPersistentDecodeResult.Decoded -> Unit
-                    }
-                }
-                PersistentMemoryRetentionMultiTargetJournalOpenResult.Opened(
-                    PersistentMemoryRetentionMultiTargetJournal(opened.store)
-                )
+        ): PersistentMemoryRetentionMultiTargetJournalOpenResult {
+            return when (val opened = PersistentRecordStore.open(foundation, storeId, backend)) {
+                is PersistentStoreOpenResult.Opened -> restoreOpened(opened.store)
+                PersistentStoreOpenResult.Corrupt ->
+                    PersistentMemoryRetentionMultiTargetJournalOpenResult.Corrupt
+                is PersistentStoreOpenResult.Incompatible ->
+                    PersistentMemoryRetentionMultiTargetJournalOpenResult.Incompatible(opened.reason)
+                is PersistentStoreOpenResult.Failed ->
+                    PersistentMemoryRetentionMultiTargetJournalOpenResult.Failed(
+                        "memory retention multi-target backend open failed",
+                        opened.throwable
+                    )
             }
-            PersistentStoreOpenResult.Corrupt ->
-                PersistentMemoryRetentionMultiTargetJournalOpenResult.Corrupt
-            is PersistentStoreOpenResult.Incompatible ->
-                PersistentMemoryRetentionMultiTargetJournalOpenResult.Incompatible(opened.reason)
-            is PersistentStoreOpenResult.Failed ->
-                PersistentMemoryRetentionMultiTargetJournalOpenResult.Failed(
-                    "memory retention multi-target backend open failed",
-                    opened.throwable
-                )
+        }
+
+        private fun restoreOpened(
+            store: PersistentRecordStore
+        ): PersistentMemoryRetentionMultiTargetJournalOpenResult {
+            for (entry in store.snapshotEntries()) {
+                when (val decoded = MemoryRetentionMultiTargetPersistentCodec.decode(entry.record)) {
+                    MemoryRetentionMultiTargetPersistentDecodeResult.Corrupt ->
+                        return PersistentMemoryRetentionMultiTargetJournalOpenResult.Corrupt
+                    is MemoryRetentionMultiTargetPersistentDecodeResult.Incompatible ->
+                        return PersistentMemoryRetentionMultiTargetJournalOpenResult.Incompatible(
+                            decoded.reason
+                        )
+                    is MemoryRetentionMultiTargetPersistentDecodeResult.Decoded -> Unit
+                }
+            }
+            return PersistentMemoryRetentionMultiTargetJournalOpenResult.Opened(
+                PersistentMemoryRetentionMultiTargetJournal(store)
+            )
         }
     }
 }
