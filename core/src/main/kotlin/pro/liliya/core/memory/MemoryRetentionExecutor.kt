@@ -31,7 +31,7 @@ sealed interface MemoryRetentionExecutionResult {
     data class Rejected(val reason: String) : MemoryRetentionExecutionResult
     data class Failed(val reason: String, val throwable: Throwable? = null) : MemoryRetentionExecutionResult {
         override fun toString(): String =
-            "Failed(reason=$reason, throwable=${throwable?.javaClass?.name ?: \"null\"})"
+            "Failed(reason=$reason, throwable=${throwable?.javaClass?.name ?: "null"})"
     }
 }
 
