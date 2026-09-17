@@ -1,0 +1,50 @@
+name: JDK17 Local Bridge e13ed4a
+
+on:
+  push:
+    branches:
+      - bridge/jdk17-e13ed4a
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package-jdk17:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+        with:
+          ref: e13ed4a35eeca2692fb97bb1dc7759abfa7b77d3
+          fetch-depth: 1
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Package real JDK 17 target
+        shell: bash
+        run: |
+          set -euo pipefail
+          REAL_JAVA_HOME="$(realpath "$JAVA_HOME")"
+          PARENT="$(dirname "$REAL_JAVA_HOME")"
+          NAME="$(basename "$REAL_JAVA_HOME")"
+          java -version 2> /tmp/java-version.txt
+          printf 'JAVA_HOME=%s\nREAL_JAVA_HOME=%s\n' "$JAVA_HOME" "$REAL_JAVA_HOME" > /tmp/jdk17-proof.txt
+          tar -czf /tmp/jdk17-full.tar.gz -C "$PARENT" "$NAME"
+          sha256sum /tmp/jdk17-full.tar.gz > /tmp/jdk17-sha256.txt
+
+      - name: Upload JDK 17 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: jdk17-full-e13ed4a
+          path: |
+            /tmp/jdk17-full.tar.gz
+            /tmp/jdk17-proof.txt
+            /tmp/jdk17-sha256.txt
+            /tmp/java-version.txt
+          if-no-files-found: error
+          retention-days: 7
