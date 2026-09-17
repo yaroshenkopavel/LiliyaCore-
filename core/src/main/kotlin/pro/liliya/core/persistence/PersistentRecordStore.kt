@@ -177,7 +177,7 @@ class PersistentRecordStore private constructor(
     }
 
     @Synchronized
-    private fun removeExact(
+    internal fun removeExact(
         id: PersistentEntityId,
         generation: PersistentGeneration
     ): PersistentMutationResult {
