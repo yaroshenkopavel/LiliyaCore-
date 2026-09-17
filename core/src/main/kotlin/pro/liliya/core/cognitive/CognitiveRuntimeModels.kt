@@ -143,7 +143,9 @@ data class CognitiveRuntimeLimits(
     val maxLearningSystemPrincipalChars: Int = 256,
     val maxLearningIdempotencyKeyChars: Int = 256,
     val maxGeneratedArtifactIdChars: Int = 512,
-    val maxGovernedLearningTerminalEvidenceEntries: Int = 4_096
+    val maxGovernedLearningTerminalEvidenceEntries: Int = 4_096,
+    val maxConversationReconstructionItems: Int = 24,
+    val maxConversationReconstructionChars: Int = 32_768
 ) {
     init {
         require(maxRuntimeScopeIdChars > 0) { "maximum cognitive runtime scope id chars must be positive" }
@@ -175,6 +177,12 @@ data class CognitiveRuntimeLimits(
         require(maxGeneratedArtifactIdChars > 0) { "maximum generated artifact id chars must be positive" }
         require(maxGovernedLearningTerminalEvidenceEntries > 0) {
             "maximum governed learning terminal evidence entries must be positive"
+        }
+        require(maxConversationReconstructionItems > 0) {
+            "maximum conversation reconstruction items must be positive"
+        }
+        require(maxConversationReconstructionChars > 0) {
+            "maximum conversation reconstruction chars must be positive"
         }
     }
 }
