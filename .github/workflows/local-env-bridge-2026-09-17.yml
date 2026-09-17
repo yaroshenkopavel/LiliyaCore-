@@ -1,4 +1,4 @@
-name: Local First Environment Bridge 2026-09-17
+name: Local First JDK17 Repair Bridge 2026-09-17
 
 on:
   push:
@@ -10,26 +10,24 @@ permissions:
 
 env:
   TARGET_SHA: 6578b7a7da9e855e7659e3f48043f0e0b6bad178
-  GRADLE_USER_HOME: ${{ github.workspace }}/.bridge-gradle-home
 
 jobs:
-  export-environment:
+  export-jdk17:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 30
     steps:
-      - name: Checkout exact target with full history
+      - name: Checkout exact target
         uses: actions/checkout@v4
         with:
           ref: ${{ env.TARGET_SHA }}
-          fetch-depth: 0
+          fetch-depth: 1
 
       - name: Verify exact source
         shell: bash
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$TARGET_SHA"
-          echo "HEAD=$(git rev-parse HEAD)"
-          echo "TREE=$(git rev-parse HEAD^{tree})"
+          test "$(git rev-parse HEAD^{tree})" = "42633277e2ecf99d04c162ea10a782df7f4e3a57"
 
       - name: Set up Java 17
         uses: actions/setup-java@v5
@@ -37,197 +35,24 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Gradle 9.6.1
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '9.6.1'
-
-      - name: Resolve preinstalled Android SDK
-        shell: bash
-        run: |
-          set -euo pipefail
-          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
-          test -d "$SDK_ROOT"
-          SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
-          if [ ! -x "$SDKMANAGER" ]; then
-            SDKMANAGER="$(command -v sdkmanager)"
-          fi
-          test -x "$SDKMANAGER"
-          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
-          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
-          echo "SDKMANAGER=$SDKMANAGER" >> "$GITHUB_ENV"
-          "$SDKMANAGER" --version
-
-      - name: Install exact Android toolchain
-        shell: bash
-        run: |
-          set -euo pipefail
-          yes | "$SDKMANAGER" --licenses >/dev/null || true
-          "$SDKMANAGER" \
-            "platforms;android-35" \
-            "build-tools;35.0.0" \
-            "build-tools;36.0.0" \
-            "platform-tools" \
-            "ndk;29.0.13113456" \
-            "cmake;3.31.6"
-
-      - name: Warm project-only Gradle cache and prove offline core
-        shell: bash
-        run: |
-          set -euo pipefail
-          gradle :android-app:testDebugUnitTest :android-runtime:testDebugUnitTest :core:test :android-app:compileDebugAndroidTestKotlin --console=plain --no-daemon
-          gradle :core:test --offline --console=plain --no-daemon
-
-      - name: Prepare source mirror
+      - name: Package dereferenced JDK 17
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/export"
-          git archive --format=tar.gz --output="$RUNNER_TEMP/export/LiliyaCore-worktree.tar.gz" HEAD
-          tar -czf "$RUNNER_TEMP/export/LiliyaCore-git.tar.gz" .git
-          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
-          test "$(git rev-parse HEAD^{tree})" = "42633277e2ecf99d04c162ea10a782df7f4e3a57"
-          test -s "$RUNNER_TEMP/export/LiliyaCore-worktree.tar.gz"
-          test -s "$RUNNER_TEMP/export/LiliyaCore-git.tar.gz"
+          REAL_JAVA_HOME="$(readlink -f "$JAVA_HOME")"
+          test -x "$REAL_JAVA_HOME/bin/java"
+          tar -C "$(dirname "$REAL_JAVA_HOME")" -czf "$RUNNER_TEMP/export/jdk17-real.tar.gz" "$(basename "$REAL_JAVA_HOME")"
+          tar -tzf "$RUNNER_TEMP/export/jdk17-real.tar.gz" | grep -q '/bin/java$'
+          sha256sum "$RUNNER_TEMP/export/jdk17-real.tar.gz" > "$RUNNER_TEMP/export/jdk17-real.sha256"
+          "$REAL_JAVA_HOME/bin/java" -version
 
-      - name: Prepare JDK and Gradle archives
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/export"
-          tar -C "$(dirname "$JAVA_HOME")" -czf "$RUNNER_TEMP/export/jdk17.tar.gz" "$(basename "$JAVA_HOME")"
-          GRADLE_BIN="$(readlink -f "$(command -v gradle)")"
-          GRADLE_ROOT="$(cd "$(dirname "$GRADLE_BIN")/.." && pwd)"
-          tar -C "$(dirname "$GRADLE_ROOT")" -czf "$RUNNER_TEMP/export/gradle-9.6.1.tar.gz" "$(basename "$GRADLE_ROOT")"
-
-      - name: Prepare SDK core, CMake and NDK archives
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/export/sdk-core" "$RUNNER_TEMP/export"
-          for p in platforms/android-35 build-tools/35.0.0 build-tools/36.0.0 platform-tools; do
-            mkdir -p "$RUNNER_TEMP/export/sdk-core/$(dirname "$p")"
-            cp -a "$ANDROID_HOME/$p" "$RUNNER_TEMP/export/sdk-core/$p"
-          done
-          tar -C "$RUNNER_TEMP/export/sdk-core" -czf "$RUNNER_TEMP/export/android-sdk-core.tar.gz" .
-          tar -C "$ANDROID_HOME/cmake" -czf "$RUNNER_TEMP/export/cmake-3.31.6.tar.gz" 3.31.6
-          tar -C "$ANDROID_HOME/ndk" -czf "$RUNNER_TEMP/export/ndk-29.0.13113456.tar.gz" 29.0.13113456
-          split -b 350M -d -a 2 "$RUNNER_TEMP/export/ndk-29.0.13113456.tar.gz" "$RUNNER_TEMP/export/ndk.part."
-          for n in 00 01 02 03; do test -f "$RUNNER_TEMP/export/ndk.part.$n" || : > "$RUNNER_TEMP/export/ndk.part.$n"; done
-
-      - name: Prepare Gradle cache parts
-        shell: bash
-        run: |
-          set -euo pipefail
-          tar -C "$(dirname "$GRADLE_USER_HOME")" -czf "$RUNNER_TEMP/export/gradle-home.tar.gz" "$(basename "$GRADLE_USER_HOME")"
-          split -b 300M -d -a 2 "$RUNNER_TEMP/export/gradle-home.tar.gz" "$RUNNER_TEMP/export/gradle-home.part."
-          for n in 00 01 02 03 04 05; do test -f "$RUNNER_TEMP/export/gradle-home.part.$n" || : > "$RUNNER_TEMP/export/gradle-home.part.$n"; done
-
-      - name: Write environment manifest
-        shell: bash
-        run: |
-          set -euo pipefail
-          {
-            echo "target_sha=$(git rev-parse HEAD)"
-            echo "target_tree=$(git rev-parse HEAD^{tree})"
-            java -version 2>&1 | head -1
-            gradle --version | grep '^Gradle '
-            echo "android_home=$ANDROID_HOME"
-            find "$ANDROID_HOME" -maxdepth 2 -type d | sort | grep -E 'platforms/android-35|build-tools/(35.0.0|36.0.0)|ndk/29.0.13113456|cmake/3.31.6|platform-tools' || true
-            sha256sum "$RUNNER_TEMP/export"/*.tar.gz "$RUNNER_TEMP/export"/ndk.part.* "$RUNNER_TEMP/export"/gradle-home.part.*
-          } > "$RUNNER_TEMP/export/environment-manifest.txt"
-
-      - name: Upload source mirror
+      - name: Upload JDK 17
         uses: actions/upload-artifact@v4
         with:
-          name: local-first-source-6578b7a
+          name: local-first-jdk17-real
           path: |
-            ${{ runner.temp }}/export/LiliyaCore-worktree.tar.gz
-            ${{ runner.temp }}/export/LiliyaCore-git.tar.gz
-          retention-days: 1
-          compression-level: 0
-
-      - name: Upload small toolchain artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: local-first-toolchain-small
-          path: |
-            ${{ runner.temp }}/export/jdk17.tar.gz
-            ${{ runner.temp }}/export/gradle-9.6.1.tar.gz
-            ${{ runner.temp }}/export/android-sdk-core.tar.gz
-            ${{ runner.temp }}/export/cmake-3.31.6.tar.gz
-            ${{ runner.temp }}/export/environment-manifest.txt
-          retention-days: 1
-          compression-level: 0
-
-      - name: Upload NDK part 00
-        uses: actions/upload-artifact@v4
-        with:
-          name: local-first-ndk-00
-          path: ${{ runner.temp }}/export/ndk.part.00
-          retention-days: 1
-          compression-level: 0
-      - name: Upload NDK part 01
-        uses: actions/upload-artifact@v4
-        with:
-          name: local-first-ndk-01
-          path: ${{ runner.temp }}/export/ndk.part.01
-          retention-days: 1
-          compression-level: 0
-      - name: Upload NDK part 02
-        uses: actions/upload-artifact@v4
-        with:
-          name: local-first-ndk-02
-          path: ${{ runner.temp }}/export/ndk.part.02
-          retention-days: 1
-          compression-level: 0
-      - name: Upload NDK part 03
-        uses: actions/upload-artifact@v4
-        with:
-          name: local-first-ndk-03
-          path: ${{ runner.temp }}/export/ndk.part.03
-          retention-days: 1
-          compression-level: 0
-
-      - name: Upload Gradle cache part 00
-        uses: actions/upload-artifact@v4
-        with:
-          name: local-first-gradle-home-00
-          path: ${{ runner.temp }}/export/gradle-home.part.00
-          retention-days: 1
-          compression-level: 0
-      - name: Upload Gradle cache part 01
-        uses: actions/upload-artifact@v4
-        with:
-          name: local-first-gradle-home-01
-          path: ${{ runner.temp }}/export/gradle-home.part.01
-          retention-days: 1
-          compression-level: 0
-      - name: Upload Gradle cache part 02
-        uses: actions/upload-artifact@v4
-        with:
-          name: local-first-gradle-home-02
-          path: ${{ runner.temp }}/export/gradle-home.part.02
-          retention-days: 1
-          compression-level: 0
-      - name: Upload Gradle cache part 03
-        uses: actions/upload-artifact@v4
-        with:
-          name: local-first-gradle-home-03
-          path: ${{ runner.temp }}/export/gradle-home.part.03
-          retention-days: 1
-          compression-level: 0
-      - name: Upload Gradle cache part 04
-        uses: actions/upload-artifact@v4
-        with:
-          name: local-first-gradle-home-04
-          path: ${{ runner.temp }}/export/gradle-home.part.04
-          retention-days: 1
-          compression-level: 0
-      - name: Upload Gradle cache part 05
-        uses: actions/upload-artifact@v4
-        with:
-          name: local-first-gradle-home-05
-          path: ${{ runner.temp }}/export/gradle-home.part.05
+            ${{ runner.temp }}/export/jdk17-real.tar.gz
+            ${{ runner.temp }}/export/jdk17-real.sha256
           retention-days: 1
           compression-level: 0
