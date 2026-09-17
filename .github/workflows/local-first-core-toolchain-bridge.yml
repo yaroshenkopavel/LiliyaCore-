@@ -1,0 +1,70 @@
+name: Local First Core Toolchain Bridge
+
+on:
+  push:
+    branches:
+      - bridge/local-first-e803ae3
+    paths:
+      - .github/workflows/local-first-core-toolchain-bridge.yml
+
+permissions:
+  contents: read
+
+jobs:
+  prepare-core:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: e803ae3430535c13931ea9a1d1b81ae0e7f85f69
+          fetch-depth: 1
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.1'
+          cache-disabled: true
+      - name: Setup minimal Android SDK without obsolete tools package
+        uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - name: Install configuration-time Android components
+        shell: bash
+        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Warm core dependencies and capture exact-head compile evidence
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle --no-daemon --console=plain :core:test 2>&1 | tee "$RUNNER_TEMP/core-baseline.log"
+      - name: Package only what core local verification needs
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT="$RUNNER_TEMP/core-toolchain"
+          mkdir -p "$OUT"
+          GRADLE_BIN="$(readlink -f "$(command -v gradle)")"
+          GRADLE_HOME="$(cd "$(dirname "$GRADLE_BIN")/.." && pwd)"
+          tar -C "$(dirname "$JAVA_HOME")" -cf "$OUT/jdk17.tar" "$(basename "$JAVA_HOME")"
+          tar -C "$(dirname "$GRADLE_HOME")" -cf "$OUT/gradle-9.6.1.tar" "$(basename "$GRADLE_HOME")"
+          tar -C "$ANDROID_HOME" -cf "$OUT/android-min.tar" platform-tools platforms/android-35 build-tools/35.0.0 cmdline-tools/latest licenses
+          tar -C "$HOME/.gradle" -cf "$OUT/gradle-home.tar" caches
+          cp "$RUNNER_TEMP/core-baseline.log" "$OUT/core-baseline.log" 2>/dev/null || true
+          printf 'HEAD=e803ae3430535c13931ea9a1d1b81ae0e7f85f69\nTREE=c914b90f8f13725d04dccb24ddbc4c7365d738ee\n' > "$OUT/source.txt"
+          cd "$OUT"
+          sha256sum *.tar > SHA256SUMS
+          split -b 400m -d -a 2 gradle-home.tar gradle-home.part.
+          rm gradle-home.tar
+      - name: Upload core toolchain
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-first-core-toolchain-e803ae3
+          path: ${{ runner.temp }}/core-toolchain/*
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: error
