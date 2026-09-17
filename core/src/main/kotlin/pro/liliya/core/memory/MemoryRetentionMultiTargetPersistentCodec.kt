@@ -27,9 +27,10 @@ internal sealed interface MemoryRetentionMultiTargetPersistentDecodeResult {
 
 internal object MemoryRetentionMultiTargetPersistentCodec {
     val schemaId = PersistentSchemaId("memory-retention-multi-target")
-    val schemaVersion = PersistentSchemaVersion(1)
+    val schemaVersion = PersistentSchemaVersion(2)
+    private val legacySchemaVersion = PersistentSchemaVersion(1)
 
-    private const val MAGIC = 0x4D524D31 // MRM1
+    private const val MAGIC = 0x4D524D31 // MRM1: binary layout unchanged; v2 broadens parent cardinality.
     private const val CHECKSUM_BYTES = 32
 
     fun encode(
@@ -77,8 +78,10 @@ internal object MemoryRetentionMultiTargetPersistentCodec {
                 "memory retention multi-target schema id mismatch"
             )
         }
-        if (record.schemaVersion != schemaVersion) {
-            return MemoryRetentionMultiTargetPersistentDecodeResult.Incompatible(
+        val minimumTargetCount = when (record.schemaVersion) {
+            legacySchemaVersion -> 2
+            schemaVersion -> 1
+            else -> return MemoryRetentionMultiTargetPersistentDecodeResult.Incompatible(
                 "memory retention multi-target schema version mismatch"
             )
         }
@@ -101,7 +104,7 @@ internal object MemoryRetentionMultiTargetPersistentCodec {
             val state = enumValue<MemoryRetentionMultiTargetState>(data.readUnsignedByte())
             val createdAt = Instant.ofEpochSecond(data.readLong(), data.readInt().toLong())
             val targetCount = data.readInt()
-            if (targetCount < 2 || targetCount > 100_000) {
+            if (targetCount < minimumTargetCount || targetCount > 100_000) {
                 return MemoryRetentionMultiTargetPersistentDecodeResult.Corrupt
             }
             val targets = ArrayList<MemoryRetentionTransactionTarget>(targetCount)

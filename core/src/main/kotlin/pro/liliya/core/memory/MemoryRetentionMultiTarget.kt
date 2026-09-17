@@ -25,6 +25,13 @@ enum class MemoryRetentionMultiTargetState {
     REJECTED
 }
 
+/**
+ * Durable ordered parent plan for one or more exact retention targets.
+ *
+ * The historical class name is retained for compatibility, but a one-target parent is deliberate:
+ * all reviewed prune plans share one durable parent namespace, while the single-target transaction
+ * journal remains an internal child execution primitive.
+ */
 class MemoryRetentionMultiTargetPlan(
     val id: MemoryRetentionMultiTargetId,
     targets: List<MemoryRetentionTransactionTarget>,
@@ -33,8 +40,8 @@ class MemoryRetentionMultiTargetPlan(
     private val targetSnapshot = MemoryRetentionTransactionPlan.canonicalTargets(targets)
 
     init {
-        require(targetSnapshot.size > 1) {
-            "multi-target retention plan requires at least two targets"
+        require(targetSnapshot.isNotEmpty()) {
+            "ordered retention parent plan requires at least one target"
         }
         require(targetSnapshot.map { it.recordId }.toSet().size == targetSnapshot.size) {
             "multi-target retention plan must not contain duplicate record ids"
