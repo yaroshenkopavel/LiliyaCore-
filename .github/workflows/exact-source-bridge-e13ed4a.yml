@@ -1,0 +1,54 @@
+name: Exact Source Bridge e13ed4a
+
+on:
+  push:
+    branches:
+      - foundation/source-bridge-e13ed4a
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package-exact-source:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact proven candidate
+        uses: actions/checkout@v4
+        with:
+          ref: e13ed4a35eeca2692fb97bb1dc7759abfa7b77d3
+          fetch-depth: 0
+
+      - name: Verify exact identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "e13ed4a35eeca2692fb97bb1dc7759abfa7b77d3"
+          test "$(git rev-parse 'HEAD^{tree}')" = "21b0fafd48480e8ae7c19bd21b34b521a1537d29"
+          {
+            echo "HEAD=$(git rev-parse HEAD)"
+            echo "TREE=$(git rev-parse 'HEAD^{tree}')"
+            echo "STATUS_BEGIN"
+            git status --short
+            echo "STATUS_END"
+          } > /tmp/exact-source-proof.txt
+
+      - name: Package exact Git source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git bundle create /tmp/LiliyaCore-e13ed4a.bundle HEAD
+          git archive --format=tar.gz --output=/tmp/LiliyaCore-e13ed4a.tar.gz HEAD
+          sha256sum /tmp/LiliyaCore-e13ed4a.bundle /tmp/LiliyaCore-e13ed4a.tar.gz > /tmp/exact-source-sha256.txt
+
+      - name: Upload exact source artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: exact-source-e13ed4a
+          path: |
+            /tmp/LiliyaCore-e13ed4a.bundle
+            /tmp/LiliyaCore-e13ed4a.tar.gz
+            /tmp/exact-source-proof.txt
+            /tmp/exact-source-sha256.txt
+          if-no-files-found: error
+          retention-days: 7
