@@ -17,16 +17,33 @@ internal sealed interface PersonalityProfileRegistrationResult {
     data class Rejected(val reason: String) : PersonalityProfileRegistrationResult
 }
 
-internal class PersonalityProfileStore(
-    private val observability: CoreObservability
+internal sealed interface PersonalityProfileRestorationResult {
+    data class Restored(val store: PersonalityProfileStore) : PersonalityProfileRestorationResult
+    data class Rejected(val reason: String) : PersonalityProfileRestorationResult
+}
+
+internal class PersonalityProfileStore private constructor(
+    private val observability: CoreObservability,
+    initialHighWatermark: Long,
+    initialEntries: List<PersonalityProfileSnapshot>
 ) {
     private data class Entry(
         val generation: PersonalityGeneration,
         val profile: PersonalityProfile
     )
 
-    private val nextGeneration = AtomicLong(0)
-    private val profiles = ConcurrentHashMap<PersonalityProfileId, Entry>()
+    constructor(observability: CoreObservability) : this(
+        observability = observability,
+        initialHighWatermark = 0L,
+        initialEntries = emptyList()
+    )
+
+    private val nextGeneration = AtomicLong(initialHighWatermark)
+    private val profiles = ConcurrentHashMap<PersonalityProfileId, Entry>().apply {
+        initialEntries.forEach { snapshot ->
+            put(snapshot.profile.id, Entry(snapshot.generation, snapshot.profile))
+        }
+    }
 
     fun register(
         profile: PersonalityProfile,
@@ -38,51 +55,43 @@ internal class PersonalityProfileStore(
         )
         val previous = profiles.putIfAbsent(profile.id, entry)
         if (previous != null) {
-            val reason = "personality profile id is already registered"
-            observability.record(
-                severity = DiagnosticSeverity.WARNING,
-                code = "PERSONALITY_PROFILE_REGISTRATION_REJECTED",
-                message = reason,
-                context = context,
-                metadata = metadata(profile, entry.generation) + ("rejectionReason" to reason)
-            )
-            return PersonalityProfileRegistrationResult.Rejected(reason)
+            return rejectRegistration(profile, entry.generation, context, "personality profile id is already registered")
         }
 
-        observability.record(
-            severity = DiagnosticSeverity.INFO,
-            code = "PERSONALITY_PROFILE_REGISTERED",
-            message = "personality profile registered",
-            context = context,
-            metadata = metadata(profile, entry.generation)
-        )
+        observeRegistered(profile, entry.generation, context)
+        return PersonalityProfileRegistrationResult.Registered(registration(entry))
+    }
 
-        return PersonalityProfileRegistrationResult.Registered(
-            registration = object : PersonalityProfileRegistration {
-                override val profile: PersonalityProfile = profile
-                override val generation: PersonalityGeneration = entry.generation
+    @Synchronized
+    internal fun installCommitted(
+        profile: PersonalityProfile,
+        generation: PersonalityGeneration,
+        highWatermark: Long,
+        context: LogContext
+    ): PersonalityProfileRegistrationResult {
+        if (highWatermark < generation.value) {
+            return PersonalityProfileRegistrationResult.Rejected("committed personality generation exceeds high watermark")
+        }
+        if (generation.value != highWatermark) {
+            return PersonalityProfileRegistrationResult.Rejected("committed personality generation is not current high watermark")
+        }
+        if (highWatermark <= nextGeneration.get()) {
+            return PersonalityProfileRegistrationResult.Rejected("committed personality generation is not newer than local high watermark")
+        }
+        if (profiles.containsKey(profile.id)) {
+            return PersonalityProfileRegistrationResult.Rejected("personality profile id is already registered")
+        }
+        if (profiles.values.any { it.generation == generation }) {
+            return PersonalityProfileRegistrationResult.Rejected("committed personality generation is already live")
+        }
 
-                override fun remove(context: LogContext): Boolean {
-                    val removed = profiles.remove(profile.id, entry)
-                    observability.record(
-                        severity = if (removed) DiagnosticSeverity.INFO else DiagnosticSeverity.WARNING,
-                        code = if (removed) {
-                            "PERSONALITY_PROFILE_REMOVED"
-                        } else {
-                            "PERSONALITY_PROFILE_REMOVAL_REJECTED"
-                        },
-                        message = if (removed) {
-                            "personality profile removed"
-                        } else {
-                            "personality profile registration is no longer current"
-                        },
-                        context = context,
-                        metadata = metadata(profile, entry.generation)
-                    )
-                    return removed
-                }
-            }
-        )
+        val entry = Entry(generation = generation, profile = profile)
+        if (profiles.putIfAbsent(profile.id, entry) != null) {
+            return PersonalityProfileRegistrationResult.Rejected("personality profile id is already registered")
+        }
+        nextGeneration.set(highWatermark)
+        observeRegistered(profile, generation, context)
+        return PersonalityProfileRegistrationResult.Registered(registration(entry))
     }
 
     fun find(id: PersonalityProfileId): PersonalityProfile? = profiles[id]?.profile
@@ -102,6 +111,53 @@ internal class PersonalityProfileStore(
                 .thenBy { it.profile.id.value }
         )
 
+    private fun registration(entry: Entry): PersonalityProfileRegistration = object : PersonalityProfileRegistration {
+        override val profile: PersonalityProfile = entry.profile
+        override val generation: PersonalityGeneration = entry.generation
+
+        override fun remove(context: LogContext): Boolean {
+            val removed = profiles.remove(entry.profile.id, entry)
+            observability.record(
+                severity = if (removed) DiagnosticSeverity.INFO else DiagnosticSeverity.WARNING,
+                code = if (removed) "PERSONALITY_PROFILE_REMOVED" else "PERSONALITY_PROFILE_REMOVAL_REJECTED",
+                message = if (removed) "personality profile removed" else "personality profile registration is no longer current",
+                context = context,
+                metadata = metadata(entry.profile, entry.generation)
+            )
+            return removed
+        }
+    }
+
+    private fun rejectRegistration(
+        profile: PersonalityProfile,
+        generation: PersonalityGeneration,
+        context: LogContext,
+        reason: String
+    ): PersonalityProfileRegistrationResult.Rejected {
+        observability.record(
+            severity = DiagnosticSeverity.WARNING,
+            code = "PERSONALITY_PROFILE_REGISTRATION_REJECTED",
+            message = reason,
+            context = context,
+            metadata = metadata(profile, generation) + ("rejectionReason" to reason)
+        )
+        return PersonalityProfileRegistrationResult.Rejected(reason)
+    }
+
+    private fun observeRegistered(
+        profile: PersonalityProfile,
+        generation: PersonalityGeneration,
+        context: LogContext
+    ) {
+        observability.record(
+            severity = DiagnosticSeverity.INFO,
+            code = "PERSONALITY_PROFILE_REGISTERED",
+            message = "personality profile registered",
+            context = context,
+            metadata = metadata(profile, generation)
+        )
+    }
+
     private fun metadata(
         profile: PersonalityProfile,
         generation: PersonalityGeneration
@@ -111,15 +167,41 @@ internal class PersonalityProfileStore(
         put("createdAt", profile.createdAt.toString())
         put("personalityAttributeCount", profile.attributes.size.toString())
         put("personalitySourceId", profile.provenance.sourceId.value)
-        profile.provenance.sourceReference?.let { reference ->
-            put("personalitySourceReference", reference.value)
-        }
+        profile.provenance.sourceReference?.let { reference -> put("personalitySourceReference", reference.value) }
         when (val target = profile.target) {
             is PersonalityTarget.Self -> {
                 put("personalityTargetType", "self")
                 put("selfIdentityId", target.identityId.value)
                 put("selfGeneration", target.generation.value.toString())
             }
+        }
+    }
+
+    companion object {
+        fun restore(
+            observability: CoreObservability,
+            entries: List<PersonalityProfileSnapshot>,
+            highWatermark: Long
+        ): PersonalityProfileRestorationResult {
+            if (highWatermark < 0L) {
+                return PersonalityProfileRestorationResult.Rejected("personality generation high watermark is negative")
+            }
+            if (entries.any { it.generation.value > highWatermark }) {
+                return PersonalityProfileRestorationResult.Rejected("personality generation exceeds restored high watermark")
+            }
+            if (entries.map { it.profile.id }.toSet().size != entries.size) {
+                return PersonalityProfileRestorationResult.Rejected("duplicate restored personality profile id")
+            }
+            if (entries.map { it.generation }.toSet().size != entries.size) {
+                return PersonalityProfileRestorationResult.Rejected("duplicate restored personality generation")
+            }
+            return PersonalityProfileRestorationResult.Restored(
+                PersonalityProfileStore(
+                    observability = observability,
+                    initialHighWatermark = highWatermark,
+                    initialEntries = entries.map { PersonalityProfileSnapshot(it.profile, it.generation) }
+                )
+            )
         }
     }
 }
