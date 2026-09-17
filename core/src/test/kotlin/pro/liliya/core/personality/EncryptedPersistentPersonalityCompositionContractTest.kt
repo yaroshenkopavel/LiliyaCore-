@@ -141,7 +141,7 @@ class EncryptedPersistentPersonalityCompositionContractTest {
                 CognitivePersistentRecordDraft(
                     id = PersistentEntityId("personality-unknown-version"),
                     schemaId = PersistentSchemaId("personality-profile"),
-                    schemaVersion = PersistentSchemaVersion(2),
+                    schemaVersion = PersistentSchemaVersion(3),
                     plaintext = CognitivePlaintext(bytes),
                     createdAt = Instant.parse("2026-09-17T18:00:00Z"),
                     dek = dekRef
