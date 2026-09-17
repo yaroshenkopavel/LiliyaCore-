@@ -30,7 +30,7 @@ jobs:
           echo "TREE=$(git rev-parse HEAD^{tree})"
 
       - name: Setup Java 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
@@ -43,12 +43,13 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
 
       - name: Install exact Android components
         shell: bash
         run: |
           set -euo pipefail
-          yes | sdkmanager --licenses >/dev/null || true
           sdkmanager \
             'platform-tools' \
             'platforms;android-35' \
@@ -57,18 +58,29 @@ jobs:
             'ndk;29.0.13113456' \
             'cmake;3.31.6'
 
-      - name: Warm current project dependencies and verify baseline
+      - name: Warm current project dependencies and record baseline
+        id: baseline
+        continue-on-error: true
         shell: bash
         run: |
-          set -euo pipefail
+          set -o pipefail
           gradle --no-daemon --console=plain \
             :core:test \
             :android-runtime:testDebugUnitTest \
             :android-app:testDebugUnitTest \
-            :android-app:compileDebugAndroidTestKotlin
-          gradle --no-daemon --console=plain :core:test --offline
+            :android-app:compileDebugAndroidTestKotlin \
+            2>&1 | tee "$RUNNER_TEMP/baseline.log"
+          status=${PIPESTATUS[0]}
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit "$status"
+
+      - name: Verify cached core path when baseline is green
+        if: steps.baseline.outcome == 'success'
+        shell: bash
+        run: gradle --no-daemon --console=plain :core:test --offline
 
       - name: Package local toolchain
+        if: always()
         shell: bash
         run: |
           set -euo pipefail
@@ -78,6 +90,11 @@ jobs:
           GRADLE_BIN="$(readlink -f "$(command -v gradle)")"
           GRADLE_HOME="$(cd "$(dirname "$GRADLE_BIN")/.." && pwd)"
           printf 'JAVA_HOME=%s\nGRADLE_HOME=%s\nANDROID_HOME=%s\n' "$JAVA_HOME" "$GRADLE_HOME" "$ANDROID_HOME" | tee "$OUT/environment.txt"
+          cp "$RUNNER_TEMP/baseline.log" "$OUT/baseline.log" 2>/dev/null || true
+          printf 'BASE_HEAD=%s\nBASE_TREE=%s\nBASELINE_OUTCOME=%s\n' \
+            'e803ae3430535c13931ea9a1d1b81ae0e7f85f69' \
+            'c914b90f8f13725d04dccb24ddbc4c7365d738ee' \
+            '${{ steps.baseline.outcome }}' > "$OUT/baseline-status.txt"
 
           tar -C "$(dirname "$JAVA_HOME")" -czf "$OUT/jdk17.tar.gz" "$(basename "$JAVA_HOME")"
           tar -C "$(dirname "$GRADLE_HOME")" -czf "$OUT/gradle-9.6.1.tar.gz" "$(basename "$GRADLE_HOME")"
@@ -93,10 +110,7 @@ jobs:
 
           tar -C "$ANDROID_HOME" -czf "$OUT/android-ndk29.tar.gz" ndk/29.0.13113456
 
-          tar -C "$HOME/.gradle" -czf "$OUT/gradle-home.tar.gz" \
-            caches \
-            kotlin-profile \
-            notifications 2>/dev/null || \
+          tar -C "$HOME/.gradle" -czf "$OUT/gradle-home.tar.gz" caches notifications 2>/dev/null || \
           tar -C "$HOME/.gradle" -czf "$OUT/gradle-home.tar.gz" caches
 
           cd "$OUT"
@@ -107,6 +121,7 @@ jobs:
           ls -lh
 
       - name: Upload small toolchain
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: current-toolchain-small-e803ae3
@@ -116,11 +131,14 @@ jobs:
             ${{ runner.temp }}/liliya-bridge/android-core.tar.gz
             ${{ runner.temp }}/liliya-bridge/SHA256SUMS
             ${{ runner.temp }}/liliya-bridge/environment.txt
+            ${{ runner.temp }}/liliya-bridge/baseline-status.txt
+            ${{ runner.temp }}/liliya-bridge/baseline.log
           compression-level: 0
           retention-days: 1
           if-no-files-found: error
 
       - name: Upload NDK parts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: current-ndk29-parts-e803ae3
@@ -130,6 +148,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload Gradle cache parts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: current-gradle-home-parts-e803ae3
