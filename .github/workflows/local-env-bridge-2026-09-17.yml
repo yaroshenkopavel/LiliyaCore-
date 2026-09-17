@@ -56,7 +56,6 @@ jobs:
           echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
           echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
           echo "SDKMANAGER=$SDKMANAGER" >> "$GITHUB_ENV"
-          echo "SDK_ROOT=$SDK_ROOT"
           "$SDKMANAGER" --version
 
       - name: Install exact Android toolchain
@@ -84,13 +83,12 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/export"
-          tar \
-            --exclude='./.bridge-gradle-home' \
-            --exclude='./.gradle' \
-            --exclude='*/build' \
-            --exclude='*/.cxx' \
-            -czf "$RUNNER_TEMP/export/LiliyaCore-local.tar.gz" .
-          tar -tzf "$RUNNER_TEMP/export/LiliyaCore-local.tar.gz" | grep -q '^./.git/'
+          git archive --format=tar.gz --output="$RUNNER_TEMP/export/LiliyaCore-worktree.tar.gz" HEAD
+          tar -czf "$RUNNER_TEMP/export/LiliyaCore-git.tar.gz" .git
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          test "$(git rev-parse HEAD^{tree})" = "42633277e2ecf99d04c162ea10a782df7f4e3a57"
+          test -s "$RUNNER_TEMP/export/LiliyaCore-worktree.tar.gz"
+          test -s "$RUNNER_TEMP/export/LiliyaCore-git.tar.gz"
 
       - name: Prepare JDK and Gradle archives
         shell: bash
@@ -100,7 +98,6 @@ jobs:
           tar -C "$(dirname "$JAVA_HOME")" -czf "$RUNNER_TEMP/export/jdk17.tar.gz" "$(basename "$JAVA_HOME")"
           GRADLE_BIN="$(readlink -f "$(command -v gradle)")"
           GRADLE_ROOT="$(cd "$(dirname "$GRADLE_BIN")/.." && pwd)"
-          echo "GRADLE_ROOT=$GRADLE_ROOT"
           tar -C "$(dirname "$GRADLE_ROOT")" -czf "$RUNNER_TEMP/export/gradle-9.6.1.tar.gz" "$(basename "$GRADLE_ROOT")"
 
       - name: Prepare SDK core, CMake and NDK archives
@@ -144,7 +141,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: local-first-source-6578b7a
-          path: ${{ runner.temp }}/export/LiliyaCore-local.tar.gz
+          path: |
+            ${{ runner.temp }}/export/LiliyaCore-worktree.tar.gz
+            ${{ runner.temp }}/export/LiliyaCore-git.tar.gz
           retention-days: 1
           compression-level: 0
 
