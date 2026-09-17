@@ -1,6 +1,8 @@
 package pro.liliya.core.memory
 
 import pro.liliya.core.foundation.FoundationComposition
+import pro.liliya.core.persistence.PersistentEntityId
+import pro.liliya.core.persistence.PersistentGeneration
 import pro.liliya.core.persistence.PersistentInstallResult
 import pro.liliya.core.persistence.PersistentMutationResult
 import pro.liliya.core.persistence.PersistentRecordBackend
@@ -71,6 +73,41 @@ class PersistentMemoryComposition private constructor(
     fun snapshot(): List<MemoryRecord> = memoryStore.snapshot()
 
     fun snapshotEntries(): List<MemoryRecordSnapshot> = memoryStore.snapshotEntries()
+
+    @Synchronized
+    internal fun removeExact(snapshot: MemoryRecordSnapshot): PersistentMemoryMutationResult {
+        val context = foundation.rootContext(
+            operation = "removeExactPersistedMemory",
+            component = "Memory",
+            metadata = mapOf(
+                "memoryRecordId" to snapshot.record.id.value,
+                "memoryGeneration" to snapshot.generation.value.toString()
+            )
+        )
+        return when (
+            val durable = persistentStore.removeExact(
+                id = PersistentEntityId(snapshot.record.id.value),
+                generation = PersistentGeneration(snapshot.generation.value)
+            )
+        ) {
+            PersistentMutationResult.Committed -> {
+                val removedLocally = memoryStore.removeExact(
+                    id = snapshot.record.id,
+                    generation = snapshot.generation,
+                    context = context
+                )
+                if (removedLocally) PersistentMemoryMutationResult.Committed
+                else PersistentMemoryMutationResult.Failed(
+                    "durable exact memory removal committed but local exact removal failed"
+                )
+            }
+            is PersistentMutationResult.Rejected -> PersistentMemoryMutationResult.Rejected(durable.reason)
+            is PersistentMutationResult.Failed -> PersistentMemoryMutationResult.Failed(
+                reason = "persistent exact memory durable removal failed",
+                throwable = durable.throwable
+            )
+        }
+    }
 
     private fun installCommittedMemory(
         record: MemoryRecord,
