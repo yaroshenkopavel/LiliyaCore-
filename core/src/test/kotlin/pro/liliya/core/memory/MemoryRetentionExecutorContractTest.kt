@@ -1,9 +1,7 @@
 package pro.liliya.core.memory
 
-import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import pro.liliya.core.authority.AuthorityPrincipal
@@ -27,101 +25,95 @@ class MemoryRetentionExecutorContractTest {
 
     @Test
     fun keep_entry_never_requires_authority_or_mutates_memory() {
-        val target = FakeTarget()
+        val mutationPort = FakeMutationPort()
         val executor = MemoryRetentionExecutor(
             authorizer = MemoryRetentionAuthorizer(CapabilityAuthorityComposition(foundation())),
-            target = target
+            mutationPort = mutationPort
         )
 
         val result = executor.execute(
             ledgerEntry(
-                snapshot("keep", 1),
-                MemoryRetentionClass.WORKING,
-                MemoryRetentionDisposition.RETAINED,
-                MemoryRetentionShadowAction.KEEP
+                id = "keep",
+                generation = 1,
+                retentionClass = MemoryRetentionClass.WORKING,
+                disposition = MemoryRetentionDisposition.RETAINED,
+                action = MemoryRetentionShadowAction.KEEP
             ),
             principal
         )
 
         assertIs<MemoryRetentionExecutionResult.Kept>(result)
-        assertEquals(0, target.inspectCount)
-        assertEquals(0, target.removeCount)
+        assertEquals(0, mutationPort.removeCount)
     }
 
     @Test
     fun wrong_retention_scope_is_denied_before_exact_mutation() {
-        val current = snapshot("episodic", 2)
-        val target = FakeTarget(current)
+        val mutationPort = FakeMutationPort()
         val (authority, _) = configuredAuthority(MemoryRetentionClass.WORKING)
-        val executor = MemoryRetentionExecutor(MemoryRetentionAuthorizer(authority), target)
+        val executor = MemoryRetentionExecutor(MemoryRetentionAuthorizer(authority), mutationPort)
 
         val result = executor.execute(
-            pruneEntry(current, MemoryRetentionClass.EPISODIC),
+            pruneEntry("episodic", 2, MemoryRetentionClass.EPISODIC),
             principal
         )
 
         assertIs<MemoryRetentionExecutionResult.Denied>(result)
-        assertEquals(1, target.inspectCount)
-        assertEquals(0, target.removeCount)
-        assertTrue(target.contains(current.record.id))
+        assertEquals(0, mutationPort.removeCount)
     }
 
     @Test
-    fun stale_ledger_generation_is_rejected_even_with_valid_authority() {
-        val current = snapshot("stale", 8)
-        val stale = snapshot("stale", 7)
-        val target = FakeTarget(current)
-        val (authority, _) = configuredAuthority(MemoryRetentionClass.SEMANTIC)
-        val executor = MemoryRetentionExecutor(MemoryRetentionAuthorizer(authority), target)
-
-        val result = executor.execute(
-            pruneEntry(stale, MemoryRetentionClass.SEMANTIC),
-            principal
-        )
-
-        assertIs<MemoryRetentionExecutionResult.Stale>(result)
-        assertEquals(0, target.removeCount)
-        assertTrue(target.contains(current.record.id))
-    }
-
-    @Test
-    fun exact_scope_prunes_only_the_exact_live_generation() {
-        val current = snapshot("exact", 11)
-        val target = FakeTarget(current)
+    fun exact_scope_commits_only_requested_identity() {
+        val mutationPort = FakeMutationPort()
         val (authority, _) = configuredAuthority(MemoryRetentionClass.EPISODIC)
-        val executor = MemoryRetentionExecutor(MemoryRetentionAuthorizer(authority), target)
+        val executor = MemoryRetentionExecutor(MemoryRetentionAuthorizer(authority), mutationPort)
 
         val result = executor.execute(
-            pruneEntry(current, MemoryRetentionClass.EPISODIC),
+            pruneEntry("exact", 11, MemoryRetentionClass.EPISODIC),
             principal
         )
 
-        assertIs<MemoryRetentionExecutionResult.Pruned>(result)
-        assertEquals(1, target.removeCount)
-        assertFalse(target.contains(current.record.id))
+        assertIs<MemoryRetentionExecutionResult.Committed>(result)
+        assertEquals(1, mutationPort.removeCount)
+        assertEquals(MemoryRecordId("exact"), mutationPort.lastRecordId)
+        assertEquals(MemoryGeneration(11), mutationPort.lastGeneration)
+    }
+
+    @Test
+    fun generation_bound_mutation_rejection_is_propagated() {
+        val mutationPort = FakeMutationPort(
+            PersistentMemoryMutationResult.Rejected("retention memory generation is stale")
+        )
+        val (authority, _) = configuredAuthority(MemoryRetentionClass.SEMANTIC)
+        val executor = MemoryRetentionExecutor(MemoryRetentionAuthorizer(authority), mutationPort)
+
+        val result = executor.execute(
+            pruneEntry("stale", 7, MemoryRetentionClass.SEMANTIC),
+            principal
+        )
+
+        val rejected = assertIs<MemoryRetentionExecutionResult.Rejected>(result)
+        assertTrue(rejected.reason.contains("generation is stale"))
+        assertEquals(1, mutationPort.removeCount)
     }
 
     @Test
     fun authority_is_rechecked_for_every_prune_mutation() {
-        val first = snapshot("first", 21)
-        val second = snapshot("second", 22)
-        val target = FakeTarget(first, second)
+        val mutationPort = FakeMutationPort()
         val (authority, grantOwnership) = configuredAuthority(MemoryRetentionClass.EPISODIC)
-        val executor = MemoryRetentionExecutor(MemoryRetentionAuthorizer(authority), target)
+        val executor = MemoryRetentionExecutor(MemoryRetentionAuthorizer(authority), mutationPort)
 
-        assertIs<MemoryRetentionExecutionResult.Pruned>(
-            executor.execute(pruneEntry(first, MemoryRetentionClass.EPISODIC), principal)
+        assertIs<MemoryRetentionExecutionResult.Committed>(
+            executor.execute(pruneEntry("first", 21, MemoryRetentionClass.EPISODIC), principal)
         )
         assertTrue(grantOwnership.revoke())
 
         val denied = executor.execute(
-            pruneEntry(second, MemoryRetentionClass.EPISODIC),
+            pruneEntry("second", 22, MemoryRetentionClass.EPISODIC),
             principal
         )
 
         assertIs<MemoryRetentionExecutionResult.Denied>(denied)
-        assertEquals(1, target.removeCount)
-        assertTrue(target.contains(second.record.id))
+        assertEquals(1, mutationPort.removeCount)
     }
 
     private fun configuredAuthority(
@@ -149,36 +141,29 @@ class MemoryRetentionExecutorContractTest {
     }
 
     private fun pruneEntry(
-        snapshot: MemoryRecordSnapshot,
+        id: String,
+        generation: Long,
         retentionClass: MemoryRetentionClass
     ): MemoryRetentionLedgerEntry = ledgerEntry(
-        snapshot = snapshot,
+        id = id,
+        generation = generation,
         retentionClass = retentionClass,
         disposition = MemoryRetentionDisposition.RECORD_BUDGET_REJECTED,
         action = MemoryRetentionShadowAction.PRUNE_CANDIDATE
     )
 
     private fun ledgerEntry(
-        snapshot: MemoryRecordSnapshot,
+        id: String,
+        generation: Long,
         retentionClass: MemoryRetentionClass,
         disposition: MemoryRetentionDisposition,
         action: MemoryRetentionShadowAction
     ): MemoryRetentionLedgerEntry = MemoryRetentionLedgerEntry(
-        recordId = snapshot.record.id,
-        generation = snapshot.generation,
+        recordId = MemoryRecordId(id),
+        generation = MemoryGeneration(generation),
         retentionClass = retentionClass,
         disposition = disposition,
         action = action
-    )
-
-    private fun snapshot(id: String, generation: Long): MemoryRecordSnapshot = MemoryRecordSnapshot(
-        record = MemoryRecord(
-            id = MemoryRecordId(id),
-            sourceId = MemorySourceId("retention-executor-contract"),
-            content = "private-$id-content",
-            createdAt = Instant.parse("2026-09-01T10:00:00Z")
-        ),
-        generation = MemoryGeneration(generation)
     )
 
     private fun foundation(): FoundationComposition {
@@ -190,31 +175,24 @@ class MemoryRetentionExecutorContractTest {
         )
     }
 
-    private class FakeTarget(
-        vararg initial: MemoryRecordSnapshot
-    ) : MemoryRetentionExecutionTarget {
-        private val live = initial.associateBy { it.record.id }.toMutableMap()
-        var inspectCount: Int = 0
-            private set
+    private class FakeMutationPort(
+        private val result: PersistentMemoryMutationResult = PersistentMemoryMutationResult.Committed
+    ) : MemoryRetentionMutationPort {
         var removeCount: Int = 0
             private set
+        var lastRecordId: MemoryRecordId? = null
+            private set
+        var lastGeneration: MemoryGeneration? = null
+            private set
 
-        override fun inspect(id: MemoryRecordId): MemoryRecordSnapshot? {
-            inspectCount += 1
-            return live[id]
-        }
-
-        override fun removeExact(snapshot: MemoryRecordSnapshot): PersistentMemoryMutationResult {
+        override fun removeExact(
+            recordId: MemoryRecordId,
+            generation: MemoryGeneration
+        ): PersistentMemoryMutationResult {
             removeCount += 1
-            val current = live[snapshot.record.id]
-                ?: return PersistentMemoryMutationResult.Rejected("memory is not live")
-            if (current.generation != snapshot.generation) {
-                return PersistentMemoryMutationResult.Rejected("memory generation changed")
-            }
-            live.remove(snapshot.record.id)
-            return PersistentMemoryMutationResult.Committed
+            lastRecordId = recordId
+            lastGeneration = generation
+            return result
         }
-
-        fun contains(id: MemoryRecordId): Boolean = live.containsKey(id)
     }
 }
