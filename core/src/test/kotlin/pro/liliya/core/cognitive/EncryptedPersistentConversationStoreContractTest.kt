@@ -445,7 +445,7 @@ class EncryptedPersistentConversationStoreContractTest {
     }
 
     @Test
-    fun linked_chunk_and_head_v3_fail_closed_on_id_or_payload_mismatch() {
+    fun linked_chunk_and_head_v3_fail_closed_on_structural_or_entity_id_mismatch() {
         val session = CognitiveConversationSessionId("codec-v3-corrupt")
         val linked = ConversationPersistentRecordCodec.encodeLinkedChunk(
             CognitiveConversationContextSnapshot(
@@ -468,14 +468,11 @@ class EncryptedPersistentConversationStoreContractTest {
             latestChunkId = linked.id,
             persistedAt = at(2)
         )
-        val bytes = head.payload.copyBytes()
-        bytes[bytes.lastIndex] = (bytes.last().toInt() xor 0x01).toByte()
-        val tampered = head.copy(payload = PersistentPayload(bytes))
-        val decoded = ConversationPersistentRecordCodec.decodeHead(tampered)
-        assertTrue(
-            decoded == ConversationHeadDecodeResult.Corrupt ||
-                decoded is ConversationHeadDecodeResult.Decoded &&
-                decoded.head.latestChunkId != linked.id
+        val bytes = head.payload.copyBytes().copyOf(head.payload.size - 1)
+        val truncated = head.copy(payload = PersistentPayload(bytes))
+        assertEquals(
+            ConversationHeadDecodeResult.Corrupt,
+            ConversationPersistentRecordCodec.decodeHead(truncated)
         )
     }
 
