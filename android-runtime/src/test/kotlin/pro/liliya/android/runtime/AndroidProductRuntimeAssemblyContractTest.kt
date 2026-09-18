@@ -1,12 +1,17 @@
 package pro.liliya.android.runtime
 
+import java.time.Instant
+import pro.liliya.android.cognitivestorage.AndroidEncryptedPersonalityOpenResult
+import pro.liliya.core.encryption.CognitiveEncryptionFailureCategory
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertSame
 import org.junit.Test
+import pro.liliya.core.cognitive.CognitiveConversationSessionId
 import pro.liliya.core.cognitive.CognitiveGovernedLearningFailure
+import pro.liliya.core.cognitive.CognitiveTimestampSource
 import pro.liliya.core.cognitive.CognitiveGovernedLearningResult
 import pro.liliya.core.diagnostics.DiagnosticRecorder
 import pro.liliya.core.diagnostics.InMemoryDiagnosticSink
@@ -16,8 +21,29 @@ import pro.liliya.core.logging.CorrelationIdGenerator
 import pro.liliya.core.logging.InMemoryLogWriter
 import pro.liliya.core.logging.StructuredLogger
 import pro.liliya.core.observability.LoggerProvider
+import pro.liliya.core.persistence.PersistentStoreId
 
 class AndroidProductRuntimeAssemblyContractTest {
+
+    @Test
+    fun durable_personality_open_failures_are_fail_closed_before_runtime_composition() {
+        val failures = listOf(
+            AndroidEncryptedPersonalityOpenResult.Corrupt,
+            AndroidEncryptedPersonalityOpenResult.Incompatible("future schema"),
+            AndroidEncryptedPersonalityOpenResult.EncryptionUnavailable(
+                CognitiveEncryptionFailureCategory.DEK_MISSING
+            ),
+            AndroidEncryptedPersonalityOpenResult.Failed("storage failure")
+        )
+
+        failures.forEach { failure ->
+            assertNull(
+                failure.toProductRuntimePersonalityOrNull(),
+                "failure=$failure must not publish a production Personality composition"
+            )
+        }
+    }
+
 
     @Test
     fun start_passes_the_exact_shared_learning_owner_to_governed_learning() {
@@ -184,6 +210,38 @@ class AndroidProductRuntimeAssemblyContractTest {
         assertNull(runtime.conversation(4, 512, 128))
         assertNull(runtime.learningFollowUp())
     }
+
+
+    @Test
+    fun configured_continuity_routes_conversation_to_durable_bridge_only() {
+        val foundation = foundation()
+        val ephemeral = conversationHost()
+        val durable = conversationHost()
+        val heart = FakeHeart(
+            conversation = ephemeral,
+            durableConversation = durable
+        )
+        val runtime = AndroidProductRuntimeAssembly(
+            heart = heart,
+            learning = LearningComposition(foundation),
+            governedLearningFactory = AndroidProductRuntimeGovernedLearningFactory {
+                readyGoverned(heart)
+            },
+            durableConversationStoreId = PersistentStoreId("durable-conversation"),
+            durableConversationSessionId = CognitiveConversationSessionId("stable-session"),
+            conversationTimestamps = CognitiveTimestampSource {
+                Instant.parse("2026-09-18T00:00:00Z")
+            }
+        )
+
+        assertEquals(AndroidProductRuntimeStartResult.Ready, runtime.start())
+        assertSame(durable, runtime.conversation(4, 512, 128))
+        assertEquals(1, heart.durableConversationCalls)
+        assertEquals(0, heart.ephemeralConversationCalls)
+        assertEquals("stable-session", heart.lastDurableSessionId?.value)
+        assertEquals("durable-conversation", heart.lastDurableStoreId?.value)
+    }
+
 
     @Test
     fun semantic_recovery_preserves_all_heart_results_exactly() {
@@ -399,12 +457,21 @@ class AndroidProductRuntimeAssemblyContractTest {
     private class FakeHeart(
         private val startResult: HeartRuntimeStartResult = HeartRuntimeStartResult.Ready,
         private val chat: ProductChatHost? = null,
-        private val conversation: ProductConversationHost? = null
+        private val conversation: ProductConversationHost? = null,
+        private val durableConversation: ProductConversationHost? = null
     ) : AndroidProductRuntimeHeartBridge {
         private var current = HeartRuntimeState.IDLE
         var startCalls = 0
             private set
         var closeCalls = 0
+            private set
+        var ephemeralConversationCalls = 0
+            private set
+        var durableConversationCalls = 0
+            private set
+        var lastDurableSessionId: CognitiveConversationSessionId? = null
+            private set
+        var lastDurableStoreId: PersistentStoreId? = null
             private set
         var recoveryResult: AndroidHeartSemanticRecoveryResult =
             AndroidHeartSemanticRecoveryResult.NotRequired
@@ -439,7 +506,24 @@ class AndroidProductRuntimeAssemblyContractTest {
             maxRetainedMessages: Int,
             maxRetainedCharacters: Int,
             maxMessageCharacters: Int
-        ): ProductConversationHost? = conversation
+        ): ProductConversationHost? {
+            ephemeralConversationCalls += 1
+            return conversation
+        }
+
+        override fun durableConversation(
+            sessionId: CognitiveConversationSessionId,
+            conversationStoreId: PersistentStoreId,
+            maxRetainedMessages: Int,
+            maxRetainedCharacters: Int,
+            maxMessageCharacters: Int,
+            timestamps: CognitiveTimestampSource
+        ): ProductConversationHost? {
+            durableConversationCalls += 1
+            lastDurableSessionId = sessionId
+            lastDurableStoreId = conversationStoreId
+            return durableConversation
+        }
 
         override fun close(): HeartRuntimeCloseResult {
             closeCalls += 1

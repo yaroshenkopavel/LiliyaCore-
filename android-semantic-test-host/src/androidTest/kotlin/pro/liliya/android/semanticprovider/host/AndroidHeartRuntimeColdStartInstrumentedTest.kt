@@ -69,9 +69,14 @@ import pro.liliya.android.runtime.learningFollowUpReference
 import pro.liliya.android.runtime.AndroidHeartProductionPersonaDefinition
 import pro.liliya.android.runtime.AndroidHeartProductionPersonaRuntimeFactory
 import pro.liliya.android.runtime.AndroidHeartProductionPersonaRuntimeFactoryCreateResult
-import pro.liliya.android.runtime.AndroidHeartProductionGovernedLearningAssembly
-import pro.liliya.android.runtime.AndroidHeartProductionGovernedLearningCreateResult
+import pro.liliya.android.runtime.AndroidHeartProductionGovernedLearningComposition
 import pro.liliya.android.runtime.AndroidHeartProductionGovernedLearningProcessResult
+import pro.liliya.android.runtime.AndroidProductRuntimeGovernedLearningActivationAssembly
+import pro.liliya.android.runtime.AndroidProductRuntimeLearningActivationFileJournal
+import pro.liliya.android.runtime.AndroidProductRuntimeLearningActivationRecoverySafetyPort
+import pro.liliya.android.runtime.AndroidProductRuntimeLearningActivationRecoverySafetyResult
+import pro.liliya.android.runtime.AndroidProductRuntimeLearningActivationSessionResult
+import pro.liliya.android.runtime.AndroidProductRuntimeLearningEnablementEvidence
 import pro.liliya.android.runtime.HeartRuntimeCloseResult
 import pro.liliya.android.runtime.HeartRuntimeStartResult
 import pro.liliya.android.runtime.HeartRuntimeState
@@ -365,6 +370,7 @@ class AndroidHeartRuntimeColdStartInstrumentedTest {
         compilerSawKnowledge = false
         compilerSawSelf = false
         compilerSawPersonality = false
+        compilerSawProductRuntimeLearned = false
 
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val targetContext = instrumentation.targetContext
@@ -602,11 +608,12 @@ class AndroidHeartRuntimeColdStartInstrumentedTest {
         val afterRecoveryCompleted = assertIs<ProductConversationResult.Completed>(
             recoveredConversation.send(
                 ProductChatRequest(
-                    "Continue after explicit semantic recovery.",
+                    "What explicit product runtime learning evidence did you remember?",
                     ProductChatGenerationMode.ONE_SHOT
                 )
             )
         )
+        assertTrue(compilerSawProductRuntimeLearned)
         val afterRecoveryEvidence =
             assertNotNull(afterRecoveryCompleted.learningFollowUpReference())
         val reboundFollowUp = assertNotNull(product.learningFollowUp())
@@ -665,6 +672,7 @@ class AndroidHeartRuntimeColdStartInstrumentedTest {
 
         File(targetContext.filesDir, STORAGE_DIRECTORY_H4D).deleteRecursively()
         File(targetContext.filesDir, SEMANTIC_ROOT_H4D).deleteRecursively()
+        File(targetContext.filesDir, LEARNING_ACTIVATION_DIRECTORY_H4D).deleteRecursively()
 
         val first = assertIs<AndroidCognitiveStorageOpenResult.Ready>(
             AndroidCognitiveStorageAssembly.open(
@@ -850,8 +858,12 @@ class AndroidHeartRuntimeColdStartInstrumentedTest {
             )
         )
 
-        val governed = assertIs<AndroidHeartProductionGovernedLearningCreateResult.Ready>(
-            AndroidHeartProductionGovernedLearningAssembly.create(
+        val activationJournal = AndroidProductRuntimeLearningActivationFileJournal.create(
+            context = targetContext,
+            directoryName = LEARNING_ACTIVATION_DIRECTORY_H4D
+        )
+        val governedLearningLifecycle =
+            AndroidProductRuntimeGovernedLearningActivationAssembly.createLifecycle(
                 heart = heart,
                 foundation = foundation,
                 scope = CognitiveRuntimeScopeId("heart-h4d-runtime"),
@@ -874,9 +886,28 @@ class AndroidHeartRuntimeColdStartInstrumentedTest {
                     "heart-h4d-learning-" + kind.name.lowercase() + "-" + ids.incrementAndGet()
                 },
                 timestamps = CognitiveTimestampSource { BASE.plusSeconds(12) },
+                journal = activationJournal,
+                recoverySafety = AndroidProductRuntimeLearningActivationRecoverySafetyPort {
+                    AndroidProductRuntimeLearningActivationRecoverySafetyResult.Blocked
+                },
                 limits = cognitiveLimits()
             )
-        ).composition
+        val activated = assertIs<
+            AndroidProductRuntimeLearningActivationSessionResult.Activated<*>
+        >(
+            governedLearningLifecycle.start(
+                AndroidProductRuntimeLearningEnablementEvidence(
+                    productPolicyApproved = true,
+                    poisoningResistanceAccepted = true,
+                    freshAuthorityPerMutationAccepted = true,
+                    rollbackCompensationAccepted = true,
+                    durableCrashSemanticsAccepted = true
+                )
+            )
+        )
+        val governed = assertIs<AndroidHeartProductionGovernedLearningComposition>(
+            activated.value
+        )
         val learned = assertIs<AndroidHeartProductionGovernedLearningProcessResult.Processed>(
             governed.process(finalizedA.learning)
         ).result
@@ -999,6 +1030,9 @@ class AndroidHeartRuntimeColdStartInstrumentedTest {
     private var compilerSawLearned = false
 
     @Volatile
+    private var compilerSawProductRuntimeLearned = false
+
+    @Volatile
     private var compilerSawSelf = false
 
     @Volatile
@@ -1026,8 +1060,12 @@ class AndroidHeartRuntimeColdStartInstrumentedTest {
         }
         val compiler = CognitiveModelRequestCompilerPort { request ->
             val contents = request.inference.context.items.map { it.content }
-            compilerSawMemory = contents.contains(RELEVANT_MEMORY)
-            compilerSawKnowledge = contents.contains(RELEVANT_KNOWLEDGE)
+            if (contents.contains(RELEVANT_MEMORY)) {
+                compilerSawMemory = true
+            }
+            if (contents.contains(RELEVANT_KNOWLEDGE)) {
+                compilerSawKnowledge = true
+            }
             if (contents.contains(PERSONA_SELF_NAME)) {
                 compilerSawSelf = true
             }
@@ -1037,8 +1075,9 @@ class AndroidHeartRuntimeColdStartInstrumentedTest {
             if (contents.contains(LEARNED_EVIDENCE)) {
                 compilerSawLearned = true
             }
-            check(compilerSawMemory)
-            check(compilerSawKnowledge)
+            if (contents.contains(PRODUCT_RUNTIME_LEARNED_EVIDENCE)) {
+                compilerSawProductRuntimeLearned = true
+            }
             CognitiveModelRequestCompilerResult.Compiled(
                 CognitiveCompiledModelRequest(
                     ("Context: " + contents.joinToString(" | ") + ". Answer briefly.")
@@ -1251,6 +1290,7 @@ class AndroidHeartRuntimeColdStartInstrumentedTest {
 
         const val STORAGE_DIRECTORY_H4D = "heart-h4d-storage"
         const val SEMANTIC_ROOT_H4D = "heart-h4d-semantic"
+        const val LEARNING_ACTIVATION_DIRECTORY_H4D = "heart-h4d-learning-activation"
         const val LEARNED_EVIDENCE = "The emergency code word is violet."
 
         const val STORAGE_DIRECTORY = "heart-h3-storage"

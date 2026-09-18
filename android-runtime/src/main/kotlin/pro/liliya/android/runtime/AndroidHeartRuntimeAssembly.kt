@@ -2,6 +2,7 @@ package pro.liliya.android.runtime
 
 import java.io.File
 import pro.liliya.android.cognitivestorage.AndroidCognitiveStorageAssembly
+import pro.liliya.android.cognitivestorage.AndroidEncryptedConversationOpenResult
 import pro.liliya.android.cognitivestorage.AndroidEncryptedKnowledgeOpenResult
 import pro.liliya.android.cognitivestorage.AndroidEncryptedMemoryOpenResult
 import pro.liliya.android.llamacppengine.AndroidLlamaCppCognitiveModelAssembly
@@ -13,6 +14,7 @@ import pro.liliya.android.semanticprovider.AndroidOfflineSemanticProviderRebuild
 import pro.liliya.android.semanticprovider.AndroidOfflineSemanticMutationSynchronizer
 import pro.liliya.android.semanticprovider.AndroidOfflineSemanticStartupCoordinator
 import pro.liliya.android.semanticprovider.AndroidOfflineSemanticStartupResult
+import pro.liliya.core.cognitive.CognitiveConversationSessionId
 import pro.liliya.core.cognitive.CognitiveGovernedLearningComposition
 import pro.liliya.core.cognitive.CognitiveInferencePort
 import pro.liliya.core.cognitive.CognitiveModelActivationResult
@@ -20,6 +22,7 @@ import pro.liliya.core.cognitive.CognitiveModelQuiesceResult
 import pro.liliya.core.cognitive.CognitiveModelRetirementResult
 import pro.liliya.core.cognitive.CognitiveRuntimeComposition
 import pro.liliya.core.cognitive.CognitiveStreamingInferencePort
+import pro.liliya.core.cognitive.CognitiveTimestampSource
 import pro.liliya.core.cognitive.KnowledgeAuthoritativeResolutionResult
 import pro.liliya.core.cognitive.KnowledgeAuthoritativeResolverPort
 import pro.liliya.core.cognitive.KnowledgeRetrievalPort
@@ -164,6 +167,45 @@ class AndroidHeartRuntimeAssembly private constructor(
             maxRetainedCharacters = maxRetainedCharacters,
             maxMessageCharacters = maxMessageCharacters,
             turns = turns
+        )
+    }
+
+    fun durableConversation(
+        sessionId: CognitiveConversationSessionId,
+        conversationStoreId: PersistentStoreId,
+        maxRetainedMessages: Int,
+        maxRetainedCharacters: Int,
+        maxMessageCharacters: Int,
+        timestamps: CognitiveTimestampSource
+    ): ProductConversationHost? {
+        val activeRuntime = runtime() ?: return null
+        val turns = productTurns() ?: return null
+        val persistent = when (
+            val opened = cognitiveStorage.openEncryptedConversation(
+                storeId = conversationStoreId,
+                activeDek = activeDek,
+                maxRetainedMessages = maxRetainedMessages,
+                maxMessageChars = maxMessageCharacters
+            )
+        ) {
+            is AndroidEncryptedConversationOpenResult.Opened -> opened.store
+            AndroidEncryptedConversationOpenResult.Corrupt,
+            is AndroidEncryptedConversationOpenResult.Incompatible,
+            is AndroidEncryptedConversationOpenResult.EncryptionUnavailable,
+            is AndroidEncryptedConversationOpenResult.Failed -> return null
+        }
+        return ProductConversationHost.productionDurable(
+            sessionId = sessionId,
+            maxInputChars = activeRuntime.limits.maxInputChars,
+            maxTurnIdChars = activeRuntime.limits.maxTurnIdChars,
+            maxContextItems = activeRuntime.limits.maxContextItems,
+            maxContextItemChars = activeRuntime.limits.maxContextItemChars,
+            maxRetainedMessages = maxRetainedMessages,
+            maxRetainedCharacters = maxRetainedCharacters,
+            maxMessageCharacters = maxMessageCharacters,
+            turns = turns,
+            persistentStore = persistent,
+            timestamps = timestamps
         )
     }
 

@@ -9,8 +9,10 @@ import java.time.Instant
 import pro.liliya.core.persistence.PersistentEntityId
 import pro.liliya.core.persistence.PersistentGeneration
 import pro.liliya.core.persistence.PersistentInstallResult
+import pro.liliya.core.persistence.PersistentMutationResult
 import pro.liliya.core.persistence.PersistentPayload
 import pro.liliya.core.persistence.PersistentRecord
+import pro.liliya.core.persistence.PersistentRecordAccessException
 import pro.liliya.core.persistence.PersistentRecordOwnership
 import pro.liliya.core.persistence.PersistentRecordSnapshot
 import pro.liliya.core.persistence.PersistentRecordStore
@@ -196,7 +198,15 @@ class EncryptedPersistentRecordStore(
     internal fun decryptedSnapshotEntries():
         CognitiveEncryptionResult<List<PersistentRecordSnapshot>> {
         val decrypted = ArrayList<PersistentRecordSnapshot>()
-        for (snapshot in store.snapshotEntries()) {
+        val snapshots = try {
+            store.snapshotEntries()
+        } catch (e: PersistentRecordAccessException) {
+            return CognitiveEncryptionResult.Failed(
+                CognitiveEncryptionFailureCategory.PERSISTENCE_FAILED,
+                e
+            )
+        }
+        for (snapshot in snapshots) {
             val plaintext = when (val opened = open(snapshot.record.id)) {
                 is CognitiveEncryptionResult.Success -> opened.value
                 is CognitiveEncryptionResult.Rejected -> return opened
@@ -219,11 +229,24 @@ class EncryptedPersistentRecordStore(
     internal fun snapshotEntries(): List<pro.liliya.core.persistence.PersistentRecordSnapshot> =
         store.snapshotEntries()
 
+    internal fun inspect(id: PersistentEntityId): PersistentRecordSnapshot? = store.inspect(id)
+
     internal fun generationHighWatermark(): Long = store.generationHighWatermark()
 
+    internal fun removeExact(
+        id: PersistentEntityId,
+        generation: PersistentGeneration
+    ): PersistentMutationResult = store.removeExact(id, generation)
+
     fun open(id: PersistentEntityId): CognitiveEncryptionResult<CognitivePlaintext> {
-        val snapshot = store.inspect(id)
-            ?: return CognitiveEncryptionResult.Rejected(CognitiveEncryptionFailureCategory.INVALID_REQUEST)
+        val snapshot = try {
+            store.inspect(id)
+        } catch (e: PersistentRecordAccessException) {
+            return CognitiveEncryptionResult.Failed(
+                CognitiveEncryptionFailureCategory.PERSISTENCE_FAILED,
+                e
+            )
+        } ?: return CognitiveEncryptionResult.Rejected(CognitiveEncryptionFailureCategory.INVALID_REQUEST)
         val envelope = when (
             val decoded = CognitivePersistentEnvelopeCodec.decode(snapshot.record.payload.copyBytes())
         ) {

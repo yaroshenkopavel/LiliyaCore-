@@ -2,10 +2,13 @@ package pro.liliya.android.runtime
 
 import java.io.File
 import pro.liliya.android.cognitivestorage.AndroidCognitiveStorageAssembly
+import pro.liliya.android.cognitivestorage.AndroidEncryptedPersonalityOpenResult
+import pro.liliya.android.cognitivestorage.AndroidPersonalitySchemaMigrationStepResult
 import pro.liliya.android.llamacppengine.AndroidLlamaCppCognitiveModelAssembly
 import pro.liliya.core.authority.AuthorityPrincipal
 import pro.liliya.core.authority.CapabilityAuthorityComposition
 import pro.liliya.core.cognitive.CognitiveArtifactIdSource
+import pro.liliya.core.cognitive.CognitiveConversationSessionId
 import pro.liliya.core.cognitive.CognitiveLearningApplicationMaterializationPort
 import pro.liliya.core.cognitive.CognitiveLearningGovernancePort
 import pro.liliya.core.cognitive.CognitiveMaterializationPort
@@ -25,6 +28,15 @@ import pro.liliya.core.planning.PlanningComposition
 import pro.liliya.core.protectedmodel.LargeProtectedModelStagedSourceOwnership
 import pro.liliya.core.reasoning.ReasoningComposition
 import pro.liliya.core.reflection.ReflectionComposition
+
+internal fun AndroidEncryptedPersonalityOpenResult.toProductRuntimePersonalityOrNull() =
+    when (this) {
+        is AndroidEncryptedPersonalityOpenResult.Opened -> composition
+        AndroidEncryptedPersonalityOpenResult.Corrupt,
+        is AndroidEncryptedPersonalityOpenResult.Incompatible,
+        is AndroidEncryptedPersonalityOpenResult.EncryptionUnavailable,
+        is AndroidEncryptedPersonalityOpenResult.Failed -> null
+    }
 
 enum class AndroidProductRuntimeCreateFailure {
     PERSONA_REJECTED,
@@ -86,6 +98,16 @@ internal interface AndroidProductRuntimeHeartBridge {
         maxRetainedCharacters: Int,
         maxMessageCharacters: Int
     ): ProductConversationHost?
+
+    fun durableConversation(
+        sessionId: CognitiveConversationSessionId,
+        conversationStoreId: PersistentStoreId,
+        maxRetainedMessages: Int,
+        maxRetainedCharacters: Int,
+        maxMessageCharacters: Int,
+        timestamps: CognitiveTimestampSource
+    ): ProductConversationHost? = null
+
     fun close(): HeartRuntimeCloseResult
 }
 
@@ -98,7 +120,10 @@ internal interface AndroidProductRuntimeHeartBridge {
 class AndroidProductRuntimeAssembly internal constructor(
     private val heart: AndroidProductRuntimeHeartBridge,
     private val learning: LearningComposition,
-    private val governedLearningFactory: AndroidProductRuntimeGovernedLearningFactory
+    private val governedLearningFactory: AndroidProductRuntimeGovernedLearningFactory,
+    private val durableConversationStoreId: PersistentStoreId? = null,
+    private val durableConversationSessionId: CognitiveConversationSessionId? = null,
+    private val conversationTimestamps: CognitiveTimestampSource? = null
 ) {
     @Volatile
     private var learningFollowUpHost: ProductLearningFollowUpHost? = null
@@ -144,10 +169,70 @@ class AndroidProductRuntimeAssembly internal constructor(
         maxMessageCharacters: Int
     ): ProductConversationHost? =
         if (heart.state() == HeartRuntimeState.READY) {
-            heart.conversation(
+            val storeId = durableConversationStoreId
+            val sessionId = durableConversationSessionId
+            val timestamps = conversationTimestamps
+            if (storeId != null && sessionId != null && timestamps != null) {
+                heart.durableConversation(
+                    sessionId = sessionId,
+                    conversationStoreId = storeId,
+                    maxRetainedMessages = maxRetainedMessages,
+                    maxRetainedCharacters = maxRetainedCharacters,
+                    maxMessageCharacters = maxMessageCharacters,
+                    timestamps = timestamps
+                )
+            } else {
+                heart.conversation(
+                    maxRetainedMessages = maxRetainedMessages,
+                    maxRetainedCharacters = maxRetainedCharacters,
+                    maxMessageCharacters = maxMessageCharacters
+                )
+            }
+        } else {
+            null
+        }
+
+    fun conversation(
+        sessionId: CognitiveConversationSessionId,
+        maxRetainedMessages: Int,
+        maxRetainedCharacters: Int,
+        maxMessageCharacters: Int
+    ): ProductConversationHost? =
+        if (heart.state() == HeartRuntimeState.READY) {
+            val storeId = durableConversationStoreId
+            val timestamps = conversationTimestamps
+            if (storeId != null && timestamps != null) {
+                heart.durableConversation(
+                    sessionId = sessionId,
+                    conversationStoreId = storeId,
+                    maxRetainedMessages = maxRetainedMessages,
+                    maxRetainedCharacters = maxRetainedCharacters,
+                    maxMessageCharacters = maxMessageCharacters,
+                    timestamps = timestamps
+                )
+            } else {
+                null
+            }
+        } else {
+            null
+        }
+
+    fun durableConversation(
+        sessionId: CognitiveConversationSessionId,
+        conversationStoreId: PersistentStoreId,
+        maxRetainedMessages: Int,
+        maxRetainedCharacters: Int,
+        maxMessageCharacters: Int,
+        timestamps: CognitiveTimestampSource
+    ): ProductConversationHost? =
+        if (heart.state() == HeartRuntimeState.READY) {
+            heart.durableConversation(
+                sessionId = sessionId,
+                conversationStoreId = conversationStoreId,
                 maxRetainedMessages = maxRetainedMessages,
                 maxRetainedCharacters = maxRetainedCharacters,
-                maxMessageCharacters = maxMessageCharacters
+                maxMessageCharacters = maxMessageCharacters,
+                timestamps = timestamps
             )
         } else {
             null
@@ -223,6 +308,23 @@ class AndroidProductRuntimeAssembly internal constructor(
             if (learningFollowUpHost == null) "<absent>)" else "<redacted>)"
 
     companion object {
+        private val DEFAULT_PERSONALITY_STORE_ID =
+            PersistentStoreId("product-personality-continuity-v1")
+        private val DEFAULT_CONVERSATION_STORE_ID =
+            PersistentStoreId("product-conversation-continuity-v1")
+        private val DEFAULT_CONVERSATION_SESSION_ID =
+            CognitiveConversationSessionId("product-default-conversation-v1")
+
+        fun migratePersonalitySchemaStep(
+            cognitiveStorage: AndroidCognitiveStorageAssembly,
+            activeDek: CognitiveDekReference,
+            personalityStoreId: PersistentStoreId = DEFAULT_PERSONALITY_STORE_ID
+        ): AndroidPersonalitySchemaMigrationStepResult =
+            cognitiveStorage.migratePersonalitySchemaStep(
+                storeId = personalityStoreId,
+                activeDek = activeDek
+            )
+
         fun create(
             foundation: FoundationComposition,
             cognitiveStorage: AndroidCognitiveStorageAssembly,
@@ -249,15 +351,28 @@ class AndroidProductRuntimeAssembly internal constructor(
             timestamps: CognitiveTimestampSource,
             limits: CognitiveRuntimeLimits = CognitiveRuntimeLimits(),
             personaLimits: AndroidHeartProductionPersonaLimits =
-                AndroidHeartProductionPersonaLimits()
+                AndroidHeartProductionPersonaLimits(),
+            personalityStoreId: PersistentStoreId = DEFAULT_PERSONALITY_STORE_ID,
+            conversationStoreId: PersistentStoreId = DEFAULT_CONVERSATION_STORE_ID,
+            conversationSessionId: CognitiveConversationSessionId =
+                DEFAULT_CONVERSATION_SESSION_ID
         ): AndroidProductRuntimeCreateResult {
             return try {
                 val learning = LearningComposition(foundation)
                 val reflection = ReflectionComposition(foundation)
+                val persistentPersonality =
+                    cognitiveStorage.openEncryptedPersonality(
+                        storeId = personalityStoreId,
+                        activeDek = activeDek
+                    ).toProductRuntimePersonalityOrNull()
+                        ?: return AndroidProductRuntimeCreateResult.Rejected(
+                            AndroidProductRuntimeCreateFailure.PERSONA_REJECTED
+                        )
                 val personaRuntime = when (
-                    val result = AndroidHeartProductionPersonaRuntimeFactory.create(
+                    val result = AndroidHeartProductionPersonaRuntimeFactory.createDurable(
                         foundation = foundation,
                         personaDefinition = personaDefinition,
+                        persistentPersonality = persistentPersonality,
                         scope = scope,
                         materialization = cognitiveMaterialization,
                         planning = PlanningComposition(foundation),
@@ -329,6 +444,24 @@ class AndroidProductRuntimeAssembly internal constructor(
                             maxRetainedCharacters = maxRetainedCharacters,
                             maxMessageCharacters = maxMessageCharacters
                         )
+
+                    override fun durableConversation(
+                        sessionId: CognitiveConversationSessionId,
+                        conversationStoreId: PersistentStoreId,
+                        maxRetainedMessages: Int,
+                        maxRetainedCharacters: Int,
+                        maxMessageCharacters: Int,
+                        timestamps: CognitiveTimestampSource
+                    ): ProductConversationHost? =
+                        heart.durableConversation(
+                            sessionId = sessionId,
+                            conversationStoreId = conversationStoreId,
+                            maxRetainedMessages = maxRetainedMessages,
+                            maxRetainedCharacters = maxRetainedCharacters,
+                            maxMessageCharacters = maxMessageCharacters,
+                            timestamps = timestamps
+                        )
+
                     override fun close(): HeartRuntimeCloseResult = heart.close()
                 }
 
@@ -336,7 +469,10 @@ class AndroidProductRuntimeAssembly internal constructor(
                     AndroidProductRuntimeAssembly(
                         heart = heartBridge,
                         learning = learning,
-                        governedLearningFactory = governedFactory
+                        governedLearningFactory = governedFactory,
+                        durableConversationStoreId = conversationStoreId,
+                        durableConversationSessionId = conversationSessionId,
+                        conversationTimestamps = timestamps
                     )
                 )
             } catch (_: Exception) {

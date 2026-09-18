@@ -12,6 +12,7 @@ import pro.liliya.core.cognitive.CognitiveMaterializationPort
 import pro.liliya.core.cognitive.CognitiveOutcomeMaterializationPort
 import pro.liliya.core.cognitive.CognitiveRuntimeLimits
 import pro.liliya.core.cognitive.CognitiveRuntimeScopeId
+import pro.liliya.core.cognitive.CognitiveConversationSessionId
 import pro.liliya.core.cognitive.CognitiveTimestampSource
 import pro.liliya.core.encryption.CognitiveDekReference
 import pro.liliya.core.foundation.FoundationComposition
@@ -142,6 +143,18 @@ object AndroidProductRuntimeHostBootstrap {
                         maxMessageCharacters: Int
                     ): ProductConversationHost? =
                         runtime.conversation(
+                            maxRetainedMessages = maxRetainedMessages,
+                            maxRetainedCharacters = maxRetainedCharacters,
+                            maxMessageCharacters = maxMessageCharacters
+                        )
+                    override fun conversation(
+                        sessionId: CognitiveConversationSessionId,
+                        maxRetainedMessages: Int,
+                        maxRetainedCharacters: Int,
+                        maxMessageCharacters: Int
+                    ): ProductConversationHost? =
+                        runtime.conversation(
+                            sessionId = sessionId,
                             maxRetainedMessages = maxRetainedMessages,
                             maxRetainedCharacters = maxRetainedCharacters,
                             maxMessageCharacters = maxMessageCharacters
