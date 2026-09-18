@@ -7,7 +7,7 @@ import javax.crypto.Cipher
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
 import pro.liliya.android.devicekey.AndroidCognitiveKeyProtector
-import pro.liliya.android.persistence.AndroidDurablePersistentRecordBackend
+import pro.liliya.android.persistence.AndroidIndexedPersistentRecordBackend
 import pro.liliya.core.cognitive.EncryptedPersistentConversationStore
 import pro.liliya.core.cognitive.PersistentConversationOpenResult
 import pro.liliya.core.encryption.CognitiveAeadProvider
@@ -155,7 +155,7 @@ sealed interface AndroidEncryptedRecordStoreOpenResult {
  */
 class AndroidCognitiveStorageAssembly private constructor(
     private val foundation: FoundationComposition,
-    internal val backend: AndroidDurablePersistentRecordBackend,
+    internal val backend: AndroidIndexedPersistentRecordBackend,
     val keyProtector: AndroidCognitiveKeyProtector,
     val dekStore: PersistentCognitiveDekStore,
     private val nonceSource: CognitiveNonceSource,
@@ -415,7 +415,7 @@ class AndroidCognitiveStorageAssembly private constructor(
             directoryName: String = DEFAULT_DIRECTORY
         ): AndroidCognitiveStorageOpenResult {
             val backend = try {
-                AndroidDurablePersistentRecordBackend.create(context, directoryName)
+                AndroidIndexedPersistentRecordBackend.create(context, directoryName)
             } catch (t: Throwable) {
                 return AndroidCognitiveStorageOpenResult.Failed(
                     "android cognitive durable backend open failed",
