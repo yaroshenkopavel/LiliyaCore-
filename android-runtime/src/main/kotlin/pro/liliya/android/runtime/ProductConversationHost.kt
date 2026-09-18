@@ -436,9 +436,8 @@ class ProductConversationHost internal constructor(
             turns: ProductTurnOrchestrator,
             persistentStore: EncryptedPersistentConversationStore,
             timestamps: CognitiveTimestampSource
-        ): ProductConversationHost? {
-            if (!persistentStore.canOpenSession(sessionId)) return null
-            return productionDurable(
+        ): ProductConversationHost? =
+            productionDurable(
                 sessionId = sessionId,
                 maxInputChars = maxInputChars,
                 maxTurnIdChars = maxTurnIdChars,
@@ -479,7 +478,6 @@ class ProductConversationHost internal constructor(
                 },
                 timestamps = timestamps
             )
-        }
 
         internal fun productionDurable(
             sessionId: CognitiveConversationSessionId,

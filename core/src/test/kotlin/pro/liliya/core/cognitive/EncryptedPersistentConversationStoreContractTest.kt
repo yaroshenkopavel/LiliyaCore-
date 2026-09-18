@@ -169,70 +169,15 @@ class EncryptedPersistentConversationStoreContractTest {
         assertEquals(0, store.sessionCount())
     }
 
-    @Test
-    fun durable_session_capacity_rejects_new_session_without_deleting_existing_history() {
-        val backend = InMemoryPersistentRecordBackend()
-        val store = openConversation(backend, maxRetained = 4, maxSessions = 2)
-        val first = CognitiveConversationSessionId("bounded-session-1")
-        val second = CognitiveConversationSessionId("bounded-session-2")
-        val rejected = CognitiveConversationSessionId("bounded-session-3")
-
-        assertTrue(store.canOpenSession(first))
-        assertIs<PersistentConversationAppendResult.Appended>(
-            store.append(first, msg(1, CognitiveConversationRole.USER, "first"), at(1))
-        )
-        assertIs<PersistentConversationAppendResult.Appended>(
-            store.append(second, msg(1, CognitiveConversationRole.USER, "second"), at(2))
-        )
-
-        assertFalse(store.canOpenSession(rejected))
-        assertTrue(store.canOpenSession(first))
-        assertIs<PersistentConversationAppendResult.Rejected>(
-            store.append(rejected, msg(1, CognitiveConversationRole.USER, "rejected"), at(3))
-        )
-        assertEquals("first", store.reopen(first)!!.messages.single().content)
-        assertEquals("second", store.reopen(second)!!.messages.single().content)
-        assertEquals(2, store.sessionCount())
-    }
-
-    @Test
-    fun reopen_fails_closed_before_decrypting_more_sessions_than_configured_bound() {
-        val backend = InMemoryPersistentRecordBackend()
-        val first = openConversation(backend, maxRetained = 4, maxSessions = 3)
-        repeat(3) { index ->
-            val session = CognitiveConversationSessionId("restore-session-${index + 1}")
-            assertIs<PersistentConversationAppendResult.Appended>(
-                first.append(
-                    session,
-                    msg(1, CognitiveConversationRole.USER, "message-${index + 1}"),
-                    at(index.toLong() + 1L)
-                )
-            )
-        }
-
-        val reopened = EncryptedPersistentConversationStore.open(
-            encryptedStore(backend, resolver(material)),
-            dekRef,
-            maxRetainedMessages = 4,
-            maxMessageChars = 1024,
-            maxRetainedSessions = 2
-        )
-
-        val rejected = assertIs<PersistentConversationOpenResult.Incompatible>(reopened)
-        assertEquals("durable conversation session capacity exceeded", rejected.reason)
-    }
-
     private fun openConversation(
         backend: InMemoryPersistentRecordBackend,
-        maxRetained: Int,
-        maxSessions: Int = EncryptedPersistentConversationStore.DEFAULT_MAX_RETAINED_SESSIONS
+        maxRetained: Int
     ): EncryptedPersistentConversationStore = assertIs<PersistentConversationOpenResult.Opened>(
         EncryptedPersistentConversationStore.open(
             encryptedStore(backend, resolver(material)),
             dekRef,
             maxRetainedMessages = maxRetained,
-            maxMessageChars = 1024,
-            maxRetainedSessions = maxSessions
+            maxMessageChars = 1024
         )
     ).store
 
