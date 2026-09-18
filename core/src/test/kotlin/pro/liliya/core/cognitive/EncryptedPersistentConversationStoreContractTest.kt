@@ -468,6 +468,21 @@ class EncryptedPersistentConversationStoreContractTest {
     }
 
     @Test
+    fun conversation_v3_format_marker_round_trips_and_has_constant_non_session_identity() {
+        val encoded = ConversationPersistentRecordCodec.encodeFormatMarker(at(1))
+        val decoded = assertIs<ConversationFormatMarkerDecodeResult.Decoded>(
+            ConversationPersistentRecordCodec.decodeFormatMarker(encoded)
+        ).marker
+
+        assertEquals(3, decoded.formatEpoch)
+        assertEquals(
+            ConversationPersistentRecordCodec.formatMarkerEntityId(),
+            encoded.id
+        )
+        assertEquals("conversation-format-v3", encoded.id.value)
+    }
+
+    @Test
     fun conversation_head_v3_round_trips_latest_chunk_without_plaintext_session_id() {
         val session = CognitiveConversationSessionId("codec-v3-head")
         val latest = ConversationPersistentRecordCodec.chunkEntityId(session, 9L)
