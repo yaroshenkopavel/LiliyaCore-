@@ -144,9 +144,8 @@ class AndroidIndexedPersistentRecordBackend private constructor(
         try {
             openDatabase().use { db ->
                 when (val imported = importLegacyIfRequired(db, storeId)) {
-                    LegacyImportResult.Ready -> Unit
-                    LegacyImportResult.Missing ->
-                        return@synchronized PersistentBackendMetadataLoadResult.Missing
+                    LegacyImportResult.Ready,
+                    LegacyImportResult.Missing -> Unit
                     LegacyImportResult.Corrupt ->
                         return@synchronized PersistentBackendMetadataLoadResult.Corrupt
                     LegacyImportResult.Incompatible ->
@@ -936,7 +935,7 @@ class AndroidIndexedPersistentRecordBackend private constructor(
     private fun validateMetadataIndex(
         db: SQLiteDatabase,
         storeId: PersistentStoreId,
-        header: StoreHeader
+        header: Header
     ): Boolean = db.rawQuery(
         "SELECT COUNT(*),COUNT(DISTINCT generation),MIN(generation),MAX(generation) " +
             "FROM records WHERE store_id=?",
