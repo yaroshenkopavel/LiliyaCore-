@@ -234,8 +234,27 @@ class EncryptedPersistentConversationStore private constructor(
     }
 
     @Synchronized
+    fun reopenResult(
+        sessionId: CognitiveConversationSessionId
+    ): PersistentConversationReopenResult =
+        entries[sessionId]?.let {
+            PersistentConversationReopenResult.Found(it.snapshot)
+        } ?: PersistentConversationReopenResult.Absent
+
+    @Synchronized
     fun reopen(sessionId: CognitiveConversationSessionId): CognitiveConversationContextSnapshot? =
-        entries[sessionId]?.snapshot
+        when (val result = reopenResult(sessionId)) {
+            is PersistentConversationReopenResult.Found -> result.snapshot
+            PersistentConversationReopenResult.Absent -> null
+            PersistentConversationReopenResult.Corrupt ->
+                throw IllegalStateException("durable conversation is corrupt")
+            is PersistentConversationReopenResult.Incompatible ->
+                throw IllegalStateException(result.reason)
+            is PersistentConversationReopenResult.EncryptionUnavailable ->
+                throw IllegalStateException(
+                    "durable conversation encryption unavailable: " + result.category
+                )
+        }
 
     @Synchronized
     fun sessionCount(): Int = entries.size
