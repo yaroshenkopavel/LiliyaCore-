@@ -94,6 +94,28 @@ class AndroidIndexedPersistentRecordBackendInstrumentedTest {
         }
 
     @Test
+    fun unknown_indexed_database_version_is_incompatible_fail_closed() =
+        withCleanRoot { context, root ->
+            val backend = AndroidIndexedPersistentRecordBackend.create(context, TEST_DIRECTORY)
+            val storeId = PersistentStoreId("future-version")
+            assertEquals(
+                PersistentBackendCommitResult.Committed(1),
+                backend.commit(storeId, 0, state(storeId, 1, mapOf("a" to "one")))
+            )
+
+            val db = SQLiteDatabase.openDatabase(
+                File(root, "liliya-indexed-v2.sqlite3").absolutePath,
+                null,
+                SQLiteDatabase.OPEN_READWRITE
+            )
+            db.use { it.version = 99 }
+
+            assertIs<PersistentBackendLoadResult.Incompatible>(
+                AndroidIndexedPersistentRecordBackend.create(context, TEST_DIRECTORY).load(storeId)
+            )
+        }
+
+    @Test
     fun missing_indexed_row_is_detected_as_corrupt_instead_of_silent_data_loss() =
         withCleanRoot { context, root ->
             val storeId = PersistentStoreId("row-loss")
