@@ -47,6 +47,19 @@ sealed interface PersistentConversationAppendPairResult {
     data class Failed(val reason: String) : PersistentConversationAppendPairResult
 }
 
+sealed interface PersistentConversationReopenResult {
+    data class Found(
+        val snapshot: CognitiveConversationContextSnapshot
+    ) : PersistentConversationReopenResult
+
+    data object Absent : PersistentConversationReopenResult
+    data object Corrupt : PersistentConversationReopenResult
+    data class Incompatible(val reason: String) : PersistentConversationReopenResult
+    data class EncryptionUnavailable(
+        val category: CognitiveEncryptionFailureCategory
+    ) : PersistentConversationReopenResult
+}
+
 sealed interface PersistentConversationHistoryResult {
     data class Found(val snapshot: CognitiveConversationContextSnapshot) : PersistentConversationHistoryResult
     data object Absent : PersistentConversationHistoryResult
