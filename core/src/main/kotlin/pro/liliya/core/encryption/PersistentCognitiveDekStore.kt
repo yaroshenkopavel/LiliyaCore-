@@ -17,6 +17,8 @@ import pro.liliya.core.persistence.PersistentInstallResult
 import pro.liliya.core.persistence.PersistentMutationResult
 import pro.liliya.core.persistence.PersistentPayload
 import pro.liliya.core.persistence.PersistentRecord
+import pro.liliya.core.persistence.PersistentRecordAccessException
+import pro.liliya.core.persistence.PersistentRecordAccessFailureCategory
 import pro.liliya.core.persistence.PersistentRecordBackend
 import pro.liliya.core.persistence.PersistentRecordOwnership
 import pro.liliya.core.persistence.PersistentRecordStore
@@ -99,7 +101,15 @@ class PersistentCognitiveDekStore private constructor(
         }
 
         val entityId = entityIdFor(id)
-        if (persistentStore.contains(entityId)) {
+        val alreadyExists = try {
+            persistentStore.contains(entityId)
+        } catch (e: PersistentRecordAccessException) {
+            return@synchronized PersistentCognitiveDekRegistrationResult.Failed(
+                CognitiveEncryptionFailureCategory.PERSISTENCE_FAILED,
+                e
+            )
+        }
+        if (alreadyExists) {
             return@synchronized PersistentCognitiveDekRegistrationResult.Rejected(
                 CognitiveEncryptionFailureCategory.STALE_DEK_OWNERSHIP
             )
@@ -199,8 +209,14 @@ class PersistentCognitiveDekStore private constructor(
     override fun resolve(
         reference: CognitiveDekReference
     ): CognitiveEncryptionResult<CognitiveDekMaterial> {
-        val snapshot = persistentStore.inspect(entityIdFor(reference.id))
-            ?: return CognitiveEncryptionResult.Rejected(CognitiveEncryptionFailureCategory.DEK_MISSING)
+        val snapshot = try {
+            persistentStore.inspect(entityIdFor(reference.id))
+        } catch (e: PersistentRecordAccessException) {
+            return CognitiveEncryptionResult.Failed(
+                CognitiveEncryptionFailureCategory.PERSISTENCE_FAILED,
+                e
+            )
+        } ?: return CognitiveEncryptionResult.Rejected(CognitiveEncryptionFailureCategory.DEK_MISSING)
         if (snapshot.generation.value != reference.generation.value) {
             return CognitiveEncryptionResult.Rejected(
                 CognitiveEncryptionFailureCategory.STALE_DEK_OWNERSHIP
@@ -298,7 +314,25 @@ class PersistentCognitiveDekStore private constructor(
                     protector = protector,
                     materialSource = materialSource
                 )
-                when (candidate.validateRestoredState()) {
+                val validation = try {
+                    candidate.validateRestoredState()
+                } catch (e: PersistentRecordAccessException) {
+                    return when (e.category) {
+                        PersistentRecordAccessFailureCategory.CORRUPT ->
+                            PersistentCognitiveDekOpenResult.Corrupt
+                        PersistentRecordAccessFailureCategory.INCOMPATIBLE ->
+                            PersistentCognitiveDekOpenResult.Incompatible(
+                                e.message ?: "indexed persistent store is incompatible"
+                            )
+                        PersistentRecordAccessFailureCategory.FAILED,
+                        PersistentRecordAccessFailureCategory.CONFLICT ->
+                            PersistentCognitiveDekOpenResult.Failed(
+                                e.message ?: "indexed persistent read failed",
+                                e
+                            )
+                    }
+                }
+                when (validation) {
                     RestoreValidation.VALID -> PersistentCognitiveDekOpenResult.Opened(candidate)
                     RestoreValidation.CORRUPT -> PersistentCognitiveDekOpenResult.Corrupt
                     RestoreValidation.INCOMPATIBLE ->
