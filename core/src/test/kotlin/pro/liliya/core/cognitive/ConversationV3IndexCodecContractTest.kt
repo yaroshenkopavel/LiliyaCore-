@@ -12,6 +12,22 @@ class ConversationV3IndexCodecContractTest {
     private val at = Instant.parse("2026-09-19T00:00:00Z")
 
     @Test
+    fun native_format_marker_round_trips_and_is_fixed_non_sensitive_id() {
+        val record = ConversationV3IndexCodec.encodeMarker(at)
+        assertEquals(ConversationV3IndexCodec.MARKER_ID, record.id)
+        assertFalse(record.id.value.contains(session.value))
+        assertIs<ConversationV3DecodeResult.Decoded<ConversationV3FormatMarker>>(
+            ConversationV3IndexCodec.decodeMarker(record)
+        )
+        assertEquals(
+            ConversationV3DecodeResult.Incompatible("conversation v3 marker schema mismatch"),
+            ConversationV3IndexCodec.decodeMarker(
+                record.copy(id = PersistentEntityId("conversation-v3-format-marker-other"))
+            )
+        )
+    }
+
+    @Test
     fun head_and_linked_chunk_round_trip_with_deterministic_hashed_ids() {
         val first = CognitiveConversationContextMessage(
             CognitiveConversationSequence(1),
