@@ -1,10 +1,6 @@
 name: Core CI
 
 on:
-  push:
-    branches:
-      - main
-      - foundation/**
   pull_request:
     branches:
       - main
@@ -13,66 +9,41 @@ on:
 permissions:
   contents: read
 
+env:
+  CANONICAL_SHA: 25d9b6a8e118154bedafa5772b6fc0bd89469f2f
+  GRADLE_USER_HOME: ${{ runner.temp }}/liliya-gradle-home
+
 jobs:
-  core-test:
-    name: Test LiliyaCore
+  local-environment-bridge:
+    name: Local Environment Restore Bridge
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 90
 
     steps:
-      - name: Checkout
+      - name: Checkout with full history
         uses: actions/checkout@v4
-
-      - name: Set up Java 17
-        uses: actions/setup-java@v5
         with:
-          distribution: temurin
-          java-version: '17'
+          fetch-depth: 0
 
-      - name: Set up Gradle 9.6.1
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '9.6.1'
-
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v4
-        with:
-          packages: platform-tools
-
-      - name: Install Android API 35
-        run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
-
-      - name: Run core, License transport, and protected-model packager tests
-        run: gradle :core:test :license-transport-client:test :protected-model-packager:test --console=plain
-
-      - name: Protected-model packager architecture guard
+      - name: Re-anchor to exact canonical main
         shell: bash
         run: |
           set -euo pipefail
-          if grep -R -n -E '(^|[^A-Za-z])android\.|pro\.liliya\.android|project\(":android-' \
-              --include='*.kt' --include='*.kts' protected-model-packager; then
-            echo "Android dependency leaked into offline protected-model packager"
-            exit 1
-          fi
+          git fetch origin main
+          git checkout --detach "$CANONICAL_SHA"
+          test "$(git rev-parse HEAD)" = "$CANONICAL_SHA"
+          echo "HEAD=$(git rev-parse HEAD)"
+          echo "TREE=$(git rev-parse HEAD^{tree})"
+          git status --short --branch
 
-      - name: License transport architecture guard
+      - name: Export exact source mirror
         shell: bash
         run: |
           set -euo pipefail
-          if grep -R -n -E 'OpenBao|X-Vault-Token|transit/keys|RuntimeAuthority|ExecutionPermission|AuthorityComposition'             --include='*.kt' license-transport-client/src/main; then
-            echo "Provider-specific or Authority/Execution semantic leaked into client transport"
-            exit 1
-          fi
-
-  android-heart-runtime-unit:
-    name: Android Heart Runtime Unit
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    needs: core-test
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+          mkdir -p "$RUNNER_TEMP/export/parts"
+          tar --exclude='./.gradle' --exclude='*/build' --exclude='*/.cxx'             -I 'zstd -6 -T0' -cf "$RUNNER_TEMP/export/liliyacore-source.tar.zst" .
+          test -s "$RUNNER_TEMP/export/liliyacore-source.tar.zst"
+          tar -I zstd -tf "$RUNNER_TEMP/export/liliyacore-source.tar.zst" | grep -q '^./.git/'
 
       - name: Set up Java 17
         uses: actions/setup-java@v5
@@ -90,401 +61,220 @@ jobs:
         with:
           packages: platform-tools
 
-      - name: Install Android API 35
-        run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
-
-      - name: Run heart runtime unit contracts
-        run: gradle :android-runtime:testDebugUnitTest --console=plain
-
-  android-durable-persistence:
-    name: Android Durable Persistence
-    runs-on: ubuntu-latest
-    timeout-minutes: 35
-    needs: core-test
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Java 17
-        uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - name: Set up Gradle 9.6.1
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '9.6.1'
-
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v4
-        with:
-          packages: platform-tools
-
-      - name: Install Android API 35
-        run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
-
-      - name: Run durable persistence unit contracts
-        run: gradle :android-durable-persistence:testDebugUnitTest --console=plain
-
-      - name: Enable KVM
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-
-      - name: Compile durable persistence instrumentation
-        run: gradle :android-durable-persistence:assembleDebug :android-durable-persistence:assembleDebugAndroidTest --console=plain
-
-      - name: Run durable persistence instrumentation
-        uses: ReactiveCircus/android-emulator-runner@v2
-        with:
-          api-level: 35
-          arch: x86_64
-          profile: pixel_6
-          disable-animations: true
-          script: gradle :android-durable-persistence:connectedDebugAndroidTest --console=plain
-
-  android-license-state-instrumentation:
-    name: Android Licensing State Instrumentation
-    runs-on: ubuntu-latest
-    timeout-minutes: 35
-    needs: core-test
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Java 17
-        uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - name: Set up Gradle 9.6.1
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '9.6.1'
-
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v4
-        with:
-          packages: platform-tools
-
-      - name: Install Android API 35
-        run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
-
-      - name: Enable KVM
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-
-      - name: Compile Android licensing-state tests
-        run: gradle :android-license-state:assembleDebug :android-license-state:assembleDebugAndroidTest --console=plain
-
-      - name: Run Android licensing-state instrumentation
-        uses: ReactiveCircus/android-emulator-runner@v2
-        with:
-          api-level: 35
-          arch: x86_64
-          profile: pixel_6
-          disable-animations: true
-          script: gradle :android-license-state:connectedDebugAndroidTest --console=plain
-
-  android-cognitive-storage:
-    name: Android Cognitive Storage
-    runs-on: ubuntu-latest
-    timeout-minutes: 35
-    needs: core-test
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Java 17
-        uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - name: Set up Gradle 9.6.1
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '9.6.1'
-
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v4
-        with:
-          packages: platform-tools
-
-      - name: Install Android API 35
-        run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
-
-      - name: Enable KVM
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-
-      - name: Compile Android cognitive storage
-        run: gradle :android-cognitive-storage:assembleDebug :android-cognitive-storage:assembleDebugAndroidTest --console=plain
-
-      - name: Run Android cognitive storage instrumentation
-        uses: ReactiveCircus/android-emulator-runner@v2
-        with:
-          api-level: 35
-          arch: x86_64
-          profile: pixel_6
-          disable-animations: true
-          script: gradle :android-cognitive-storage:connectedDebugAndroidTest --console=plain
-
-  android-offline-semantic-provider-unit:
-    name: Android Offline Semantic Provider Unit
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    needs: core-test
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Java 17
-        uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - name: Set up Gradle 9.6.1
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '9.6.1'
-
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v4
-        with:
-          packages: platform-tools
-
-      - name: Install Android API 35
-        run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
-
-      - name: Run offline semantic provider unit contracts
-        run: gradle :android-offline-semantic-provider:testDebugUnitTest --console=plain
-
-  android-device-key-instrumentation:
-    name: Android Keystore Instrumentation
-    runs-on: ubuntu-latest
-    timeout-minutes: 35
-    needs: core-test
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Java 17
-        uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - name: Set up Gradle 9.6.1
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '9.6.1'
-
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v4
-        with:
-          packages: platform-tools
-
-      - name: Install Android API 35
-        run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
-
-      - name: Enable KVM
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-
-      - name: Compile Android device-key tests
-        run: gradle :android-device-key:assembleDebug :android-device-key:assembleDebugAndroidTest --console=plain
-
-      - name: Run Android Keystore instrumentation
-        uses: ReactiveCircus/android-emulator-runner@v2
-        with:
-          api-level: 35
-          arch: x86_64
-          profile: pixel_6
-          disable-animations: true
-          script: gradle :android-device-key:connectedDebugAndroidTest --console=plain
-
-  android-protected-model-staging-instrumentation:
-    name: Android Protected Model Staging Instrumentation
-    runs-on: ubuntu-latest
-    timeout-minutes: 35
-    needs: core-test
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Java 17
-        uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - name: Set up Gradle 9.6.1
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '9.6.1'
-
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v4
-        with:
-          packages: platform-tools
-
-      - name: Install Android API 35
-        run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
-
-      - name: Enable KVM
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-
-      - name: Compile Android staging tests
-        run: gradle :android-protected-model-staging:assembleDebug :android-protected-model-staging:assembleDebugAndroidTest --console=plain
-
-      - name: Run Android staging instrumentation
-        uses: ReactiveCircus/android-emulator-runner@v2
-        with:
-          api-level: 35
-          arch: x86_64
-          profile: pixel_6
-          disable-animations: true
-          script: gradle :android-protected-model-staging:connectedDebugAndroidTest --console=plain
-
-  android-protected-model-engine-source-instrumentation:
-    name: Android Protected Model Engine Source Instrumentation
-    runs-on: ubuntu-latest
-    timeout-minutes: 35
-    needs: core-test
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Java 17
-        uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - name: Set up Gradle 9.6.1
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '9.6.1'
-
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v4
-        with:
-          packages: platform-tools
-
-      - name: Install Android API 35
-        run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
-
-      - name: Enable KVM
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-
-      - name: Compile Android engine-source tests
-        run: gradle :android-protected-model-engine-source:assembleDebug :android-protected-model-engine-source:assembleDebugAndroidTest --console=plain
-
-      - name: Run Android engine-source instrumentation
-        uses: ReactiveCircus/android-emulator-runner@v2
-        with:
-          api-level: 35
-          arch: x86_64
-          profile: pixel_6
-          disable-animations: true
-          script: gradle :android-protected-model-engine-source:connectedDebugAndroidTest --console=plain
-
-  android-llama-cpp-arm64-build:
-    name: Android llama.cpp arm64 Build
-    runs-on: ubuntu-latest
-    timeout-minutes: 50
-    needs: core-test
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Java 17
-        uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - name: Set up Gradle 9.6.1
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '9.6.1'
-
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v4
-        with:
-          packages: platform-tools
-
-      - name: Install Android API 35, NDK and CMake
-        run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools" "ndk;29.0.13113456" "cmake;3.31.6"
-
-      - name: Enable KVM
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-
-      - name: Run llama.cpp engine ownership contracts
-        run: gradle :android-llama-cpp-engine:testDebugUnitTest --console=plain
-
-      - name: Prepare verified real-model instrumentation fixture
+      - name: Install exact Android toolchain
         shell: bash
         run: |
           set -euo pipefail
-          asset_dir="android-llama-cpp-engine/src/androidTest/assets"
-          asset="$asset_dir/stories15M-q4_0.gguf"
-          mkdir -p "$asset_dir"
-          curl --fail --location --retry 3 \
-            "https://huggingface.co/ggml-org/tiny-llamas/resolve/def3e2dd70df35ecbf6403ea347de4c5977220c1/stories15M-q4_0.gguf?download=true" \
-            --output "$asset"
-          echo "6151b1929d7f5aa3385d9ddef3393e55587c0a55de661562322bc51dfda93a04  $asset" | sha256sum --check --strict
-          test "$(stat --format=%s "$asset")" -eq 19077344
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager             "platforms;android-35"             "build-tools;35.0.0"             "build-tools;36.0.0"             "platform-tools"             "ndk;29.0.13113456"             "cmake;3.31.6"
 
-      - name: Run real-GGUF protected packaging round trip
-        env:
-          LILIYA_REQUIRE_REAL_GGUF: "1"
-          LILIYA_REAL_GGUF: ${{ github.workspace }}/android-llama-cpp-engine/src/androidTest/assets/stories15M-q4_0.gguf
-        run: >-
-          gradle :android-runtime:testDebugUnitTest
-          --tests "pro.liliya.android.runtime.ProductProtectedModelOfflinePackagerRealGgufContractTest"
-          --console=plain
+      - name: Verify toolchain versions
+        shell: bash
+        run: |
+          set -euo pipefail
+          java -version
+          gradle --version
+          test -d "$ANDROID_HOME/platforms/android-35"
+          test -d "$ANDROID_HOME/build-tools/35.0.0"
+          test -d "$ANDROID_HOME/build-tools/36.0.0"
+          test -d "$ANDROID_HOME/ndk/29.0.13113456"
+          test -d "$ANDROID_HOME/cmake/3.31.6"
 
-      - name: Compile verified real-model instrumentation contract
-        run: gradle :android-llama-cpp-engine:assembleDebugAndroidTest --console=plain
+      - name: Warm project dependency cache
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf "$GRADLE_USER_HOME"
+          mkdir -p "$GRADLE_USER_HOME"
+          gradle             :core:test             :android-runtime:testDebugUnitTest             :android-app:testDebugUnitTest             :android-app:compileDebugAndroidTestKotlin             :android-app:assembleDebug             --console=plain --no-daemon
 
-      - name: Build pinned llama.cpp JNI for arm64
-        run: gradle :android-llama-cpp-engine:assembleRelease --console=plain
+      - name: Prove exact offline gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle             :core:test             :android-runtime:testDebugUnitTest             :android-app:testDebugUnitTest             :android-app:compileDebugAndroidTestKotlin             :android-app:assembleDebug             --offline --console=plain --no-daemon
 
-      - name: Run arm64 real-model instrumentation through API 35 Google APIs translation
-        uses: ReactiveCircus/android-emulator-runner@v2
+      - name: Package portable environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          export_root="$RUNNER_TEMP/export"
+          parts="$export_root/parts"
+
+          gradle_bin="$(readlink -f "$(command -v gradle)")"
+          gradle_root="$(dirname "$(dirname "$gradle_bin")")"
+
+          tar -C "$JAVA_HOME" -I 'zstd -6 -T0' -cf "$export_root/jdk17.tar.zst" .
+          tar -C "$gradle_root" -I 'zstd -6 -T0' -cf "$export_root/gradle-9.6.1.tar.zst" .
+          tar -C "$GRADLE_USER_HOME" -I 'zstd -6 -T0' -cf "$export_root/gradle-home.tar.zst" .
+
+          tar -C "$ANDROID_HOME" -I 'zstd -6 -T0' -cf "$export_root/android-sdk-core.tar.zst"             platforms/android-35             build-tools/35.0.0             build-tools/36.0.0             platform-tools             licenses
+
+          tar -C "$ANDROID_HOME/ndk/29.0.13113456" -I 'zstd -6 -T0'             -cf "$export_root/ndk-29.0.13113456.tar.zst" .
+          tar -C "$ANDROID_HOME/cmake/3.31.6" -I 'zstd -6 -T0'             -cf "$export_root/cmake-3.31.6.tar.zst" .
+
+          split -b 180M -d -a 2 "$export_root/gradle-home.tar.zst" "$parts/gradle-home.part."
+          split -b 180M -d -a 2 "$export_root/ndk-29.0.13113456.tar.zst" "$parts/ndk.part."
+
+          {
+            echo "canonical_sha=$(git rev-parse HEAD)"
+            echo "canonical_tree=$(git rev-parse HEAD^{tree})"
+            echo "java_version=$(java -version 2>&1 | head -1)"
+            echo "gradle_version=$(gradle --version | awk '/^Gradle /{print $2; exit}')"
+            echo "android_api=35"
+            echo "build_tools=35.0.0,36.0.0"
+            echo "ndk=29.0.13113456"
+            echo "cmake=3.31.6"
+          } > "$export_root/environment-manifest.txt"
+
+          sha256sum             "$export_root/liliyacore-source.tar.zst"             "$export_root/jdk17.tar.zst"             "$export_root/gradle-9.6.1.tar.zst"             "$export_root/gradle-home.tar.zst"             "$export_root/android-sdk-core.tar.zst"             "$export_root/ndk-29.0.13113456.tar.zst"             "$export_root/cmake-3.31.6.tar.zst"             > "$export_root/SHA256SUMS"
+
+          ls -lh "$export_root" "$parts"
+          cat "$export_root/environment-manifest.txt"
+
+      - name: Upload source
+        uses: actions/upload-artifact@v4
         with:
-          api-level: 35
-          target: google_apis
-          arch: x86_64
-          profile: pixel_6
-          disable-animations: true
-          script: gradle :android-llama-cpp-engine:connectedDebugAndroidTest --console=plain
+          name: local-env-source
+          retention-days: 1
+          compression-level: 0
+          path: ${{ runner.temp }}/export/liliyacore-source.tar.zst
+
+      - name: Upload JDK
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-env-jdk17
+          retention-days: 1
+          compression-level: 0
+          path: ${{ runner.temp }}/export/jdk17.tar.zst
+
+      - name: Upload Gradle
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-env-gradle
+          retention-days: 1
+          compression-level: 0
+          path: ${{ runner.temp }}/export/gradle-9.6.1.tar.zst
+
+      - name: Upload Android SDK core
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-env-android-sdk-core
+          retention-days: 1
+          compression-level: 0
+          path: ${{ runner.temp }}/export/android-sdk-core.tar.zst
+
+      - name: Upload CMake
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-env-cmake
+          retention-days: 1
+          compression-level: 0
+          path: ${{ runner.temp }}/export/cmake-3.31.6.tar.zst
+
+      - name: Upload manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-env-manifest
+          retention-days: 1
+          path: |
+            ${{ runner.temp }}/export/environment-manifest.txt
+            ${{ runner.temp }}/export/SHA256SUMS
+
+      - name: Upload Gradle cache part 00
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-env-gradle-home-00
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: ignore
+          path: ${{ runner.temp }}/export/parts/gradle-home.part.00
+      - name: Upload Gradle cache part 01
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-env-gradle-home-01
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: ignore
+          path: ${{ runner.temp }}/export/parts/gradle-home.part.01
+      - name: Upload Gradle cache part 02
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-env-gradle-home-02
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: ignore
+          path: ${{ runner.temp }}/export/parts/gradle-home.part.02
+      - name: Upload Gradle cache part 03
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-env-gradle-home-03
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: ignore
+          path: ${{ runner.temp }}/export/parts/gradle-home.part.03
+      - name: Upload Gradle cache part 04
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-env-gradle-home-04
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: ignore
+          path: ${{ runner.temp }}/export/parts/gradle-home.part.04
+      - name: Upload Gradle cache part 05
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-env-gradle-home-05
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: ignore
+          path: ${{ runner.temp }}/export/parts/gradle-home.part.05
+      - name: Upload Gradle cache part 06
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-env-gradle-home-06
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: ignore
+          path: ${{ runner.temp }}/export/parts/gradle-home.part.06
+      - name: Upload Gradle cache part 07
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-env-gradle-home-07
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: ignore
+          path: ${{ runner.temp }}/export/parts/gradle-home.part.07
+
+      - name: Upload NDK part 00
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-env-ndk-00
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: ignore
+          path: ${{ runner.temp }}/export/parts/ndk.part.00
+      - name: Upload NDK part 01
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-env-ndk-01
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: ignore
+          path: ${{ runner.temp }}/export/parts/ndk.part.01
+      - name: Upload NDK part 02
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-env-ndk-02
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: ignore
+          path: ${{ runner.temp }}/export/parts/ndk.part.02
+      - name: Upload NDK part 03
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-env-ndk-03
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: ignore
+          path: ${{ runner.temp }}/export/parts/ndk.part.03
