@@ -244,6 +244,92 @@ class AndroidIndexedPersistentRecordBackendInstrumentedTest {
             assertEquals(25_001, loaded.state.highWatermark)
         }
 
+    @Test
+    fun indexed_read_seam_exposes_metadata_exact_entry_and_bounded_pages() =
+        withCleanRoot { context, _ ->
+            val storeId = PersistentStoreId("lazy-read-seam")
+            val backend = AndroidIndexedPersistentRecordBackend.create(context, TEST_DIRECTORY)
+            assertEquals(
+                PersistentBackendCommitResult.Committed(1),
+                backend.commit(
+                    storeId,
+                    0,
+                    state(storeId, 3, linkedMapOf("a" to "one", "b" to "two", "c" to "three"))
+                )
+            )
+
+            val metadata = assertIs<pro.liliya.core.persistence.PersistentBackendMetadataLoadResult.Loaded>(
+                backend.loadMetadata(storeId)
+            ).metadata
+            assertEquals(1, metadata.revision)
+            assertEquals(3, metadata.highWatermark)
+            assertEquals(3, metadata.entryCount)
+
+            val exact = assertIs<pro.liliya.core.persistence.PersistentBackendEntryLoadResult.Loaded>(
+                backend.loadEntry(storeId, PersistentEntityId("b"))
+            ).snapshot
+            assertEquals("b", exact.record.id.value)
+            assertEquals("two", exact.record.payload.copyBytes().decodeToString())
+
+            val first = assertIs<pro.liliya.core.persistence.PersistentBackendPageLoadResult.Loaded>(
+                backend.loadPage(
+                    storeId,
+                    pro.liliya.core.persistence.PersistentBackendPageRequest(limit = 2)
+                )
+            ).page
+            assertEquals(listOf("a", "b"), first.entries.map { it.record.id.value })
+            assertTrue(first.nextCursor != null)
+
+            val second = assertIs<pro.liliya.core.persistence.PersistentBackendPageLoadResult.Loaded>(
+                backend.loadPage(
+                    storeId,
+                    pro.liliya.core.persistence.PersistentBackendPageRequest(
+                        limit = 2,
+                        cursorExclusive = first.nextCursor
+                    )
+                )
+            ).page
+            assertEquals(listOf("c"), second.entries.map { it.record.id.value })
+            assertEquals(null, second.nextCursor)
+        }
+
+    @Test
+    fun indexed_exact_read_fails_closed_on_selected_record_corruption() =
+        withCleanRoot { context, root ->
+            val storeId = PersistentStoreId("lazy-read-corruption")
+            val backend = AndroidIndexedPersistentRecordBackend.create(context, TEST_DIRECTORY)
+            assertEquals(
+                PersistentBackendCommitResult.Committed(1),
+                backend.commit(storeId, 0, state(storeId, 1, mapOf("a" to "one")))
+            )
+
+            val db = SQLiteDatabase.openDatabase(
+                File(root, "liliya-indexed-v2.sqlite3").absolutePath,
+                null,
+                SQLiteDatabase.OPEN_READWRITE
+            )
+            db.use {
+                val values = android.content.ContentValues().apply {
+                    put("payload", "tampered".encodeToByteArray())
+                }
+                assertEquals(
+                    1,
+                    it.update(
+                        "records",
+                        values,
+                        "store_id=? AND entity_id=?",
+                        arrayOf(storeId.value, "a")
+                    )
+                )
+            }
+
+            assertEquals(
+                pro.liliya.core.persistence.PersistentBackendEntryLoadResult.Corrupt,
+                AndroidIndexedPersistentRecordBackend.create(context, TEST_DIRECTORY)
+                    .loadEntry(storeId, PersistentEntityId("a"))
+            )
+        }
+
     private fun state(
         storeId: PersistentStoreId,
         highWatermark: Long,
