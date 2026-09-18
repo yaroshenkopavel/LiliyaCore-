@@ -9,6 +9,7 @@ import java.time.Instant
 import pro.liliya.core.persistence.PersistentEntityId
 import pro.liliya.core.persistence.PersistentGeneration
 import pro.liliya.core.persistence.PersistentInstallResult
+import pro.liliya.core.persistence.PersistentMutationResult
 import pro.liliya.core.persistence.PersistentPayload
 import pro.liliya.core.persistence.PersistentRecord
 import pro.liliya.core.persistence.PersistentRecordOwnership
@@ -220,6 +221,11 @@ class EncryptedPersistentRecordStore(
         store.snapshotEntries()
 
     internal fun generationHighWatermark(): Long = store.generationHighWatermark()
+
+    internal fun removeExact(
+        id: PersistentEntityId,
+        generation: PersistentGeneration
+    ): PersistentMutationResult = store.removeExact(id, generation)
 
     fun open(id: PersistentEntityId): CognitiveEncryptionResult<CognitivePlaintext> {
         val snapshot = store.inspect(id)

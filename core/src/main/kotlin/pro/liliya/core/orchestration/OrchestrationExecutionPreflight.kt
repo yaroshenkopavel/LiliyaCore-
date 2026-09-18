@@ -84,6 +84,11 @@ class OrchestrationExecutionPreflight(
             return reject("referenced selected decision option does not match", context)
         }
 
+        val boundActionId = intentSnapshot.intent.actionId
+        if (boundActionId != null && boundActionId != request.actionId) {
+            return reject("orchestration intent is bound to a different execution action", context)
+        }
+
         val policy = actionPolicies[request.actionId]
             ?: return reject("orchestration execution action is not registered", context)
 

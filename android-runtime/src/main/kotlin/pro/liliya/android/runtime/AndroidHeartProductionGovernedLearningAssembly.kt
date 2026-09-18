@@ -106,10 +106,14 @@ class AndroidHeartProductionGovernedLearningComposition internal constructor(
  *
  * v0.1 is MEMORY-only. Policy and Capability Authority are supplied by an outer trusted owner.
  * This assembly never creates or grants Authority permissions.
+ *
+ * Product code must enter through [AndroidProductRuntimeGovernedLearningActivationAssembly].
+ * Keeping this creator internal prevents an accidental product-side bypass of the explicit
+ * learning-enablement evidence gate.
  */
 object AndroidHeartProductionGovernedLearningAssembly {
 
-    fun create(
+    internal fun create(
         heart: AndroidHeartRuntimeAssembly,
         foundation: FoundationComposition,
         scope: CognitiveRuntimeScopeId,

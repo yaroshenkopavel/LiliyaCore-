@@ -5,6 +5,8 @@ import pro.liliya.android.runtime.AndroidProductRuntimeHostSession
 import pro.liliya.android.runtime.ProductChatGenerationMode
 import pro.liliya.android.runtime.ProductChatRequest
 import pro.liliya.android.runtime.ProductChatResult
+import pro.liliya.android.runtime.ProductConversationCommitStatus
+import pro.liliya.android.runtime.ProductConversationResult
 
 enum class ProductionAndroidAppRuntimeState {
     CONFIGURATION_REQUIRED,
@@ -65,20 +67,53 @@ fun interface ProductionAndroidAppRuntimeStartPort {
     }
 }
 
+
+internal fun ProductConversationResult.toAppProductChatResult(): ProductChatResult =
+    when (this) {
+        is ProductConversationResult.Completed ->
+            if (
+                conversationCommit ==
+                ProductConversationCommitStatus.NOT_RETAINED_PERSISTENCE_FAILURE
+            ) {
+                ProductChatResult.Rejected(
+                    pro.liliya.android.runtime.ProductChatFailure.INTERNAL_FAILURE
+                )
+            } else {
+                ProductChatResult.Completed(
+                    reply = reply,
+                    streamedChunkCount = streamedChunkCount,
+                    streamedCharacterCount = streamedCharacterCount
+                )
+            }
+        is ProductConversationResult.Rejected ->
+            ProductChatResult.Rejected(reason)
+    }
+
+
 private class ProductRuntimeSessionAdapter(
     private val session: AndroidProductRuntimeHostSession
 ) : ProductionAndroidAppRuntimeSession {
     override fun send(text: String): ProductChatResult {
-        val chat = session.chat()
-            ?: return ProductChatResult.Rejected(
-                pro.liliya.android.runtime.ProductChatFailure.HEART_NOT_READY
-            )
-        return chat.send(
+        val conversation = session.conversation(
+            maxRetainedMessages = PRODUCT_CONVERSATION_MAX_RETAINED_MESSAGES,
+            maxRetainedCharacters = PRODUCT_CONVERSATION_MAX_RETAINED_CHARACTERS,
+            maxMessageCharacters = PRODUCT_CONVERSATION_MAX_MESSAGE_CHARACTERS
+        ) ?: return ProductChatResult.Rejected(
+            pro.liliya.android.runtime.ProductChatFailure.HEART_NOT_READY
+        )
+
+        return conversation.send(
             ProductChatRequest(
                 text = text,
                 mode = ProductChatGenerationMode.ONE_SHOT
             )
-        )
+        ).toAppProductChatResult()
+    }
+
+    private companion object {
+        const val PRODUCT_CONVERSATION_MAX_RETAINED_MESSAGES = 64
+        const val PRODUCT_CONVERSATION_MAX_RETAINED_CHARACTERS = 48 * 1024
+        const val PRODUCT_CONVERSATION_MAX_MESSAGE_CHARACTERS = 8 * 1024
     }
 
     override fun close() {
