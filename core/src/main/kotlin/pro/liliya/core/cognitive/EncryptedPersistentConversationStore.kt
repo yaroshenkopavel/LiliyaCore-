@@ -8,6 +8,7 @@ import java.io.EOFException
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import java.time.Instant
+import java.util.TreeMap
 import pro.liliya.core.encryption.CognitiveDekReference
 import pro.liliya.core.encryption.CognitiveEncryptionFailureCategory
 import pro.liliya.core.encryption.CognitiveEncryptionResult
@@ -15,7 +16,6 @@ import pro.liliya.core.encryption.CognitivePersistentRecordDraft
 import pro.liliya.core.encryption.CognitivePlaintext
 import pro.liliya.core.encryption.EncryptedPersistentRecordStore
 import pro.liliya.core.persistence.PersistentEntityId
-import pro.liliya.core.persistence.PersistentGeneration
 import pro.liliya.core.persistence.PersistentPayload
 import pro.liliya.core.persistence.PersistentRecordOwnership
 import pro.liliya.core.persistence.PersistentRecord
@@ -45,6 +45,13 @@ sealed interface PersistentConversationAppendPairResult {
         val category: CognitiveEncryptionFailureCategory
     ) : PersistentConversationAppendPairResult
     data class Failed(val reason: String) : PersistentConversationAppendPairResult
+}
+
+sealed interface PersistentConversationHistoryResult {
+    data class Found(val snapshot: CognitiveConversationContextSnapshot) : PersistentConversationHistoryResult
+    data object Absent : PersistentConversationHistoryResult
+    data class EncryptionUnavailable(val category: CognitiveEncryptionFailureCategory) : PersistentConversationHistoryResult
+    data object Corrupt : PersistentConversationHistoryResult
 }
 
 /**
@@ -92,7 +99,7 @@ class EncryptedPersistentConversationStore private constructor(
                     PersistentConversationAppendResult.Rejected("conversation sequence conflicts with durable history")
                 }
             }
-            val last = current.snapshot.messages.lastOrNull()?.sequence?.value ?: 0L
+            val last = current.lastSequence
             if (message.sequence.value != last + 1L) {
                 return PersistentConversationAppendResult.Rejected("conversation sequence must advance exactly once")
             }
@@ -101,7 +108,9 @@ class EncryptedPersistentConversationStore private constructor(
         val messages = ((current?.snapshot?.messages ?: emptyList()) + message)
             .takeLast(maxRetainedMessages)
         val replacement = CognitiveConversationContextSnapshot(sessionId, messages)
-        val encoded = ConversationPersistentRecordCodec.encode(replacement, persistedAt)
+        val encoded = ConversationPersistentRecordCodec.encodeChunk(
+            CognitiveConversationContextSnapshot(sessionId, listOf(message)), persistedAt
+        )
         val bytes = encoded.payload.copyBytes()
         val draft = CognitivePersistentRecordDraft(
             id = encoded.id,
@@ -112,26 +121,16 @@ class EncryptedPersistentConversationStore private constructor(
             dek = activeDek
         )
         val persisted = try {
-            if (current == null) {
-                encryptedStore.install(draft)
-            } else {
-                encryptedStore.transitionExact(
-                    sourceId = current.entityId,
-                    sourceGeneration = current.generation,
-                    replacement = draft
-                )
-            }
+            encryptedStore.install(draft)
         } finally {
             bytes.fill(0)
         }
 
         return when (persisted) {
             is CognitiveEncryptionResult.Success -> {
-                entries[sessionId] = Entry(
-                    snapshot = replacement,
-                    entityId = encoded.id,
-                    generation = persisted.value.generation
-                )
+                val chunks = TreeMap(current?.chunks ?: emptyMap())
+                chunks[message.sequence.value] = Chunk(encoded.id, message.sequence.value, message.sequence.value)
+                entries[sessionId] = Entry(replacement, message.sequence.value, current?.legacyMessages ?: emptyList(), chunks)
                 PersistentConversationAppendResult.Appended(replacement)
             }
             is CognitiveEncryptionResult.Rejected ->
@@ -183,7 +182,7 @@ class EncryptedPersistentConversationStore private constructor(
                     )
                 }
             }
-            val last = current.snapshot.messages.lastOrNull()?.sequence?.value ?: 0L
+            val last = current.lastSequence
             if (user.sequence.value != last + 1L) {
                 return PersistentConversationAppendPairResult.Rejected(
                     "conversation pair must advance exactly from durable history"
@@ -203,14 +202,13 @@ class EncryptedPersistentConversationStore private constructor(
             retained.removeAt(0)
         }
         val replacement = CognitiveConversationContextSnapshot(sessionId, retained)
-        val persisted = persistReplacement(current, replacement, persistedAt)
+        val chunk = CognitiveConversationContextSnapshot(sessionId, listOf(user, assistant))
+        val persisted = persistChunk(chunk, persistedAt)
         return when (persisted) {
             is CognitiveEncryptionResult.Success -> {
-                entries[sessionId] = Entry(
-                    snapshot = replacement,
-                    entityId = persisted.value.record.id,
-                    generation = persisted.value.generation
-                )
+                val chunks = TreeMap(current?.chunks ?: emptyMap())
+                chunks[user.sequence.value] = Chunk(persisted.value.record.id, user.sequence.value, assistant.sequence.value)
+                entries[sessionId] = Entry(replacement, assistant.sequence.value, current?.legacyMessages ?: emptyList(), chunks)
                 PersistentConversationAppendPairResult.Appended(replacement)
             }
             is CognitiveEncryptionResult.Rejected ->
@@ -229,12 +227,51 @@ class EncryptedPersistentConversationStore private constructor(
     @Synchronized
     fun sessionCount(): Int = entries.size
 
-    private fun persistReplacement(
-        current: Entry?,
-        replacement: CognitiveConversationContextSnapshot,
+    /** Reads a page of authenticated history, without adding older messages to the model context. */
+    @Synchronized
+    fun history(
+        sessionId: CognitiveConversationSessionId,
+        beforeSequenceExclusive: Long = Long.MAX_VALUE,
+        maxMessages: Int
+    ): PersistentConversationHistoryResult {
+        require(maxMessages > 0) { "history page size must be positive" }
+        val entry = entries[sessionId] ?: return PersistentConversationHistoryResult.Absent
+        val selected = ArrayList<CognitiveConversationContextMessage>()
+        for (chunk in entry.chunks.descendingMap().values) {
+            if (selected.size >= maxMessages) break
+            if (chunk.firstSequence >= beforeSequenceExclusive) continue
+            val plaintext = when (val opened = encryptedStore.open(chunk.id)) {
+                is CognitiveEncryptionResult.Success -> opened.value
+                is CognitiveEncryptionResult.Rejected -> return PersistentConversationHistoryResult.EncryptionUnavailable(opened.category)
+                is CognitiveEncryptionResult.Failed -> return PersistentConversationHistoryResult.EncryptionUnavailable(opened.category)
+            }
+            val raw = encryptedStore.inspect(chunk.id)
+                ?: return PersistentConversationHistoryResult.Corrupt
+            val record = raw.record.copy(payload = PersistentPayload(plaintext.copyBytes()))
+            val decoded = ConversationPersistentRecordCodec.decode(record)
+            if (decoded !is ConversationDecodeResult.Decoded || !decoded.chunk ||
+                decoded.snapshot.sessionId != sessionId ||
+                decoded.snapshot.messages.first().sequence.value != chunk.firstSequence ||
+                decoded.snapshot.messages.last().sequence.value != chunk.lastSequence) {
+                return PersistentConversationHistoryResult.Corrupt
+            }
+            selected += decoded.snapshot.messages.asReversed().filter { it.sequence.value < beforeSequenceExclusive }
+            if (selected.size >= maxMessages) break
+        }
+        for (message in entry.legacyMessages.asReversed()) {
+            if (selected.size >= maxMessages) break
+            if (message.sequence.value < beforeSequenceExclusive) selected += message
+        }
+        return PersistentConversationHistoryResult.Found(
+            CognitiveConversationContextSnapshot(sessionId, selected.sortedBy { it.sequence.value }.takeLast(maxMessages))
+        )
+    }
+
+    private fun persistChunk(
+        chunk: CognitiveConversationContextSnapshot,
         persistedAt: Instant
     ): CognitiveEncryptionResult<PersistentRecordOwnership> {
-        val encoded = ConversationPersistentRecordCodec.encode(replacement, persistedAt)
+        val encoded = ConversationPersistentRecordCodec.encodeChunk(chunk, persistedAt)
         val bytes = encoded.payload.copyBytes()
         val draft = CognitivePersistentRecordDraft(
             id = encoded.id,
@@ -245,15 +282,7 @@ class EncryptedPersistentConversationStore private constructor(
             dek = activeDek
         )
         return try {
-            if (current == null) {
-                encryptedStore.install(draft)
-            } else {
-                encryptedStore.transitionExact(
-                    sourceId = current.entityId,
-                    sourceGeneration = current.generation,
-                    replacement = draft
-                )
-            }
+            encryptedStore.install(draft)
         } finally {
             bytes.fill(0)
         }
@@ -261,9 +290,17 @@ class EncryptedPersistentConversationStore private constructor(
 
     private data class Entry(
         val snapshot: CognitiveConversationContextSnapshot,
-        val entityId: PersistentEntityId,
-        val generation: PersistentGeneration
+        val lastSequence: Long,
+        val legacyMessages: List<CognitiveConversationContextMessage>,
+        val chunks: TreeMap<Long, Chunk>
     )
+
+    private data class Chunk(val id: PersistentEntityId, val firstSequence: Long, val lastSequence: Long)
+
+    private class Pending {
+        var legacy: List<CognitiveConversationContextMessage>? = null
+        val chunks = TreeMap<Long, Pair<Chunk, List<CognitiveConversationContextMessage>>>()
+    }
 
     companion object {
         fun open(
@@ -282,24 +319,53 @@ class EncryptedPersistentConversationStore private constructor(
                 is CognitiveEncryptionResult.Failed ->
                     return PersistentConversationOpenResult.EncryptionUnavailable(result.category)
             }
-            val restored = LinkedHashMap<CognitiveConversationSessionId, Entry>()
+            val pending = LinkedHashMap<CognitiveConversationSessionId, Pending>()
             for (entry in decrypted) {
                 when (val decoded = ConversationPersistentRecordCodec.decode(entry.record)) {
                     is ConversationDecodeResult.Decoded -> {
-                        if (decoded.snapshot.messages.size > maxRetainedMessages ||
-                            decoded.snapshot.messages.any { it.content.length > maxMessageChars }) {
+                        val messages = decoded.snapshot.messages
+                        if (messages.any { it.content.length > maxMessageChars }) {
                             return PersistentConversationOpenResult.Incompatible("durable conversation exceeds configured reconstruction bounds")
                         }
-                        if (restored.put(
-                                decoded.snapshot.sessionId,
-                                Entry(decoded.snapshot, entry.record.id, entry.generation)
-                            ) != null
-                        ) return PersistentConversationOpenResult.Corrupt
+                        val owner = pending.getOrPut(decoded.snapshot.sessionId) { Pending() }
+                        if (decoded.chunk) {
+                            if (messages.isEmpty() || messages.size > 2) return PersistentConversationOpenResult.Corrupt
+                            val first = messages.first().sequence.value
+                            val last = messages.last().sequence.value
+                            if (last != first + messages.size - 1L || owner.chunks.put(
+                                    first, Chunk(entry.record.id, first, last) to messages
+                                ) != null
+                            ) return PersistentConversationOpenResult.Corrupt
+                        } else {
+                            if (owner.legacy != null) return PersistentConversationOpenResult.Corrupt
+                            owner.legacy = messages
+                        }
                     }
                     ConversationDecodeResult.Corrupt -> return PersistentConversationOpenResult.Corrupt
                     is ConversationDecodeResult.Incompatible ->
                         return PersistentConversationOpenResult.Incompatible(decoded.reason)
                 }
+            }
+            val restored = LinkedHashMap<CognitiveConversationSessionId, Entry>()
+            for ((sessionId, owner) in pending) {
+                val legacy = owner.legacy ?: emptyList()
+                var lastSequence = legacy.lastOrNull()?.sequence?.value ?: 0L
+                val tail = ArrayDeque(legacy.takeLast(maxRetainedMessages))
+                val chunks = TreeMap<Long, Chunk>()
+                for ((first, item) in owner.chunks) {
+                    val (chunk, messages) = item
+                    if (first != lastSequence + 1L) return PersistentConversationOpenResult.Corrupt
+                    for (message in messages) {
+                        tail.addLast(message)
+                        if (tail.size > maxRetainedMessages) tail.removeFirst()
+                    }
+                    lastSequence = chunk.lastSequence
+                    chunks[first] = chunk
+                }
+                restored[sessionId] = Entry(
+                    CognitiveConversationContextSnapshot(sessionId, tail.toList()),
+                    lastSequence, legacy, chunks
+                )
             }
             return PersistentConversationOpenResult.Opened(
                 EncryptedPersistentConversationStore(
@@ -315,20 +381,23 @@ class EncryptedPersistentConversationStore private constructor(
 }
 
 private sealed interface ConversationDecodeResult {
-    data class Decoded(val snapshot: CognitiveConversationContextSnapshot) : ConversationDecodeResult
+    data class Decoded(val snapshot: CognitiveConversationContextSnapshot, val chunk: Boolean) : ConversationDecodeResult
     data object Corrupt : ConversationDecodeResult
     data class Incompatible(val reason: String) : ConversationDecodeResult
 }
 
 private object ConversationPersistentRecordCodec {
     private val schemaId = PersistentSchemaId("cognitive-conversation-session")
-    private val schemaVersion = PersistentSchemaVersion(1)
-    private const val MAGIC = 0x434E5631
+    private val legacyVersion = PersistentSchemaVersion(1)
+    private val chunkVersion = PersistentSchemaVersion(2)
+    private const val LEGACY_MAGIC = 0x434E5631
+    private const val CHUNK_MAGIC = 0x434E5632
 
-    fun encode(snapshot: CognitiveConversationContextSnapshot, persistedAt: Instant): PersistentRecord {
+    fun encodeChunk(snapshot: CognitiveConversationContextSnapshot, persistedAt: Instant): PersistentRecord {
+        require(snapshot.messages.size in 1..2)
         val bytes = ByteArrayOutputStream().use { output ->
             DataOutputStream(output).use { data ->
-                data.writeInt(MAGIC)
+                data.writeInt(CHUNK_MAGIC)
                 data.writeString(snapshot.sessionId.value)
                 data.writeInt(snapshot.messages.size)
                 snapshot.messages.forEach { message ->
@@ -340,9 +409,9 @@ private object ConversationPersistentRecordCodec {
             output.toByteArray()
         }
         return PersistentRecord(
-            id = entityId(snapshot.sessionId),
+            id = chunkId(snapshot.sessionId, snapshot.messages.first().sequence.value),
             schemaId = schemaId,
-            schemaVersion = schemaVersion,
+            schemaVersion = chunkVersion,
             payload = PersistentPayload(bytes),
             createdAt = persistedAt
         )
@@ -350,15 +419,19 @@ private object ConversationPersistentRecordCodec {
 
     fun decode(record: PersistentRecord): ConversationDecodeResult {
         if (record.schemaId != schemaId) return ConversationDecodeResult.Incompatible("conversation schema id mismatch")
-        if (record.schemaVersion != schemaVersion) return ConversationDecodeResult.Incompatible("conversation schema version mismatch")
+        if (record.schemaVersion != legacyVersion && record.schemaVersion != chunkVersion) {
+            return ConversationDecodeResult.Incompatible("conversation schema version mismatch")
+        }
+        val chunk = record.schemaVersion == chunkVersion
         return try {
             val input = ByteArrayInputStream(record.payload.copyBytes())
             val data = DataInputStream(input)
-            if (data.readInt() != MAGIC) return ConversationDecodeResult.Corrupt
+            if (data.readInt() != (if (chunk) CHUNK_MAGIC else LEGACY_MAGIC)) {
+                return ConversationDecodeResult.Corrupt
+            }
             val sessionId = CognitiveConversationSessionId(data.readString(input))
-            if (record.id != entityId(sessionId)) return ConversationDecodeResult.Corrupt
             val count = data.readInt()
-            if (count < 0 || count > 1_000_000) return ConversationDecodeResult.Corrupt
+            if (count < 0 || count > if (chunk) 2 else 1_000_000) return ConversationDecodeResult.Corrupt
             val messages = ArrayList<CognitiveConversationContextMessage>(count)
             repeat(count) {
                 val sequence = CognitiveConversationSequence(data.readLong())
@@ -369,7 +442,10 @@ private object ConversationPersistentRecordCodec {
                 messages += CognitiveConversationContextMessage(sequence, role, content)
             }
             if (input.available() != 0) return ConversationDecodeResult.Corrupt
-            ConversationDecodeResult.Decoded(CognitiveConversationContextSnapshot(sessionId, messages))
+            val expectedId = if (chunk && messages.isNotEmpty()) chunkId(sessionId, messages.first().sequence.value)
+                else entityId(sessionId)
+            if (record.id != expectedId) return ConversationDecodeResult.Corrupt
+            ConversationDecodeResult.Decoded(CognitiveConversationContextSnapshot(sessionId, messages), chunk)
         } catch (_: EOFException) {
             ConversationDecodeResult.Corrupt
         } catch (_: IllegalArgumentException) {
@@ -384,6 +460,13 @@ private object ConversationPersistentRecordCodec {
             .digest(sessionId.value.toByteArray(StandardCharsets.UTF_8))
             .joinToString("") { "%02x".format(it) }
         return PersistentEntityId("conversation-$digest")
+    }
+
+    private fun chunkId(sessionId: CognitiveConversationSessionId, firstSequence: Long): PersistentEntityId {
+        val digest = MessageDigest.getInstance("SHA-256")
+            .digest((sessionId.value + ":" + firstSequence).toByteArray(StandardCharsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
+        return PersistentEntityId("conversation-chunk-$digest")
     }
 
     private fun DataOutputStream.writeString(value: String) {
