@@ -136,6 +136,40 @@ class ConversationV3NativeRuntimeContractTest {
     }
 
     @Test
+    fun corrupted_native_v3_head_is_not_reported_as_absent() {
+        val backend = CountingIndexedBackend()
+        val session = CognitiveConversationSessionId("corrupt-head-session")
+        val store = openConversation(backend)
+
+        assertIs<PersistentConversationAppendPairResult.Appended>(
+            store.appendPair(
+                session,
+                msg(1, CognitiveConversationRole.USER, "hello"),
+                msg(2, CognitiveConversationRole.ASSISTANT, "reply"),
+                at(1)
+            )
+        )
+
+        val headId = ConversationV3IndexCodec.headId(session)
+        val head = assertNotNull(backend.entries[headId])
+        val bytes = head.record.payload.copyBytes()
+        bytes[bytes.lastIndex] = (bytes.last().toInt() xor 0x01).toByte()
+        backend.entries[headId] = head.copy(
+            record = head.record.copy(
+                payload = pro.liliya.core.persistence.PersistentPayload(bytes)
+            )
+        )
+
+        val reopened = openConversation(backend)
+        val result = reopened.reopenResult(session)
+        assertFalse(result is PersistentConversationReopenResult.Absent)
+        assertTrue(
+            result is PersistentConversationReopenResult.EncryptionUnavailable ||
+                result is PersistentConversationReopenResult.Corrupt
+        )
+    }
+
+    @Test
     fun orphan_chunk_after_head_conflict_is_recovered_without_global_scan() {
         val backend = CountingIndexedBackend()
         val session = CognitiveConversationSessionId("recover-v3-session")
