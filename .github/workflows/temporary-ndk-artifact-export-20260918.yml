@@ -1,0 +1,106 @@
+name: Temporary NDK Artifact Export 2026-09-18
+
+on:
+  push:
+    branches:
+      - infra/ndk-artifact-export-20260918
+
+permissions:
+  contents: read
+
+env:
+  CANONICAL_SHA: 25d9b6a8e118154bedafa5772b6fc0bd89469f2f
+  CANONICAL_TREE: 995c92d89169eeac481f0fdab0ede11418bcf5d0
+  NDK_VERSION: 29.0.13113456
+
+jobs:
+  export-ndk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact canonical source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify exact canonical source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git checkout --detach "$CANONICAL_SHA"
+          test "$(git rev-parse HEAD)" = "$CANONICAL_SHA"
+          test "$(git rev-parse HEAD^{tree})" = "$CANONICAL_TREE"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
+
+      - name: Install pinned NDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "ndk;$NDK_VERSION"
+          test -d "$ANDROID_HOME/ndk/$NDK_VERSION"
+
+      - name: Package and split NDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/ndk-export"
+          mkdir -p "$out"
+          tar -C "$ANDROID_HOME/ndk/$NDK_VERSION" -I 'zstd -6 -T0' -cf "$out/ndk-$NDK_VERSION.tar.zst" .
+          sha256sum "$out/ndk-$NDK_VERSION.tar.zst" > "$out/NDK_SHA256SUMS"
+          split -b 160M -d -a 2 "$out/ndk-$NDK_VERSION.tar.zst" "$out/ndk.part."
+          sha256sum "$out"/ndk.part.* > "$out/NDK_PARTS_SHA256SUMS"
+          ls -lh "$out"
+
+      - name: Upload NDK manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: ndk-export-manifest
+          retention-days: 1
+          path: |
+            ${{ runner.temp }}/ndk-export/NDK_SHA256SUMS
+            ${{ runner.temp }}/ndk-export/NDK_PARTS_SHA256SUMS
+
+      - name: Upload NDK part 00
+        uses: actions/upload-artifact@v4
+        with:
+          name: ndk-export-part-00
+          retention-days: 1
+          compression-level: 0
+          path: ${{ runner.temp }}/ndk-export/ndk.part.00
+
+      - name: Upload NDK part 01
+        uses: actions/upload-artifact@v4
+        with:
+          name: ndk-export-part-01
+          retention-days: 1
+          compression-level: 0
+          path: ${{ runner.temp }}/ndk-export/ndk.part.01
+
+      - name: Upload NDK part 02
+        uses: actions/upload-artifact@v4
+        with:
+          name: ndk-export-part-02
+          retention-days: 1
+          compression-level: 0
+          path: ${{ runner.temp }}/ndk-export/ndk.part.02
+
+      - name: Upload NDK part 03
+        uses: actions/upload-artifact@v4
+        with:
+          name: ndk-export-part-03
+          retention-days: 1
+          compression-level: 0
+          path: ${{ runner.temp }}/ndk-export/ndk.part.03
+
+      - name: Upload NDK part 04
+        uses: actions/upload-artifact@v4
+        with:
+          name: ndk-export-part-04
+          retention-days: 1
+          compression-level: 0
+          path: ${{ runner.temp }}/ndk-export/ndk.part.04
