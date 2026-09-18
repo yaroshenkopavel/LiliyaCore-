@@ -209,8 +209,14 @@ class PersistentCognitiveDekStore private constructor(
 
     fun inspect(reference: CognitiveDekReference): WrappedCognitiveDekEnvelope? {
         val snapshot = when (val lookedUp = persistentStore.inspectResult(entityIdFor(reference.id))) {
+            PersistentRecordLookupResult.Missing -> return null
             is PersistentRecordLookupResult.Found -> lookedUp.snapshot
-            else -> return null
+            PersistentRecordLookupResult.Corrupt ->
+                throw IllegalStateException("cognitive DEK persistent store is corrupt")
+            is PersistentRecordLookupResult.Incompatible ->
+                throw IllegalStateException(lookedUp.reason)
+            is PersistentRecordLookupResult.Failed ->
+                throw IllegalStateException(lookedUp.reason, lookedUp.throwable)
         }
         if (snapshot.generation.value != reference.generation.value) return null
         val envelope = decodeRecord(snapshot.record) ?: return null
