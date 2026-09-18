@@ -151,6 +151,7 @@ class PersistentRecordStore private constructor(
             }
         }
         val indexed = requireNotNull(indexedBackend)
+        ensureIndexedMetadataCurrent(indexed)
         return when (val loaded = indexed.loadEntry(storeId, id)) {
             PersistentBackendEntryLoadResult.Missing -> null
             is PersistentBackendEntryLoadResult.Loaded ->
@@ -177,8 +178,9 @@ class PersistentRecordStore private constructor(
                 .map { PersistentRecordSnapshot(it.record.detached(), it.generation) }
                 .sortedWith(compareBy({ it.record.createdAt }, { it.record.id.value }))
         }
-        if (entryCount == 0L) return emptyList()
         val indexed = requireNotNull(indexedBackend)
+        ensureIndexedMetadataCurrent(indexed)
+        if (entryCount == 0L) return emptyList()
         val result = ArrayList<PersistentRecordSnapshot>()
         var cursor: PersistentBackendPageCursor? = null
         do {
@@ -211,7 +213,33 @@ class PersistentRecordStore private constructor(
         if (result.size.toLong() != entryCount) {
             throw PersistentRecordAccessException("indexed persistent page count changed during read")
         }
+        ensureIndexedMetadataCurrent(indexed)
         return result
+    }
+
+    private fun ensureIndexedMetadataCurrent(indexed: IndexedPersistentRecordMutationBackend) {
+        when (val loaded = indexed.loadMetadata(storeId)) {
+            PersistentBackendMetadataLoadResult.Missing -> {
+                if (revision != 0L || highWatermark != 0L || entryCount != 0L) {
+                    throw PersistentRecordAccessException("indexed persistent store disappeared")
+                }
+            }
+            is PersistentBackendMetadataLoadResult.Loaded -> {
+                val metadata = loaded.metadata
+                if (metadata.revision != revision ||
+                    metadata.highWatermark != highWatermark ||
+                    metadata.entryCount != entryCount
+                ) {
+                    throw PersistentRecordAccessException("indexed persistent store revision changed")
+                }
+            }
+            PersistentBackendMetadataLoadResult.Corrupt ->
+                throw PersistentRecordAccessException("indexed persistent store metadata is corrupt")
+            is PersistentBackendMetadataLoadResult.Incompatible ->
+                throw PersistentRecordAccessException(loaded.reason)
+            is PersistentBackendMetadataLoadResult.Failed ->
+                throw PersistentRecordAccessException(loaded.reason, loaded.throwable)
+        }
     }
 
     @Synchronized
