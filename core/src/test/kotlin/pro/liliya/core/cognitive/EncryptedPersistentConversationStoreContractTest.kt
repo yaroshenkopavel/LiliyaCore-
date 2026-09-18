@@ -262,6 +262,32 @@ class EncryptedPersistentConversationStoreContractTest {
     }
 
     @Test
+    fun typed_reopen_matches_legacy_nullable_contract_before_lazy_restore() {
+        val backend = InMemoryPersistentRecordBackend()
+        val store = openConversation(backend, maxRetained = 4)
+        val session = CognitiveConversationSessionId("typed-reopen")
+
+        assertEquals(
+            PersistentConversationReopenResult.Absent,
+            store.reopenResult(session)
+        )
+        assertNull(store.reopen(session))
+
+        assertIs<PersistentConversationAppendResult.Appended>(
+            store.append(
+                session,
+                msg(1, CognitiveConversationRole.USER, "hello"),
+                at(1)
+            )
+        )
+        val found = assertIs<PersistentConversationReopenResult.Found>(
+            store.reopenResult(session)
+        )
+        assertEquals(listOf(1L), found.snapshot.messages.map { it.sequence.value })
+        assertEquals(found.snapshot, store.reopen(session))
+    }
+
+    @Test
     fun unknown_session_reopen_is_absent_and_does_not_manufacture_state() {
         val backend = InMemoryPersistentRecordBackend()
         val store = openConversation(backend, maxRetained = 4)
