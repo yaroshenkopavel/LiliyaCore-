@@ -14,13 +14,24 @@ class PersistentRecordStore private constructor(
     val storeId: PersistentStoreId,
     private val backend: PersistentRecordBackend,
     initialRevision: Long,
-    initialState: PersistentBackendState
+    initialState: PersistentBackendState,
+    initialIndexedEntryCount: Long? = null
 ) {
     private var revision: Long = initialRevision
     private var state: PersistentBackendState = initialState.detached()
+    private var indexedEntryCount: Long? = initialIndexedEntryCount
+
+    private val indexedMutationBackend: IndexedPersistentRecordMutationBackend?
+        get() = if (indexedEntryCount != null) {
+            backend as? IndexedPersistentRecordMutationBackend
+        } else {
+            null
+        }
 
     @Synchronized
     fun install(record: PersistentRecord): PersistentInstallResult {
+        indexedMutationBackend?.let { return installIndexed(record, it) }
+
         if (state.entries.containsKey(record.id)) {
             return rejectInstall(record, "persistent entity is already live")
         }
@@ -161,7 +172,11 @@ class PersistentRecordStore private constructor(
                 )
             ) {
                 PersistentBackendPageLoadResult.Missing -> {
-                    if (collected.isEmpty() && state.entries.isEmpty()) {
+                    val expectedCount = indexedEntryCount
+                    if (collected.isEmpty() &&
+                        ((expectedCount != null && expectedCount == 0L) ||
+                            (expectedCount == null && state.entries.isEmpty()))
+                    ) {
                         return PersistentRecordSnapshotEntriesResult.Empty
                     }
                     return PersistentRecordSnapshotEntriesResult.Corrupt
@@ -195,6 +210,12 @@ class PersistentRecordStore private constructor(
             cursor = next
         }
 
+        indexedEntryCount?.let { expected ->
+            if (collected.size.toLong() != expected) {
+                return PersistentRecordSnapshotEntriesResult.Corrupt
+            }
+        }
+
         return if (collected.isEmpty()) {
             PersistentRecordSnapshotEntriesResult.Empty
         } else {
@@ -206,9 +227,23 @@ class PersistentRecordStore private constructor(
      * Compatibility API. New fail-closed consumers must prefer snapshotEntriesResult().
      */
     @Synchronized
-    fun snapshotEntries(): List<PersistentRecordSnapshot> = state.entries.values
-        .map { PersistentRecordSnapshot(it.record.detached(), it.generation) }
-        .sortedWith(compareBy({ it.record.createdAt }, { it.record.id.value }))
+    fun snapshotEntries(): List<PersistentRecordSnapshot> {
+        if (indexedEntryCount != null) {
+            return when (val result = snapshotEntriesResult()) {
+                PersistentRecordSnapshotEntriesResult.Empty -> emptyList()
+                is PersistentRecordSnapshotEntriesResult.Loaded -> result.entries
+                PersistentRecordSnapshotEntriesResult.Corrupt ->
+                    throw IllegalStateException("persistent indexed snapshot is corrupt")
+                is PersistentRecordSnapshotEntriesResult.Incompatible ->
+                    throw IllegalStateException(result.reason)
+                is PersistentRecordSnapshotEntriesResult.Failed ->
+                    throw IllegalStateException(result.reason, result.throwable)
+            }
+        }
+        return state.entries.values
+            .map { PersistentRecordSnapshot(it.record.detached(), it.generation) }
+            .sortedWith(compareBy({ it.record.createdAt }, { it.record.id.value }))
+    }
 
     @Synchronized
     internal fun generationHighWatermark(): Long = state.highWatermark
@@ -224,6 +259,15 @@ class PersistentRecordStore private constructor(
         sourceGeneration: PersistentGeneration,
         replacement: PersistentRecord
     ): PersistentRecordTransitionResult {
+        indexedMutationBackend?.let {
+            return transitionIndexed(
+                it,
+                sourceId,
+                sourceGeneration,
+                replacement
+            )
+        }
+
         val current = state.entries[sourceId]
             ?: return PersistentRecordTransitionResult.Rejected("persistent transition source is not live")
         if (current.generation != sourceGeneration) {
@@ -301,6 +345,8 @@ class PersistentRecordStore private constructor(
         id: PersistentEntityId,
         generation: PersistentGeneration
     ): PersistentMutationResult {
+        indexedMutationBackend?.let { return removeIndexed(it, id, generation) }
+
         val current = state.entries[id]
             ?: return PersistentMutationResult.Rejected("persistent entity is not live")
         if (current.generation != generation) {
