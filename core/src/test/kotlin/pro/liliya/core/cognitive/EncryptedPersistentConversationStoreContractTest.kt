@@ -9,6 +9,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import pro.liliya.core.diagnostics.DiagnosticRecorder
@@ -262,6 +263,32 @@ class EncryptedPersistentConversationStoreContractTest {
     }
 
     @Test
+    fun typed_reopen_matches_legacy_nullable_contract_before_lazy_restore() {
+        val backend = InMemoryPersistentRecordBackend()
+        val store = openConversation(backend, maxRetained = 4)
+        val session = CognitiveConversationSessionId("typed-reopen")
+
+        assertEquals(
+            PersistentConversationReopenResult.Absent,
+            store.reopenResult(session)
+        )
+        assertNull(store.reopen(session))
+
+        assertIs<PersistentConversationAppendResult.Appended>(
+            store.append(
+                session,
+                msg(1, CognitiveConversationRole.USER, "hello"),
+                at(1)
+            )
+        )
+        val found = assertIs<PersistentConversationReopenResult.Found>(
+            store.reopenResult(session)
+        )
+        assertEquals(listOf(1L), found.snapshot.messages.map { it.sequence.value })
+        assertEquals(found.snapshot, store.reopen(session))
+    }
+
+    @Test
     fun unknown_session_reopen_is_absent_and_does_not_manufacture_state() {
         val backend = InMemoryPersistentRecordBackend()
         val store = openConversation(backend, maxRetained = 4)
@@ -386,6 +413,131 @@ class EncryptedPersistentConversationStoreContractTest {
             if (needle.indices.all { offset -> haystack[start + offset] == needle[offset] }) return true
         }
         return false
+    }
+
+    @Test
+    fun linked_chunk_v3_round_trips_predecessor_and_contiguous_messages() {
+        val session = CognitiveConversationSessionId("codec-v3-linked")
+        val previous = ConversationPersistentRecordCodec.chunkEntityId(session, 1L)
+        val snapshot = CognitiveConversationContextSnapshot(
+            session,
+            listOf(
+                msg(3, CognitiveConversationRole.USER, "u2"),
+                msg(4, CognitiveConversationRole.ASSISTANT, "a2")
+            )
+        )
+        val encoded = ConversationPersistentRecordCodec.encodeLinkedChunk(
+            snapshot = snapshot,
+            persistedAt = at(3),
+            previousChunkId = previous
+        )
+
+        val decoded = assertIs<ConversationLinkedChunkDecodeResult.Decoded>(
+            ConversationPersistentRecordCodec.decodeLinkedChunk(encoded)
+        ).chunk
+
+        assertEquals(session, decoded.snapshot.sessionId)
+        assertEquals(listOf(3L, 4L), decoded.snapshot.messages.map { it.sequence.value })
+        assertEquals(previous, decoded.previousChunkId)
+        assertEquals(
+            ConversationPersistentRecordCodec.chunkEntityId(session, 3L),
+            encoded.id
+        )
+        assertFalse(encoded.id.value.contains(session.value))
+    }
+
+    @Test
+    fun linked_chunk_v3_has_distinct_identity_from_v2_for_non_destructive_migration() {
+        val session = CognitiveConversationSessionId("codec-v3-migration")
+        val snapshot = CognitiveConversationContextSnapshot(
+            session,
+            listOf(msg(1, CognitiveConversationRole.USER, "legacy-and-v3"))
+        )
+        val v2 = ConversationPersistentRecordCodec.encodeChunk(snapshot, at(1))
+        val v3 = ConversationPersistentRecordCodec.encodeLinkedChunk(
+            snapshot,
+            at(1),
+            previousChunkId = null
+        )
+
+        assertNotEquals(v2.id, v3.id)
+        assertNotEquals(v2.schemaId, v3.schemaId)
+        assertEquals(
+            ConversationPersistentRecordCodec.chunkEntityId(session, 1L),
+            v3.id
+        )
+    }
+
+    @Test
+    fun conversation_v3_format_marker_round_trips_and_has_constant_non_session_identity() {
+        val encoded = ConversationPersistentRecordCodec.encodeFormatMarker(at(1))
+        val decoded = assertIs<ConversationFormatMarkerDecodeResult.Decoded>(
+            ConversationPersistentRecordCodec.decodeFormatMarker(encoded)
+        ).marker
+
+        assertEquals(3, decoded.formatEpoch)
+        assertEquals(
+            ConversationPersistentRecordCodec.formatMarkerEntityId(),
+            encoded.id
+        )
+        assertEquals("conversation-format-v3", encoded.id.value)
+    }
+
+    @Test
+    fun conversation_head_v3_round_trips_latest_chunk_without_plaintext_session_id() {
+        val session = CognitiveConversationSessionId("codec-v3-head")
+        val latest = ConversationPersistentRecordCodec.chunkEntityId(session, 9L)
+        val encoded = ConversationPersistentRecordCodec.encodeHead(
+            sessionId = session,
+            lastSequence = 10L,
+            latestChunkId = latest,
+            persistedAt = at(10)
+        )
+
+        val decoded = assertIs<ConversationHeadDecodeResult.Decoded>(
+            ConversationPersistentRecordCodec.decodeHead(encoded)
+        ).head
+
+        assertEquals(session, decoded.sessionId)
+        assertEquals(10L, decoded.lastSequence)
+        assertEquals(latest, decoded.latestChunkId)
+        assertEquals(
+            ConversationPersistentRecordCodec.headEntityId(session),
+            encoded.id
+        )
+        assertFalse(encoded.id.value.contains(session.value))
+    }
+
+    @Test
+    fun linked_chunk_and_head_v3_fail_closed_on_structural_or_entity_id_mismatch() {
+        val session = CognitiveConversationSessionId("codec-v3-corrupt")
+        val linked = ConversationPersistentRecordCodec.encodeLinkedChunk(
+            CognitiveConversationContextSnapshot(
+                session,
+                listOf(msg(1, CognitiveConversationRole.USER, "hello"))
+            ),
+            at(1),
+            previousChunkId = null
+        )
+        assertEquals(
+            ConversationLinkedChunkDecodeResult.Corrupt,
+            ConversationPersistentRecordCodec.decodeLinkedChunk(
+                linked.copy(id = PersistentEntityId("wrong-linked-id"))
+            )
+        )
+
+        val head = ConversationPersistentRecordCodec.encodeHead(
+            sessionId = session,
+            lastSequence = 1L,
+            latestChunkId = linked.id,
+            persistedAt = at(2)
+        )
+        val bytes = head.payload.copyBytes().copyOf(head.payload.size - 1)
+        val truncated = head.copy(payload = PersistentPayload(bytes))
+        assertEquals(
+            ConversationHeadDecodeResult.Corrupt,
+            ConversationPersistentRecordCodec.decodeHead(truncated)
+        )
     }
 
     @Test

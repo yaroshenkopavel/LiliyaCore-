@@ -47,6 +47,19 @@ sealed interface PersistentConversationAppendPairResult {
     data class Failed(val reason: String) : PersistentConversationAppendPairResult
 }
 
+sealed interface PersistentConversationReopenResult {
+    data class Found(
+        val snapshot: CognitiveConversationContextSnapshot
+    ) : PersistentConversationReopenResult
+
+    data object Absent : PersistentConversationReopenResult
+    data object Corrupt : PersistentConversationReopenResult
+    data class Incompatible(val reason: String) : PersistentConversationReopenResult
+    data class EncryptionUnavailable(
+        val category: CognitiveEncryptionFailureCategory
+    ) : PersistentConversationReopenResult
+}
+
 sealed interface PersistentConversationHistoryResult {
     data class Found(val snapshot: CognitiveConversationContextSnapshot) : PersistentConversationHistoryResult
     data object Absent : PersistentConversationHistoryResult
@@ -221,8 +234,27 @@ class EncryptedPersistentConversationStore private constructor(
     }
 
     @Synchronized
+    fun reopenResult(
+        sessionId: CognitiveConversationSessionId
+    ): PersistentConversationReopenResult =
+        entries[sessionId]?.let {
+            PersistentConversationReopenResult.Found(it.snapshot)
+        } ?: PersistentConversationReopenResult.Absent
+
+    @Synchronized
     fun reopen(sessionId: CognitiveConversationSessionId): CognitiveConversationContextSnapshot? =
-        entries[sessionId]?.snapshot
+        when (val result = reopenResult(sessionId)) {
+            is PersistentConversationReopenResult.Found -> result.snapshot
+            PersistentConversationReopenResult.Absent -> null
+            PersistentConversationReopenResult.Corrupt ->
+                throw IllegalStateException("durable conversation is corrupt")
+            is PersistentConversationReopenResult.Incompatible ->
+                throw IllegalStateException(result.reason)
+            is PersistentConversationReopenResult.EncryptionUnavailable ->
+                throw IllegalStateException(
+                    "durable conversation encryption unavailable: " + result.category
+                )
+        }
 
     @Synchronized
     fun sessionCount(): Int = entries.size
@@ -386,12 +418,58 @@ private sealed interface ConversationDecodeResult {
     data class Incompatible(val reason: String) : ConversationDecodeResult
 }
 
-private object ConversationPersistentRecordCodec {
+internal data class ConversationLinkedChunk(
+    val snapshot: CognitiveConversationContextSnapshot,
+    val previousChunkId: PersistentEntityId?
+)
+
+internal data class ConversationSessionHead(
+    val sessionId: CognitiveConversationSessionId,
+    val lastSequence: Long,
+    val latestChunkId: PersistentEntityId
+)
+
+internal sealed interface ConversationLinkedChunkDecodeResult {
+    data class Decoded(val chunk: ConversationLinkedChunk) : ConversationLinkedChunkDecodeResult
+    data object Corrupt : ConversationLinkedChunkDecodeResult
+    data class Incompatible(val reason: String) : ConversationLinkedChunkDecodeResult
+}
+
+internal data class ConversationFormatMarker(
+    val formatEpoch: Int
+)
+
+internal sealed interface ConversationFormatMarkerDecodeResult {
+    data class Decoded(
+        val marker: ConversationFormatMarker
+    ) : ConversationFormatMarkerDecodeResult
+
+    data object Corrupt : ConversationFormatMarkerDecodeResult
+    data class Incompatible(val reason: String) : ConversationFormatMarkerDecodeResult
+}
+
+internal sealed interface ConversationHeadDecodeResult {
+    data class Decoded(val head: ConversationSessionHead) : ConversationHeadDecodeResult
+    data object Corrupt : ConversationHeadDecodeResult
+    data class Incompatible(val reason: String) : ConversationHeadDecodeResult
+}
+
+internal object ConversationPersistentRecordCodec {
     private val schemaId = PersistentSchemaId("cognitive-conversation-session")
+    private val linkedChunkSchemaId = PersistentSchemaId("cognitive-conversation-linked-chunk")
+    private val headSchemaId = PersistentSchemaId("cognitive-conversation-session-head")
+    private val formatMarkerSchemaId = PersistentSchemaId("cognitive-conversation-format-marker")
     private val legacyVersion = PersistentSchemaVersion(1)
     private val chunkVersion = PersistentSchemaVersion(2)
+    private val linkedChunkVersion = PersistentSchemaVersion(1)
+    private val headVersion = PersistentSchemaVersion(1)
+    private val formatMarkerVersion = PersistentSchemaVersion(1)
     private const val LEGACY_MAGIC = 0x434E5631
     private const val CHUNK_MAGIC = 0x434E5632
+    private const val LINKED_CHUNK_MAGIC = 0x434E5633
+    private const val HEAD_MAGIC = 0x434E5648
+    private const val FORMAT_MARKER_MAGIC = 0x434E564D
+    private const val CURRENT_FORMAT_EPOCH = 3
 
     fun encodeChunk(snapshot: CognitiveConversationContextSnapshot, persistedAt: Instant): PersistentRecord {
         require(snapshot.messages.size in 1..2)
@@ -416,6 +494,228 @@ private object ConversationPersistentRecordCodec {
             createdAt = persistedAt
         )
     }
+
+    fun encodeLinkedChunk(
+        snapshot: CognitiveConversationContextSnapshot,
+        persistedAt: Instant,
+        previousChunkId: PersistentEntityId?
+    ): PersistentRecord {
+        require(snapshot.messages.size in 1..2)
+        val firstSequence = snapshot.messages.first().sequence.value
+        require(firstSequence > 0L)
+        require(
+            snapshot.messages.last().sequence.value ==
+                firstSequence + snapshot.messages.size - 1L
+        ) { "conversation linked chunk sequences must be contiguous" }
+
+        val bytes = ByteArrayOutputStream().use { output ->
+            DataOutputStream(output).use { data ->
+                data.writeInt(LINKED_CHUNK_MAGIC)
+                data.writeString(snapshot.sessionId.value)
+                if (previousChunkId == null) {
+                    data.writeInt(0)
+                } else {
+                    data.writeInt(1)
+                    data.writeString(previousChunkId.value)
+                }
+                data.writeInt(snapshot.messages.size)
+                snapshot.messages.forEach { message ->
+                    data.writeLong(message.sequence.value)
+                    data.writeInt(message.role.ordinal)
+                    data.writeString(message.content)
+                }
+            }
+            output.toByteArray()
+        }
+        return PersistentRecord(
+            id = linkedChunkId(snapshot.sessionId, firstSequence),
+            schemaId = linkedChunkSchemaId,
+            schemaVersion = linkedChunkVersion,
+            payload = PersistentPayload(bytes),
+            createdAt = persistedAt
+        )
+    }
+
+    fun encodeHead(
+        sessionId: CognitiveConversationSessionId,
+        lastSequence: Long,
+        latestChunkId: PersistentEntityId,
+        persistedAt: Instant
+    ): PersistentRecord {
+        require(lastSequence > 0L) { "conversation head sequence must be positive" }
+        val bytes = ByteArrayOutputStream().use { output ->
+            DataOutputStream(output).use { data ->
+                data.writeInt(HEAD_MAGIC)
+                data.writeString(sessionId.value)
+                data.writeLong(lastSequence)
+                data.writeString(latestChunkId.value)
+            }
+            output.toByteArray()
+        }
+        return PersistentRecord(
+            id = headId(sessionId),
+            schemaId = headSchemaId,
+            schemaVersion = headVersion,
+            payload = PersistentPayload(bytes),
+            createdAt = persistedAt
+        )
+    }
+
+    fun encodeFormatMarker(persistedAt: Instant): PersistentRecord {
+        val bytes = ByteArrayOutputStream().use { output ->
+            DataOutputStream(output).use { data ->
+                data.writeInt(FORMAT_MARKER_MAGIC)
+                data.writeInt(CURRENT_FORMAT_EPOCH)
+            }
+            output.toByteArray()
+        }
+        return PersistentRecord(
+            id = formatMarkerId(),
+            schemaId = formatMarkerSchemaId,
+            schemaVersion = formatMarkerVersion,
+            payload = PersistentPayload(bytes),
+            createdAt = persistedAt
+        )
+    }
+
+    fun decodeFormatMarker(record: PersistentRecord): ConversationFormatMarkerDecodeResult {
+        if (record.schemaId != formatMarkerSchemaId) {
+            return ConversationFormatMarkerDecodeResult.Incompatible(
+                "conversation format marker schema id mismatch"
+            )
+        }
+        if (record.schemaVersion != formatMarkerVersion) {
+            return ConversationFormatMarkerDecodeResult.Incompatible(
+                "conversation format marker schema version mismatch"
+            )
+        }
+        return try {
+            val input = ByteArrayInputStream(record.payload.copyBytes())
+            val data = DataInputStream(input)
+            if (data.readInt() != FORMAT_MARKER_MAGIC) {
+                return ConversationFormatMarkerDecodeResult.Corrupt
+            }
+            val epoch = data.readInt()
+            if (epoch != CURRENT_FORMAT_EPOCH ||
+                input.available() != 0 ||
+                record.id != formatMarkerId()
+            ) {
+                return ConversationFormatMarkerDecodeResult.Corrupt
+            }
+            ConversationFormatMarkerDecodeResult.Decoded(
+                ConversationFormatMarker(epoch)
+            )
+        } catch (_: EOFException) {
+            ConversationFormatMarkerDecodeResult.Corrupt
+        } catch (_: IllegalArgumentException) {
+            ConversationFormatMarkerDecodeResult.Corrupt
+        } catch (_: RuntimeException) {
+            ConversationFormatMarkerDecodeResult.Corrupt
+        }
+    }
+
+    fun decodeLinkedChunk(record: PersistentRecord): ConversationLinkedChunkDecodeResult {
+        if (record.schemaId != linkedChunkSchemaId) {
+            return ConversationLinkedChunkDecodeResult.Incompatible(
+                "conversation linked chunk schema id mismatch"
+            )
+        }
+        if (record.schemaVersion != linkedChunkVersion) {
+            return ConversationLinkedChunkDecodeResult.Incompatible(
+                "conversation linked chunk schema version mismatch"
+            )
+        }
+        return try {
+            val input = ByteArrayInputStream(record.payload.copyBytes())
+            val data = DataInputStream(input)
+            if (data.readInt() != LINKED_CHUNK_MAGIC) {
+                return ConversationLinkedChunkDecodeResult.Corrupt
+            }
+            val sessionId = CognitiveConversationSessionId(data.readString(input))
+            val previousMarker = data.readInt()
+            val previousChunkId = when (previousMarker) {
+                0 -> null
+                1 -> PersistentEntityId(data.readString(input))
+                else -> return ConversationLinkedChunkDecodeResult.Corrupt
+            }
+            val count = data.readInt()
+            if (count !in 1..2) return ConversationLinkedChunkDecodeResult.Corrupt
+            val messages = ArrayList<CognitiveConversationContextMessage>(count)
+            repeat(count) {
+                val sequence = CognitiveConversationSequence(data.readLong())
+                val role = CognitiveConversationRole.entries.getOrNull(data.readInt())
+                    ?: return ConversationLinkedChunkDecodeResult.Corrupt
+                messages += CognitiveConversationContextMessage(
+                    sequence,
+                    role,
+                    data.readString(input)
+                )
+            }
+            if (input.available() != 0) return ConversationLinkedChunkDecodeResult.Corrupt
+            val firstSequence = messages.first().sequence.value
+            if (firstSequence <= 0L ||
+                messages.last().sequence.value != firstSequence + messages.size - 1L ||
+                record.id != linkedChunkId(sessionId, firstSequence)
+            ) {
+                return ConversationLinkedChunkDecodeResult.Corrupt
+            }
+            ConversationLinkedChunkDecodeResult.Decoded(
+                ConversationLinkedChunk(
+                    snapshot = CognitiveConversationContextSnapshot(sessionId, messages),
+                    previousChunkId = previousChunkId
+                )
+            )
+        } catch (_: EOFException) {
+            ConversationLinkedChunkDecodeResult.Corrupt
+        } catch (_: IllegalArgumentException) {
+            ConversationLinkedChunkDecodeResult.Corrupt
+        } catch (_: RuntimeException) {
+            ConversationLinkedChunkDecodeResult.Corrupt
+        }
+    }
+
+    fun decodeHead(record: PersistentRecord): ConversationHeadDecodeResult {
+        if (record.schemaId != headSchemaId) {
+            return ConversationHeadDecodeResult.Incompatible(
+                "conversation head schema id mismatch"
+            )
+        }
+        if (record.schemaVersion != headVersion) {
+            return ConversationHeadDecodeResult.Incompatible(
+                "conversation head schema version mismatch"
+            )
+        }
+        return try {
+            val input = ByteArrayInputStream(record.payload.copyBytes())
+            val data = DataInputStream(input)
+            if (data.readInt() != HEAD_MAGIC) return ConversationHeadDecodeResult.Corrupt
+            val sessionId = CognitiveConversationSessionId(data.readString(input))
+            val lastSequence = data.readLong()
+            if (lastSequence <= 0L) return ConversationHeadDecodeResult.Corrupt
+            val latestChunkId = PersistentEntityId(data.readString(input))
+            if (input.available() != 0 || record.id != headId(sessionId)) {
+                return ConversationHeadDecodeResult.Corrupt
+            }
+            ConversationHeadDecodeResult.Decoded(
+                ConversationSessionHead(sessionId, lastSequence, latestChunkId)
+            )
+        } catch (_: EOFException) {
+            ConversationHeadDecodeResult.Corrupt
+        } catch (_: IllegalArgumentException) {
+            ConversationHeadDecodeResult.Corrupt
+        } catch (_: RuntimeException) {
+            ConversationHeadDecodeResult.Corrupt
+        }
+    }
+
+    fun chunkEntityId(
+        sessionId: CognitiveConversationSessionId,
+        firstSequence: Long
+    ): PersistentEntityId = linkedChunkId(sessionId, firstSequence)
+
+    fun headEntityId(
+        sessionId: CognitiveConversationSessionId
+    ): PersistentEntityId = headId(sessionId)
 
     fun decode(record: PersistentRecord): ConversationDecodeResult {
         if (record.schemaId != schemaId) return ConversationDecodeResult.Incompatible("conversation schema id mismatch")
@@ -467,6 +767,28 @@ private object ConversationPersistentRecordCodec {
             .digest((sessionId.value + ":" + firstSequence).toByteArray(StandardCharsets.UTF_8))
             .joinToString("") { "%02x".format(it) }
         return PersistentEntityId("conversation-chunk-$digest")
+    }
+
+    fun formatMarkerEntityId(): PersistentEntityId = formatMarkerId()
+
+    private fun formatMarkerId(): PersistentEntityId =
+        PersistentEntityId("conversation-format-v3")
+
+    private fun linkedChunkId(
+        sessionId: CognitiveConversationSessionId,
+        firstSequence: Long
+    ): PersistentEntityId {
+        val digest = MessageDigest.getInstance("SHA-256")
+            .digest(("v3:" + sessionId.value + ":" + firstSequence).toByteArray(StandardCharsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
+        return PersistentEntityId("conversation-linked-chunk-$digest")
+    }
+
+    private fun headId(sessionId: CognitiveConversationSessionId): PersistentEntityId {
+        val digest = MessageDigest.getInstance("SHA-256")
+            .digest(("head:" + sessionId.value).toByteArray(StandardCharsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
+        return PersistentEntityId("conversation-head-$digest")
     }
 
     private fun DataOutputStream.writeString(value: String) {
