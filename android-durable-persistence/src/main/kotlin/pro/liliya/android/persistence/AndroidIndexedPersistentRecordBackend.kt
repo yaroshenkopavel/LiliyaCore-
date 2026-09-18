@@ -10,13 +10,14 @@ import java.nio.ByteBuffer
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import java.time.Instant
-import pro.liliya.core.persistence.IndexedPersistentRecordReadBackend
+import pro.liliya.core.persistence.IndexedPersistentRecordMutationBackend
 import pro.liliya.core.persistence.PersistentBackendCommitResult
 import pro.liliya.core.persistence.PersistentBackendEntry
 import pro.liliya.core.persistence.PersistentBackendEntryLoadResult
 import pro.liliya.core.persistence.PersistentBackendLoadResult
 import pro.liliya.core.persistence.PersistentBackendMetadata
 import pro.liliya.core.persistence.PersistentBackendMetadataLoadResult
+import pro.liliya.core.persistence.PersistentBackendMutationResult
 import pro.liliya.core.persistence.PersistentBackendPage
 import pro.liliya.core.persistence.PersistentBackendPageCursor
 import pro.liliya.core.persistence.PersistentBackendPageLoadResult
@@ -46,7 +47,7 @@ import pro.liliya.core.persistence.PersistentStoreId
  */
 class AndroidIndexedPersistentRecordBackend private constructor(
     private val root: File
-) : IndexedPersistentRecordReadBackend {
+) : IndexedPersistentRecordMutationBackend {
 
     override fun load(storeId: PersistentStoreId): PersistentBackendLoadResult =
         synchronized(this) {
@@ -337,6 +338,309 @@ class AndroidIndexedPersistentRecordBackend private constructor(
         }
     }
 
+    override fun installEntry(
+        storeId: PersistentStoreId,
+        expectedRevision: Long,
+        expectedHighWatermark: Long,
+        entry: PersistentBackendEntry
+    ): PersistentBackendMutationResult = synchronized(this) {
+        if (expectedRevision < 0L || expectedHighWatermark < 0L ||
+            entry.record.id.value.isBlank() ||
+            entry.generation.value != expectedHighWatermark + 1L
+        ) {
+            return@synchronized PersistentBackendMutationResult.Rejected(
+                "indexed durable persistence install preconditions rejected"
+            )
+        }
+        try {
+            openDatabase().use { db ->
+                db.beginTransaction()
+                try {
+                    when (val imported = importLegacyIfRequired(db, storeId)) {
+                        LegacyImportResult.Ready,
+                        LegacyImportResult.Missing -> Unit
+                        LegacyImportResult.Corrupt ->
+                            return@synchronized PersistentBackendMutationResult.Corrupt
+                        LegacyImportResult.Incompatible ->
+                            return@synchronized PersistentBackendMutationResult.Incompatible(
+                                "unsupported durable persistence format"
+                            )
+                        is LegacyImportResult.Failed ->
+                            return@synchronized PersistentBackendMutationResult.Failed(
+                                "indexed durable persistence legacy import failed",
+                                imported.throwable
+                            )
+                    }
+
+                    val current = readHeader(db, storeId)
+                    if (current != null && !validateCurrentStore(db, storeId, current)) {
+                        return@synchronized PersistentBackendMutationResult.Corrupt
+                    }
+                    val currentRevision = current?.revision ?: 0L
+                    val currentHighWatermark = current?.highWatermark ?: 0L
+                    val currentEntryCount = current?.entryCount ?: 0
+                    if (currentRevision != expectedRevision ||
+                        currentHighWatermark != expectedHighWatermark
+                    ) {
+                        return@synchronized PersistentBackendMutationResult.Conflict
+                    }
+                    if (currentRevision == Long.MAX_VALUE || expectedHighWatermark == Long.MAX_VALUE) {
+                        return@synchronized PersistentBackendMutationResult.Failed(
+                            "indexed durable persistence revision or generation overflow"
+                        )
+                    }
+                    if (recordExists(db, storeId, entry.record.id) ||
+                        generationExists(db, storeId, entry.generation)
+                    ) {
+                        return@synchronized PersistentBackendMutationResult.Rejected(
+                            "indexed durable persistence entity or generation is already live"
+                        )
+                    }
+
+                    insertEntryRow(db, storeId, entry)
+                    val metadata = PersistentBackendMetadata(
+                        revision = currentRevision + 1L,
+                        highWatermark = entry.generation.value,
+                        entryCount = currentEntryCount.toLong() + 1L
+                    )
+                    writeHeader(db, storeId, metadata)
+                    db.setTransactionSuccessful()
+                    PersistentBackendMutationResult.Committed(metadata)
+                } finally {
+                    db.endTransaction()
+                }
+            }
+        } catch (_: IndexedDatabaseIncompatibleException) {
+            PersistentBackendMutationResult.Incompatible(
+                "unsupported indexed durable persistence format"
+            )
+        } catch (_: IllegalArgumentException) {
+            PersistentBackendMutationResult.Corrupt
+        } catch (e: SQLiteException) {
+            PersistentBackendMutationResult.Failed(
+                "indexed durable persistence granular install failed",
+                e
+            )
+        } catch (e: RuntimeException) {
+            PersistentBackendMutationResult.Failed(
+                "indexed durable persistence granular install failed",
+                e
+            )
+        }
+    }
+
+    override fun transitionEntry(
+        storeId: PersistentStoreId,
+        expectedRevision: Long,
+        expectedHighWatermark: Long,
+        sourceId: PersistentEntityId,
+        sourceGeneration: PersistentGeneration,
+        replacement: PersistentBackendEntry
+    ): PersistentBackendMutationResult = synchronized(this) {
+        if (expectedRevision <= 0L || expectedHighWatermark < 0L ||
+            replacement.generation != sourceGeneration
+        ) {
+            return@synchronized PersistentBackendMutationResult.Rejected(
+                "indexed durable persistence transition preconditions rejected"
+            )
+        }
+        try {
+            openDatabase().use { db ->
+                db.beginTransaction()
+                try {
+                    when (val imported = importLegacyIfRequired(db, storeId)) {
+                        LegacyImportResult.Ready -> Unit
+                        LegacyImportResult.Missing ->
+                            return@synchronized PersistentBackendMutationResult.Rejected(
+                                "indexed durable persistence transition source store is missing"
+                            )
+                        LegacyImportResult.Corrupt ->
+                            return@synchronized PersistentBackendMutationResult.Corrupt
+                        LegacyImportResult.Incompatible ->
+                            return@synchronized PersistentBackendMutationResult.Incompatible(
+                                "unsupported durable persistence format"
+                            )
+                        is LegacyImportResult.Failed ->
+                            return@synchronized PersistentBackendMutationResult.Failed(
+                                "indexed durable persistence legacy import failed",
+                                imported.throwable
+                            )
+                    }
+                    val current = readHeader(db, storeId)
+                        ?: return@synchronized PersistentBackendMutationResult.Rejected(
+                            "indexed durable persistence transition source store is missing"
+                        )
+                    if (!validateCurrentStore(db, storeId, current)) {
+                        return@synchronized PersistentBackendMutationResult.Corrupt
+                    }
+                    if (current.revision != expectedRevision ||
+                        current.highWatermark != expectedHighWatermark
+                    ) {
+                        return@synchronized PersistentBackendMutationResult.Conflict
+                    }
+                    if (current.revision == Long.MAX_VALUE) {
+                        return@synchronized PersistentBackendMutationResult.Failed(
+                            "indexed durable persistence revision overflow"
+                        )
+                    }
+
+                    val source = loadSnapshotRow(db, storeId, sourceId, current.highWatermark)
+                        ?: return@synchronized PersistentBackendMutationResult.Rejected(
+                            "indexed durable persistence transition source is not live"
+                        )
+                    if (source.generation != sourceGeneration) {
+                        return@synchronized PersistentBackendMutationResult.Rejected(
+                            "indexed durable persistence transition source generation is stale"
+                        )
+                    }
+                    if (replacement.record.id != sourceId &&
+                        recordExists(db, storeId, replacement.record.id)
+                    ) {
+                        return@synchronized PersistentBackendMutationResult.Rejected(
+                            "indexed durable persistence replacement entity is already live"
+                        )
+                    }
+
+                    db.delete(
+                        "records",
+                        "store_id=? AND entity_id=?",
+                        arrayOf(storeId.value, sourceId.value)
+                    )
+                    insertEntryRow(db, storeId, replacement)
+                    val metadata = PersistentBackendMetadata(
+                        revision = current.revision + 1L,
+                        highWatermark = current.highWatermark,
+                        entryCount = current.entryCount.toLong()
+                    )
+                    writeHeader(db, storeId, metadata)
+                    db.setTransactionSuccessful()
+                    PersistentBackendMutationResult.Committed(metadata)
+                } finally {
+                    db.endTransaction()
+                }
+            }
+        } catch (_: IndexedDatabaseIncompatibleException) {
+            PersistentBackendMutationResult.Incompatible(
+                "unsupported indexed durable persistence format"
+            )
+        } catch (_: IllegalArgumentException) {
+            PersistentBackendMutationResult.Corrupt
+        } catch (e: SQLiteException) {
+            PersistentBackendMutationResult.Failed(
+                "indexed durable persistence granular transition failed",
+                e
+            )
+        } catch (e: RuntimeException) {
+            PersistentBackendMutationResult.Failed(
+                "indexed durable persistence granular transition failed",
+                e
+            )
+        }
+    }
+
+    override fun removeEntry(
+        storeId: PersistentStoreId,
+        expectedRevision: Long,
+        expectedHighWatermark: Long,
+        id: PersistentEntityId,
+        generation: PersistentGeneration
+    ): PersistentBackendMutationResult = synchronized(this) {
+        if (expectedRevision <= 0L || expectedHighWatermark < 0L) {
+            return@synchronized PersistentBackendMutationResult.Rejected(
+                "indexed durable persistence remove preconditions rejected"
+            )
+        }
+        try {
+            openDatabase().use { db ->
+                db.beginTransaction()
+                try {
+                    when (val imported = importLegacyIfRequired(db, storeId)) {
+                        LegacyImportResult.Ready -> Unit
+                        LegacyImportResult.Missing ->
+                            return@synchronized PersistentBackendMutationResult.Rejected(
+                                "indexed durable persistence remove source store is missing"
+                            )
+                        LegacyImportResult.Corrupt ->
+                            return@synchronized PersistentBackendMutationResult.Corrupt
+                        LegacyImportResult.Incompatible ->
+                            return@synchronized PersistentBackendMutationResult.Incompatible(
+                                "unsupported durable persistence format"
+                            )
+                        is LegacyImportResult.Failed ->
+                            return@synchronized PersistentBackendMutationResult.Failed(
+                                "indexed durable persistence legacy import failed",
+                                imported.throwable
+                            )
+                    }
+                    val current = readHeader(db, storeId)
+                        ?: return@synchronized PersistentBackendMutationResult.Rejected(
+                            "indexed durable persistence remove source store is missing"
+                        )
+                    if (!validateCurrentStore(db, storeId, current)) {
+                        return@synchronized PersistentBackendMutationResult.Corrupt
+                    }
+                    if (current.revision != expectedRevision ||
+                        current.highWatermark != expectedHighWatermark
+                    ) {
+                        return@synchronized PersistentBackendMutationResult.Conflict
+                    }
+                    if (current.revision == Long.MAX_VALUE) {
+                        return@synchronized PersistentBackendMutationResult.Failed(
+                            "indexed durable persistence revision overflow"
+                        )
+                    }
+
+                    val source = loadSnapshotRow(db, storeId, id, current.highWatermark)
+                        ?: return@synchronized PersistentBackendMutationResult.Rejected(
+                            "indexed durable persistence remove source is not live"
+                        )
+                    if (source.generation != generation) {
+                        return@synchronized PersistentBackendMutationResult.Rejected(
+                            "indexed durable persistence remove source generation is stale"
+                        )
+                    }
+
+                    if (db.delete(
+                            "records",
+                            "store_id=? AND entity_id=?",
+                            arrayOf(storeId.value, id.value)
+                        ) != 1
+                    ) {
+                        return@synchronized PersistentBackendMutationResult.Failed(
+                            "indexed durable persistence remove did not delete exact source"
+                        )
+                    }
+                    val metadata = PersistentBackendMetadata(
+                        revision = current.revision + 1L,
+                        highWatermark = current.highWatermark,
+                        entryCount = current.entryCount.toLong() - 1L
+                    )
+                    writeHeader(db, storeId, metadata)
+                    db.setTransactionSuccessful()
+                    PersistentBackendMutationResult.Committed(metadata)
+                } finally {
+                    db.endTransaction()
+                }
+            }
+        } catch (_: IndexedDatabaseIncompatibleException) {
+            PersistentBackendMutationResult.Incompatible(
+                "unsupported indexed durable persistence format"
+            )
+        } catch (_: IllegalArgumentException) {
+            PersistentBackendMutationResult.Corrupt
+        } catch (e: SQLiteException) {
+            PersistentBackendMutationResult.Failed(
+                "indexed durable persistence granular remove failed",
+                e
+            )
+        } catch (e: RuntimeException) {
+            PersistentBackendMutationResult.Failed(
+                "indexed durable persistence granular remove failed",
+                e
+            )
+        }
+    }
+
     override fun commit(
         storeId: PersistentStoreId,
         expectedRevision: Long,
@@ -611,6 +915,102 @@ class AndroidIndexedPersistentRecordBackend private constructor(
                 Header(revision, highWatermark, entryCount)
             }
         }
+
+    private fun recordExists(
+        db: SQLiteDatabase,
+        storeId: PersistentStoreId,
+        entityId: PersistentEntityId
+    ): Boolean = db.rawQuery(
+        "SELECT 1 FROM records WHERE store_id=? AND entity_id=? LIMIT 1",
+        arrayOf(storeId.value, entityId.value)
+    ).use { it.moveToFirst() }
+
+    private fun generationExists(
+        db: SQLiteDatabase,
+        storeId: PersistentStoreId,
+        generation: PersistentGeneration
+    ): Boolean = db.rawQuery(
+        "SELECT 1 FROM records WHERE store_id=? AND generation=? LIMIT 1",
+        arrayOf(storeId.value, generation.value.toString())
+    ).use { it.moveToFirst() }
+
+    private fun loadSnapshotRow(
+        db: SQLiteDatabase,
+        storeId: PersistentStoreId,
+        entityId: PersistentEntityId,
+        highWatermark: Long
+    ): PersistentRecordSnapshot? = db.rawQuery(
+        "SELECT entity_id,generation,schema_id,schema_version,created_epoch,created_nano,payload,record_hash " +
+            "FROM records WHERE store_id=? AND entity_id=? LIMIT 1",
+        arrayOf(storeId.value, entityId.value)
+    ).use { cursor ->
+        if (!cursor.moveToFirst()) null else decodeSnapshot(cursor, highWatermark)
+    }
+
+    private fun insertEntryRow(
+        db: SQLiteDatabase,
+        storeId: PersistentStoreId,
+        entry: PersistentBackendEntry
+    ) {
+        require(entry.record.id.value.isNotBlank()) {
+            "indexed durable persistence entity id must not be blank"
+        }
+        require(entry.record.schemaVersion.value > 0) {
+            "indexed durable persistence schema version must be positive"
+        }
+        val payload = entry.record.payload.copyBytes()
+        try {
+            require(payload.size <= MAX_RECORD_PAYLOAD_BYTES) {
+                "indexed durable persistence payload exceeds per-entry limit"
+            }
+            val hash = recordHash(entry.record.id, entry, payload)
+            val values = ContentValues().apply {
+                put("store_id", storeId.value)
+                put("entity_id", entry.record.id.value)
+                put("generation", entry.generation.value)
+                put("schema_id", entry.record.schemaId.value)
+                put("schema_version", entry.record.schemaVersion.value)
+                put("created_epoch", entry.record.createdAt.epochSecond)
+                put("created_nano", entry.record.createdAt.nano)
+                put("payload", payload)
+                put("record_hash", hash)
+            }
+            db.insertOrThrow("records", null, values)
+        } finally {
+            payload.fill(0)
+        }
+    }
+
+    private fun writeHeader(
+        db: SQLiteDatabase,
+        storeId: PersistentStoreId,
+        metadata: PersistentBackendMetadata
+    ) {
+        require(metadata.entryCount <= Int.MAX_VALUE.toLong()) {
+            "indexed durable persistence entry count exceeds supported metadata range"
+        }
+        val values = ContentValues().apply {
+            put("store_id", storeId.value)
+            put("revision", metadata.revision)
+            put("high_watermark", metadata.highWatermark)
+            put("entry_count", metadata.entryCount.toInt())
+            put(
+                "header_hash",
+                headerHash(
+                    storeId,
+                    metadata.revision,
+                    metadata.highWatermark,
+                    metadata.entryCount.toInt()
+                )
+            )
+        }
+        db.insertWithOnConflict(
+            "stores",
+            null,
+            values,
+            SQLiteDatabase.CONFLICT_REPLACE
+        )
+    }
 
     private fun decodeSnapshot(
         cursor: android.database.Cursor,
