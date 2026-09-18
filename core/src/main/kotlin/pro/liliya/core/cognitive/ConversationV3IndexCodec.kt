@@ -84,6 +84,8 @@ internal object ConversationV3IndexCodec {
             } else {
                 ConversationV3DecodeResult.Decoded(ConversationV3FormatMarker)
             }
+        } catch (_: EOFException) {
+            ConversationV3DecodeResult.Corrupt
         } catch (_: RuntimeException) {
             ConversationV3DecodeResult.Corrupt
         }
