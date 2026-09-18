@@ -21,6 +21,9 @@ class PersistentRecordStoreContractTest {
     private class IndexedLookupFixtureBackend : IndexedPersistentRecordReadBackend {
         private val delegate = InMemoryPersistentRecordBackend()
         var exactResult: PersistentBackendEntryLoadResult = PersistentBackendEntryLoadResult.Missing
+        var pageHandler: (PersistentBackendPageRequest) -> PersistentBackendPageLoadResult = {
+            PersistentBackendPageLoadResult.Missing
+        }
 
         override fun load(storeId: PersistentStoreId): PersistentBackendLoadResult =
             delegate.load(storeId)
@@ -43,7 +46,7 @@ class PersistentRecordStoreContractTest {
         override fun loadPage(
             storeId: PersistentStoreId,
             request: PersistentBackendPageRequest
-        ): PersistentBackendPageLoadResult = PersistentBackendPageLoadResult.Missing
+        ): PersistentBackendPageLoadResult = pageHandler(request)
     }
     private data class Fixture(
         val foundation: FoundationComposition,
@@ -260,6 +263,67 @@ class PersistentRecordStoreContractTest {
         val found = assertIs<PersistentRecordLookupResult.Found>(store.inspectResult(id))
         assertEquals(PersistentGeneration(7), found.snapshot.generation)
         assertEquals(id, found.snapshot.record.id)
+    }
+
+    @Test
+    fun indexed_snapshot_enumeration_is_bounded_paged_and_fail_closed() {
+        val f = fixture()
+        val backend = IndexedLookupFixtureBackend()
+        val store = open(f, backend)
+
+        val one = PersistentRecordSnapshot(
+            record("one", createdAt = Instant.parse("2026-08-30T13:20:01Z")),
+            PersistentGeneration(1)
+        )
+        val two = PersistentRecordSnapshot(
+            record("two", createdAt = Instant.parse("2026-08-30T13:20:02Z")),
+            PersistentGeneration(2)
+        )
+        val firstCursor = PersistentBackendPageCursor(
+            one.record.createdAt,
+            one.record.id
+        )
+        backend.pageHandler = { request ->
+            assertTrue(request.limit <= PersistentBackendPageRequest.MAX_PAGE_SIZE)
+            if (request.cursorExclusive == null) {
+                PersistentBackendPageLoadResult.Loaded(
+                    PersistentBackendPage(listOf(one), firstCursor)
+                )
+            } else {
+                assertEquals(firstCursor, request.cursorExclusive)
+                PersistentBackendPageLoadResult.Loaded(
+                    PersistentBackendPage(listOf(two), null)
+                )
+            }
+        }
+
+        val loaded = assertIs<PersistentRecordSnapshotEntriesResult.Loaded>(
+            store.snapshotEntriesResult()
+        )
+        assertEquals(listOf("one", "two"), loaded.entries.map { it.record.id.value })
+
+        backend.pageHandler = { PersistentBackendPageLoadResult.Corrupt }
+        assertEquals(
+            PersistentRecordSnapshotEntriesResult.Corrupt,
+            store.snapshotEntriesResult()
+        )
+
+        backend.pageHandler = {
+            PersistentBackendPageLoadResult.Incompatible("future page format")
+        }
+        val incompatible = assertIs<PersistentRecordSnapshotEntriesResult.Incompatible>(
+            store.snapshotEntriesResult()
+        )
+        assertEquals("future page format", incompatible.reason)
+
+        val failure = IllegalStateException("page read failed")
+        backend.pageHandler = {
+            PersistentBackendPageLoadResult.Failed("page read failed", failure)
+        }
+        val failed = assertIs<PersistentRecordSnapshotEntriesResult.Failed>(
+            store.snapshotEntriesResult()
+        )
+        assertEquals(failure, failed.throwable)
     }
 
     @Test
