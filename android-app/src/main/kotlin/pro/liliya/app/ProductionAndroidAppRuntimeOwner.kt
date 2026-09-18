@@ -7,6 +7,7 @@ import pro.liliya.android.runtime.ProductChatRequest
 import pro.liliya.android.runtime.ProductChatResult
 import pro.liliya.android.runtime.ProductConversationCommitStatus
 import pro.liliya.android.runtime.ProductConversationResult
+import pro.liliya.android.runtime.ProductConversationSnapshot
 
 enum class ProductionAndroidAppRuntimeState {
     CONFIGURATION_REQUIRED,
@@ -34,6 +35,8 @@ sealed interface ProductionAndroidAppRuntimeStartResult {
 
 interface ProductionAndroidAppRuntimeSession {
     fun send(text: String): ProductChatResult
+    fun conversationSnapshot(): ProductConversationSnapshot? = null
+    fun newConversation(): Boolean = false
     fun close()
 }
 
@@ -44,13 +47,25 @@ fun interface ProductionAndroidAppRuntimeStartPort {
         fun fromProductRuntimeBootstrap(
             bootstrap: () -> AndroidProductRuntimeHostBootstrapResult
         ): ProductionAndroidAppRuntimeStartPort =
+            fromProductRuntimeBootstrap(
+                bootstrap = bootstrap,
+                conversationSessions = ProductionAndroidConversationSessionState
+            )
+
+        internal fun fromProductRuntimeBootstrap(
+            bootstrap: () -> AndroidProductRuntimeHostBootstrapResult,
+            conversationSessions: ProductionAndroidConversationSessionPort
+        ): ProductionAndroidAppRuntimeStartPort =
             ProductionAndroidAppRuntimeStartPort {
                 try {
                     when (val result = bootstrap()) {
                         is AndroidProductRuntimeHostBootstrapResult.Ready -> {
                             val session = result.session
                             ProductionAndroidAppRuntimeStartResult.Ready(
-                                ProductRuntimeSessionAdapter(session)
+                                ProductRuntimeSessionAdapter(
+                                    session = session,
+                                    conversationSessions = conversationSessions
+                                )
                             )
                         }
                         is AndroidProductRuntimeHostBootstrapResult.Rejected ->
@@ -91,16 +106,14 @@ internal fun ProductConversationResult.toAppProductChatResult(): ProductChatResu
 
 
 private class ProductRuntimeSessionAdapter(
-    private val session: AndroidProductRuntimeHostSession
+    private val session: AndroidProductRuntimeHostSession,
+    private val conversationSessions: ProductionAndroidConversationSessionPort
 ) : ProductionAndroidAppRuntimeSession {
     override fun send(text: String): ProductChatResult {
-        val conversation = session.conversation(
-            maxRetainedMessages = PRODUCT_CONVERSATION_MAX_RETAINED_MESSAGES,
-            maxRetainedCharacters = PRODUCT_CONVERSATION_MAX_RETAINED_CHARACTERS,
-            maxMessageCharacters = PRODUCT_CONVERSATION_MAX_MESSAGE_CHARACTERS
-        ) ?: return ProductChatResult.Rejected(
-            pro.liliya.android.runtime.ProductChatFailure.HEART_NOT_READY
-        )
+        val conversation = currentConversation()
+            ?: return ProductChatResult.Rejected(
+                pro.liliya.android.runtime.ProductChatFailure.HEART_NOT_READY
+            )
 
         return conversation.send(
             ProductChatRequest(
@@ -108,6 +121,34 @@ private class ProductRuntimeSessionAdapter(
                 mode = ProductChatGenerationMode.ONE_SHOT
             )
         ).toAppProductChatResult()
+    }
+
+    override fun conversationSnapshot(): ProductConversationSnapshot? =
+        currentConversation()?.snapshot()
+
+    override fun newConversation(): Boolean {
+        val current = conversationSessions.currentSessionId() ?: return false
+        val candidate = conversationSessions.freshSessionId()
+        if (candidate.isBlank() || candidate == current) return false
+
+        val opened = session.conversation(
+            sessionId = candidate,
+            maxRetainedMessages = PRODUCT_CONVERSATION_MAX_RETAINED_MESSAGES,
+            maxRetainedCharacters = PRODUCT_CONVERSATION_MAX_RETAINED_CHARACTERS,
+            maxMessageCharacters = PRODUCT_CONVERSATION_MAX_MESSAGE_CHARACTERS
+        ) ?: return false
+
+        if (opened.snapshot().messages.isNotEmpty()) return false
+        return conversationSessions.commitSessionId(candidate)
+    }
+
+    private fun currentConversation() = conversationSessions.currentSessionId()?.let { sessionId ->
+        session.conversation(
+            sessionId = sessionId,
+            maxRetainedMessages = PRODUCT_CONVERSATION_MAX_RETAINED_MESSAGES,
+            maxRetainedCharacters = PRODUCT_CONVERSATION_MAX_RETAINED_CHARACTERS,
+            maxMessageCharacters = PRODUCT_CONVERSATION_MAX_MESSAGE_CHARACTERS
+        )
     }
 
     private companion object {
@@ -185,6 +226,20 @@ class ProductionAndroidAppRuntimeOwner {
             ?: ProductChatResult.Rejected(
                 pro.liliya.android.runtime.ProductChatFailure.HEART_NOT_READY
             )
+    }
+
+    fun conversationSnapshot(): ProductConversationSnapshot? {
+        val current = synchronized(this) {
+            if (state == ProductionAndroidAppRuntimeState.READY) session else null
+        }
+        return current?.conversationSnapshot()
+    }
+
+    fun newConversation(): Boolean {
+        val current = synchronized(this) {
+            if (state == ProductionAndroidAppRuntimeState.READY) session else null
+        }
+        return current?.newConversation() == true
     }
 
     @Synchronized

@@ -366,6 +366,35 @@ class ProductConversationHostContractTest {
     }
 
     @Test
+    fun product_snapshot_exposes_only_committed_bounded_transcript_and_is_detached() {
+        val host = host(
+            runner = ProductConversationTurnRunner { _, _, _ -> completed("reply") }
+        )
+
+        assertIs<ProductConversationResult.Completed>(
+            host.send(ProductChatRequest("user", ProductChatGenerationMode.ONE_SHOT))
+        )
+
+        val snapshot = host.snapshot()
+        assertEquals(
+            listOf(
+                ProductConversationSnapshotRole.USER to "user",
+                ProductConversationSnapshotRole.ASSISTANT to "reply"
+            ),
+            snapshot.messages.map { it.role to it.text }
+        )
+
+        assertEquals(ProductConversationClearResult.Cleared, host.clear())
+        assertTrue(host.snapshot().messages.isEmpty())
+        assertEquals(
+            listOf("user", "reply"),
+            snapshot.messages.map { it.text }
+        )
+        assertFalse("user" in snapshot.messages.first().toString())
+        assertFalse("reply" in snapshot.messages.last().toString())
+    }
+
+    @Test
     fun first_success_uses_empty_context_and_second_success_sees_exact_committed_pair() {
         val snapshots = mutableListOf<CognitiveConversationContextSnapshot>()
         var calls = 0
@@ -828,6 +857,65 @@ class ProductConversationHostContractTest {
         )
         assertTrue(snapshots[0].messages.isEmpty())
         assertTrue(snapshots[1].messages.isEmpty())
+    }
+
+    @Test
+    fun distinct_durable_session_ids_never_cross_contaminate_context() {
+        val persistence = InMemoryConversationPersistence()
+        val oldSession = CognitiveConversationSessionId("old-session")
+        val newSession = CognitiveConversationSessionId("new-session")
+
+        val oldHost = ProductConversationHost(
+            sessionId = oldSession,
+            maxInputChars = 64,
+            maxTurnIdChars = 64,
+            maxRetainedMessages = 8,
+            maxRetainedCharacters = 256,
+            maxMessageCharacters = 64,
+            turnIds = ProductConversationTurnIdSource { "old-turn" },
+            turns = ProductConversationTurnRunner { _, _, _ -> completed("old-reply") },
+            initialSnapshot = persistence.reopen(oldSession),
+            persistence = persistence,
+            timestamps = pro.liliya.core.cognitive.CognitiveTimestampSource {
+                Instant.parse("2026-09-18T00:00:00Z")
+            }
+        )
+        assertIs<ProductConversationResult.Completed>(
+            oldHost.send(ProductChatRequest("old-user", ProductChatGenerationMode.ONE_SHOT))
+        )
+
+        val newContexts = mutableListOf<CognitiveConversationContextSnapshot>()
+        val newHost = ProductConversationHost(
+            sessionId = newSession,
+            maxInputChars = 64,
+            maxTurnIdChars = 64,
+            maxRetainedMessages = 8,
+            maxRetainedCharacters = 256,
+            maxMessageCharacters = 64,
+            turnIds = ProductConversationTurnIdSource { "new-turn" },
+            turns = ProductConversationTurnRunner { _, conversation, _ ->
+                newContexts += conversation
+                completed("new-reply")
+            },
+            initialSnapshot = persistence.reopen(newSession),
+            persistence = persistence,
+            timestamps = pro.liliya.core.cognitive.CognitiveTimestampSource {
+                Instant.parse("2026-09-18T00:00:01Z")
+            }
+        )
+        assertIs<ProductConversationResult.Completed>(
+            newHost.send(ProductChatRequest("new-user", ProductChatGenerationMode.ONE_SHOT))
+        )
+
+        assertTrue(newContexts.single().messages.isEmpty())
+        assertEquals(
+            listOf("old-user", "old-reply"),
+            requireNotNull(persistence.reopen(oldSession)).messages.map { it.content }
+        )
+        assertEquals(
+            listOf("new-user", "new-reply"),
+            requireNotNull(persistence.reopen(newSession)).messages.map { it.content }
+        )
     }
 
     @Test

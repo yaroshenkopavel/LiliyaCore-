@@ -192,6 +192,31 @@ class AndroidProductRuntimeAssembly internal constructor(
             null
         }
 
+    fun conversation(
+        sessionId: CognitiveConversationSessionId,
+        maxRetainedMessages: Int,
+        maxRetainedCharacters: Int,
+        maxMessageCharacters: Int
+    ): ProductConversationHost? =
+        if (heart.state() == HeartRuntimeState.READY) {
+            val storeId = durableConversationStoreId
+            val timestamps = conversationTimestamps
+            if (storeId != null && timestamps != null) {
+                heart.durableConversation(
+                    sessionId = sessionId,
+                    conversationStoreId = storeId,
+                    maxRetainedMessages = maxRetainedMessages,
+                    maxRetainedCharacters = maxRetainedCharacters,
+                    maxMessageCharacters = maxMessageCharacters,
+                    timestamps = timestamps
+                )
+            } else {
+                null
+            }
+        } else {
+            null
+        }
+
     fun durableConversation(
         sessionId: CognitiveConversationSessionId,
         conversationStoreId: PersistentStoreId,

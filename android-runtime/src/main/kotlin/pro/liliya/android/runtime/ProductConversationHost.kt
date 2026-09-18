@@ -70,6 +70,29 @@ sealed interface ProductConversationClearResult {
     data object NewSessionRequired : ProductConversationClearResult
 }
 
+enum class ProductConversationSnapshotRole {
+    USER,
+    ASSISTANT
+}
+
+data class ProductConversationSnapshotMessage(
+    val role: ProductConversationSnapshotRole,
+    val text: String
+) {
+    init {
+        require(text.isNotBlank()) { "product conversation snapshot text must not be blank" }
+    }
+
+    override fun toString(): String =
+        "ProductConversationSnapshotMessage(role=$role,text=<redacted:" + text.length + ">)"
+}
+
+class ProductConversationSnapshot(
+    messages: List<ProductConversationSnapshotMessage>
+) {
+    val messages: List<ProductConversationSnapshotMessage> = messages.toList()
+}
+
 internal fun interface ProductConversationTurnIdSource {
     fun next(): String
 }
@@ -280,6 +303,20 @@ class ProductConversationHost internal constructor(
                 inFlight = false
             }
         }
+    }
+
+    fun snapshot(): ProductConversationSnapshot = synchronized(lock) {
+        ProductConversationSnapshot(
+            committed.map { message ->
+                ProductConversationSnapshotMessage(
+                    role = when (message.role) {
+                        CognitiveConversationRole.USER -> ProductConversationSnapshotRole.USER
+                        CognitiveConversationRole.ASSISTANT -> ProductConversationSnapshotRole.ASSISTANT
+                    },
+                    text = message.content
+                )
+            }
+        )
     }
 
     fun clear(): ProductConversationClearResult = synchronized(lock) {
