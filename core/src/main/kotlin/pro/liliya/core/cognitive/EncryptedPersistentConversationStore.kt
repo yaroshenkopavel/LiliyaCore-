@@ -60,6 +60,15 @@ sealed interface PersistentConversationReopenResult {
     ) : PersistentConversationReopenResult
 }
 
+sealed interface PersistentConversationSessionCountResult {
+    data class Count(val value: Int) : PersistentConversationSessionCountResult
+    data object Corrupt : PersistentConversationSessionCountResult
+    data class Incompatible(val reason: String) : PersistentConversationSessionCountResult
+    data class EncryptionUnavailable(
+        val category: CognitiveEncryptionFailureCategory
+    ) : PersistentConversationSessionCountResult
+}
+
 sealed interface PersistentConversationHistoryResult {
     data class Found(val snapshot: CognitiveConversationContextSnapshot) : PersistentConversationHistoryResult
     data object Absent : PersistentConversationHistoryResult
@@ -266,7 +275,23 @@ class EncryptedPersistentConversationStore private constructor(
         }
 
     @Synchronized
-    fun sessionCount(): Int = nativeV3?.sessionCount() ?: entries.size
+    fun sessionCountResult(): PersistentConversationSessionCountResult =
+        nativeV3?.sessionCountResult()
+            ?: PersistentConversationSessionCountResult.Count(entries.size)
+
+    @Synchronized
+    fun sessionCount(): Int =
+        when (val result = sessionCountResult()) {
+            is PersistentConversationSessionCountResult.Count -> result.value
+            PersistentConversationSessionCountResult.Corrupt ->
+                throw IllegalStateException("durable conversation store is corrupt")
+            is PersistentConversationSessionCountResult.Incompatible ->
+                throw IllegalStateException(result.reason)
+            is PersistentConversationSessionCountResult.EncryptionUnavailable ->
+                throw IllegalStateException(
+                    "durable conversation encryption is unavailable: " + result.category.name
+                )
+        }
 
     /** Reads a page of authenticated history, without adding older messages to the model context. */
     @Synchronized
