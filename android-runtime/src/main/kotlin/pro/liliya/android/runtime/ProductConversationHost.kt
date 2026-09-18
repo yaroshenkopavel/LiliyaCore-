@@ -2,6 +2,9 @@ package pro.liliya.android.runtime
 
 import java.util.UUID
 import pro.liliya.core.cognitive.CognitiveConversationContextMessage
+import pro.liliya.core.cognitive.CognitiveTimestampSource
+import pro.liliya.core.cognitive.EncryptedPersistentConversationStore
+import pro.liliya.core.cognitive.PersistentConversationAppendPairResult
 import pro.liliya.core.cognitive.CognitiveConversationContextSnapshot
 import pro.liliya.core.cognitive.CognitiveConversationRole
 import pro.liliya.core.cognitive.CognitiveConversationSequence
@@ -13,7 +16,8 @@ import pro.liliya.core.cognitive.CognitiveTurnId
 
 enum class ProductConversationCommitStatus {
     COMMITTED,
-    NOT_RETAINED_RESOURCE_LIMIT
+    NOT_RETAINED_RESOURCE_LIMIT,
+    NOT_RETAINED_PERSISTENCE_FAILURE
 }
 
 sealed interface ProductConversationResult {
@@ -63,6 +67,7 @@ fun ProductConversationResult.Completed.learningFollowUpReference():
 sealed interface ProductConversationClearResult {
     data object Cleared : ProductConversationClearResult
     data object Busy : ProductConversationClearResult
+    data object NewSessionRequired : ProductConversationClearResult
 }
 
 internal fun interface ProductConversationTurnIdSource {
@@ -77,11 +82,67 @@ internal fun interface ProductConversationTurnRunner {
     ): ProductTurnResult
 }
 
+internal sealed interface ProductConversationPersistenceAppendResult {
+    data object Committed : ProductConversationPersistenceAppendResult
+    data object Rejected : ProductConversationPersistenceAppendResult
+}
+
+internal interface ProductConversationPersistencePort {
+    fun reopen(sessionId: CognitiveConversationSessionId): CognitiveConversationContextSnapshot?
+    fun appendPair(
+        sessionId: CognitiveConversationSessionId,
+        user: CognitiveConversationContextMessage,
+        assistant: CognitiveConversationContextMessage,
+        persistedAt: java.time.Instant
+    ): ProductConversationPersistenceAppendResult
+}
+
+internal fun reconstructDurableProductConversation(
+    sessionId: CognitiveConversationSessionId,
+    snapshot: CognitiveConversationContextSnapshot,
+    maxRetainedMessages: Int,
+    maxRetainedCharacters: Int,
+    maxMessageCharacters: Int
+): CognitiveConversationContextSnapshot? {
+    if (snapshot.sessionId != sessionId) return null
+    if (maxRetainedMessages < 2 || maxRetainedCharacters <= 0 || maxMessageCharacters <= 0) {
+        return null
+    }
+    if (snapshot.messages.size % 2 != 0) return null
+    if (
+        snapshot.messages.chunked(2).any { pair ->
+            pair.size != 2 ||
+                pair[0].role != CognitiveConversationRole.USER ||
+                pair[1].role != CognitiveConversationRole.ASSISTANT ||
+                pair[1].sequence.value != pair[0].sequence.value + 1L
+        }
+    ) {
+        return null
+    }
+
+    val pairRetainedLimit = maxRetainedMessages - (maxRetainedMessages % 2)
+    val bounded = snapshot.messages.takeLast(pairRetainedLimit).toMutableList()
+    var chars = bounded.sumOf { it.content.length }
+    while (bounded.size >= 2 && chars > maxRetainedCharacters) {
+        val first = bounded.removeAt(0)
+        val second = bounded.removeAt(0)
+        chars -= first.content.length + second.content.length
+    }
+    if (
+        chars > maxRetainedCharacters ||
+        bounded.any { it.content.length > maxMessageCharacters }
+    ) {
+        return null
+    }
+    return CognitiveConversationContextSnapshot(sessionId, bounded)
+}
+
 /**
- * Process-local bounded conversation owner over Product Turn.
+ * Bounded conversation owner over Product Turn.
  *
- * The transcript is ephemeral inference context only. It is not Memory, Knowledge,
- * Learning, semantic state, License, Authority or Execution permission.
+ * The host may be process-local or explicitly durable for one caller-owned session id. Restored
+ * transcript remains inference context only: it is not Memory, Knowledge, Learning, semantic
+ * authority, License, Capability, Authority or Execution permission.
  */
 class ProductConversationHost internal constructor(
     private val sessionId: CognitiveConversationSessionId,
@@ -91,7 +152,10 @@ class ProductConversationHost internal constructor(
     private val maxRetainedCharacters: Int,
     private val maxMessageCharacters: Int,
     private val turnIds: ProductConversationTurnIdSource,
-    private val turns: ProductConversationTurnRunner
+    private val turns: ProductConversationTurnRunner,
+    initialSnapshot: CognitiveConversationContextSnapshot? = null,
+    private val persistence: ProductConversationPersistencePort? = null,
+    private val timestamps: CognitiveTimestampSource? = null
 ) {
     init {
         require(maxInputChars > 0) { "product conversation input limit must be positive" }
@@ -102,8 +166,24 @@ class ProductConversationHost internal constructor(
     }
 
     private val lock = Any()
-    private val committed = mutableListOf<CognitiveConversationContextMessage>()
-    private var nextSequence = 1L
+    private val committed = mutableListOf<CognitiveConversationContextMessage>().apply {
+        if (initialSnapshot != null) {
+            require(initialSnapshot.sessionId == sessionId) {
+                "initial conversation snapshot session does not match host session"
+            }
+            require(initialSnapshot.messages.size <= maxRetainedMessages) {
+                "initial conversation snapshot exceeds retained-message bound"
+            }
+            require(initialSnapshot.messages.sumOf { it.content.length } <= maxRetainedCharacters) {
+                "initial conversation snapshot exceeds retained-character bound"
+            }
+            require(initialSnapshot.messages.all { it.content.length <= maxMessageCharacters }) {
+                "initial conversation snapshot exceeds per-message bound"
+            }
+            addAll(initialSnapshot.messages)
+        }
+    }
+    private var nextSequence = (committed.lastOrNull()?.sequence?.value ?: 0L) + 1L
     private var inFlight = false
 
     fun send(
@@ -205,6 +285,8 @@ class ProductConversationHost internal constructor(
     fun clear(): ProductConversationClearResult = synchronized(lock) {
         if (inFlight) {
             ProductConversationClearResult.Busy
+        } else if (persistence != null) {
+            ProductConversationClearResult.NewSessionRequired
         } else {
             committed.clear()
             ProductConversationClearResult.Cleared
@@ -266,6 +348,22 @@ class ProductConversationHost internal constructor(
             characters -= second.content.length
         }
 
+        val durable = persistence
+        if (durable != null) {
+            val timestampSource = timestamps
+                ?: return@synchronized ProductConversationCommitStatus.NOT_RETAINED_PERSISTENCE_FAILURE
+            if (
+                durable.appendPair(
+                    sessionId = sessionId,
+                    user = userMessage,
+                    assistant = assistantMessage,
+                    persistedAt = timestampSource.now()
+                ) != ProductConversationPersistenceAppendResult.Committed
+            ) {
+                return@synchronized ProductConversationCommitStatus.NOT_RETAINED_PERSISTENCE_FAILURE
+            }
+        }
+
         committed.clear()
         committed += candidate
         nextSequence += 2L
@@ -289,6 +387,113 @@ class ProductConversationHost internal constructor(
         ProductConversationResult.Rejected(reason)
 
     companion object {
+        internal fun productionDurable(
+            sessionId: CognitiveConversationSessionId,
+            maxInputChars: Int,
+            maxTurnIdChars: Int,
+            maxContextItems: Int,
+            maxContextItemChars: Int,
+            maxRetainedMessages: Int,
+            maxRetainedCharacters: Int,
+            maxMessageCharacters: Int,
+            turns: ProductTurnOrchestrator,
+            persistentStore: EncryptedPersistentConversationStore,
+            timestamps: CognitiveTimestampSource
+        ): ProductConversationHost? =
+            productionDurable(
+                sessionId = sessionId,
+                maxInputChars = maxInputChars,
+                maxTurnIdChars = maxTurnIdChars,
+                maxContextItems = maxContextItems,
+                maxContextItemChars = maxContextItemChars,
+                maxRetainedMessages = maxRetainedMessages,
+                maxRetainedCharacters = maxRetainedCharacters,
+                maxMessageCharacters = maxMessageCharacters,
+                turns = turns,
+                persistence = object : ProductConversationPersistencePort {
+                    override fun reopen(
+                        sessionId: CognitiveConversationSessionId
+                    ): CognitiveConversationContextSnapshot? =
+                        persistentStore.reopen(sessionId)
+
+                    override fun appendPair(
+                        sessionId: CognitiveConversationSessionId,
+                        user: CognitiveConversationContextMessage,
+                        assistant: CognitiveConversationContextMessage,
+                        persistedAt: java.time.Instant
+                    ): ProductConversationPersistenceAppendResult =
+                        when (
+                            persistentStore.appendPair(
+                                sessionId = sessionId,
+                                user = user,
+                                assistant = assistant,
+                                persistedAt = persistedAt
+                            )
+                        ) {
+                            is PersistentConversationAppendPairResult.Appended,
+                            is PersistentConversationAppendPairResult.AlreadyPresent ->
+                                ProductConversationPersistenceAppendResult.Committed
+                            is PersistentConversationAppendPairResult.Rejected,
+                            is PersistentConversationAppendPairResult.EncryptionUnavailable,
+                            is PersistentConversationAppendPairResult.Failed ->
+                                ProductConversationPersistenceAppendResult.Rejected
+                        }
+                },
+                timestamps = timestamps
+            )
+
+        internal fun productionDurable(
+            sessionId: CognitiveConversationSessionId,
+            maxInputChars: Int,
+            maxTurnIdChars: Int,
+            maxContextItems: Int,
+            maxContextItemChars: Int,
+            maxRetainedMessages: Int,
+            maxRetainedCharacters: Int,
+            maxMessageCharacters: Int,
+            turns: ProductTurnOrchestrator,
+            persistence: ProductConversationPersistencePort,
+            timestamps: CognitiveTimestampSource
+        ): ProductConversationHost? {
+            if (maxTurnIdChars < ProductChatHost.MIN_PRODUCTION_TURN_ID_CHARS) return null
+            if (maxRetainedMessages < 2 || maxRetainedMessages > maxContextItems) return null
+            if (maxRetainedCharacters <= 0) return null
+            if (maxMessageCharacters <= 0 || maxMessageCharacters > maxContextItemChars) return null
+
+            val durableSnapshot = persistence.reopen(sessionId)
+            val initial = durableSnapshot?.let { snapshot ->
+                reconstructDurableProductConversation(
+                    sessionId = sessionId,
+                    snapshot = snapshot,
+                    maxRetainedMessages = maxRetainedMessages,
+                    maxRetainedCharacters = maxRetainedCharacters,
+                    maxMessageCharacters = maxMessageCharacters
+                ) ?: return null
+            }
+
+            return ProductConversationHost(
+                sessionId = sessionId,
+                maxInputChars = maxInputChars,
+                maxTurnIdChars = maxTurnIdChars,
+                maxRetainedMessages = maxRetainedMessages,
+                maxRetainedCharacters = maxRetainedCharacters,
+                maxMessageCharacters = maxMessageCharacters,
+                turnIds = ProductConversationTurnIdSource {
+                    UUID.randomUUID().toString().replace("-", "").take(maxTurnIdChars)
+                },
+                turns = ProductConversationTurnRunner { request, conversation, sink ->
+                    turns.runWithConversationContext(
+                        request = request,
+                        conversationContext = conversation,
+                        streamingSink = sink
+                    )
+                },
+                initialSnapshot = initial,
+                persistence = persistence,
+                timestamps = timestamps
+            )
+        }
+
         internal fun production(
             maxInputChars: Int,
             maxTurnIdChars: Int,

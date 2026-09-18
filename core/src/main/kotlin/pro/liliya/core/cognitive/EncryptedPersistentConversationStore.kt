@@ -17,6 +17,7 @@ import pro.liliya.core.encryption.EncryptedPersistentRecordStore
 import pro.liliya.core.persistence.PersistentEntityId
 import pro.liliya.core.persistence.PersistentGeneration
 import pro.liliya.core.persistence.PersistentPayload
+import pro.liliya.core.persistence.PersistentRecordOwnership
 import pro.liliya.core.persistence.PersistentRecord
 import pro.liliya.core.persistence.PersistentSchemaId
 import pro.liliya.core.persistence.PersistentSchemaVersion
@@ -34,6 +35,16 @@ sealed interface PersistentConversationAppendResult {
     data class Rejected(val reason: String) : PersistentConversationAppendResult
     data class EncryptionUnavailable(val category: CognitiveEncryptionFailureCategory) : PersistentConversationAppendResult
     data class Failed(val reason: String) : PersistentConversationAppendResult
+}
+
+sealed interface PersistentConversationAppendPairResult {
+    data class Appended(val snapshot: CognitiveConversationContextSnapshot) : PersistentConversationAppendPairResult
+    data class AlreadyPresent(val snapshot: CognitiveConversationContextSnapshot) : PersistentConversationAppendPairResult
+    data class Rejected(val reason: String) : PersistentConversationAppendPairResult
+    data class EncryptionUnavailable(
+        val category: CognitiveEncryptionFailureCategory
+    ) : PersistentConversationAppendPairResult
+    data class Failed(val reason: String) : PersistentConversationAppendPairResult
 }
 
 /**
@@ -131,11 +142,122 @@ class EncryptedPersistentConversationStore private constructor(
     }
 
     @Synchronized
+    fun appendPair(
+        sessionId: CognitiveConversationSessionId,
+        user: CognitiveConversationContextMessage,
+        assistant: CognitiveConversationContextMessage,
+        persistedAt: Instant
+    ): PersistentConversationAppendPairResult {
+        if (user.role != CognitiveConversationRole.USER ||
+            assistant.role != CognitiveConversationRole.ASSISTANT) {
+            return PersistentConversationAppendPairResult.Rejected(
+                "conversation pair must be USER then ASSISTANT"
+            )
+        }
+        if (user.content.length > maxMessageChars || assistant.content.length > maxMessageChars) {
+            return PersistentConversationAppendPairResult.Rejected(
+                "conversation pair message exceeds configured bound"
+            )
+        }
+        if (assistant.sequence.value != user.sequence.value + 1L) {
+            return PersistentConversationAppendPairResult.Rejected(
+                "conversation pair sequences must be adjacent"
+            )
+        }
+
+        val current = entries[sessionId]
+        if (current == null && user.sequence.value != 1L) {
+            return PersistentConversationAppendPairResult.Rejected(
+                "new conversation pair must begin at sequence 1"
+            )
+        }
+        if (current != null) {
+            val existingUser = current.snapshot.messages.firstOrNull { it.sequence == user.sequence }
+            val existingAssistant = current.snapshot.messages.firstOrNull { it.sequence == assistant.sequence }
+            if (existingUser != null || existingAssistant != null) {
+                return if (existingUser == user && existingAssistant == assistant) {
+                    PersistentConversationAppendPairResult.AlreadyPresent(current.snapshot)
+                } else {
+                    PersistentConversationAppendPairResult.Rejected(
+                        "conversation pair sequence conflicts with durable history"
+                    )
+                }
+            }
+            val last = current.snapshot.messages.lastOrNull()?.sequence?.value ?: 0L
+            if (user.sequence.value != last + 1L) {
+                return PersistentConversationAppendPairResult.Rejected(
+                    "conversation pair must advance exactly from durable history"
+                )
+            }
+        }
+
+        val retained = ((current?.snapshot?.messages ?: emptyList()) + user + assistant)
+            .toMutableList()
+        while (retained.size > maxRetainedMessages) {
+            if (retained.size < 2) {
+                return PersistentConversationAppendPairResult.Rejected(
+                    "conversation pair retention cannot preserve complete pairs"
+                )
+            }
+            retained.removeAt(0)
+            retained.removeAt(0)
+        }
+        val replacement = CognitiveConversationContextSnapshot(sessionId, retained)
+        val persisted = persistReplacement(current, replacement, persistedAt)
+        return when (persisted) {
+            is CognitiveEncryptionResult.Success -> {
+                entries[sessionId] = Entry(
+                    snapshot = replacement,
+                    entityId = persisted.value.record.id,
+                    generation = persisted.value.generation
+                )
+                PersistentConversationAppendPairResult.Appended(replacement)
+            }
+            is CognitiveEncryptionResult.Rejected ->
+                PersistentConversationAppendPairResult.EncryptionUnavailable(persisted.category)
+            is CognitiveEncryptionResult.Failed ->
+                PersistentConversationAppendPairResult.Failed(
+                    "encrypted conversation pair persistence failed"
+                )
+        }
+    }
+
+    @Synchronized
     fun reopen(sessionId: CognitiveConversationSessionId): CognitiveConversationContextSnapshot? =
         entries[sessionId]?.snapshot
 
     @Synchronized
     fun sessionCount(): Int = entries.size
+
+    private fun persistReplacement(
+        current: Entry?,
+        replacement: CognitiveConversationContextSnapshot,
+        persistedAt: Instant
+    ): CognitiveEncryptionResult<PersistentRecordOwnership> {
+        val encoded = ConversationPersistentRecordCodec.encode(replacement, persistedAt)
+        val bytes = encoded.payload.copyBytes()
+        val draft = CognitivePersistentRecordDraft(
+            id = encoded.id,
+            schemaId = encoded.schemaId,
+            schemaVersion = encoded.schemaVersion,
+            plaintext = CognitivePlaintext(bytes),
+            createdAt = encoded.createdAt,
+            dek = activeDek
+        )
+        return try {
+            if (current == null) {
+                encryptedStore.install(draft)
+            } else {
+                encryptedStore.transitionExact(
+                    sourceId = current.entityId,
+                    sourceGeneration = current.generation,
+                    replacement = draft
+                )
+            }
+        } finally {
+            bytes.fill(0)
+        }
+    }
 
     private data class Entry(
         val snapshot: CognitiveConversationContextSnapshot,
