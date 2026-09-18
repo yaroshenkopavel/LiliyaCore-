@@ -446,6 +446,28 @@ class EncryptedPersistentConversationStoreContractTest {
     }
 
     @Test
+    fun linked_chunk_v3_has_distinct_identity_from_v2_for_non_destructive_migration() {
+        val session = CognitiveConversationSessionId("codec-v3-migration")
+        val snapshot = CognitiveConversationContextSnapshot(
+            session,
+            listOf(msg(1, CognitiveConversationRole.USER, "legacy-and-v3"))
+        )
+        val v2 = ConversationPersistentRecordCodec.encodeChunk(snapshot, at(1))
+        val v3 = ConversationPersistentRecordCodec.encodeLinkedChunk(
+            snapshot,
+            at(1),
+            previousChunkId = null
+        )
+
+        assertNotEquals(v2.id, v3.id)
+        assertNotEquals(v2.schemaId, v3.schemaId)
+        assertEquals(
+            ConversationPersistentRecordCodec.chunkEntityId(session, 1L),
+            v3.id
+        )
+    }
+
+    @Test
     fun conversation_head_v3_round_trips_latest_chunk_without_plaintext_session_id() {
         val session = CognitiveConversationSessionId("codec-v3-head")
         val latest = ConversationPersistentRecordCodec.chunkEntityId(session, 9L)
