@@ -62,7 +62,7 @@ class AndroidIndexedPersistentRecordBackend private constructor(
                         ?: return@synchronized PersistentBackendLoadResult.Missing
                     val entries = LinkedHashMap<PersistentEntityId, PersistentBackendEntry>()
                     db.rawQuery(
-                        "SELECT entity_id,generation,schema_id,schema_version,created_epoch,created_nano,payload " +
+                        "SELECT entity_id,generation,schema_id,schema_version,created_epoch,created_nano,payload,record_hash " +
                             "FROM records WHERE store_id=? ORDER BY entity_id",
                         arrayOf(storeId.value)
                     ).use { cursor ->
@@ -87,8 +87,14 @@ class AndroidIndexedPersistentRecordBackend private constructor(
                                 payload = PersistentPayload(payload),
                                 createdAt = createdAt
                             )
+                            val backendEntry = PersistentBackendEntry(generation, record)
+                            val expectedHash = cursor.getString(7)
+                            val actualHash = recordHash(entityId, backendEntry, payload)
                             payload.fill(0)
-                            entries[entityId] = PersistentBackendEntry(generation, record)
+                            if (expectedHash != actualHash) {
+                                return@synchronized PersistentBackendLoadResult.Corrupt
+                            }
+                            entries[entityId] = backendEntry
                         }
                     }
                     if (entries.values.any { it.generation.value > header.highWatermark }) {
@@ -217,6 +223,7 @@ class AndroidIndexedPersistentRecordBackend private constructor(
                         put("store_id", storeId.value)
                         put("revision", nextRevision)
                         put("high_watermark", state.highWatermark)
+                        put("header_hash", headerHash(storeId, nextRevision, state.highWatermark))
                     }
                     db.insertWithOnConflict(
                         "stores",
@@ -243,7 +250,8 @@ class AndroidIndexedPersistentRecordBackend private constructor(
             "CREATE TABLE IF NOT EXISTS stores(" +
                 "store_id TEXT PRIMARY KEY NOT NULL," +
                 "revision INTEGER NOT NULL," +
-                "high_watermark INTEGER NOT NULL)"
+                "high_watermark INTEGER NOT NULL," +
+                "header_hash TEXT NOT NULL)"
         )
         database.execSQL(
             "CREATE TABLE IF NOT EXISTS records(" +
@@ -334,17 +342,28 @@ class AndroidIndexedPersistentRecordBackend private constructor(
             put("store_id", state.storeId.value)
             put("revision", revision)
             put("high_watermark", state.highWatermark)
+            put("header_hash", headerHash(state.storeId, revision, state.highWatermark))
         }
         db.insertOrThrow("stores", null, values)
     }
 
     private fun readHeader(db: SQLiteDatabase, storeId: PersistentStoreId): Header? =
         db.rawQuery(
-            "SELECT revision,high_watermark FROM stores WHERE store_id=?",
+            "SELECT revision,high_watermark,header_hash FROM stores WHERE store_id=?",
             arrayOf(storeId.value)
         ).use { cursor ->
             if (!cursor.moveToFirst()) null
-            else Header(cursor.getLong(0), cursor.getLong(1))
+            else {
+                val revision = cursor.getLong(0)
+                val highWatermark = cursor.getLong(1)
+                val expectedHash = cursor.getString(2)
+                if (revision <= 0L || highWatermark < 0L ||
+                    expectedHash != headerHash(storeId, revision, highWatermark)
+                ) {
+                    throw SQLiteException("indexed durable persistence header integrity failed")
+                }
+                Header(revision, highWatermark)
+            }
         }
 
     private fun validState(state: PersistentBackendState): Boolean {
@@ -367,6 +386,18 @@ class AndroidIndexedPersistentRecordBackend private constructor(
     private fun identifierValid(value: String): Boolean {
         val size = value.toByteArray(StandardCharsets.UTF_8).size
         return value.isNotBlank() && size in 1..MAX_IDENTIFIER_BYTES
+    }
+
+    private fun headerHash(
+        storeId: PersistentStoreId,
+        revision: Long,
+        highWatermark: Long
+    ): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        updateString(digest, storeId.value)
+        updateLong(digest, revision)
+        updateLong(digest, highWatermark)
+        return digest.digest().joinToString("") { "%02x".format(it) }
     }
 
     private fun recordHash(
