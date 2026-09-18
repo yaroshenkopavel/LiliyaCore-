@@ -164,12 +164,18 @@ internal class ConversationV3NativeRuntime private constructor(
             )
         ) {
             is ConversationV3PersistResult.Persisted -> persisted.ownership
-            is ConversationV3PersistResult.Rejected ->
+            is ConversationV3PersistResult.Rejected -> {
+                cache.remove(sessionId)
                 return PersistentConversationAppendResult.Rejected(persisted.reason)
-            is ConversationV3PersistResult.EncryptionUnavailable ->
+            }
+            is ConversationV3PersistResult.EncryptionUnavailable -> {
+                cache.remove(sessionId)
                 return PersistentConversationAppendResult.EncryptionUnavailable(persisted.category)
-            is ConversationV3PersistResult.Failed ->
+            }
+            is ConversationV3PersistResult.Failed -> {
+                cache.remove(sessionId)
                 return PersistentConversationAppendResult.Failed(persisted.reason)
+            }
         }
 
         val replacement = CognitiveConversationContextSnapshot(
@@ -293,14 +299,20 @@ internal class ConversationV3NativeRuntime private constructor(
             )
         ) {
             is ConversationV3PersistResult.Persisted -> persisted.ownership
-            is ConversationV3PersistResult.Rejected ->
+            is ConversationV3PersistResult.Rejected -> {
+                cache.remove(sessionId)
                 return PersistentConversationAppendPairResult.Rejected(persisted.reason)
-            is ConversationV3PersistResult.EncryptionUnavailable ->
+            }
+            is ConversationV3PersistResult.EncryptionUnavailable -> {
+                cache.remove(sessionId)
                 return PersistentConversationAppendPairResult.EncryptionUnavailable(
                     persisted.category
                 )
-            is ConversationV3PersistResult.Failed ->
+            }
+            is ConversationV3PersistResult.Failed -> {
+                cache.remove(sessionId)
                 return PersistentConversationAppendPairResult.Failed(persisted.reason)
+            }
         }
 
         val retained = ((current?.snapshot?.messages ?: emptyList()) + user + assistant)
