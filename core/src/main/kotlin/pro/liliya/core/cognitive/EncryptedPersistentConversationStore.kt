@@ -67,7 +67,8 @@ class EncryptedPersistentConversationStore private constructor(
     private val activeDek: CognitiveDekReference,
     private val maxRetainedMessages: Int,
     private val maxMessageChars: Int,
-    restored: Map<CognitiveConversationSessionId, Entry>
+    restored: Map<CognitiveConversationSessionId, Entry>,
+    private val nativeV3: ConversationV3NativeRuntime? = null
 ) {
     private val entries = LinkedHashMap(restored)
 
@@ -82,6 +83,8 @@ class EncryptedPersistentConversationStore private constructor(
         message: CognitiveConversationContextMessage,
         persistedAt: Instant
     ): PersistentConversationAppendResult {
+        nativeV3?.let { return it.append(sessionId, message, persistedAt) }
+
         if (message.content.length > maxMessageChars) {
             return PersistentConversationAppendResult.Rejected("conversation message exceeds configured bound")
         }
@@ -147,6 +150,10 @@ class EncryptedPersistentConversationStore private constructor(
         assistant: CognitiveConversationContextMessage,
         persistedAt: Instant
     ): PersistentConversationAppendPairResult {
+        nativeV3?.let {
+            return it.appendPair(sessionId, user, assistant, persistedAt)
+        }
+
         if (user.role != CognitiveConversationRole.USER ||
             assistant.role != CognitiveConversationRole.ASSISTANT) {
             return PersistentConversationAppendPairResult.Rejected(
@@ -222,10 +229,10 @@ class EncryptedPersistentConversationStore private constructor(
 
     @Synchronized
     fun reopen(sessionId: CognitiveConversationSessionId): CognitiveConversationContextSnapshot? =
-        entries[sessionId]?.snapshot
+        nativeV3?.reopen(sessionId) ?: entries[sessionId]?.snapshot
 
     @Synchronized
-    fun sessionCount(): Int = entries.size
+    fun sessionCount(): Int = nativeV3?.sessionCount() ?: entries.size
 
     /** Reads a page of authenticated history, without adding older messages to the model context. */
     @Synchronized
@@ -234,6 +241,14 @@ class EncryptedPersistentConversationStore private constructor(
         beforeSequenceExclusive: Long = Long.MAX_VALUE,
         maxMessages: Int
     ): PersistentConversationHistoryResult {
+        nativeV3?.let {
+            return it.history(
+                sessionId = sessionId,
+                beforeSequenceExclusive = beforeSequenceExclusive,
+                maxMessages = maxMessages
+            )
+        }
+
         require(maxMessages > 0) { "history page size must be positive" }
         val entry = entries[sessionId] ?: return PersistentConversationHistoryResult.Absent
         val selected = ArrayList<CognitiveConversationContextMessage>()
@@ -312,6 +327,35 @@ class EncryptedPersistentConversationStore private constructor(
             if (maxRetainedMessages <= 0 || maxMessageChars <= 0) {
                 return PersistentConversationOpenResult.Incompatible("conversation persistence bounds must be positive")
             }
+
+            when (
+                val native = ConversationV3NativeRuntime.detectOrInitialize(
+                    encryptedStore = encryptedStore,
+                    activeDek = activeDek,
+                    maxRetainedMessages = maxRetainedMessages,
+                    maxMessageChars = maxMessageChars
+                )
+            ) {
+                is ConversationV3NativeDecision.Native ->
+                    return PersistentConversationOpenResult.Opened(
+                        EncryptedPersistentConversationStore(
+                            encryptedStore = encryptedStore,
+                            activeDek = activeDek,
+                            maxRetainedMessages = maxRetainedMessages,
+                            maxMessageChars = maxMessageChars,
+                            restored = emptyMap(),
+                            nativeV3 = native.runtime
+                        )
+                    )
+                ConversationV3NativeDecision.LegacyFallback -> Unit
+                ConversationV3NativeDecision.Corrupt ->
+                    return PersistentConversationOpenResult.Corrupt
+                is ConversationV3NativeDecision.Incompatible ->
+                    return PersistentConversationOpenResult.Incompatible(native.reason)
+                is ConversationV3NativeDecision.EncryptionUnavailable ->
+                    return PersistentConversationOpenResult.EncryptionUnavailable(native.category)
+            }
+
             val decrypted = when (val result = encryptedStore.decryptedSnapshotEntries()) {
                 is CognitiveEncryptionResult.Success -> result.value
                 is CognitiveEncryptionResult.Rejected ->
