@@ -139,9 +139,11 @@ class AndroidIndexedPersistentRecordBackendInstrumentedTest {
                 )
             }
 
+            val reopened = AndroidIndexedPersistentRecordBackend.create(context, TEST_DIRECTORY)
+            assertEquals(PersistentBackendLoadResult.Corrupt, reopened.load(storeId))
             assertEquals(
-                PersistentBackendLoadResult.Corrupt,
-                AndroidIndexedPersistentRecordBackend.create(context, TEST_DIRECTORY).load(storeId)
+                pro.liliya.core.persistence.PersistentBackendMetadataLoadResult.Corrupt,
+                reopened.loadMetadata(storeId)
             )
         }
 
@@ -208,9 +210,11 @@ class AndroidIndexedPersistentRecordBackendInstrumentedTest {
                 )
             }
 
+            val reopened = AndroidIndexedPersistentRecordBackend.create(context, TEST_DIRECTORY)
+            assertEquals(PersistentBackendLoadResult.Corrupt, reopened.load(storeId))
             assertEquals(
-                PersistentBackendLoadResult.Corrupt,
-                AndroidIndexedPersistentRecordBackend.create(context, TEST_DIRECTORY).load(storeId)
+                pro.liliya.core.persistence.PersistentBackendMetadataLoadResult.Corrupt,
+                reopened.loadMetadata(storeId)
             )
         }
 
