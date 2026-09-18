@@ -9,8 +9,16 @@ internal sealed interface PersistentRecordTransitionResult {
     data class Failed(val reason: String, val throwable: Throwable? = null) : PersistentRecordTransitionResult
 }
 
+internal enum class PersistentRecordAccessFailureCategory {
+    CORRUPT,
+    INCOMPATIBLE,
+    FAILED,
+    CONFLICT
+}
+
 /** Fail-closed signal for indexed reads that cannot be represented by legacy nullable APIs. */
 internal class PersistentRecordAccessException(
+    val category: PersistentRecordAccessFailureCategory,
     message: String,
     cause: Throwable? = null
 ) : IllegalStateException(message, cause)
@@ -157,11 +165,11 @@ class PersistentRecordStore private constructor(
             is PersistentBackendEntryLoadResult.Loaded ->
                 PersistentRecordSnapshot(loaded.snapshot.record.detached(), loaded.snapshot.generation)
             PersistentBackendEntryLoadResult.Corrupt ->
-                throw PersistentRecordAccessException("indexed persistent exact read is corrupt")
+                throw PersistentRecordAccessException(PersistentRecordAccessFailureCategory.CORRUPT, "indexed persistent exact read is corrupt")
             is PersistentBackendEntryLoadResult.Incompatible ->
-                throw PersistentRecordAccessException(loaded.reason)
+                throw PersistentRecordAccessException(PersistentRecordAccessFailureCategory.INCOMPATIBLE, loaded.reason)
             is PersistentBackendEntryLoadResult.Failed ->
-                throw PersistentRecordAccessException(loaded.reason, loaded.throwable)
+                throw PersistentRecordAccessException(PersistentRecordAccessFailureCategory.FAILED, loaded.reason, loaded.throwable)
         }
     }
 
@@ -194,7 +202,7 @@ class PersistentRecordStore private constructor(
                 )
             ) {
                 PersistentBackendPageLoadResult.Missing ->
-                    throw PersistentRecordAccessException("indexed persistent store disappeared during page read")
+                    throw PersistentRecordAccessException(PersistentRecordAccessFailureCategory.CORRUPT, "indexed persistent store disappeared during page read")
                 is PersistentBackendPageLoadResult.Loaded -> {
                     result += loaded.page.entries.map {
                         PersistentRecordSnapshot(it.record.detached(), it.generation)
@@ -202,16 +210,16 @@ class PersistentRecordStore private constructor(
                     cursor = loaded.page.nextCursor
                 }
                 PersistentBackendPageLoadResult.Corrupt ->
-                    throw PersistentRecordAccessException("indexed persistent page read is corrupt")
+                    throw PersistentRecordAccessException(PersistentRecordAccessFailureCategory.CORRUPT, "indexed persistent page read is corrupt")
                 is PersistentBackendPageLoadResult.Incompatible ->
-                    throw PersistentRecordAccessException(loaded.reason)
+                    throw PersistentRecordAccessException(PersistentRecordAccessFailureCategory.INCOMPATIBLE, loaded.reason)
                 is PersistentBackendPageLoadResult.Failed ->
-                    throw PersistentRecordAccessException(loaded.reason, loaded.throwable)
+                    throw PersistentRecordAccessException(PersistentRecordAccessFailureCategory.FAILED, loaded.reason, loaded.throwable)
             }
         } while (cursor != null)
 
         if (result.size.toLong() != entryCount) {
-            throw PersistentRecordAccessException("indexed persistent page count changed during read")
+            throw PersistentRecordAccessException(PersistentRecordAccessFailureCategory.CONFLICT, "indexed persistent page count changed during read")
         }
         ensureIndexedMetadataCurrent(indexed)
         return result
@@ -221,7 +229,7 @@ class PersistentRecordStore private constructor(
         when (val loaded = indexed.loadMetadata(storeId)) {
             PersistentBackendMetadataLoadResult.Missing -> {
                 if (revision != 0L || highWatermark != 0L || entryCount != 0L) {
-                    throw PersistentRecordAccessException("indexed persistent store disappeared")
+                    throw PersistentRecordAccessException(PersistentRecordAccessFailureCategory.CORRUPT, "indexed persistent store disappeared")
                 }
             }
             is PersistentBackendMetadataLoadResult.Loaded -> {
@@ -230,15 +238,15 @@ class PersistentRecordStore private constructor(
                     metadata.highWatermark != highWatermark ||
                     metadata.entryCount != entryCount
                 ) {
-                    throw PersistentRecordAccessException("indexed persistent store revision changed")
+                    throw PersistentRecordAccessException(PersistentRecordAccessFailureCategory.CONFLICT, "indexed persistent store revision changed")
                 }
             }
             PersistentBackendMetadataLoadResult.Corrupt ->
-                throw PersistentRecordAccessException("indexed persistent store metadata is corrupt")
+                throw PersistentRecordAccessException(PersistentRecordAccessFailureCategory.CORRUPT, "indexed persistent store metadata is corrupt")
             is PersistentBackendMetadataLoadResult.Incompatible ->
-                throw PersistentRecordAccessException(loaded.reason)
+                throw PersistentRecordAccessException(PersistentRecordAccessFailureCategory.INCOMPATIBLE, loaded.reason)
             is PersistentBackendMetadataLoadResult.Failed ->
-                throw PersistentRecordAccessException(loaded.reason, loaded.throwable)
+                throw PersistentRecordAccessException(PersistentRecordAccessFailureCategory.FAILED, loaded.reason, loaded.throwable)
         }
     }
 
