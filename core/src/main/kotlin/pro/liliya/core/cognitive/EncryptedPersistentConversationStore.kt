@@ -461,8 +461,8 @@ internal object ConversationPersistentRecordCodec {
     private val formatMarkerSchemaId = PersistentSchemaId("cognitive-conversation-format-marker")
     private val legacyVersion = PersistentSchemaVersion(1)
     private val chunkVersion = PersistentSchemaVersion(2)
-    private val linkedChunkVersion = PersistentSchemaVersion(3)
-    private val headVersion = PersistentSchemaVersion(4)
+    private val linkedChunkVersion = PersistentSchemaVersion(1)
+    private val headVersion = PersistentSchemaVersion(1)
     private val formatMarkerVersion = PersistentSchemaVersion(1)
     private const val LEGACY_MAGIC = 0x434E5631
     private const val CHUNK_MAGIC = 0x434E5632
