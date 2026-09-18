@@ -14,6 +14,8 @@ import pro.liliya.core.persistence.PersistentRecord
 import pro.liliya.core.persistence.PersistentSchemaId
 import pro.liliya.core.persistence.PersistentSchemaVersion
 
+internal data object ConversationV3FormatMarker
+
 internal data class ConversationV3SessionHead(
     val sessionId: CognitiveConversationSessionId,
     val lastSequence: Long,
@@ -36,13 +38,56 @@ internal sealed interface ConversationV3DecodeResult<out T> {
  * Session ids and transcript remain inside the encrypted envelope. Durable entity ids are hashes.
  */
 internal object ConversationV3IndexCodec {
+    val MARKER_ID = PersistentEntityId("conversation-v3-format-marker")
+    val MARKER_SCHEMA_ID = PersistentSchemaId("cognitive-conversation-v3-format")
     val HEAD_SCHEMA_ID = PersistentSchemaId("cognitive-conversation-session-head")
     val CHUNK_SCHEMA_ID = PersistentSchemaId("cognitive-conversation-linked-chunk")
     val SCHEMA_VERSION = PersistentSchemaVersion(3)
 
+    private const val MARKER_MAGIC = 0x43483330 // CH30
     private const val HEAD_MAGIC = 0x43483331 // CH31
     private const val CHUNK_MAGIC = 0x43483332 // CH32
     private const val MAX_STRING_BYTES = 65_536
+
+    fun encodeMarker(persistedAt: Instant): PersistentRecord {
+        val bytes = ByteArrayOutputStream().use { output ->
+            DataOutputStream(output).use { data ->
+                data.writeInt(MARKER_MAGIC)
+                data.writeInt(SCHEMA_VERSION.value)
+            }
+            output.toByteArray()
+        }
+        return PersistentRecord(
+            id = MARKER_ID,
+            schemaId = MARKER_SCHEMA_ID,
+            schemaVersion = SCHEMA_VERSION,
+            payload = PersistentPayload(bytes),
+            createdAt = persistedAt
+        )
+    }
+
+    fun decodeMarker(record: PersistentRecord): ConversationV3DecodeResult<ConversationV3FormatMarker> {
+        if (record.id != MARKER_ID ||
+            record.schemaId != MARKER_SCHEMA_ID ||
+            record.schemaVersion != SCHEMA_VERSION
+        ) {
+            return ConversationV3DecodeResult.Incompatible("conversation v3 marker schema mismatch")
+        }
+        return try {
+            val input = ByteArrayInputStream(record.payload.copyBytes())
+            val data = DataInputStream(input)
+            if (data.readInt() != MARKER_MAGIC ||
+                data.readInt() != SCHEMA_VERSION.value ||
+                input.available() != 0
+            ) {
+                ConversationV3DecodeResult.Corrupt
+            } else {
+                ConversationV3DecodeResult.Decoded(ConversationV3FormatMarker)
+            }
+        } catch (_: RuntimeException) {
+            ConversationV3DecodeResult.Corrupt
+        }
+    }
 
     fun headId(sessionId: CognitiveConversationSessionId): PersistentEntityId =
         PersistentEntityId("conversation-head-" + digest(sessionId.value))
