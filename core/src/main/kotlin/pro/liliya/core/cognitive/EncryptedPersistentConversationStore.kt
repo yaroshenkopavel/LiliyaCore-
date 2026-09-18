@@ -435,6 +435,19 @@ internal sealed interface ConversationLinkedChunkDecodeResult {
     data class Incompatible(val reason: String) : ConversationLinkedChunkDecodeResult
 }
 
+internal data class ConversationFormatMarker(
+    val formatEpoch: Int
+)
+
+internal sealed interface ConversationFormatMarkerDecodeResult {
+    data class Decoded(
+        val marker: ConversationFormatMarker
+    ) : ConversationFormatMarkerDecodeResult
+
+    data object Corrupt : ConversationFormatMarkerDecodeResult
+    data class Incompatible(val reason: String) : ConversationFormatMarkerDecodeResult
+}
+
 internal sealed interface ConversationHeadDecodeResult {
     data class Decoded(val head: ConversationSessionHead) : ConversationHeadDecodeResult
     data object Corrupt : ConversationHeadDecodeResult
@@ -445,14 +458,18 @@ internal object ConversationPersistentRecordCodec {
     private val schemaId = PersistentSchemaId("cognitive-conversation-session")
     private val linkedChunkSchemaId = PersistentSchemaId("cognitive-conversation-linked-chunk")
     private val headSchemaId = PersistentSchemaId("cognitive-conversation-session-head")
+    private val formatMarkerSchemaId = PersistentSchemaId("cognitive-conversation-format-marker")
     private val legacyVersion = PersistentSchemaVersion(1)
     private val chunkVersion = PersistentSchemaVersion(2)
     private val linkedChunkVersion = PersistentSchemaVersion(3)
     private val headVersion = PersistentSchemaVersion(4)
+    private val formatMarkerVersion = PersistentSchemaVersion(1)
     private const val LEGACY_MAGIC = 0x434E5631
     private const val CHUNK_MAGIC = 0x434E5632
     private const val LINKED_CHUNK_MAGIC = 0x434E5633
     private const val HEAD_MAGIC = 0x434E5648
+    private const val FORMAT_MARKER_MAGIC = 0x434E564D
+    private const val CURRENT_FORMAT_EPOCH = 3
 
     fun encodeChunk(snapshot: CognitiveConversationContextSnapshot, persistedAt: Instant): PersistentRecord {
         require(snapshot.messages.size in 1..2)
@@ -542,6 +559,59 @@ internal object ConversationPersistentRecordCodec {
             payload = PersistentPayload(bytes),
             createdAt = persistedAt
         )
+    }
+
+    fun encodeFormatMarker(persistedAt: Instant): PersistentRecord {
+        val bytes = ByteArrayOutputStream().use { output ->
+            DataOutputStream(output).use { data ->
+                data.writeInt(FORMAT_MARKER_MAGIC)
+                data.writeInt(CURRENT_FORMAT_EPOCH)
+            }
+            output.toByteArray()
+        }
+        return PersistentRecord(
+            id = formatMarkerId(),
+            schemaId = formatMarkerSchemaId,
+            schemaVersion = formatMarkerVersion,
+            payload = PersistentPayload(bytes),
+            createdAt = persistedAt
+        )
+    }
+
+    fun decodeFormatMarker(record: PersistentRecord): ConversationFormatMarkerDecodeResult {
+        if (record.schemaId != formatMarkerSchemaId) {
+            return ConversationFormatMarkerDecodeResult.Incompatible(
+                "conversation format marker schema id mismatch"
+            )
+        }
+        if (record.schemaVersion != formatMarkerVersion) {
+            return ConversationFormatMarkerDecodeResult.Incompatible(
+                "conversation format marker schema version mismatch"
+            )
+        }
+        return try {
+            val input = ByteArrayInputStream(record.payload.copyBytes())
+            val data = DataInputStream(input)
+            if (data.readInt() != FORMAT_MARKER_MAGIC) {
+                return ConversationFormatMarkerDecodeResult.Corrupt
+            }
+            val epoch = data.readInt()
+            if (epoch != CURRENT_FORMAT_EPOCH ||
+                input.available() != 0 ||
+                record.id != formatMarkerId()
+            ) {
+                return ConversationFormatMarkerDecodeResult.Corrupt
+            }
+            ConversationFormatMarkerDecodeResult.Decoded(
+                ConversationFormatMarker(epoch)
+            )
+        } catch (_: EOFException) {
+            ConversationFormatMarkerDecodeResult.Corrupt
+        } catch (_: IllegalArgumentException) {
+            ConversationFormatMarkerDecodeResult.Corrupt
+        } catch (_: RuntimeException) {
+            ConversationFormatMarkerDecodeResult.Corrupt
+        }
     }
 
     fun decodeLinkedChunk(record: PersistentRecord): ConversationLinkedChunkDecodeResult {
@@ -698,6 +768,11 @@ internal object ConversationPersistentRecordCodec {
             .joinToString("") { "%02x".format(it) }
         return PersistentEntityId("conversation-chunk-$digest")
     }
+
+    fun formatMarkerEntityId(): PersistentEntityId = formatMarkerId()
+
+    private fun formatMarkerId(): PersistentEntityId =
+        PersistentEntityId("conversation-format-v3")
 
     private fun linkedChunkId(
         sessionId: CognitiveConversationSessionId,
