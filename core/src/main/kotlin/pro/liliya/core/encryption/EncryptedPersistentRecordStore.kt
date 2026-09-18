@@ -196,9 +196,8 @@ class EncryptedPersistentRecordStore(
 
     internal fun decryptedSnapshotEntries():
         CognitiveEncryptionResult<List<PersistentRecordSnapshot>> {
-        val snapshots = store.snapshotEntries()
         val decrypted = ArrayList<PersistentRecordSnapshot>()
-        for (snapshot in snapshots) {
+        for (snapshot in store.snapshotEntries()) {
             val plaintext = when (val opened = open(snapshot.record.id)) {
                 is CognitiveEncryptionResult.Success -> opened.value
                 is CognitiveEncryptionResult.Rejected -> return opened
@@ -217,8 +216,6 @@ class EncryptedPersistentRecordStore(
         }
         return CognitiveEncryptionResult.Success(decrypted)
     }
-
-    internal fun snapshotEntryCount(): Int = store.snapshotEntries().size
 
     internal fun snapshotEntries(): List<pro.liliya.core.persistence.PersistentRecordSnapshot> =
         store.snapshotEntries()
