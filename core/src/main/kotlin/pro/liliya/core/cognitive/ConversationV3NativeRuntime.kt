@@ -358,17 +358,40 @@ internal class ConversationV3NativeRuntime private constructor(
      * not call this method.
      */
     @Synchronized
-    fun sessionCount(): Int {
+    fun sessionCountResult(): PersistentConversationSessionCountResult {
         val decrypted = when (val result = encryptedStore.decryptedSnapshotEntries()) {
             is CognitiveEncryptionResult.Success -> result.value
-            else -> return cache.size
+            is CognitiveEncryptionResult.Rejected ->
+                return PersistentConversationSessionCountResult.EncryptionUnavailable(
+                    result.category
+                )
+            is CognitiveEncryptionResult.Failed ->
+                return PersistentConversationSessionCountResult.EncryptionUnavailable(
+                    result.category
+                )
         }
-        return decrypted.count {
-            it.record.schemaId == ConversationV3IndexCodec.HEAD_SCHEMA_ID &&
-                it.record.schemaVersion == ConversationV3IndexCodec.SCHEMA_VERSION &&
-                ConversationV3IndexCodec.decodeHead(it.record)
-                    is ConversationV3DecodeResult.Decoded
+
+        var count = 0
+        for (snapshot in decrypted) {
+            if (snapshot.record.schemaId != ConversationV3IndexCodec.HEAD_SCHEMA_ID) {
+                continue
+            }
+            if (snapshot.record.schemaVersion != ConversationV3IndexCodec.SCHEMA_VERSION) {
+                return PersistentConversationSessionCountResult.Incompatible(
+                    "conversation v3 head schema version mismatch"
+                )
+            }
+            when (ConversationV3IndexCodec.decodeHead(snapshot.record)) {
+                is ConversationV3DecodeResult.Decoded -> count += 1
+                ConversationV3DecodeResult.Corrupt ->
+                    return PersistentConversationSessionCountResult.Corrupt
+                is ConversationV3DecodeResult.Incompatible ->
+                    return PersistentConversationSessionCountResult.Incompatible(
+                        "conversation v3 head schema mismatch"
+                    )
+            }
         }
+        return PersistentConversationSessionCountResult.Count(count)
     }
 
     @Synchronized
