@@ -10,15 +10,24 @@ import java.nio.ByteBuffer
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import java.time.Instant
+import pro.liliya.core.persistence.IndexedPersistentRecordReadBackend
 import pro.liliya.core.persistence.PersistentBackendCommitResult
 import pro.liliya.core.persistence.PersistentBackendEntry
+import pro.liliya.core.persistence.PersistentBackendEntryLoadResult
 import pro.liliya.core.persistence.PersistentBackendLoadResult
+import pro.liliya.core.persistence.PersistentBackendMetadata
+import pro.liliya.core.persistence.PersistentBackendMetadataLoadResult
+import pro.liliya.core.persistence.PersistentBackendPage
+import pro.liliya.core.persistence.PersistentBackendPageCursor
+import pro.liliya.core.persistence.PersistentBackendPageLoadResult
+import pro.liliya.core.persistence.PersistentBackendPageOrder
+import pro.liliya.core.persistence.PersistentBackendPageRequest
 import pro.liliya.core.persistence.PersistentBackendState
 import pro.liliya.core.persistence.PersistentEntityId
 import pro.liliya.core.persistence.PersistentGeneration
 import pro.liliya.core.persistence.PersistentPayload
 import pro.liliya.core.persistence.PersistentRecord
-import pro.liliya.core.persistence.PersistentRecordBackend
+import pro.liliya.core.persistence.PersistentRecordSnapshot
 import pro.liliya.core.persistence.PersistentSchemaId
 import pro.liliya.core.persistence.PersistentSchemaVersion
 import pro.liliya.core.persistence.PersistentStoreId
@@ -37,7 +46,7 @@ import pro.liliya.core.persistence.PersistentStoreId
  */
 class AndroidIndexedPersistentRecordBackend private constructor(
     private val root: File
-) : PersistentRecordBackend {
+) : IndexedPersistentRecordReadBackend {
 
     override fun load(storeId: PersistentStoreId): PersistentBackendLoadResult =
         synchronized(this) {
@@ -127,6 +136,206 @@ class AndroidIndexedPersistentRecordBackend private constructor(
                 PersistentBackendLoadResult.Failed("indexed durable persistence load failed", e)
             }
         }
+
+    override fun loadMetadata(
+        storeId: PersistentStoreId
+    ): PersistentBackendMetadataLoadResult = synchronized(this) {
+        try {
+            openDatabase().use { db ->
+                when (val imported = importLegacyIfRequired(db, storeId)) {
+                    LegacyImportResult.Ready -> Unit
+                    LegacyImportResult.Missing ->
+                        return@synchronized PersistentBackendMetadataLoadResult.Missing
+                    LegacyImportResult.Corrupt ->
+                        return@synchronized PersistentBackendMetadataLoadResult.Corrupt
+                    LegacyImportResult.Incompatible ->
+                        return@synchronized PersistentBackendMetadataLoadResult.Incompatible(
+                            "unsupported durable persistence format"
+                        )
+                    is LegacyImportResult.Failed ->
+                        return@synchronized PersistentBackendMetadataLoadResult.Failed(
+                            "indexed durable persistence legacy import failed",
+                            imported.throwable
+                        )
+                }
+                val header = readHeader(db, storeId)
+                    ?: return@synchronized PersistentBackendMetadataLoadResult.Missing
+                PersistentBackendMetadataLoadResult.Loaded(
+                    PersistentBackendMetadata(
+                        revision = header.revision,
+                        highWatermark = header.highWatermark,
+                        entryCount = header.entryCount.toLong()
+                    )
+                )
+            }
+        } catch (_: IndexedDatabaseIncompatibleException) {
+            PersistentBackendMetadataLoadResult.Incompatible(
+                "unsupported indexed durable persistence format"
+            )
+        } catch (_: IllegalArgumentException) {
+            PersistentBackendMetadataLoadResult.Corrupt
+        } catch (_: SQLiteException) {
+            PersistentBackendMetadataLoadResult.Corrupt
+        } catch (e: IOException) {
+            PersistentBackendMetadataLoadResult.Failed(
+                "indexed durable persistence metadata load failed",
+                e
+            )
+        } catch (e: RuntimeException) {
+            PersistentBackendMetadataLoadResult.Failed(
+                "indexed durable persistence metadata load failed",
+                e
+            )
+        }
+    }
+
+    override fun loadEntry(
+        storeId: PersistentStoreId,
+        entityId: PersistentEntityId
+    ): PersistentBackendEntryLoadResult = synchronized(this) {
+        try {
+            openDatabase().use { db ->
+                when (val imported = importLegacyIfRequired(db, storeId)) {
+                    LegacyImportResult.Ready -> Unit
+                    LegacyImportResult.Missing ->
+                        return@synchronized PersistentBackendEntryLoadResult.Missing
+                    LegacyImportResult.Corrupt ->
+                        return@synchronized PersistentBackendEntryLoadResult.Corrupt
+                    LegacyImportResult.Incompatible ->
+                        return@synchronized PersistentBackendEntryLoadResult.Incompatible(
+                            "unsupported durable persistence format"
+                        )
+                    is LegacyImportResult.Failed ->
+                        return@synchronized PersistentBackendEntryLoadResult.Failed(
+                            "indexed durable persistence legacy import failed",
+                            imported.throwable
+                        )
+                }
+                val header = readHeader(db, storeId)
+                    ?: return@synchronized PersistentBackendEntryLoadResult.Missing
+                db.rawQuery(
+                    "SELECT entity_id,generation,schema_id,schema_version,created_epoch,created_nano,payload,record_hash " +
+                        "FROM records WHERE store_id=? AND entity_id=? LIMIT 1",
+                    arrayOf(storeId.value, entityId.value)
+                ).use { cursor ->
+                    if (!cursor.moveToFirst()) {
+                        return@synchronized PersistentBackendEntryLoadResult.Missing
+                    }
+                    val snapshot = decodeSnapshot(cursor, header.highWatermark)
+                    PersistentBackendEntryLoadResult.Loaded(snapshot)
+                }
+            }
+        } catch (_: IndexedDatabaseIncompatibleException) {
+            PersistentBackendEntryLoadResult.Incompatible(
+                "unsupported indexed durable persistence format"
+            )
+        } catch (_: IllegalArgumentException) {
+            PersistentBackendEntryLoadResult.Corrupt
+        } catch (_: SQLiteException) {
+            PersistentBackendEntryLoadResult.Corrupt
+        } catch (e: IOException) {
+            PersistentBackendEntryLoadResult.Failed(
+                "indexed durable persistence entry load failed",
+                e
+            )
+        } catch (e: RuntimeException) {
+            PersistentBackendEntryLoadResult.Failed(
+                "indexed durable persistence entry load failed",
+                e
+            )
+        }
+    }
+
+    override fun loadPage(
+        storeId: PersistentStoreId,
+        request: PersistentBackendPageRequest
+    ): PersistentBackendPageLoadResult = synchronized(this) {
+        try {
+            openDatabase().use { db ->
+                when (val imported = importLegacyIfRequired(db, storeId)) {
+                    LegacyImportResult.Ready -> Unit
+                    LegacyImportResult.Missing ->
+                        return@synchronized PersistentBackendPageLoadResult.Missing
+                    LegacyImportResult.Corrupt ->
+                        return@synchronized PersistentBackendPageLoadResult.Corrupt
+                    LegacyImportResult.Incompatible ->
+                        return@synchronized PersistentBackendPageLoadResult.Incompatible(
+                            "unsupported durable persistence format"
+                        )
+                    is LegacyImportResult.Failed ->
+                        return@synchronized PersistentBackendPageLoadResult.Failed(
+                            "indexed durable persistence legacy import failed",
+                            imported.throwable
+                        )
+                }
+                val header = readHeader(db, storeId)
+                    ?: return@synchronized PersistentBackendPageLoadResult.Missing
+
+                val ascending = request.order == PersistentBackendPageOrder.OLDEST_FIRST
+                val where = ArrayList<String>()
+                val args = ArrayList<String>()
+                where += "store_id=?"
+                args += storeId.value
+                request.schemaId?.let {
+                    where += "schema_id=?"
+                    args += it.value
+                }
+                request.cursorExclusive?.let { cursor ->
+                    val op = if (ascending) ">" else "<"
+                    where +=
+                        "(created_epoch $op ? OR (created_epoch=? AND " +
+                        "(created_nano $op ? OR (created_nano=? AND entity_id $op ?))))"
+                    args += cursor.createdAt.epochSecond.toString()
+                    args += cursor.createdAt.epochSecond.toString()
+                    args += cursor.createdAt.nano.toString()
+                    args += cursor.createdAt.nano.toString()
+                    args += cursor.entityId.value
+                }
+                val direction = if (ascending) "ASC" else "DESC"
+                val query =
+                    "SELECT entity_id,generation,schema_id,schema_version,created_epoch,created_nano,payload,record_hash " +
+                        "FROM records WHERE " + where.joinToString(" AND ") +
+                        " ORDER BY created_epoch $direction,created_nano $direction,entity_id $direction LIMIT ?"
+                args += (request.limit + 1).toString()
+
+                val loaded = ArrayList<PersistentRecordSnapshot>(request.limit + 1)
+                db.rawQuery(query, args.toTypedArray()).use { cursor ->
+                    while (cursor.moveToNext()) {
+                        loaded += decodeSnapshot(cursor, header.highWatermark)
+                    }
+                }
+                val hasMore = loaded.size > request.limit
+                if (hasMore) loaded.removeAt(loaded.lastIndex)
+                val nextCursor = if (hasMore && loaded.isNotEmpty()) {
+                    val last = loaded.last().record
+                    PersistentBackendPageCursor(last.createdAt, last.id)
+                } else {
+                    null
+                }
+                PersistentBackendPageLoadResult.Loaded(
+                    PersistentBackendPage(loaded, nextCursor)
+                )
+            }
+        } catch (_: IndexedDatabaseIncompatibleException) {
+            PersistentBackendPageLoadResult.Incompatible(
+                "unsupported indexed durable persistence format"
+            )
+        } catch (_: IllegalArgumentException) {
+            PersistentBackendPageLoadResult.Corrupt
+        } catch (_: SQLiteException) {
+            PersistentBackendPageLoadResult.Corrupt
+        } catch (e: IOException) {
+            PersistentBackendPageLoadResult.Failed(
+                "indexed durable persistence page load failed",
+                e
+            )
+        } catch (e: RuntimeException) {
+            PersistentBackendPageLoadResult.Failed(
+                "indexed durable persistence page load failed",
+                e
+            )
+        }
+    }
 
     override fun commit(
         storeId: PersistentStoreId,
@@ -402,6 +611,37 @@ class AndroidIndexedPersistentRecordBackend private constructor(
                 Header(revision, highWatermark, entryCount)
             }
         }
+
+    private fun decodeSnapshot(
+        cursor: android.database.Cursor,
+        highWatermark: Long
+    ): PersistentRecordSnapshot {
+        val entityId = PersistentEntityId(cursor.getString(0))
+        val generation = PersistentGeneration(cursor.getLong(1))
+        require(generation.value <= highWatermark) {
+            "indexed durable persistence generation exceeds high watermark"
+        }
+        val schemaId = PersistentSchemaId(cursor.getString(2))
+        val schemaVersion = PersistentSchemaVersion(cursor.getInt(3))
+        val createdAt = Instant.ofEpochSecond(cursor.getLong(4), cursor.getInt(5).toLong())
+        val payload = cursor.getBlob(6)
+        try {
+            val record = PersistentRecord(
+                id = entityId,
+                schemaId = schemaId,
+                schemaVersion = schemaVersion,
+                payload = PersistentPayload(payload),
+                createdAt = createdAt
+            )
+            val entry = PersistentBackendEntry(generation, record)
+            require(cursor.getString(7) == recordHash(entityId, entry, payload)) {
+                "indexed durable persistence record integrity failed"
+            }
+            return PersistentRecordSnapshot(record, generation)
+        } finally {
+            payload.fill(0)
+        }
+    }
 
     private fun validateCurrentStore(
         db: SQLiteDatabase,
