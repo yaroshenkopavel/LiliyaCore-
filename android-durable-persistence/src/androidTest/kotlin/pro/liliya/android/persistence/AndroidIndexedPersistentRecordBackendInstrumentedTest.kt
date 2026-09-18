@@ -13,6 +13,7 @@ import org.junit.runner.RunWith
 import pro.liliya.core.persistence.PersistentBackendCommitResult
 import pro.liliya.core.persistence.PersistentBackendEntry
 import pro.liliya.core.persistence.PersistentBackendLoadResult
+import pro.liliya.core.persistence.PersistentBackendMutationResult
 import pro.liliya.core.persistence.PersistentBackendState
 import pro.liliya.core.persistence.PersistentEntityId
 import pro.liliya.core.persistence.PersistentGeneration
@@ -327,6 +328,178 @@ class AndroidIndexedPersistentRecordBackendInstrumentedTest {
                 pro.liliya.core.persistence.PersistentBackendEntryLoadResult.Corrupt,
                 AndroidIndexedPersistentRecordBackend.create(context, TEST_DIRECTORY)
                     .loadEntry(storeId, PersistentEntityId("a"))
+            )
+        }
+
+    @Test
+    fun granular_mutations_install_transition_remove_without_full_state_commit_contract() =
+        withCleanRoot { context, _ ->
+            val storeId = PersistentStoreId("granular-mutations")
+            val backend = AndroidIndexedPersistentRecordBackend.create(context, TEST_DIRECTORY)
+            val a = PersistentEntityId("a")
+            val b = PersistentEntityId("b")
+
+            val installed = assertIs<PersistentBackendMutationResult.Committed>(
+                backend.installEntry(
+                    storeId = storeId,
+                    expectedRevision = 0,
+                    expectedHighWatermark = 0,
+                    entry = PersistentBackendEntry(
+                        PersistentGeneration(1),
+                        record(a, 1, "one".encodeToByteArray())
+                    )
+                )
+            )
+            assertEquals(1, installed.metadata.revision)
+            assertEquals(1, installed.metadata.highWatermark)
+            assertEquals(1, installed.metadata.entryCount)
+
+            val transitioned = assertIs<PersistentBackendMutationResult.Committed>(
+                backend.transitionEntry(
+                    storeId = storeId,
+                    expectedRevision = 1,
+                    expectedHighWatermark = 1,
+                    sourceId = a,
+                    sourceGeneration = PersistentGeneration(1),
+                    replacement = PersistentBackendEntry(
+                        PersistentGeneration(1),
+                        record(b, 1, "two".encodeToByteArray())
+                    )
+                )
+            )
+            assertEquals(2, transitioned.metadata.revision)
+            assertEquals(1, transitioned.metadata.highWatermark)
+            assertEquals(1, transitioned.metadata.entryCount)
+            assertIs<pro.liliya.core.persistence.PersistentBackendEntryLoadResult.Loaded>(
+                backend.loadEntry(storeId, b)
+            )
+            assertEquals(
+                pro.liliya.core.persistence.PersistentBackendEntryLoadResult.Missing,
+                backend.loadEntry(storeId, a)
+            )
+
+            val removed = assertIs<PersistentBackendMutationResult.Committed>(
+                backend.removeEntry(
+                    storeId = storeId,
+                    expectedRevision = 2,
+                    expectedHighWatermark = 1,
+                    id = b,
+                    generation = PersistentGeneration(1)
+                )
+            )
+            assertEquals(3, removed.metadata.revision)
+            assertEquals(1, removed.metadata.highWatermark)
+            assertEquals(0, removed.metadata.entryCount)
+
+            val metadata = assertIs<pro.liliya.core.persistence.PersistentBackendMetadataLoadResult.Loaded>(
+                backend.loadMetadata(storeId)
+            ).metadata
+            assertEquals(3, metadata.revision)
+            assertEquals(1, metadata.highWatermark)
+            assertEquals(0, metadata.entryCount)
+        }
+
+    @Test
+    fun granular_mutation_rejects_stale_revision_or_high_watermark() =
+        withCleanRoot { context, _ ->
+            val storeId = PersistentStoreId("granular-stale")
+            val backend = AndroidIndexedPersistentRecordBackend.create(context, TEST_DIRECTORY)
+            val a = PersistentEntityId("a")
+            val b = PersistentEntityId("b")
+
+            assertIs<PersistentBackendMutationResult.Committed>(
+                backend.installEntry(
+                    storeId,
+                    0,
+                    0,
+                    PersistentBackendEntry(
+                        PersistentGeneration(1),
+                        record(a, 1, "one".encodeToByteArray())
+                    )
+                )
+            )
+
+            assertEquals(
+                PersistentBackendMutationResult.Conflict,
+                backend.installEntry(
+                    storeId,
+                    0,
+                    0,
+                    PersistentBackendEntry(
+                        PersistentGeneration(1),
+                        record(b, 1, "stale".encodeToByteArray())
+                    )
+                )
+            )
+            assertEquals(
+                PersistentBackendMutationResult.Conflict,
+                backend.installEntry(
+                    storeId,
+                    1,
+                    0,
+                    PersistentBackendEntry(
+                        PersistentGeneration(1),
+                        record(b, 1, "stale-watermark".encodeToByteArray())
+                    )
+                )
+            )
+        }
+
+    @Test
+    fun granular_mutation_fails_closed_before_writing_corrupt_current_store() =
+        withCleanRoot { context, root ->
+            val storeId = PersistentStoreId("granular-corrupt-current")
+            val backend = AndroidIndexedPersistentRecordBackend.create(context, TEST_DIRECTORY)
+            val a = PersistentEntityId("a")
+            val b = PersistentEntityId("b")
+
+            assertIs<PersistentBackendMutationResult.Committed>(
+                backend.installEntry(
+                    storeId,
+                    0,
+                    0,
+                    PersistentBackendEntry(
+                        PersistentGeneration(1),
+                        record(a, 1, "one".encodeToByteArray())
+                    )
+                )
+            )
+
+            val db = SQLiteDatabase.openDatabase(
+                File(root, "liliya-indexed-v2.sqlite3").absolutePath,
+                null,
+                SQLiteDatabase.OPEN_READWRITE
+            )
+            db.use {
+                val values = android.content.ContentValues().apply {
+                    put("payload", "tampered".encodeToByteArray())
+                }
+                assertEquals(
+                    1,
+                    it.update(
+                        "records",
+                        values,
+                        "store_id=? AND entity_id=?",
+                        arrayOf(storeId.value, a.value)
+                    )
+                )
+            }
+
+            assertEquals(
+                PersistentBackendMutationResult.Corrupt,
+                backend.installEntry(
+                    storeId,
+                    1,
+                    1,
+                    PersistentBackendEntry(
+                        PersistentGeneration(2),
+                        record(b, 2, "two".encodeToByteArray())
+                    )
+                )
+            )
+            assertEquals(
+                pro.liliya.core.persistence.PersistentBackendEntryLoadResult.Missing,
+                backend.loadEntry(storeId, b)
             )
         }
 
