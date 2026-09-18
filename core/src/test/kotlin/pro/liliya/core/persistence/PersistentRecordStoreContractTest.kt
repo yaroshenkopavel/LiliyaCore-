@@ -206,6 +206,7 @@ class PersistentRecordStoreContractTest {
         var installCalls = 0
         var transitionCalls = 0
         var removeCalls = 0
+        var advanceRevisionOnNextPage = false
 
         override fun load(storeId: PersistentStoreId): PersistentBackendLoadResult {
             fullLoadCalls += 1
@@ -236,6 +237,10 @@ class PersistentRecordStoreContractTest {
             storeId: PersistentStoreId,
             request: PersistentBackendPageRequest
         ): PersistentBackendPageLoadResult {
+            if (advanceRevisionOnNextPage) {
+                advanceRevisionOnNextPage = false
+                metadata = metadata?.copy(revision = metadata!!.revision + 1L)
+            }
             val sorted = entries.values.sortedWith(
                 compareBy<PersistentRecordSnapshot>(
                     { it.record.createdAt },
@@ -519,6 +524,23 @@ class PersistentRecordStoreContractTest {
         ).ownership
         assertEquals(PersistentGeneration(2), second.generation)
         assertEquals(0, backend.fullCommitCalls)
+    }
+
+    @Test
+    fun indexed_snapshot_enumeration_rejects_revision_change_with_same_entry_count() {
+        val f = fixture()
+        val backend = MetadataOnlyIndexedBackend()
+        val store = open(f, backend, PersistentStoreId("metadata-barrier"))
+
+        assertIs<PersistentInstallResult.Installed>(
+            store.install(record("one"))
+        )
+        backend.advanceRevisionOnNextPage = true
+
+        val result = assertIs<PersistentRecordSnapshotEntriesResult.Failed>(
+            store.snapshotEntriesResult()
+        )
+        assertTrue(result.reason.contains("changed during enumeration"))
     }
 
     @Test
