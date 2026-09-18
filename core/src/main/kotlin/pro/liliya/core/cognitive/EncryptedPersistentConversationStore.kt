@@ -47,6 +47,19 @@ sealed interface PersistentConversationAppendPairResult {
     data class Failed(val reason: String) : PersistentConversationAppendPairResult
 }
 
+sealed interface PersistentConversationReopenResult {
+    data class Found(
+        val snapshot: CognitiveConversationContextSnapshot
+    ) : PersistentConversationReopenResult
+
+    data object Absent : PersistentConversationReopenResult
+    data object Corrupt : PersistentConversationReopenResult
+    data class Incompatible(val reason: String) : PersistentConversationReopenResult
+    data class EncryptionUnavailable(
+        val category: CognitiveEncryptionFailureCategory
+    ) : PersistentConversationReopenResult
+}
+
 sealed interface PersistentConversationHistoryResult {
     data class Found(val snapshot: CognitiveConversationContextSnapshot) : PersistentConversationHistoryResult
     data object Absent : PersistentConversationHistoryResult
@@ -228,8 +241,29 @@ class EncryptedPersistentConversationStore private constructor(
     }
 
     @Synchronized
+    fun reopenResult(
+        sessionId: CognitiveConversationSessionId
+    ): PersistentConversationReopenResult {
+        nativeV3?.let { return it.reopenResult(sessionId) }
+        val snapshot = entries[sessionId]?.snapshot
+            ?: return PersistentConversationReopenResult.Absent
+        return PersistentConversationReopenResult.Found(snapshot)
+    }
+
+    @Synchronized
     fun reopen(sessionId: CognitiveConversationSessionId): CognitiveConversationContextSnapshot? =
-        nativeV3?.reopen(sessionId) ?: entries[sessionId]?.snapshot
+        when (val result = reopenResult(sessionId)) {
+            is PersistentConversationReopenResult.Found -> result.snapshot
+            PersistentConversationReopenResult.Absent -> null
+            PersistentConversationReopenResult.Corrupt ->
+                throw IllegalStateException("durable conversation is corrupt")
+            is PersistentConversationReopenResult.Incompatible ->
+                throw IllegalStateException(result.reason)
+            is PersistentConversationReopenResult.EncryptionUnavailable ->
+                throw IllegalStateException(
+                    "durable conversation encryption is unavailable: " + result.category.name
+                )
+        }
 
     @Synchronized
     fun sessionCount(): Int = nativeV3?.sessionCount() ?: entries.size
