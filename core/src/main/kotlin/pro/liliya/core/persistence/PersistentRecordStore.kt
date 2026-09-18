@@ -292,6 +292,10 @@ class PersistentRecordStore private constructor(
     @Synchronized
     internal fun generationHighWatermark(): Long = state.highWatermark
 
+    @Synchronized
+    internal fun entryCount(): Long =
+        indexedEntryCount ?: state.entries.size.toLong()
+
     /**
      * Atomically replaces one exact live record with another record in a single backend revision,
      * preserving the source generation and store high-watermark. This is intentionally internal:
