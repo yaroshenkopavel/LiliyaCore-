@@ -144,9 +144,8 @@ class AndroidIndexedPersistentRecordBackend private constructor(
         try {
             openDatabase().use { db ->
                 when (val imported = importLegacyIfRequired(db, storeId)) {
-                    LegacyImportResult.Ready -> Unit
-                    LegacyImportResult.Missing ->
-                        return@synchronized PersistentBackendMetadataLoadResult.Missing
+                    LegacyImportResult.Ready,
+                    LegacyImportResult.Missing -> Unit
                     LegacyImportResult.Corrupt ->
                         return@synchronized PersistentBackendMetadataLoadResult.Corrupt
                     LegacyImportResult.Incompatible ->
@@ -160,7 +159,16 @@ class AndroidIndexedPersistentRecordBackend private constructor(
                         )
                 }
                 val header = readHeader(db, storeId)
-                    ?: return@synchronized PersistentBackendMetadataLoadResult.Missing
+                if (header == null) {
+                    return@synchronized if (hasRecordRows(db, storeId)) {
+                        PersistentBackendMetadataLoadResult.Corrupt
+                    } else {
+                        PersistentBackendMetadataLoadResult.Missing
+                    }
+                }
+                if (!validateMetadataIndex(db, storeId, header)) {
+                    return@synchronized PersistentBackendMetadataLoadResult.Corrupt
+                }
                 PersistentBackendMetadataLoadResult.Loaded(
                     PersistentBackendMetadata(
                         revision = header.revision,
@@ -915,6 +923,33 @@ class AndroidIndexedPersistentRecordBackend private constructor(
                 Header(revision, highWatermark, entryCount)
             }
         }
+
+    private fun validateMetadataIndex(
+        db: SQLiteDatabase,
+        storeId: PersistentStoreId,
+        header: Header
+    ): Boolean = db.rawQuery(
+        "SELECT COUNT(*),COUNT(DISTINCT generation),MIN(generation),MAX(generation) " +
+            "FROM records WHERE store_id=?",
+        arrayOf(storeId.value)
+    ).use { cursor ->
+        if (!cursor.moveToFirst()) return@use false
+        val count = cursor.getLong(0)
+        val distinctGenerationCount = cursor.getLong(1)
+        val minGeneration = if (cursor.isNull(2)) null else cursor.getLong(2)
+        val maxGeneration = if (cursor.isNull(3)) null else cursor.getLong(3)
+
+        if (count != header.entryCount.toLong()) return@use false
+        if (distinctGenerationCount != count) return@use false
+        if (count == 0L) {
+            minGeneration == null && maxGeneration == null
+        } else {
+            minGeneration != null &&
+                minGeneration > 0L &&
+                maxGeneration != null &&
+                maxGeneration <= header.highWatermark
+        }
+    }
 
     private fun recordExists(
         db: SQLiteDatabase,

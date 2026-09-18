@@ -48,6 +48,167 @@ class PersistentRecordStoreContractTest {
             request: PersistentBackendPageRequest
         ): PersistentBackendPageLoadResult = pageHandler(request)
     }
+    private class LazyIndexedMutationFixtureBackend : IndexedPersistentRecordMutationBackend {
+        private val entries = LinkedHashMap<PersistentEntityId, PersistentBackendEntry>()
+        private var revision = 0L
+        private var highWatermark = 0L
+        var legacyLoadCalls = 0
+        var legacyCommitCalls = 0
+        var installCalls = 0
+        var transitionCalls = 0
+        var removeCalls = 0
+        var advanceRevisionOnNextPage = false
+
+        override fun load(storeId: PersistentStoreId): PersistentBackendLoadResult {
+            legacyLoadCalls += 1
+            return PersistentBackendLoadResult.Failed("legacy load must not be used")
+        }
+
+        override fun commit(
+            storeId: PersistentStoreId,
+            expectedRevision: Long,
+            state: PersistentBackendState
+        ): PersistentBackendCommitResult {
+            legacyCommitCalls += 1
+            return PersistentBackendCommitResult.Failed("legacy commit must not be used")
+        }
+
+        override fun loadMetadata(storeId: PersistentStoreId): PersistentBackendMetadataLoadResult =
+            if (revision == 0L && entries.isEmpty()) {
+                PersistentBackendMetadataLoadResult.Missing
+            } else {
+                PersistentBackendMetadataLoadResult.Loaded(
+                    PersistentBackendMetadata(
+                        revision = revision,
+                        highWatermark = highWatermark,
+                        entryCount = entries.size.toLong()
+                    )
+                )
+            }
+
+        override fun loadEntry(
+            storeId: PersistentStoreId,
+            entityId: PersistentEntityId
+        ): PersistentBackendEntryLoadResult {
+            val entry = entries[entityId] ?: return PersistentBackendEntryLoadResult.Missing
+            return PersistentBackendEntryLoadResult.Loaded(
+                PersistentRecordSnapshot(entry.record, entry.generation)
+            )
+        }
+
+        override fun loadPage(
+            storeId: PersistentStoreId,
+            request: PersistentBackendPageRequest
+        ): PersistentBackendPageLoadResult {
+            if (advanceRevisionOnNextPage) {
+                advanceRevisionOnNextPage = false
+                revision += 1L
+            }
+            val ordered = entries.values
+                .map { PersistentRecordSnapshot(it.record, it.generation) }
+                .sortedWith(compareBy({ it.record.createdAt }, { it.record.id.value }))
+            val filtered = ordered.filter { snapshot ->
+                val cursor = request.cursorExclusive ?: return@filter true
+                snapshot.record.createdAt > cursor.createdAt ||
+                    (snapshot.record.createdAt == cursor.createdAt &&
+                        snapshot.record.id.value > cursor.entityId.value)
+            }
+            val page = filtered.take(request.limit)
+            val next = if (filtered.size > request.limit && page.isNotEmpty()) {
+                val last = page.last().record
+                PersistentBackendPageCursor(last.createdAt, last.id)
+            } else {
+                null
+            }
+            return if (entries.isEmpty()) {
+                PersistentBackendPageLoadResult.Missing
+            } else {
+                PersistentBackendPageLoadResult.Loaded(
+                    PersistentBackendPage(page, next)
+                )
+            }
+        }
+
+        override fun installEntry(
+            storeId: PersistentStoreId,
+            expectedRevision: Long,
+            expectedHighWatermark: Long,
+            entry: PersistentBackendEntry
+        ): PersistentBackendMutationResult {
+            installCalls += 1
+            if (revision != expectedRevision || highWatermark != expectedHighWatermark) {
+                return PersistentBackendMutationResult.Conflict
+            }
+            if (entries.containsKey(entry.record.id) ||
+                entry.generation.value != highWatermark + 1L
+            ) {
+                return PersistentBackendMutationResult.Rejected("invalid install")
+            }
+            entries[entry.record.id] = entry
+            revision += 1L
+            highWatermark = entry.generation.value
+            return PersistentBackendMutationResult.Committed(metadata())
+        }
+
+        override fun transitionEntry(
+            storeId: PersistentStoreId,
+            expectedRevision: Long,
+            expectedHighWatermark: Long,
+            sourceId: PersistentEntityId,
+            sourceGeneration: PersistentGeneration,
+            replacement: PersistentBackendEntry
+        ): PersistentBackendMutationResult {
+            transitionCalls += 1
+            if (revision != expectedRevision || highWatermark != expectedHighWatermark) {
+                return PersistentBackendMutationResult.Conflict
+            }
+            val source = entries[sourceId]
+                ?: return PersistentBackendMutationResult.Rejected("source missing")
+            if (source.generation != sourceGeneration ||
+                replacement.generation != sourceGeneration
+            ) {
+                return PersistentBackendMutationResult.Rejected("source generation stale")
+            }
+            if (replacement.record.id != sourceId &&
+                entries.containsKey(replacement.record.id)
+            ) {
+                return PersistentBackendMutationResult.Rejected("replacement exists")
+            }
+            entries.remove(sourceId)
+            entries[replacement.record.id] = replacement
+            revision += 1L
+            return PersistentBackendMutationResult.Committed(metadata())
+        }
+
+        override fun removeEntry(
+            storeId: PersistentStoreId,
+            expectedRevision: Long,
+            expectedHighWatermark: Long,
+            id: PersistentEntityId,
+            generation: PersistentGeneration
+        ): PersistentBackendMutationResult {
+            removeCalls += 1
+            if (revision != expectedRevision || highWatermark != expectedHighWatermark) {
+                return PersistentBackendMutationResult.Conflict
+            }
+            val source = entries[id]
+                ?: return PersistentBackendMutationResult.Rejected("source missing")
+            if (source.generation != generation) {
+                return PersistentBackendMutationResult.Rejected("source generation stale")
+            }
+            entries.remove(id)
+            revision += 1L
+            return PersistentBackendMutationResult.Committed(metadata())
+        }
+
+        private fun metadata(): PersistentBackendMetadata =
+            PersistentBackendMetadata(
+                revision = revision,
+                highWatermark = highWatermark,
+                entryCount = entries.size.toLong()
+            )
+    }
+
     private data class Fixture(
         val foundation: FoundationComposition,
         val logs: InMemoryLogWriter
@@ -188,6 +349,23 @@ class PersistentRecordStoreContractTest {
     }
 
     @Test
+    fun indexed_snapshot_enumeration_rejects_revision_change_with_same_entry_count() {
+        val f = fixture()
+        val backend = LazyIndexedMutationFixtureBackend()
+        val store = open(f, backend, PersistentStoreId("metadata-barrier"))
+
+        assertIs<PersistentInstallResult.Installed>(
+            store.install(record("one"))
+        )
+        backend.advanceRevisionOnNextPage = true
+
+        val result = assertIs<PersistentRecordSnapshotEntriesResult.Failed>(
+            store.snapshotEntriesResult()
+        )
+        assertTrue(result.reason.contains("changed during enumeration"))
+    }
+
+    @Test
     fun payload_is_redacted_from_rendering_and_operational_logs() {
         val f = fixture()
         val secret = "TOP-SECRET-COGNITIVE-PAYLOAD"
@@ -324,6 +502,56 @@ class PersistentRecordStoreContractTest {
             store.snapshotEntriesResult()
         )
         assertEquals(failure, failed.throwable)
+    }
+
+    @Test
+    fun indexed_store_opens_from_metadata_and_mutates_without_legacy_snapshot_path() {
+        val f = fixture()
+        val backend = LazyIndexedMutationFixtureBackend()
+        val storeId = PersistentStoreId("lazy-indexed-core")
+        val store = open(f, backend, storeId)
+
+        assertEquals(0, backend.legacyLoadCalls)
+        assertEquals(0, backend.legacyCommitCalls)
+
+        val first = assertIs<PersistentInstallResult.Installed>(
+            store.install(record("one"))
+        ).ownership
+        assertEquals(PersistentGeneration(1), first.generation)
+        assertEquals(1, backend.installCalls)
+        assertEquals(0, backend.legacyCommitCalls)
+
+        val reopened = open(f, backend, storeId)
+        assertEquals(0, backend.legacyLoadCalls)
+        val found = assertIs<PersistentRecordLookupResult.Found>(
+            reopened.inspectResult(PersistentEntityId("one"))
+        )
+        assertEquals(PersistentGeneration(1), found.snapshot.generation)
+
+        val transitioned = assertIs<PersistentRecordTransitionResult.Committed>(
+            reopened.transitionExact(
+                sourceId = PersistentEntityId("one"),
+                sourceGeneration = PersistentGeneration(1),
+                replacement = record("renamed", "replacement")
+            )
+        )
+        assertEquals(PersistentEntityId("renamed"), transitioned.ownership.record.id)
+        assertEquals(1, backend.transitionCalls)
+        assertEquals(0, backend.legacyCommitCalls)
+
+        assertIs<PersistentMutationResult.Committed>(
+            transitioned.ownership.remove()
+        )
+        assertEquals(1, backend.removeCalls)
+        val afterRemove = open(f, backend, storeId)
+        assertEquals(PersistentRecordLookupResult.Missing, afterRemove.inspectResult(PersistentEntityId("renamed")))
+
+        val second = assertIs<PersistentInstallResult.Installed>(
+            afterRemove.install(record("two"))
+        ).ownership
+        assertEquals(PersistentGeneration(2), second.generation)
+        assertEquals(0, backend.legacyLoadCalls)
+        assertEquals(0, backend.legacyCommitCalls)
     }
 
     @Test

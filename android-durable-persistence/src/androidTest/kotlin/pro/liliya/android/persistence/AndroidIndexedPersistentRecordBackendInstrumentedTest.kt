@@ -139,9 +139,11 @@ class AndroidIndexedPersistentRecordBackendInstrumentedTest {
                 )
             }
 
+            val reopened = AndroidIndexedPersistentRecordBackend.create(context, TEST_DIRECTORY)
+            assertEquals(PersistentBackendLoadResult.Corrupt, reopened.load(storeId))
             assertEquals(
-                PersistentBackendLoadResult.Corrupt,
-                AndroidIndexedPersistentRecordBackend.create(context, TEST_DIRECTORY).load(storeId)
+                pro.liliya.core.persistence.PersistentBackendMetadataLoadResult.Corrupt,
+                reopened.loadMetadata(storeId)
             )
         }
 
@@ -208,9 +210,11 @@ class AndroidIndexedPersistentRecordBackendInstrumentedTest {
                 )
             }
 
+            val reopened = AndroidIndexedPersistentRecordBackend.create(context, TEST_DIRECTORY)
+            assertEquals(PersistentBackendLoadResult.Corrupt, reopened.load(storeId))
             assertEquals(
-                PersistentBackendLoadResult.Corrupt,
-                AndroidIndexedPersistentRecordBackend.create(context, TEST_DIRECTORY).load(storeId)
+                pro.liliya.core.persistence.PersistentBackendMetadataLoadResult.Corrupt,
+                reopened.loadMetadata(storeId)
             )
         }
 
@@ -243,6 +247,48 @@ class AndroidIndexedPersistentRecordBackendInstrumentedTest {
             )
             assertEquals(25_001, loaded.state.entries.size)
             assertEquals(25_001, loaded.state.highWatermark)
+        }
+
+    @Test
+    fun metadata_open_does_not_materialize_payload_but_exact_read_still_fails_closed() =
+        withCleanRoot { context, root ->
+            val storeId = PersistentStoreId("metadata-lazy-integrity")
+            val backend = AndroidIndexedPersistentRecordBackend.create(context, TEST_DIRECTORY)
+            assertEquals(
+                PersistentBackendCommitResult.Committed(1),
+                backend.commit(storeId, 0, state(storeId, 1, mapOf("a" to "one")))
+            )
+
+            val db = SQLiteDatabase.openDatabase(
+                File(root, "liliya-indexed-v2.sqlite3").absolutePath,
+                null,
+                SQLiteDatabase.OPEN_READWRITE
+            )
+            db.use {
+                val values = android.content.ContentValues().apply {
+                    put("payload", "tampered".encodeToByteArray())
+                }
+                assertEquals(
+                    1,
+                    it.update(
+                        "records",
+                        values,
+                        "store_id=? AND entity_id=?",
+                        arrayOf(storeId.value, "a")
+                    )
+                )
+            }
+
+            val reopened = AndroidIndexedPersistentRecordBackend.create(context, TEST_DIRECTORY)
+            val metadata = assertIs<pro.liliya.core.persistence.PersistentBackendMetadataLoadResult.Loaded>(
+                reopened.loadMetadata(storeId)
+            ).metadata
+            assertEquals(1, metadata.revision)
+            assertEquals(1, metadata.entryCount)
+            assertEquals(
+                pro.liliya.core.persistence.PersistentBackendEntryLoadResult.Corrupt,
+                reopened.loadEntry(storeId, PersistentEntityId("a"))
+            )
         }
 
     @Test
