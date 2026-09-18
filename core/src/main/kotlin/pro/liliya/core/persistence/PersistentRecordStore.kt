@@ -126,6 +126,85 @@ class PersistentRecordStore private constructor(
     @Synchronized
     fun snapshot(): List<PersistentRecord> = snapshotEntries().map { it.record }
 
+    /**
+     * Fail-closed explicit enumeration. Indexed backends are walked through bounded pages so
+     * future metadata-only stores do not need a full PersistentBackendState load.
+     */
+    @Synchronized
+    fun snapshotEntriesResult(): PersistentRecordSnapshotEntriesResult {
+        val indexed = backend as? IndexedPersistentRecordReadBackend
+        if (indexed == null) {
+            val entries = state.entries.values
+                .map { PersistentRecordSnapshot(it.record.detached(), it.generation) }
+                .sortedWith(compareBy({ it.record.createdAt }, { it.record.id.value }))
+            return if (entries.isEmpty()) {
+                PersistentRecordSnapshotEntriesResult.Empty
+            } else {
+                PersistentRecordSnapshotEntriesResult.Loaded(entries)
+            }
+        }
+
+        val collected = ArrayList<PersistentRecordSnapshot>()
+        val seenIds = HashSet<PersistentEntityId>()
+        val seenGenerations = HashSet<PersistentGeneration>()
+        var cursor: PersistentBackendPageCursor? = null
+
+        while (true) {
+            val loaded = when (
+                val page = indexed.loadPage(
+                    storeId,
+                    PersistentBackendPageRequest(
+                        limit = PersistentBackendPageRequest.MAX_PAGE_SIZE,
+                        order = PersistentBackendPageOrder.OLDEST_FIRST,
+                        cursorExclusive = cursor
+                    )
+                )
+            ) {
+                PersistentBackendPageLoadResult.Missing -> {
+                    if (collected.isEmpty() && state.entries.isEmpty()) {
+                        return PersistentRecordSnapshotEntriesResult.Empty
+                    }
+                    return PersistentRecordSnapshotEntriesResult.Corrupt
+                }
+                is PersistentBackendPageLoadResult.Loaded -> page.page
+                PersistentBackendPageLoadResult.Corrupt ->
+                    return PersistentRecordSnapshotEntriesResult.Corrupt
+                is PersistentBackendPageLoadResult.Incompatible ->
+                    return PersistentRecordSnapshotEntriesResult.Incompatible(page.reason)
+                is PersistentBackendPageLoadResult.Failed ->
+                    return PersistentRecordSnapshotEntriesResult.Failed(
+                        page.reason,
+                        page.throwable
+                    )
+            }
+
+            for (snapshot in loaded.entries) {
+                if (!seenIds.add(snapshot.record.id) || !seenGenerations.add(snapshot.generation)) {
+                    return PersistentRecordSnapshotEntriesResult.Corrupt
+                }
+                collected += PersistentRecordSnapshot(
+                    snapshot.record.detached(),
+                    snapshot.generation
+                )
+            }
+
+            val next = loaded.nextCursor ?: break
+            if (loaded.entries.isEmpty() || next == cursor) {
+                return PersistentRecordSnapshotEntriesResult.Corrupt
+            }
+            cursor = next
+        }
+
+        return if (collected.isEmpty()) {
+            PersistentRecordSnapshotEntriesResult.Empty
+        } else {
+            PersistentRecordSnapshotEntriesResult.Loaded(collected)
+        }
+    }
+
+    /**
+     * Compatibility API. New fail-closed consumers must prefer snapshotEntriesResult().
+     */
     @Synchronized
     fun snapshotEntries(): List<PersistentRecordSnapshot> = state.entries.values
         .map { PersistentRecordSnapshot(it.record.detached(), it.generation) }
