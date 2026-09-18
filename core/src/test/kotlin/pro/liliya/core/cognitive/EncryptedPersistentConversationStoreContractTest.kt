@@ -1,5 +1,7 @@
 package pro.liliya.core.cognitive
 
+import java.io.ByteArrayOutputStream
+import java.io.DataOutputStream
 import java.security.MessageDigest
 import java.time.Instant
 import java.util.concurrent.atomic.AtomicInteger
@@ -26,6 +28,7 @@ import pro.liliya.core.encryption.CognitiveEnvelopeVersion
 import pro.liliya.core.encryption.CognitiveNonce
 import pro.liliya.core.encryption.CognitiveNonceSource
 import pro.liliya.core.encryption.CognitivePlaintext
+import pro.liliya.core.encryption.CognitivePersistentRecordDraft
 import pro.liliya.core.encryption.EncryptedPersistentRecordStore
 import pro.liliya.core.foundation.FoundationComposition
 import pro.liliya.core.logging.CorrelationIdGenerator
@@ -35,6 +38,9 @@ import pro.liliya.core.observability.LoggerProvider
 import pro.liliya.core.persistence.InMemoryPersistentRecordBackend
 import pro.liliya.core.persistence.PersistentBackendLoadResult
 import pro.liliya.core.persistence.PersistentRecordStore
+import pro.liliya.core.persistence.PersistentEntityId
+import pro.liliya.core.persistence.PersistentSchemaId
+import pro.liliya.core.persistence.PersistentSchemaVersion
 import pro.liliya.core.persistence.PersistentStoreId
 import pro.liliya.core.persistence.PersistentStoreOpenResult
 
@@ -45,7 +51,7 @@ class EncryptedPersistentConversationStoreContractTest {
     private val material = CognitiveDekMaterial(ByteArray(32) { (it * 11 + 7).toByte() })
 
     @Test
-    fun accepted_turns_reopen_as_bounded_tail_without_becoming_memory() {
+    fun accepted_turns_reopen_as_bounded_tail_with_full_encrypted_history() {
         val backend = InMemoryPersistentRecordBackend()
         val first = openConversation(backend, maxRetained = 3)
         val session = CognitiveConversationSessionId("private-session-A")
@@ -59,7 +65,101 @@ class EncryptedPersistentConversationStoreContractTest {
         val snapshot = reopened.reopen(session)!!
         assertEquals(listOf(2L, 3L, 4L), snapshot.messages.map { it.sequence.value })
         assertEquals(listOf("two", "three", "four"), snapshot.messages.map { it.content })
+        val history = assertIs<PersistentConversationHistoryResult.Found>(
+            reopened.history(session, maxMessages = 10)
+        ).snapshot
+        assertEquals(listOf("one", "two", "three", "four"), history.messages.map { it.content })
         assertEquals(1, reopened.sessionCount())
+    }
+
+    @Test
+    fun pair_archive_survives_restart_and_supports_backward_pages_without_expanding_context() {
+        val backend = InMemoryPersistentRecordBackend()
+        val session = CognitiveConversationSessionId("long-private-session")
+        val first = openConversation(backend, maxRetained = 4)
+        repeat(20) { turn ->
+            val sequence = turn.toLong() * 2L + 1L
+            assertIs<PersistentConversationAppendPairResult.Appended>(
+                first.appendPair(
+                    session,
+                    msg(sequence, CognitiveConversationRole.USER, "user-$turn"),
+                    msg(sequence + 1L, CognitiveConversationRole.ASSISTANT, "reply-$turn"),
+                    at(sequence)
+                )
+            )
+        }
+        assertEquals(listOf(37L, 38L, 39L, 40L), first.reopen(session)!!.messages.map { it.sequence.value })
+
+        val reopened = openConversation(backend, maxRetained = 4)
+        assertEquals(listOf(37L, 38L, 39L, 40L), reopened.reopen(session)!!.messages.map { it.sequence.value })
+        val newest = assertIs<PersistentConversationHistoryResult.Found>(
+            reopened.history(session, maxMessages = 6)
+        ).snapshot.messages
+        assertEquals((35L..40L).toList(), newest.map { it.sequence.value })
+        val older = assertIs<PersistentConversationHistoryResult.Found>(
+            reopened.history(session, beforeSequenceExclusive = 35L, maxMessages = 4)
+        ).snapshot.messages
+        assertEquals((31L..34L).toList(), older.map { it.sequence.value })
+        val oldest = assertIs<PersistentConversationHistoryResult.Found>(
+            reopened.history(session, beforeSequenceExclusive = 5L, maxMessages = 4)
+        ).snapshot.messages
+        assertEquals((1L..4L).toList(), oldest.map { it.sequence.value })
+        assertEquals(4, reopened.reopen(session)!!.messages.size)
+        assertEquals(20, assertIs<PersistentBackendLoadResult.Loaded>(backend.load(storeId)).state.entries.size)
+    }
+
+    @Test
+    fun legacy_bounded_tail_remains_readable_and_new_turns_extend_archive() {
+        val backend = InMemoryPersistentRecordBackend()
+        val session = CognitiveConversationSessionId("old-format-session")
+        val bytes = ByteArrayOutputStream().use { output ->
+            DataOutputStream(output).use { data ->
+                data.writeInt(0x434E5631)
+                val idBytes = session.value.encodeToByteArray()
+                data.writeInt(idBytes.size)
+                data.write(idBytes)
+                data.writeInt(2)
+                for ((sequence, role, content) in listOf(
+                    Triple(5L, CognitiveConversationRole.USER, "legacy-user"),
+                    Triple(6L, CognitiveConversationRole.ASSISTANT, "legacy-reply")
+                )) {
+                    data.writeLong(sequence)
+                    data.writeInt(role.ordinal)
+                    val contentBytes = content.encodeToByteArray()
+                    data.writeInt(contentBytes.size)
+                    data.write(contentBytes)
+                }
+            }
+            output.toByteArray()
+        }
+        val digest = MessageDigest.getInstance("SHA-256")
+            .digest(session.value.encodeToByteArray())
+            .joinToString("") { "%02x".format(it) }
+        assertIs<CognitiveEncryptionResult.Success<*>>(
+            encryptedStore(backend, resolver(material)).install(
+                CognitivePersistentRecordDraft(
+                    PersistentEntityId("conversation-$digest"),
+                    PersistentSchemaId("cognitive-conversation-session"),
+                    PersistentSchemaVersion(1), CognitivePlaintext(bytes), at(1), dekRef
+                )
+            )
+        )
+
+        val upgraded = openConversation(backend, maxRetained = 4)
+        assertIs<PersistentConversationAppendPairResult.Appended>(
+            upgraded.appendPair(
+                session,
+                msg(7, CognitiveConversationRole.USER, "new-user"),
+                msg(8, CognitiveConversationRole.ASSISTANT, "new-reply"), at(2)
+            )
+        )
+        val reopened = openConversation(backend, maxRetained = 4)
+        assertEquals(listOf(5L, 6L, 7L, 8L), reopened.reopen(session)!!.messages.map { it.sequence.value })
+        assertEquals(listOf("legacy-user", "legacy-reply"),
+            assertIs<PersistentConversationHistoryResult.Found>(
+                reopened.history(session, beforeSequenceExclusive = 7L, maxMessages = 2)
+            ).snapshot.messages.map { it.content }
+        )
     }
 
     @Test

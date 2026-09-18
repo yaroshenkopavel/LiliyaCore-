@@ -220,6 +220,8 @@ class EncryptedPersistentRecordStore(
     internal fun snapshotEntries(): List<pro.liliya.core.persistence.PersistentRecordSnapshot> =
         store.snapshotEntries()
 
+    internal fun inspect(id: PersistentEntityId): PersistentRecordSnapshot? = store.inspect(id)
+
     internal fun generationHighWatermark(): Long = store.generationHighWatermark()
 
     internal fun removeExact(
