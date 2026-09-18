@@ -117,6 +117,8 @@ class AndroidIndexedPersistentRecordBackend private constructor(
                 }
             } catch (_: IndexedDatabaseIncompatibleException) {
                 PersistentBackendLoadResult.Incompatible("unsupported indexed durable persistence format")
+            } catch (_: IllegalArgumentException) {
+                PersistentBackendLoadResult.Corrupt
             } catch (e: SQLiteException) {
                 PersistentBackendLoadResult.Corrupt
             } catch (e: IOException) {
@@ -254,6 +256,7 @@ class AndroidIndexedPersistentRecordBackend private constructor(
 
     private fun openDatabase(): SQLiteDatabase {
         val database = SQLiteDatabase.openOrCreateDatabase(File(root, DATABASE_FILE), null)
+        database.execSQL("PRAGMA synchronous=FULL")
         val existingVersion = database.version
         if (existingVersion != 0 && existingVersion != DATABASE_VERSION) {
             database.close()
