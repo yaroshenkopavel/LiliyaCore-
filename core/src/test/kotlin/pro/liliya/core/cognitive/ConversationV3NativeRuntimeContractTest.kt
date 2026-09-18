@@ -111,6 +111,31 @@ class ConversationV3NativeRuntimeContractTest {
     }
 
     @Test
+    fun native_v3_rows_do_not_expose_session_or_message_plaintext() {
+        val backend = CountingIndexedBackend()
+        val session = CognitiveConversationSessionId("private-native-v3-session")
+        val messageText = "private conversation text"
+        val store = openConversation(backend)
+
+        assertIs<PersistentConversationAppendResult.Appended>(
+            store.append(
+                session,
+                msg(1, CognitiveConversationRole.USER, messageText),
+                at(1)
+            )
+        )
+
+        val sessionBytes = session.value.encodeToByteArray()
+        val messageBytes = messageText.encodeToByteArray()
+        for ((id, snapshot) in backend.entries) {
+            assertFalse(id.value.contains(session.value))
+            val payload = snapshot.record.payload.copyBytes()
+            assertFalse(containsSubsequence(payload, sessionBytes))
+            assertFalse(containsSubsequence(payload, messageBytes))
+        }
+    }
+
+    @Test
     fun orphan_chunk_after_head_conflict_is_recovered_without_global_scan() {
         val backend = CountingIndexedBackend()
         val session = CognitiveConversationSessionId("recover-v3-session")
@@ -214,6 +239,23 @@ class ConversationV3NativeRuntimeContractTest {
             it.value.startsWith("conversation-v3-chunk-")
         }
         assertEquals(10, chunkRows)
+    }
+
+    private fun containsSubsequence(
+        haystack: ByteArray,
+        needle: ByteArray
+    ): Boolean {
+        if (needle.isEmpty()) return true
+        if (needle.size > haystack.size) return false
+        for (start in 0..haystack.size - needle.size) {
+            if (needle.indices.all { offset ->
+                    haystack[start + offset] == needle[offset]
+                }
+            ) {
+                return true
+            }
+        }
+        return false
     }
 
     private fun openConversation(
