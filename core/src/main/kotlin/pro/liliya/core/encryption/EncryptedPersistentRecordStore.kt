@@ -15,6 +15,7 @@ import pro.liliya.core.persistence.PersistentRecord
 import pro.liliya.core.persistence.PersistentRecordOwnership
 import pro.liliya.core.persistence.PersistentRecordLookupResult
 import pro.liliya.core.persistence.PersistentRecordSnapshot
+import pro.liliya.core.persistence.PersistentRecordSnapshotEntriesResult
 import pro.liliya.core.persistence.PersistentRecordStore
 import pro.liliya.core.persistence.PersistentRecordTransitionResult
 import pro.liliya.core.persistence.PersistentSchemaId
@@ -197,8 +198,26 @@ class EncryptedPersistentRecordStore(
 
     internal fun decryptedSnapshotEntries():
         CognitiveEncryptionResult<List<PersistentRecordSnapshot>> {
-        val decrypted = ArrayList<PersistentRecordSnapshot>()
-        for (snapshot in store.snapshotEntries()) {
+        val snapshots = when (val listed = store.snapshotEntriesResult()) {
+            PersistentRecordSnapshotEntriesResult.Empty -> emptyList()
+            is PersistentRecordSnapshotEntriesResult.Loaded -> listed.entries
+            PersistentRecordSnapshotEntriesResult.Corrupt ->
+                return CognitiveEncryptionResult.Failed(
+                    CognitiveEncryptionFailureCategory.PERSISTENCE_FAILED
+                )
+            is PersistentRecordSnapshotEntriesResult.Incompatible ->
+                return CognitiveEncryptionResult.Failed(
+                    CognitiveEncryptionFailureCategory.PERSISTENCE_FAILED
+                )
+            is PersistentRecordSnapshotEntriesResult.Failed ->
+                return CognitiveEncryptionResult.Failed(
+                    CognitiveEncryptionFailureCategory.PERSISTENCE_FAILED,
+                    listed.throwable
+                )
+        }
+
+        val decrypted = ArrayList<PersistentRecordSnapshot>(snapshots.size)
+        for (snapshot in snapshots) {
             val plaintext = when (val opened = open(snapshot.record.id)) {
                 is CognitiveEncryptionResult.Success -> opened.value
                 is CognitiveEncryptionResult.Rejected -> return opened
