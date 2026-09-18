@@ -187,18 +187,50 @@ jobs:
             ${{ runner.temp }}/export/SHA256SUMS
             ${{ runner.temp }}/export/PARTS_SHA256SUMS
 
-      - name: Upload Gradle cache parts
+      - name: Upload Gradle cache part 00
         uses: actions/upload-artifact@v4
         with:
-          name: local-env-gradle-home-parts
+          name: local-env-gradle-home-part-00
           retention-days: 1
           compression-level: 0
-          path: ${{ runner.temp }}/export/parts/gradle-home.part.*
+          path: ${{ runner.temp }}/export/parts/gradle-home.part.00
 
-      - name: Upload NDK parts
+      - name: Upload Gradle cache part 01
         uses: actions/upload-artifact@v4
         with:
-          name: local-env-ndk-parts
+          name: local-env-gradle-home-part-01
           retention-days: 1
           compression-level: 0
-          path: ${{ runner.temp }}/export/parts/ndk.part.*
+          path: ${{ runner.temp }}/export/parts/gradle-home.part.01
+
+      - name: Upload NDK part 00
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-env-ndk-part-00
+          retention-days: 1
+          compression-level: 0
+          path: ${{ runner.temp }}/export/parts/ndk.part.00
+
+      - name: Upload NDK part 01
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-env-ndk-part-01
+          retention-days: 1
+          compression-level: 0
+          path: ${{ runner.temp }}/export/parts/ndk.part.01
+
+      - name: Upload NDK part 02
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-env-ndk-part-02
+          retention-days: 1
+          compression-level: 0
+          path: ${{ runner.temp }}/export/parts/ndk.part.02
+
+      - name: Upload NDK part 03
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-env-ndk-part-03
+          retention-days: 1
+          compression-level: 0
+          path: ${{ runner.temp }}/export/parts/ndk.part.03
