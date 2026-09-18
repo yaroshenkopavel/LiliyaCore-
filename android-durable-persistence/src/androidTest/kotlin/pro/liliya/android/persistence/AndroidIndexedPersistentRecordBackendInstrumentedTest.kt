@@ -186,6 +186,34 @@ class AndroidIndexedPersistentRecordBackendInstrumentedTest {
         }
 
     @Test
+    fun orphan_rows_without_store_header_are_corrupt_not_missing() =
+        withCleanRoot { context, root ->
+            val storeId = PersistentStoreId("orphan-rows")
+            val backend = AndroidIndexedPersistentRecordBackend.create(context, TEST_DIRECTORY)
+            assertEquals(
+                PersistentBackendCommitResult.Committed(1),
+                backend.commit(storeId, 0, state(storeId, 1, mapOf("a" to "one")))
+            )
+
+            val db = SQLiteDatabase.openDatabase(
+                File(root, "liliya-indexed-v2.sqlite3").absolutePath,
+                null,
+                SQLiteDatabase.OPEN_READWRITE
+            )
+            db.use {
+                assertEquals(
+                    1,
+                    it.delete("stores", "store_id=?", arrayOf(storeId.value))
+                )
+            }
+
+            assertEquals(
+                PersistentBackendLoadResult.Corrupt,
+                AndroidIndexedPersistentRecordBackend.create(context, TEST_DIRECTORY).load(storeId)
+            )
+        }
+
+    @Test
     fun indexed_backend_accepts_more_than_legacy_25000_entry_ceiling() =
         withCleanRoot { context, _ ->
             val storeId = PersistentStoreId("large-indexed-store")
