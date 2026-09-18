@@ -13,6 +13,7 @@ import pro.liliya.core.persistence.PersistentMutationResult
 import pro.liliya.core.persistence.PersistentPayload
 import pro.liliya.core.persistence.PersistentRecord
 import pro.liliya.core.persistence.PersistentRecordOwnership
+import pro.liliya.core.persistence.PersistentRecordLookupResult
 import pro.liliya.core.persistence.PersistentRecordSnapshot
 import pro.liliya.core.persistence.PersistentRecordStore
 import pro.liliya.core.persistence.PersistentRecordTransitionResult
@@ -230,8 +231,26 @@ class EncryptedPersistentRecordStore(
     ): PersistentMutationResult = store.removeExact(id, generation)
 
     fun open(id: PersistentEntityId): CognitiveEncryptionResult<CognitivePlaintext> {
-        val snapshot = store.inspect(id)
-            ?: return CognitiveEncryptionResult.Rejected(CognitiveEncryptionFailureCategory.INVALID_REQUEST)
+        val snapshot = when (val lookedUp = store.inspectResult(id)) {
+            PersistentRecordLookupResult.Missing ->
+                return CognitiveEncryptionResult.Rejected(
+                    CognitiveEncryptionFailureCategory.INVALID_REQUEST
+                )
+            is PersistentRecordLookupResult.Found -> lookedUp.snapshot
+            PersistentRecordLookupResult.Corrupt ->
+                return CognitiveEncryptionResult.Failed(
+                    CognitiveEncryptionFailureCategory.PERSISTENCE_FAILED
+                )
+            is PersistentRecordLookupResult.Incompatible ->
+                return CognitiveEncryptionResult.Failed(
+                    CognitiveEncryptionFailureCategory.PERSISTENCE_FAILED
+                )
+            is PersistentRecordLookupResult.Failed ->
+                return CognitiveEncryptionResult.Failed(
+                    CognitiveEncryptionFailureCategory.PERSISTENCE_FAILED,
+                    lookedUp.throwable
+                )
+        }
         val envelope = when (
             val decoded = CognitivePersistentEnvelopeCodec.decode(snapshot.record.payload.copyBytes())
         ) {
