@@ -8,6 +8,8 @@ import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
 import pro.liliya.android.devicekey.AndroidCognitiveKeyProtector
 import pro.liliya.android.persistence.AndroidDurablePersistentRecordBackend
+import pro.liliya.core.cognitive.EncryptedPersistentConversationStore
+import pro.liliya.core.cognitive.PersistentConversationOpenResult
 import pro.liliya.core.encryption.CognitiveAeadProvider
 import pro.liliya.core.encryption.CognitiveAeadSealedData
 import pro.liliya.core.encryption.CognitiveAssociatedData
@@ -30,6 +32,12 @@ import pro.liliya.core.learning.EncryptedPersistentLearningApplicationMutationCo
 import pro.liliya.core.learning.EncryptedPersistentLearningApplicationMutationOpenResult
 import pro.liliya.core.memory.EncryptedPersistentMemoryComposition
 import pro.liliya.core.memory.EncryptedPersistentMemoryOpenResult
+import pro.liliya.core.personality.EncryptedPersistentPersonalityComposition
+import pro.liliya.core.personality.EncryptedPersistentPersonalityOpenResult
+import pro.liliya.core.personality.PersonalityGeneration
+import pro.liliya.core.personality.PersonalityProfileId
+import pro.liliya.core.personality.PersonalitySchemaMigrationCoordinator
+import pro.liliya.core.personality.PersonalitySchemaMigrationStepResult
 import pro.liliya.core.persistence.PersistentRecordStore
 import pro.liliya.core.persistence.PersistentStoreId
 import pro.liliya.core.persistence.PersistentStoreOpenResult
@@ -82,6 +90,47 @@ sealed interface AndroidEncryptedLearningMutationOpenResult {
     data class Incompatible(val reason: String) : AndroidEncryptedLearningMutationOpenResult
     data class EncryptionUnavailable(val reason: String) : AndroidEncryptedLearningMutationOpenResult
     data class Failed(val reason: String) : AndroidEncryptedLearningMutationOpenResult
+}
+
+sealed interface AndroidEncryptedConversationOpenResult {
+    data class Opened(
+        val store: EncryptedPersistentConversationStore
+    ) : AndroidEncryptedConversationOpenResult
+
+    data object Corrupt : AndroidEncryptedConversationOpenResult
+    data class Incompatible(val reason: String) : AndroidEncryptedConversationOpenResult
+    data class EncryptionUnavailable(
+        val category: CognitiveEncryptionFailureCategory
+    ) : AndroidEncryptedConversationOpenResult
+    data class Failed(val reason: String) : AndroidEncryptedConversationOpenResult
+}
+
+sealed interface AndroidEncryptedPersonalityOpenResult {
+    data class Opened(
+        val composition: EncryptedPersistentPersonalityComposition
+    ) : AndroidEncryptedPersonalityOpenResult
+
+    data object Corrupt : AndroidEncryptedPersonalityOpenResult
+    data class Incompatible(val reason: String) : AndroidEncryptedPersonalityOpenResult
+    data class EncryptionUnavailable(
+        val category: CognitiveEncryptionFailureCategory
+    ) : AndroidEncryptedPersonalityOpenResult
+    data class Failed(val reason: String) : AndroidEncryptedPersonalityOpenResult
+}
+
+sealed interface AndroidPersonalitySchemaMigrationStepResult {
+    data object UpToDate : AndroidPersonalitySchemaMigrationStepResult
+    data class MigratedOne(
+        val profileId: PersonalityProfileId,
+        val generation: PersonalityGeneration
+    ) : AndroidPersonalitySchemaMigrationStepResult
+    data object Corrupt : AndroidPersonalitySchemaMigrationStepResult
+    data class Incompatible(val reason: String) : AndroidPersonalitySchemaMigrationStepResult
+    data class EncryptionUnavailable(
+        val category: CognitiveEncryptionFailureCategory
+    ) : AndroidPersonalitySchemaMigrationStepResult
+    data class Rejected(val reason: String) : AndroidPersonalitySchemaMigrationStepResult
+    data class Failed(val reason: String) : AndroidPersonalitySchemaMigrationStepResult
 }
 
 sealed interface AndroidEncryptedRecordStoreOpenResult {
@@ -209,6 +258,114 @@ class AndroidCognitiveStorageAssembly private constructor(
                 AndroidEncryptedLearningMutationOpenResult.Incompatible(encrypted.reason)
             is AndroidEncryptedRecordStoreOpenResult.Failed ->
                 AndroidEncryptedLearningMutationOpenResult.Failed(encrypted.reason)
+        }
+
+    fun openEncryptedConversation(
+        storeId: PersistentStoreId,
+        activeDek: pro.liliya.core.encryption.CognitiveDekReference,
+        maxRetainedMessages: Int,
+        maxMessageChars: Int
+    ): AndroidEncryptedConversationOpenResult =
+        when (val encrypted = openEncryptedRecordStore(storeId)) {
+            is AndroidEncryptedRecordStoreOpenResult.Opened ->
+                when (
+                    val opened = EncryptedPersistentConversationStore.open(
+                        encryptedStore = encrypted.store,
+                        activeDek = activeDek,
+                        maxRetainedMessages = maxRetainedMessages,
+                        maxMessageChars = maxMessageChars
+                    )
+                ) {
+                    is PersistentConversationOpenResult.Opened ->
+                        AndroidEncryptedConversationOpenResult.Opened(opened.store)
+                    PersistentConversationOpenResult.Corrupt ->
+                        AndroidEncryptedConversationOpenResult.Corrupt
+                    is PersistentConversationOpenResult.Incompatible ->
+                        AndroidEncryptedConversationOpenResult.Incompatible(opened.reason)
+                    is PersistentConversationOpenResult.EncryptionUnavailable ->
+                        AndroidEncryptedConversationOpenResult.EncryptionUnavailable(opened.category)
+                }
+
+            AndroidEncryptedRecordStoreOpenResult.Corrupt ->
+                AndroidEncryptedConversationOpenResult.Corrupt
+            is AndroidEncryptedRecordStoreOpenResult.Incompatible ->
+                AndroidEncryptedConversationOpenResult.Incompatible(encrypted.reason)
+            is AndroidEncryptedRecordStoreOpenResult.Failed ->
+                AndroidEncryptedConversationOpenResult.Failed(encrypted.reason)
+        }
+
+    fun openEncryptedPersonality(
+        storeId: PersistentStoreId,
+        activeDek: pro.liliya.core.encryption.CognitiveDekReference
+    ): AndroidEncryptedPersonalityOpenResult =
+        when (val encrypted = openEncryptedRecordStore(storeId)) {
+            is AndroidEncryptedRecordStoreOpenResult.Opened ->
+                when (
+                    val opened = EncryptedPersistentPersonalityComposition.open(
+                        foundation = foundation,
+                        encryptedStore = encrypted.store,
+                        activeDek = activeDek
+                    )
+                ) {
+                    is EncryptedPersistentPersonalityOpenResult.Opened ->
+                        AndroidEncryptedPersonalityOpenResult.Opened(opened.composition)
+                    EncryptedPersistentPersonalityOpenResult.Corrupt ->
+                        AndroidEncryptedPersonalityOpenResult.Corrupt
+                    is EncryptedPersistentPersonalityOpenResult.Incompatible ->
+                        AndroidEncryptedPersonalityOpenResult.Incompatible(opened.reason)
+                    is EncryptedPersistentPersonalityOpenResult.EncryptionUnavailable ->
+                        AndroidEncryptedPersonalityOpenResult.EncryptionUnavailable(opened.category)
+                    is EncryptedPersistentPersonalityOpenResult.RestorationFailed ->
+                        AndroidEncryptedPersonalityOpenResult.Failed(opened.reason)
+                }
+
+            AndroidEncryptedRecordStoreOpenResult.Corrupt ->
+                AndroidEncryptedPersonalityOpenResult.Corrupt
+            is AndroidEncryptedRecordStoreOpenResult.Incompatible ->
+                AndroidEncryptedPersonalityOpenResult.Incompatible(encrypted.reason)
+            is AndroidEncryptedRecordStoreOpenResult.Failed ->
+                AndroidEncryptedPersonalityOpenResult.Failed(encrypted.reason)
+        }
+
+    fun migratePersonalitySchemaStep(
+        storeId: PersistentStoreId,
+        activeDek: pro.liliya.core.encryption.CognitiveDekReference
+    ): AndroidPersonalitySchemaMigrationStepResult =
+        when (val encrypted = openEncryptedRecordStore(storeId)) {
+            is AndroidEncryptedRecordStoreOpenResult.Opened ->
+                when (
+                    val migrated = PersonalitySchemaMigrationCoordinator(
+                        encryptedStore = encrypted.store,
+                        activeDek = activeDek
+                    ).step()
+                ) {
+                    PersonalitySchemaMigrationStepResult.UpToDate ->
+                        AndroidPersonalitySchemaMigrationStepResult.UpToDate
+                    is PersonalitySchemaMigrationStepResult.MigratedOne ->
+                        AndroidPersonalitySchemaMigrationStepResult.MigratedOne(
+                            profileId = migrated.profileId,
+                            generation = migrated.generation
+                        )
+                    PersonalitySchemaMigrationStepResult.Corrupt ->
+                        AndroidPersonalitySchemaMigrationStepResult.Corrupt
+                    is PersonalitySchemaMigrationStepResult.Incompatible ->
+                        AndroidPersonalitySchemaMigrationStepResult.Incompatible(migrated.reason)
+                    is PersonalitySchemaMigrationStepResult.EncryptionUnavailable ->
+                        AndroidPersonalitySchemaMigrationStepResult.EncryptionUnavailable(
+                            migrated.category
+                        )
+                    is PersonalitySchemaMigrationStepResult.Rejected ->
+                        AndroidPersonalitySchemaMigrationStepResult.Rejected(migrated.reason)
+                    is PersonalitySchemaMigrationStepResult.Failed ->
+                        AndroidPersonalitySchemaMigrationStepResult.Failed(migrated.reason)
+                }
+
+            AndroidEncryptedRecordStoreOpenResult.Corrupt ->
+                AndroidPersonalitySchemaMigrationStepResult.Corrupt
+            is AndroidEncryptedRecordStoreOpenResult.Incompatible ->
+                AndroidPersonalitySchemaMigrationStepResult.Incompatible(encrypted.reason)
+            is AndroidEncryptedRecordStoreOpenResult.Failed ->
+                AndroidPersonalitySchemaMigrationStepResult.Failed(encrypted.reason)
         }
 
     fun openEncryptedRecordStore(

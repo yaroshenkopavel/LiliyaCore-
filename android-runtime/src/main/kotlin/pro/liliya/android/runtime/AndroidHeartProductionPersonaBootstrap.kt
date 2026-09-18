@@ -13,8 +13,12 @@ import pro.liliya.core.identity.SelfName
 import pro.liliya.core.identity.SelfOrigin
 import pro.liliya.core.identity.SelfSourceId
 import pro.liliya.core.identity.SelfSourceReference
+import pro.liliya.core.personality.EncryptedPersistentPersonalityComposition
+import pro.liliya.core.personality.PersistentPersonalityInstallResult
+import pro.liliya.core.personality.PersistentPersonalityMutationResult
 import pro.liliya.core.personality.PersonalityAttribute
 import pro.liliya.core.personality.PersonalityComposition
+import pro.liliya.core.personality.PersonalityGeneration
 import pro.liliya.core.personality.PersonalityInstallResult
 import pro.liliya.core.personality.PersonalityProfile
 import pro.liliya.core.personality.PersonalityProfileId
@@ -102,10 +106,11 @@ sealed interface AndroidHeartProductionPersonaCreateResult {
 }
 
 /**
- * Exact runtime ownership of one freshly bootstrapped product persona.
+ * Exact runtime ownership of one product persona.
  *
- * This is not durable generation identity and not Authority. Cognitive Runtime receives only
- * read-only snapshot ports over the exact owned Self/Personality compositions.
+ * Self remains a fresh lifecycle identity. Personality may be freshly installed or reopened from
+ * authenticated durable storage, but remains descriptive state only and never Authority.
+ * Cognitive Runtime receives only read-only snapshot ports over the exact owned Self/Personality.
  */
 internal interface AndroidHeartProductionPersonaSelfPort {
     fun install(identity: SelfIdentity): SelfInstallResult
@@ -166,11 +171,58 @@ object AndroidHeartProductionPersonaBootstrap {
         )
     }
 
+    fun createDurable(
+        foundation: FoundationComposition,
+        definition: AndroidHeartProductionPersonaDefinition,
+        persistentPersonality: EncryptedPersistentPersonalityComposition,
+        limits: AndroidHeartProductionPersonaLimits = AndroidHeartProductionPersonaLimits()
+    ): AndroidHeartProductionPersonaCreateResult {
+        val selfComposition = SelfComposition(foundation)
+        return createInternal(
+            definition = definition,
+            limits = limits,
+            self = object : AndroidHeartProductionPersonaSelfPort {
+                override fun install(identity: SelfIdentity): SelfInstallResult =
+                    selfComposition.install(identity)
+                override fun inspect(): SelfIdentitySnapshot? = selfComposition.inspect()
+            },
+            personality = object : AndroidHeartProductionPersonaPersonalityPort {
+                override fun install(profile: PersonalityProfile): PersonalityInstallResult =
+                    when (val installed = persistentPersonality.install(profile)) {
+                        is PersistentPersonalityInstallResult.Installed ->
+                            PersonalityInstallResult.Installed(
+                                object : pro.liliya.core.personality.PersonalityOwnership {
+                                    override val profile: PersonalityProfile =
+                                        installed.ownership.profile
+                                    override val generation: PersonalityGeneration =
+                                        installed.ownership.generation
+                                    override fun remove(): Boolean =
+                                        installed.ownership.remove() ==
+                                            PersistentPersonalityMutationResult.Committed
+                                }
+                            )
+                        is PersistentPersonalityInstallResult.Rejected ->
+                            PersonalityInstallResult.Rejected(installed.reason)
+                        is PersistentPersonalityInstallResult.Failed ->
+                            PersonalityInstallResult.Rejected(installed.reason)
+                    }
+
+                override fun inspect(id: PersonalityProfileId): PersonalityProfileSnapshot? =
+                    persistentPersonality.inspect(id)
+
+                override fun snapshotEntries(): List<PersonalityProfileSnapshot> =
+                    persistentPersonality.snapshotEntries()
+            },
+            reuseExistingPersonality = true
+        )
+    }
+
     internal fun createInternal(
         definition: AndroidHeartProductionPersonaDefinition,
         limits: AndroidHeartProductionPersonaLimits = AndroidHeartProductionPersonaLimits(),
         self: AndroidHeartProductionPersonaSelfPort,
-        personality: AndroidHeartProductionPersonaPersonalityPort
+        personality: AndroidHeartProductionPersonaPersonalityPort,
+        reuseExistingPersonality: Boolean = false
     ): AndroidHeartProductionPersonaCreateResult {
         if (!definitionWithinLimits(definition, limits)) {
             return rejected(AndroidHeartProductionPersonaCreateFailure.DEFINITION_REJECTED)
@@ -227,31 +279,48 @@ object AndroidHeartProductionPersonaBootstrap {
             return rejected(AndroidHeartProductionPersonaCreateFailure.DEFINITION_REJECTED)
         }
 
-        val installedPersonality = when (val result = personality.install(expectedProfile)) {
-            is PersonalityInstallResult.Installed -> {
-                val snapshot = personality.inspect(expectedProfile.id)
-                    ?: return rejected(
-                        AndroidHeartProductionPersonaCreateFailure.PERSONALITY_SNAPSHOT_MISMATCH
-                    )
-                if (
-                    snapshot.profile != result.ownership.profile ||
-                    snapshot.generation != result.ownership.generation ||
-                    snapshot.profile.target != PersonalityTarget.Self(
-                        installedSelf.identity.id,
-                        installedSelf.generation
-                    )
-                ) {
-                    return rejected(
-                        AndroidHeartProductionPersonaCreateFailure.PERSONALITY_SNAPSHOT_MISMATCH
-                    )
-                }
-                snapshot
-            }
-
-            is PersonalityInstallResult.Rejected ->
-                return rejected(
-                    AndroidHeartProductionPersonaCreateFailure.PERSONALITY_INSTALL_REJECTED
+        val restoredPersonality =
+            if (reuseExistingPersonality) personality.inspect(expectedProfile.id) else null
+        val installedPersonality = if (restoredPersonality != null) {
+            if (
+                restoredPersonality.profile != expectedProfile ||
+                restoredPersonality.profile.target != PersonalityTarget.Self(
+                    installedSelf.identity.id,
+                    installedSelf.generation
                 )
+            ) {
+                return rejected(
+                    AndroidHeartProductionPersonaCreateFailure.PERSONALITY_SNAPSHOT_MISMATCH
+                )
+            }
+            restoredPersonality
+        } else {
+            when (val result = personality.install(expectedProfile)) {
+                is PersonalityInstallResult.Installed -> {
+                    val snapshot = personality.inspect(expectedProfile.id)
+                        ?: return rejected(
+                            AndroidHeartProductionPersonaCreateFailure.PERSONALITY_SNAPSHOT_MISMATCH
+                        )
+                    if (
+                        snapshot.profile != result.ownership.profile ||
+                        snapshot.generation != result.ownership.generation ||
+                        snapshot.profile.target != PersonalityTarget.Self(
+                            installedSelf.identity.id,
+                            installedSelf.generation
+                        )
+                    ) {
+                        return rejected(
+                            AndroidHeartProductionPersonaCreateFailure.PERSONALITY_SNAPSHOT_MISMATCH
+                        )
+                    }
+                    snapshot
+                }
+
+                is PersonalityInstallResult.Rejected ->
+                    return rejected(
+                        AndroidHeartProductionPersonaCreateFailure.PERSONALITY_INSTALL_REJECTED
+                    )
+            }
         }
 
         return AndroidHeartProductionPersonaCreateResult.Ready(

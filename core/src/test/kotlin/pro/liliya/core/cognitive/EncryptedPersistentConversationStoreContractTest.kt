@@ -287,4 +287,113 @@ class EncryptedPersistentConversationStoreContractTest {
         }
         return false
     }
+
+    @Test
+    fun completed_pair_appends_atomically_and_reopens_exactly() {
+        val backend = InMemoryPersistentRecordBackend()
+        val store = openConversation(backend, maxRetained = 8)
+        val session = CognitiveConversationSessionId("atomic-pair")
+
+        val result = assertIs<PersistentConversationAppendPairResult.Appended>(
+            store.appendPair(
+                sessionId = session,
+                user = msg(1, CognitiveConversationRole.USER, "hello"),
+                assistant = msg(2, CognitiveConversationRole.ASSISTANT, "reply"),
+                persistedAt = at(1)
+            )
+        )
+
+        assertEquals(listOf(1L, 2L), result.snapshot.messages.map { it.sequence.value })
+
+        val reopened = openConversation(backend, maxRetained = 8).reopen(session)
+        requireNotNull(reopened)
+        assertEquals(
+            listOf("hello", "reply"),
+            reopened.messages.map { it.content }
+        )
+    }
+
+    @Test
+    fun exact_completed_pair_retry_is_idempotent_and_conflict_is_rejected() {
+        val backend = InMemoryPersistentRecordBackend()
+        val store = openConversation(backend, maxRetained = 8)
+        val session = CognitiveConversationSessionId("atomic-pair-idempotent")
+        val user = msg(1, CognitiveConversationRole.USER, "hello")
+        val assistant = msg(2, CognitiveConversationRole.ASSISTANT, "reply")
+
+        assertIs<PersistentConversationAppendPairResult.Appended>(
+            store.appendPair(session, user, assistant, at(1))
+        )
+        assertIs<PersistentConversationAppendPairResult.AlreadyPresent>(
+            store.appendPair(session, user, assistant, at(2))
+        )
+        assertIs<PersistentConversationAppendPairResult.Rejected>(
+            store.appendPair(
+                session,
+                user,
+                msg(2, CognitiveConversationRole.ASSISTANT, "different"),
+                at(3)
+            )
+        )
+
+        val reopened = requireNotNull(openConversation(backend, maxRetained = 8).reopen(session))
+        assertEquals(listOf("hello", "reply"), reopened.messages.map { it.content })
+    }
+
+    @Test
+    fun completed_pair_requires_user_then_assistant_adjacent_sequence() {
+        val backend = InMemoryPersistentRecordBackend()
+        val store = openConversation(backend, maxRetained = 8)
+        val session = CognitiveConversationSessionId("atomic-pair-validation")
+
+        assertIs<PersistentConversationAppendPairResult.Rejected>(
+            store.appendPair(
+                session,
+                msg(1, CognitiveConversationRole.ASSISTANT, "wrong role"),
+                msg(2, CognitiveConversationRole.USER, "wrong role"),
+                at(1)
+            )
+        )
+        assertIs<PersistentConversationAppendPairResult.Rejected>(
+            store.appendPair(
+                session,
+                msg(1, CognitiveConversationRole.USER, "user"),
+                msg(3, CognitiveConversationRole.ASSISTANT, "gap"),
+                at(2)
+            )
+        )
+        assertNull(store.reopen(session))
+    }
+
+
+    @Test
+    fun atomic_pair_retention_never_leaves_partial_pair_when_bound_is_odd() {
+        val backend = InMemoryPersistentRecordBackend()
+        val store = openConversation(backend, maxRetained = 3)
+        val session = CognitiveConversationSessionId("odd-pair-bound")
+
+        assertIs<PersistentConversationAppendPairResult.Appended>(
+            store.appendPair(
+                session,
+                msg(1, CognitiveConversationRole.USER, "u1"),
+                msg(2, CognitiveConversationRole.ASSISTANT, "a1"),
+                at(1)
+            )
+        )
+        val second = assertIs<PersistentConversationAppendPairResult.Appended>(
+            store.appendPair(
+                session,
+                msg(3, CognitiveConversationRole.USER, "u2"),
+                msg(4, CognitiveConversationRole.ASSISTANT, "a2"),
+                at(2)
+            )
+        )
+
+        assertEquals(listOf(3L, 4L), second.snapshot.messages.map { it.sequence.value })
+        assertEquals(
+            listOf(CognitiveConversationRole.USER, CognitiveConversationRole.ASSISTANT),
+            second.snapshot.messages.map { it.role }
+        )
+    }
+
 }
