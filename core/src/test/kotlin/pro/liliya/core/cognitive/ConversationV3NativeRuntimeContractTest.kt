@@ -25,6 +25,7 @@ import pro.liliya.core.encryption.CognitiveEncryptionResult
 import pro.liliya.core.encryption.CognitiveEnvelopeVersion
 import pro.liliya.core.encryption.CognitiveNonce
 import pro.liliya.core.encryption.CognitiveNonceSource
+import pro.liliya.core.encryption.CognitivePersistentRecordDraft
 import pro.liliya.core.encryption.CognitivePlaintext
 import pro.liliya.core.encryption.EncryptedPersistentRecordStore
 import pro.liliya.core.foundation.CorrelationIdGenerator
@@ -49,6 +50,8 @@ import pro.liliya.core.persistence.PersistentBackendState
 import pro.liliya.core.persistence.PersistentEntityId
 import pro.liliya.core.persistence.PersistentGeneration
 import pro.liliya.core.persistence.PersistentRecordSnapshot
+import pro.liliya.core.persistence.PersistentSchemaId
+import pro.liliya.core.persistence.PersistentSchemaVersion
 import pro.liliya.core.persistence.PersistentRecordStore
 import pro.liliya.core.persistence.PersistentStoreId
 import pro.liliya.core.persistence.PersistentStoreOpenResult
@@ -108,6 +111,35 @@ class ConversationV3NativeRuntimeContractTest {
     }
 
     @Test
+    fun existing_indexed_store_without_v3_marker_stays_on_legacy_fallback() {
+        val backend = CountingIndexedBackend()
+        val encrypted = encryptedStore(backend)
+        assertIs<CognitiveEncryptionResult.Success<*>>(
+            encrypted.install(
+                CognitivePersistentRecordDraft(
+                    id = PersistentEntityId("pre-v3-record"),
+                    schemaId = PersistentSchemaId("pre-v3-schema"),
+                    schemaVersion = PersistentSchemaVersion(1),
+                    plaintext = CognitivePlaintext("legacy".encodeToByteArray()),
+                    createdAt = at(1),
+                    dek = dekRef
+                )
+            )
+        )
+        assertFalse(backend.entries.containsKey(ConversationV3IndexCodec.MARKER_ID))
+
+        val result = EncryptedPersistentConversationStore.open(
+            encryptedStore = encryptedStore(backend),
+            activeDek = dekRef,
+            maxRetainedMessages = 4,
+            maxMessageChars = 1024
+        )
+        assertIs<PersistentConversationOpenResult.Incompatible>(result)
+        assertFalse(backend.entries.containsKey(ConversationV3IndexCodec.MARKER_ID))
+        assertTrue(backend.pageLoadCalls > 0)
+    }
+
+    @Test
     fun native_v3_keeps_complete_history_while_working_tail_is_bounded() {
         val backend = CountingIndexedBackend()
         val session = CognitiveConversationSessionId("long-v3-session")
@@ -148,17 +180,7 @@ class ConversationV3NativeRuntimeContractTest {
         backend: CountingIndexedBackend,
         maxRetained: Int = 4
     ): EncryptedPersistentConversationStore {
-        val raw = assertIs<PersistentStoreOpenResult.Opened>(
-            PersistentRecordStore.open(foundation(), storeId, backend)
-        ).store
-        val encrypted = EncryptedPersistentRecordStore(
-            store = raw,
-            profile = profile,
-            envelopeVersion = CognitiveEnvelopeVersion(1),
-            nonceSource = DeterministicNonceSource(),
-            aead = DeterministicAeadProvider(),
-            dekResolver = resolver()
-        )
+        val encrypted = encryptedStore(backend)
         return assertIs<PersistentConversationOpenResult.Opened>(
             EncryptedPersistentConversationStore.open(
                 encryptedStore = encrypted,
@@ -167,6 +189,22 @@ class ConversationV3NativeRuntimeContractTest {
                 maxMessageChars = 1024
             )
         ).store
+    }
+
+    private fun encryptedStore(
+        backend: CountingIndexedBackend
+    ): EncryptedPersistentRecordStore {
+        val raw = assertIs<PersistentStoreOpenResult.Opened>(
+            PersistentRecordStore.open(foundation(), storeId, backend)
+        ).store
+        return EncryptedPersistentRecordStore(
+            store = raw,
+            profile = profile,
+            envelopeVersion = CognitiveEnvelopeVersion(1),
+            nonceSource = DeterministicNonceSource(),
+            aead = DeterministicAeadProvider(),
+            dekResolver = resolver()
+        )
     }
 
     private fun resolver() = object : CognitiveDekMaterialResolver {
