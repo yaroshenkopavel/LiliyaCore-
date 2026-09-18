@@ -60,6 +60,7 @@ class EncryptedPersistentConversationStore private constructor(
     private val activeDek: CognitiveDekReference,
     private val maxRetainedMessages: Int,
     private val maxMessageChars: Int,
+    private val maxRetainedSessions: Int,
     restored: Map<CognitiveConversationSessionId, Entry>
 ) {
     private val entries = LinkedHashMap(restored)
@@ -67,6 +68,7 @@ class EncryptedPersistentConversationStore private constructor(
     init {
         require(maxRetainedMessages > 0) { "maximum retained conversation messages must be positive" }
         require(maxMessageChars > 0) { "maximum conversation message chars must be positive" }
+        require(maxRetainedSessions > 0) { "maximum retained conversation sessions must be positive" }
     }
 
     @Synchronized
@@ -80,6 +82,11 @@ class EncryptedPersistentConversationStore private constructor(
         }
 
         val current = entries[sessionId]
+        if (current == null && entries.size >= maxRetainedSessions) {
+            return PersistentConversationAppendResult.Rejected(
+                "durable conversation session capacity reached"
+            )
+        }
         if (current == null && message.sequence.value != 1L) {
             return PersistentConversationAppendResult.Rejected("new conversation must begin at sequence 1")
         }
@@ -166,6 +173,11 @@ class EncryptedPersistentConversationStore private constructor(
         }
 
         val current = entries[sessionId]
+        if (current == null && entries.size >= maxRetainedSessions) {
+            return PersistentConversationAppendPairResult.Rejected(
+                "durable conversation session capacity reached"
+            )
+        }
         if (current == null && user.sequence.value != 1L) {
             return PersistentConversationAppendPairResult.Rejected(
                 "new conversation pair must begin at sequence 1"
@@ -229,6 +241,14 @@ class EncryptedPersistentConversationStore private constructor(
     @Synchronized
     fun sessionCount(): Int = entries.size
 
+    /**
+     * Returns whether an existing session can be reopened or a new session may be created without
+     * exceeding the explicit durable-session bound. This check never removes retained history.
+     */
+    @Synchronized
+    fun canOpenSession(sessionId: CognitiveConversationSessionId): Boolean =
+        entries.containsKey(sessionId) || entries.size < maxRetainedSessions
+
     private fun persistReplacement(
         current: Entry?,
         replacement: CognitiveConversationContextSnapshot,
@@ -270,10 +290,16 @@ class EncryptedPersistentConversationStore private constructor(
             encryptedStore: EncryptedPersistentRecordStore,
             activeDek: CognitiveDekReference,
             maxRetainedMessages: Int,
-            maxMessageChars: Int
+            maxMessageChars: Int,
+            maxRetainedSessions: Int = DEFAULT_MAX_RETAINED_SESSIONS
         ): PersistentConversationOpenResult {
-            if (maxRetainedMessages <= 0 || maxMessageChars <= 0) {
+            if (maxRetainedMessages <= 0 || maxMessageChars <= 0 || maxRetainedSessions <= 0) {
                 return PersistentConversationOpenResult.Incompatible("conversation persistence bounds must be positive")
+            }
+            if (encryptedStore.snapshotEntryCount() > maxRetainedSessions) {
+                return PersistentConversationOpenResult.Incompatible(
+                    "durable conversation session capacity exceeded"
+                )
             }
             val decrypted = when (val result = encryptedStore.decryptedSnapshotEntries()) {
                 is CognitiveEncryptionResult.Success -> result.value
@@ -307,10 +333,13 @@ class EncryptedPersistentConversationStore private constructor(
                     activeDek,
                     maxRetainedMessages,
                     maxMessageChars,
+                    maxRetainedSessions,
                     restored
                 )
             )
         }
+
+        const val DEFAULT_MAX_RETAINED_SESSIONS: Int = 64
     }
 }
 
