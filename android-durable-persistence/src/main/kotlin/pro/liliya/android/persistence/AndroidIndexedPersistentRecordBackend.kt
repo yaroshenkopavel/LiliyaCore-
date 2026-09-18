@@ -115,6 +115,8 @@ class AndroidIndexedPersistentRecordBackend private constructor(
                         )
                     )
                 }
+            } catch (_: IndexedDatabaseIncompatibleException) {
+                PersistentBackendLoadResult.Incompatible("unsupported indexed durable persistence format")
             } catch (e: SQLiteException) {
                 PersistentBackendLoadResult.Corrupt
             } catch (e: IOException) {
@@ -241,6 +243,8 @@ class AndroidIndexedPersistentRecordBackend private constructor(
                     db.endTransaction()
                 }
             }
+        } catch (e: IndexedDatabaseIncompatibleException) {
+            PersistentBackendCommitResult.Failed("indexed durable persistence format is incompatible", e)
         } catch (e: SQLiteException) {
             PersistentBackendCommitResult.Failed("indexed durable persistence commit failed", e)
         } catch (e: RuntimeException) {
@@ -250,6 +254,11 @@ class AndroidIndexedPersistentRecordBackend private constructor(
 
     private fun openDatabase(): SQLiteDatabase {
         val database = SQLiteDatabase.openOrCreateDatabase(File(root, DATABASE_FILE), null)
+        val existingVersion = database.version
+        if (existingVersion != 0 && existingVersion != DATABASE_VERSION) {
+            database.close()
+            throw IndexedDatabaseIncompatibleException(existingVersion)
+        }
         database.execSQL(
             "CREATE TABLE IF NOT EXISTS stores(" +
                 "store_id TEXT PRIMARY KEY NOT NULL," +
@@ -276,6 +285,7 @@ class AndroidIndexedPersistentRecordBackend private constructor(
             "CREATE INDEX IF NOT EXISTS records_store_created " +
                 "ON records(store_id,created_epoch,created_nano,entity_id)"
         )
+        if (existingVersion == 0) database.version = DATABASE_VERSION
         return database
     }
 
@@ -448,6 +458,9 @@ class AndroidIndexedPersistentRecordBackend private constructor(
             .digest(value.toByteArray(StandardCharsets.UTF_8))
             .joinToString("") { "%02x".format(it) }
 
+    private class IndexedDatabaseIncompatibleException(version: Int) :
+        IllegalStateException("unsupported indexed durable persistence version: " + version)
+
     private data class Header(val revision: Long, val highWatermark: Long, val entryCount: Int)
     private data class ExistingRow(val generation: Long, val hash: String)
 
@@ -462,6 +475,7 @@ class AndroidIndexedPersistentRecordBackend private constructor(
     companion object {
         private const val DEFAULT_DIRECTORY = "liliya-durable-persistence-v1"
         private const val DATABASE_FILE = "liliya-indexed-v2.sqlite3"
+        private const val DATABASE_VERSION = 2
         private const val LEGACY_FILE_SUFFIX = ".lpr"
         private const val MAX_IDENTIFIER_BYTES = 1_024
         private const val MAX_RECORD_PAYLOAD_BYTES = 1 * 1024 * 1024
