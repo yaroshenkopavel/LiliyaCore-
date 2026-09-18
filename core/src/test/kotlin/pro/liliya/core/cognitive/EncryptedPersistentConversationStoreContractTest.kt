@@ -389,6 +389,97 @@ class EncryptedPersistentConversationStoreContractTest {
     }
 
     @Test
+    fun linked_chunk_v3_round_trips_predecessor_and_contiguous_messages() {
+        val session = CognitiveConversationSessionId("codec-v3-linked")
+        val previous = ConversationPersistentRecordCodec.chunkEntityId(session, 1L)
+        val snapshot = CognitiveConversationContextSnapshot(
+            session,
+            listOf(
+                msg(3, CognitiveConversationRole.USER, "u2"),
+                msg(4, CognitiveConversationRole.ASSISTANT, "a2")
+            )
+        )
+        val encoded = ConversationPersistentRecordCodec.encodeLinkedChunk(
+            snapshot = snapshot,
+            persistedAt = at(3),
+            previousChunkId = previous
+        )
+
+        val decoded = assertIs<ConversationLinkedChunkDecodeResult.Decoded>(
+            ConversationPersistentRecordCodec.decodeLinkedChunk(encoded)
+        ).chunk
+
+        assertEquals(session, decoded.snapshot.sessionId)
+        assertEquals(listOf(3L, 4L), decoded.snapshot.messages.map { it.sequence.value })
+        assertEquals(previous, decoded.previousChunkId)
+        assertEquals(
+            ConversationPersistentRecordCodec.chunkEntityId(session, 3L),
+            encoded.id
+        )
+        assertFalse(encoded.id.value.contains(session.value))
+    }
+
+    @Test
+    fun conversation_head_v3_round_trips_latest_chunk_without_plaintext_session_id() {
+        val session = CognitiveConversationSessionId("codec-v3-head")
+        val latest = ConversationPersistentRecordCodec.chunkEntityId(session, 9L)
+        val encoded = ConversationPersistentRecordCodec.encodeHead(
+            sessionId = session,
+            lastSequence = 10L,
+            latestChunkId = latest,
+            persistedAt = at(10)
+        )
+
+        val decoded = assertIs<ConversationHeadDecodeResult.Decoded>(
+            ConversationPersistentRecordCodec.decodeHead(encoded)
+        ).head
+
+        assertEquals(session, decoded.sessionId)
+        assertEquals(10L, decoded.lastSequence)
+        assertEquals(latest, decoded.latestChunkId)
+        assertEquals(
+            ConversationPersistentRecordCodec.headEntityId(session),
+            encoded.id
+        )
+        assertFalse(encoded.id.value.contains(session.value))
+    }
+
+    @Test
+    fun linked_chunk_and_head_v3_fail_closed_on_id_or_payload_mismatch() {
+        val session = CognitiveConversationSessionId("codec-v3-corrupt")
+        val linked = ConversationPersistentRecordCodec.encodeLinkedChunk(
+            CognitiveConversationContextSnapshot(
+                session,
+                listOf(msg(1, CognitiveConversationRole.USER, "hello"))
+            ),
+            at(1),
+            previousChunkId = null
+        )
+        assertEquals(
+            ConversationLinkedChunkDecodeResult.Corrupt,
+            ConversationPersistentRecordCodec.decodeLinkedChunk(
+                linked.copy(id = PersistentEntityId("wrong-linked-id"))
+            )
+        )
+
+        val head = ConversationPersistentRecordCodec.encodeHead(
+            sessionId = session,
+            lastSequence = 1L,
+            latestChunkId = linked.id,
+            persistedAt = at(2)
+        )
+        val bytes = head.payload.copyBytes()
+        bytes[bytes.lastIndex] = (bytes.last().toInt() xor 0x01).toByte()
+        val tampered = head.copy(payload = PersistentPayload(bytes))
+        val decoded = ConversationPersistentRecordCodec.decodeHead(tampered)
+        assertTrue(
+            decoded == ConversationHeadDecodeResult.Corrupt ||
+                decoded is ConversationHeadDecodeResult.Decoded &&
+                decoded.head.latestChunkId != linked.id
+        )
+    }
+
+    @Test
     fun completed_pair_appends_atomically_and_reopens_exactly() {
         val backend = InMemoryPersistentRecordBackend()
         val store = openConversation(backend, maxRetained = 8)
