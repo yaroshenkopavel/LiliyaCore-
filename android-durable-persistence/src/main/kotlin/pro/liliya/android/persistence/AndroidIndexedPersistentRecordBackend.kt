@@ -97,6 +97,9 @@ class AndroidIndexedPersistentRecordBackend private constructor(
                             entries[entityId] = backendEntry
                         }
                     }
+                    if (entries.size != header.entryCount) {
+                        return@synchronized PersistentBackendLoadResult.Corrupt
+                    }
                     if (entries.values.any { it.generation.value > header.highWatermark }) {
                         return@synchronized PersistentBackendLoadResult.Corrupt
                     }
@@ -223,7 +226,8 @@ class AndroidIndexedPersistentRecordBackend private constructor(
                         put("store_id", storeId.value)
                         put("revision", nextRevision)
                         put("high_watermark", state.highWatermark)
-                        put("header_hash", headerHash(storeId, nextRevision, state.highWatermark))
+                        put("entry_count", state.entries.size)
+                        put("header_hash", headerHash(storeId, nextRevision, state.highWatermark, state.entries.size))
                     }
                     db.insertWithOnConflict(
                         "stores",
@@ -251,6 +255,7 @@ class AndroidIndexedPersistentRecordBackend private constructor(
                 "store_id TEXT PRIMARY KEY NOT NULL," +
                 "revision INTEGER NOT NULL," +
                 "high_watermark INTEGER NOT NULL," +
+                "entry_count INTEGER NOT NULL," +
                 "header_hash TEXT NOT NULL)"
         )
         database.execSQL(
@@ -342,27 +347,29 @@ class AndroidIndexedPersistentRecordBackend private constructor(
             put("store_id", state.storeId.value)
             put("revision", revision)
             put("high_watermark", state.highWatermark)
-            put("header_hash", headerHash(state.storeId, revision, state.highWatermark))
+            put("entry_count", state.entries.size)
+            put("header_hash", headerHash(state.storeId, revision, state.highWatermark, state.entries.size))
         }
         db.insertOrThrow("stores", null, values)
     }
 
     private fun readHeader(db: SQLiteDatabase, storeId: PersistentStoreId): Header? =
         db.rawQuery(
-            "SELECT revision,high_watermark,header_hash FROM stores WHERE store_id=?",
+            "SELECT revision,high_watermark,entry_count,header_hash FROM stores WHERE store_id=?",
             arrayOf(storeId.value)
         ).use { cursor ->
             if (!cursor.moveToFirst()) null
             else {
                 val revision = cursor.getLong(0)
                 val highWatermark = cursor.getLong(1)
-                val expectedHash = cursor.getString(2)
-                if (revision <= 0L || highWatermark < 0L ||
-                    expectedHash != headerHash(storeId, revision, highWatermark)
+                val entryCount = cursor.getInt(2)
+                val expectedHash = cursor.getString(3)
+                if (revision <= 0L || highWatermark < 0L || entryCount < 0 ||
+                    expectedHash != headerHash(storeId, revision, highWatermark, entryCount)
                 ) {
                     throw SQLiteException("indexed durable persistence header integrity failed")
                 }
-                Header(revision, highWatermark)
+                Header(revision, highWatermark, entryCount)
             }
         }
 
@@ -391,12 +398,14 @@ class AndroidIndexedPersistentRecordBackend private constructor(
     private fun headerHash(
         storeId: PersistentStoreId,
         revision: Long,
-        highWatermark: Long
+        highWatermark: Long,
+        entryCount: Int
     ): String {
         val digest = MessageDigest.getInstance("SHA-256")
         updateString(digest, storeId.value)
         updateLong(digest, revision)
         updateLong(digest, highWatermark)
+        updateInt(digest, entryCount)
         return digest.digest().joinToString("") { "%02x".format(it) }
     }
 
@@ -439,7 +448,7 @@ class AndroidIndexedPersistentRecordBackend private constructor(
             .digest(value.toByteArray(StandardCharsets.UTF_8))
             .joinToString("") { "%02x".format(it) }
 
-    private data class Header(val revision: Long, val highWatermark: Long)
+    private data class Header(val revision: Long, val highWatermark: Long, val entryCount: Int)
     private data class ExistingRow(val generation: Long, val hash: String)
 
     private sealed interface LegacyImportResult {
