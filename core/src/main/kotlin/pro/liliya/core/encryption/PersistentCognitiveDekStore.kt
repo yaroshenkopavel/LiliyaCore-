@@ -305,9 +305,10 @@ class PersistentCognitiveDekStore private constructor(
             backend: PersistentRecordBackend,
             protector: CognitiveKeyProtector,
             materialSource: CognitiveDekMaterialSource
-        ): PersistentCognitiveDekOpenResult = when (
-            val opened = PersistentRecordStore.open(foundation, STORE_ID, backend)
-        ) {
+        ): PersistentCognitiveDekOpenResult {
+            return when (
+                val opened = PersistentRecordStore.open(foundation, STORE_ID, backend)
+            ) {
             is PersistentStoreOpenResult.Opened -> {
                 val candidate = PersistentCognitiveDekStore(
                     persistentStore = opened.store,
@@ -347,6 +348,7 @@ class PersistentCognitiveDekStore private constructor(
                 PersistentCognitiveDekOpenResult.Incompatible(opened.reason)
             is PersistentStoreOpenResult.Failed ->
                 PersistentCognitiveDekOpenResult.Failed(opened.reason, opened.throwable)
+            }
         }
 
         private fun entityIdFor(id: CognitiveDekId): PersistentEntityId {
