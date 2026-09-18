@@ -296,6 +296,8 @@ class PersistentRecordStore private constructor(
     internal fun entryCount(): Long =
         indexedEntryCount ?: state.entries.size.toLong()
 
+    internal fun supportsIndexedLazyMode(): Boolean = indexedEntryCount != null
+
     /**
      * Atomically replaces one exact live record with another record in a single backend revision,
      * preserving the source generation and store high-watermark. This is intentionally internal:
