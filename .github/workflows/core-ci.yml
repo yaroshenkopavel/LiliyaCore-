@@ -10,8 +10,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
-  issues: write
+  contents: write
 
 env:
   CANONICAL_SHA: 25d9b6a8e118154bedafa5772b6fc0bd89469f2f
@@ -24,18 +23,21 @@ jobs:
     timeout-minutes: 90
 
     steps:
-      - name: Publish bridge run id
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          gh api --method POST "repos/${GITHUB_REPOSITORY}/issues/327/comments" -f body="LOCAL_ENV_BRIDGE_RUN_ID=${GITHUB_RUN_ID}"
-
       - name: Checkout full history
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Publish bridge run id to technical branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$GITHUB_RUN_ID" > .local-env-bridge-run-id
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .local-env-bridge-run-id
+          git commit -m "infra: record local environment bridge run $GITHUB_RUN_ID"
+          git push origin "HEAD:foundation/local-env-restore-bridge-20260918"
 
       - name: Re-anchor to exact canonical main
         shell: bash
