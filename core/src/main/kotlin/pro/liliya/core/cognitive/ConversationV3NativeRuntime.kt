@@ -337,12 +337,20 @@ internal class ConversationV3NativeRuntime private constructor(
     }
 
     @Synchronized
-    fun reopen(
+    fun reopenResult(
         sessionId: CognitiveConversationSessionId
-    ): CognitiveConversationContextSnapshot? =
+    ): PersistentConversationReopenResult =
         when (val loaded = loadSession(sessionId)) {
-            is ConversationV3SessionLoad.Found -> loaded.entry.snapshot
-            else -> null
+            is ConversationV3SessionLoad.Found ->
+                PersistentConversationReopenResult.Found(loaded.entry.snapshot)
+            ConversationV3SessionLoad.Absent ->
+                PersistentConversationReopenResult.Absent
+            ConversationV3SessionLoad.Corrupt ->
+                PersistentConversationReopenResult.Corrupt
+            is ConversationV3SessionLoad.Incompatible ->
+                PersistentConversationReopenResult.Incompatible(loaded.reason)
+            is ConversationV3SessionLoad.EncryptionUnavailable ->
+                PersistentConversationReopenResult.EncryptionUnavailable(loaded.category)
         }
 
     /**
