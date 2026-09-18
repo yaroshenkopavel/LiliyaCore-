@@ -187,119 +187,18 @@ jobs:
             ${{ runner.temp }}/export/SHA256SUMS
             ${{ runner.temp }}/export/PARTS_SHA256SUMS
 
-      - name: Upload Gradle cache part 00
-        if: ${{ hashFiles(format('{0}/export/parts/gradle-home.part.00', runner.temp)) != '' }}
+      - name: Upload Gradle cache parts
         uses: actions/upload-artifact@v4
         with:
-          name: local-env-gradle-home-part-00
+          name: local-env-gradle-home-parts
           retention-days: 1
           compression-level: 0
-          path: ${{ runner.temp }}/export/parts/gradle-home.part.00
+          path: ${{ runner.temp }}/export/parts/gradle-home.part.*
 
-      - name: Upload Gradle cache part 01
-        if: ${{ hashFiles(format('{0}/export/parts/gradle-home.part.01', runner.temp)) != '' }}
+      - name: Upload NDK parts
         uses: actions/upload-artifact@v4
         with:
-          name: local-env-gradle-home-part-01
+          name: local-env-ndk-parts
           retention-days: 1
           compression-level: 0
-          path: ${{ runner.temp }}/export/parts/gradle-home.part.01
-
-      - name: Upload Gradle cache part 02
-        if: ${{ hashFiles(format('{0}/export/parts/gradle-home.part.02', runner.temp)) != '' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: local-env-gradle-home-part-02
-          retention-days: 1
-          compression-level: 0
-          path: ${{ runner.temp }}/export/parts/gradle-home.part.02
-
-      - name: Upload Gradle cache part 03
-        if: ${{ hashFiles(format('{0}/export/parts/gradle-home.part.03', runner.temp)) != '' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: local-env-gradle-home-part-03
-          retention-days: 1
-          compression-level: 0
-          path: ${{ runner.temp }}/export/parts/gradle-home.part.03
-
-      - name: Upload Gradle cache part 04
-        if: ${{ hashFiles(format('{0}/export/parts/gradle-home.part.04', runner.temp)) != '' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: local-env-gradle-home-part-04
-          retention-days: 1
-          compression-level: 0
-          path: ${{ runner.temp }}/export/parts/gradle-home.part.04
-
-      - name: Upload Gradle cache part 05
-        if: ${{ hashFiles(format('{0}/export/parts/gradle-home.part.05', runner.temp)) != '' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: local-env-gradle-home-part-05
-          retention-days: 1
-          compression-level: 0
-          path: ${{ runner.temp }}/export/parts/gradle-home.part.05
-
-      - name: Upload Gradle cache part 06
-        if: ${{ hashFiles(format('{0}/export/parts/gradle-home.part.06', runner.temp)) != '' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: local-env-gradle-home-part-06
-          retention-days: 1
-          compression-level: 0
-          path: ${{ runner.temp }}/export/parts/gradle-home.part.06
-
-      - name: Upload Gradle cache part 07
-        if: ${{ hashFiles(format('{0}/export/parts/gradle-home.part.07', runner.temp)) != '' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: local-env-gradle-home-part-07
-          retention-days: 1
-          compression-level: 0
-          path: ${{ runner.temp }}/export/parts/gradle-home.part.07
-
-      - name: Upload NDK part 00
-        if: ${{ hashFiles(format('{0}/export/parts/ndk.part.00', runner.temp)) != '' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: local-env-ndk-part-00
-          retention-days: 1
-          compression-level: 0
-          path: ${{ runner.temp }}/export/parts/ndk.part.00
-
-      - name: Upload NDK part 01
-        if: ${{ hashFiles(format('{0}/export/parts/ndk.part.01', runner.temp)) != '' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: local-env-ndk-part-01
-          retention-days: 1
-          compression-level: 0
-          path: ${{ runner.temp }}/export/parts/ndk.part.01
-
-      - name: Upload NDK part 02
-        if: ${{ hashFiles(format('{0}/export/parts/ndk.part.02', runner.temp)) != '' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: local-env-ndk-part-02
-          retention-days: 1
-          compression-level: 0
-          path: ${{ runner.temp }}/export/parts/ndk.part.02
-
-      - name: Upload NDK part 03
-        if: ${{ hashFiles(format('{0}/export/parts/ndk.part.03', runner.temp)) != '' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: local-env-ndk-part-03
-          retention-days: 1
-          compression-level: 0
-          path: ${{ runner.temp }}/export/parts/ndk.part.03
-
-      - name: Upload NDK part 04
-        if: ${{ hashFiles(format('{0}/export/parts/ndk.part.04', runner.temp)) != '' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: local-env-ndk-part-04
-          retention-days: 1
-          compression-level: 0
-          path: ${{ runner.temp }}/export/parts/ndk.part.04
+          path: ${{ runner.temp }}/export/parts/ndk.part.*
