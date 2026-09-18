@@ -223,7 +223,7 @@ class PersistentCognitiveDekStoreContractTest {
 
         val reference = CognitiveDekReference(
             CognitiveDekId("corrupt"),
-            CognitiveDekGeneration(1)
+            CognitiveDekGeneration(1L)
         )
         val resolved = assertIs<CognitiveEncryptionResult.Failed>(
             store.resolve(reference)
