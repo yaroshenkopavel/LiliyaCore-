@@ -443,6 +443,8 @@ internal sealed interface ConversationHeadDecodeResult {
 
 internal object ConversationPersistentRecordCodec {
     private val schemaId = PersistentSchemaId("cognitive-conversation-session")
+    private val linkedChunkSchemaId = PersistentSchemaId("cognitive-conversation-linked-chunk")
+    private val headSchemaId = PersistentSchemaId("cognitive-conversation-session-head")
     private val legacyVersion = PersistentSchemaVersion(1)
     private val chunkVersion = PersistentSchemaVersion(2)
     private val linkedChunkVersion = PersistentSchemaVersion(3)
@@ -509,8 +511,8 @@ internal object ConversationPersistentRecordCodec {
             output.toByteArray()
         }
         return PersistentRecord(
-            id = chunkId(snapshot.sessionId, firstSequence),
-            schemaId = schemaId,
+            id = linkedChunkId(snapshot.sessionId, firstSequence),
+            schemaId = linkedChunkSchemaId,
             schemaVersion = linkedChunkVersion,
             payload = PersistentPayload(bytes),
             createdAt = persistedAt
@@ -535,7 +537,7 @@ internal object ConversationPersistentRecordCodec {
         }
         return PersistentRecord(
             id = headId(sessionId),
-            schemaId = schemaId,
+            schemaId = headSchemaId,
             schemaVersion = headVersion,
             payload = PersistentPayload(bytes),
             createdAt = persistedAt
@@ -543,9 +545,9 @@ internal object ConversationPersistentRecordCodec {
     }
 
     fun decodeLinkedChunk(record: PersistentRecord): ConversationLinkedChunkDecodeResult {
-        if (record.schemaId != schemaId) {
+        if (record.schemaId != linkedChunkSchemaId) {
             return ConversationLinkedChunkDecodeResult.Incompatible(
-                "conversation schema id mismatch"
+                "conversation linked chunk schema id mismatch"
             )
         }
         if (record.schemaVersion != linkedChunkVersion) {
@@ -583,7 +585,7 @@ internal object ConversationPersistentRecordCodec {
             val firstSequence = messages.first().sequence.value
             if (firstSequence <= 0L ||
                 messages.last().sequence.value != firstSequence + messages.size - 1L ||
-                record.id != chunkId(sessionId, firstSequence)
+                record.id != linkedChunkId(sessionId, firstSequence)
             ) {
                 return ConversationLinkedChunkDecodeResult.Corrupt
             }
@@ -603,8 +605,10 @@ internal object ConversationPersistentRecordCodec {
     }
 
     fun decodeHead(record: PersistentRecord): ConversationHeadDecodeResult {
-        if (record.schemaId != schemaId) {
-            return ConversationHeadDecodeResult.Incompatible("conversation schema id mismatch")
+        if (record.schemaId != headSchemaId) {
+            return ConversationHeadDecodeResult.Incompatible(
+                "conversation head schema id mismatch"
+            )
         }
         if (record.schemaVersion != headVersion) {
             return ConversationHeadDecodeResult.Incompatible(
@@ -637,7 +641,7 @@ internal object ConversationPersistentRecordCodec {
     fun chunkEntityId(
         sessionId: CognitiveConversationSessionId,
         firstSequence: Long
-    ): PersistentEntityId = chunkId(sessionId, firstSequence)
+    ): PersistentEntityId = linkedChunkId(sessionId, firstSequence)
 
     fun headEntityId(
         sessionId: CognitiveConversationSessionId
@@ -693,6 +697,16 @@ internal object ConversationPersistentRecordCodec {
             .digest((sessionId.value + ":" + firstSequence).toByteArray(StandardCharsets.UTF_8))
             .joinToString("") { "%02x".format(it) }
         return PersistentEntityId("conversation-chunk-$digest")
+    }
+
+    private fun linkedChunkId(
+        sessionId: CognitiveConversationSessionId,
+        firstSequence: Long
+    ): PersistentEntityId {
+        val digest = MessageDigest.getInstance("SHA-256")
+            .digest(("v3:" + sessionId.value + ":" + firstSequence).toByteArray(StandardCharsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
+        return PersistentEntityId("conversation-linked-chunk-$digest")
     }
 
     private fun headId(sessionId: CognitiveConversationSessionId): PersistentEntityId {
