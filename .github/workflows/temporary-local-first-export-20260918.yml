@@ -47,7 +47,8 @@ jobs:
           mkdir -p "$RUNNER_TEMP/export/parts"
           tar --exclude='./.gradle' --exclude='*/build' --exclude='*/.cxx' -I 'zstd -6 -T0' -cf "$RUNNER_TEMP/export/liliyacore-source.tar.zst" .
           test -s "$RUNNER_TEMP/export/liliyacore-source.tar.zst"
-          tar -I zstd -tf "$RUNNER_TEMP/export/liliyacore-source.tar.zst" | grep -q '^./.git/'
+          tar -I zstd -tf "$RUNNER_TEMP/export/liliyacore-source.tar.zst" > "$RUNNER_TEMP/export/source-list.txt"
+          grep -q '^./.git/' "$RUNNER_TEMP/export/source-list.txt"
 
       - name: Set up Java 17
         uses: actions/setup-java@v5
