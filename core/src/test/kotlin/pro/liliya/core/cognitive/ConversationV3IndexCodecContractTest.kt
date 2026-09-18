@@ -28,6 +28,21 @@ class ConversationV3IndexCodecContractTest {
     }
 
     @Test
+    fun truncated_native_marker_fails_closed_as_corrupt() {
+        val record = ConversationV3IndexCodec.encodeMarker(at)
+        val bytes = record.payload.copyBytes()
+        val truncated = record.copy(
+            payload = pro.liliya.core.persistence.PersistentPayload(
+                bytes.copyOf(bytes.size - 1)
+            )
+        )
+        assertEquals(
+            ConversationV3DecodeResult.Corrupt,
+            ConversationV3IndexCodec.decodeMarker(truncated)
+        )
+    }
+
+    @Test
     fun head_and_linked_chunk_round_trip_with_deterministic_hashed_ids() {
         val first = CognitiveConversationContextMessage(
             CognitiveConversationSequence(1),
