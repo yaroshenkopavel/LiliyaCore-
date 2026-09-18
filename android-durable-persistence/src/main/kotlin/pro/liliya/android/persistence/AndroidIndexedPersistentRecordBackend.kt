@@ -159,6 +159,11 @@ class AndroidIndexedPersistentRecordBackend private constructor(
                     }
 
                     val current = readHeader(db, storeId)
+                    if (current != null && !validateCurrentStore(db, storeId, current)) {
+                        return@synchronized PersistentBackendCommitResult.Failed(
+                            "indexed durable persistence current state is corrupt"
+                        )
+                    }
                     val currentRevision = current?.revision ?: 0L
                     if (currentRevision != expectedRevision) {
                         return@synchronized PersistentBackendCommitResult.Conflict
@@ -385,6 +390,55 @@ class AndroidIndexedPersistentRecordBackend private constructor(
                 Header(revision, highWatermark, entryCount)
             }
         }
+
+    private fun validateCurrentStore(
+        db: SQLiteDatabase,
+        storeId: PersistentStoreId,
+        header: Header
+    ): Boolean {
+        var count = 0
+        val generations = HashSet<Long>()
+        return try {
+            db.rawQuery(
+                "SELECT entity_id,generation,schema_id,schema_version,created_epoch,created_nano,payload,record_hash " +
+                    "FROM records WHERE store_id=?",
+                arrayOf(storeId.value)
+            ).use { cursor ->
+                while (cursor.moveToNext()) {
+                    val entityId = PersistentEntityId(cursor.getString(0))
+                    val generation = PersistentGeneration(cursor.getLong(1))
+                    if (!generations.add(generation.value) ||
+                        generation.value > header.highWatermark
+                    ) return false
+                    val schemaId = PersistentSchemaId(cursor.getString(2))
+                    val schemaVersion = PersistentSchemaVersion(cursor.getInt(3))
+                    val createdAt = Instant.ofEpochSecond(cursor.getLong(4), cursor.getInt(5).toLong())
+                    val payload = cursor.getBlob(6)
+                    try {
+                        val entry = PersistentBackendEntry(
+                            generation,
+                            PersistentRecord(
+                                id = entityId,
+                                schemaId = schemaId,
+                                schemaVersion = schemaVersion,
+                                payload = PersistentPayload(payload),
+                                createdAt = createdAt
+                            )
+                        )
+                        if (cursor.getString(7) != recordHash(entityId, entry, payload)) return false
+                    } finally {
+                        payload.fill(0)
+                    }
+                    count += 1
+                }
+            }
+            count == header.entryCount
+        } catch (_: IllegalArgumentException) {
+            false
+        } catch (_: RuntimeException) {
+            false
+        }
+    }
 
     private fun validState(state: PersistentBackendState): Boolean {
         if (state.highWatermark < 0L) return false
