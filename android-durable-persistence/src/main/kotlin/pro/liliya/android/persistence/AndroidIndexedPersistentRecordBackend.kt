@@ -303,7 +303,13 @@ class AndroidIndexedPersistentRecordBackend private constructor(
     ): LegacyImportResult {
         if (readHeader(db, storeId) != null) return LegacyImportResult.Ready
         val legacy = legacyFile(storeId)
-        if (!legacy.exists()) return LegacyImportResult.Missing
+        if (!legacy.exists()) {
+            return if (hasRecordRows(db, storeId)) {
+                LegacyImportResult.Corrupt
+            } else {
+                LegacyImportResult.Missing
+            }
+        }
         if (!legacy.isFile || legacy.length() <= 0L) return LegacyImportResult.Corrupt
 
         val decoded = try {
@@ -335,6 +341,12 @@ class AndroidIndexedPersistentRecordBackend private constructor(
             if (ownsTransaction) db.endTransaction()
         }
     }
+
+    private fun hasRecordRows(db: SQLiteDatabase, storeId: PersistentStoreId): Boolean =
+        db.rawQuery(
+            "SELECT 1 FROM records WHERE store_id=? LIMIT 1",
+            arrayOf(storeId.value)
+        ).use { cursor -> cursor.moveToFirst() }
 
     private fun writeImportedState(
         db: SQLiteDatabase,
