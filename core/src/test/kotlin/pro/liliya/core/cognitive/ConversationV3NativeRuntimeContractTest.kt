@@ -111,6 +111,46 @@ class ConversationV3NativeRuntimeContractTest {
     }
 
     @Test
+    fun orphan_chunk_after_head_conflict_is_recovered_without_global_scan() {
+        val backend = CountingIndexedBackend()
+        val session = CognitiveConversationSessionId("recover-v3-session")
+        val store = openConversation(backend, maxRetained = 6)
+
+        assertIs<PersistentConversationAppendPairResult.Appended>(
+            store.appendPair(
+                session,
+                msg(1, CognitiveConversationRole.USER, "u1"),
+                msg(2, CognitiveConversationRole.ASSISTANT, "a1"),
+                at(1)
+            )
+        )
+
+        backend.failNextHeadTransition = true
+        assertIs<PersistentConversationAppendPairResult.Rejected>(
+            store.appendPair(
+                session,
+                msg(3, CognitiveConversationRole.USER, "u2"),
+                msg(4, CognitiveConversationRole.ASSISTANT, "a2"),
+                at(2)
+            )
+        )
+
+        backend.resetReadCounters()
+        val recovered = assertNotNull(store.reopen(session))
+        assertEquals(listOf(1L, 2L, 3L, 4L), recovered.messages.map { it.sequence.value })
+        assertEquals(0, backend.pageLoadCalls)
+
+        assertIs<PersistentConversationAppendPairResult.AlreadyPresent>(
+            store.appendPair(
+                session,
+                msg(3, CognitiveConversationRole.USER, "u2"),
+                msg(4, CognitiveConversationRole.ASSISTANT, "a2"),
+                at(3)
+            )
+        )
+    }
+
+    @Test
     fun existing_indexed_store_without_v3_marker_stays_on_legacy_fallback() {
         val backend = CountingIndexedBackend()
         val encrypted = encryptedStore(backend)
@@ -332,6 +372,7 @@ class ConversationV3NativeRuntimeContractTest {
         var fullLoadCalls = 0
         var fullCommitCalls = 0
         var pageLoadCalls = 0
+        var failNextHeadTransition = false
         val exactReadIds = ArrayList<PersistentEntityId>()
 
         fun resetReadCounters() {
@@ -464,6 +505,12 @@ class ConversationV3NativeRuntimeContractTest {
             sourceGeneration: PersistentGeneration,
             replacement: PersistentBackendEntry
         ): PersistentBackendMutationResult {
+            if (failNextHeadTransition &&
+                sourceId.value.startsWith("conversation-head-")
+            ) {
+                failNextHeadTransition = false
+                return PersistentBackendMutationResult.Conflict
+            }
             if (expectedRevision != revision ||
                 expectedHighWatermark != highWatermark
             ) {
