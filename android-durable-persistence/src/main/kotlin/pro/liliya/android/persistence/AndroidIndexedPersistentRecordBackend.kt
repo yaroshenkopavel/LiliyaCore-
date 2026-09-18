@@ -924,14 +924,6 @@ class AndroidIndexedPersistentRecordBackend private constructor(
             }
         }
 
-    private fun hasRecordRows(
-        db: SQLiteDatabase,
-        storeId: PersistentStoreId
-    ): Boolean = db.rawQuery(
-        "SELECT 1 FROM records WHERE store_id=? LIMIT 1",
-        arrayOf(storeId.value)
-    ).use { it.moveToFirst() }
-
     private fun validateMetadataIndex(
         db: SQLiteDatabase,
         storeId: PersistentStoreId,
