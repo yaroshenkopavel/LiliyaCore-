@@ -1,0 +1,84 @@
+name: Temporary Local-First NDK Export 2026-09-18
+
+on:
+  push:
+    branches:
+      - infra/local-first-ndk-export-20260918
+
+permissions:
+  contents: read
+
+jobs:
+  export-ndk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact canonical main
+        uses: actions/checkout@v4
+        with:
+          ref: 25d9b6a8e118154bedafa5772b6fc0bd89469f2f
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
+
+      - name: Install exact NDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "ndk;29.0.13113456"
+          test -d "$ANDROID_HOME/ndk/29.0.13113456"
+
+      - name: Package and split NDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/ndk-parts"
+          tar -C "$ANDROID_HOME/ndk/29.0.13113456" -I 'zstd -6 -T0' -cf "$RUNNER_TEMP/ndk-29.0.13113456.tar.zst" .
+          sha256sum "$RUNNER_TEMP/ndk-29.0.13113456.tar.zst" > "$RUNNER_TEMP/NDK_SHA256SUM"
+          split -b 180M -d -a 2 "$RUNNER_TEMP/ndk-29.0.13113456.tar.zst" "$RUNNER_TEMP/ndk-parts/ndk.part."
+          sha256sum "$RUNNER_TEMP"/ndk-parts/ndk.part.* > "$RUNNER_TEMP/NDK_PARTS_SHA256SUMS"
+          ls -lh "$RUNNER_TEMP"/ndk-parts
+
+      - name: Upload NDK part 00
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-env-ndk-part-00
+          retention-days: 1
+          compression-level: 0
+          path: ${{ runner.temp }}/ndk-parts/ndk.part.00
+
+      - name: Upload NDK part 01
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-env-ndk-part-01
+          retention-days: 1
+          compression-level: 0
+          path: ${{ runner.temp }}/ndk-parts/ndk.part.01
+
+      - name: Upload NDK part 02
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-env-ndk-part-02
+          retention-days: 1
+          compression-level: 0
+          path: ${{ runner.temp }}/ndk-parts/ndk.part.02
+
+      - name: Upload NDK part 03
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-env-ndk-part-03
+          retention-days: 1
+          compression-level: 0
+          path: ${{ runner.temp }}/ndk-parts/ndk.part.03
+
+      - name: Upload NDK checksums
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-env-ndk-checksums
+          retention-days: 1
+          path: |
+            ${{ runner.temp }}/NDK_SHA256SUM
+            ${{ runner.temp }}/NDK_PARTS_SHA256SUMS
