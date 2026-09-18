@@ -155,6 +155,11 @@ class PersistentRecordStore private constructor(
             }
         }
 
+        if (indexedEntryCount != null) {
+            val barrier = indexedMetadataBarrier(indexed)
+            if (barrier != null) return barrier
+        }
+
         val collected = ArrayList<PersistentRecordSnapshot>()
         val seenIds = HashSet<PersistentEntityId>()
         val seenGenerations = HashSet<PersistentGeneration>()
@@ -214,12 +219,51 @@ class PersistentRecordStore private constructor(
             if (collected.size.toLong() != expected) {
                 return PersistentRecordSnapshotEntriesResult.Corrupt
             }
+            val barrier = indexedMetadataBarrier(indexed)
+            if (barrier != null) return barrier
         }
 
         return if (collected.isEmpty()) {
             PersistentRecordSnapshotEntriesResult.Empty
         } else {
             PersistentRecordSnapshotEntriesResult.Loaded(collected)
+        }
+    }
+
+    private fun indexedMetadataBarrier(
+        indexed: IndexedPersistentRecordReadBackend
+    ): PersistentRecordSnapshotEntriesResult? {
+        val expectedCount = indexedEntryCount
+            ?: return null
+        return when (val loaded = indexed.loadMetadata(storeId)) {
+            PersistentBackendMetadataLoadResult.Missing ->
+                if (revision == 0L && state.highWatermark == 0L && expectedCount == 0L) {
+                    null
+                } else {
+                    PersistentRecordSnapshotEntriesResult.Failed(
+                        "persistent indexed store changed during enumeration"
+                    )
+                }
+            is PersistentBackendMetadataLoadResult.Loaded ->
+                if (loaded.metadata.revision == revision &&
+                    loaded.metadata.highWatermark == state.highWatermark &&
+                    loaded.metadata.entryCount == expectedCount
+                ) {
+                    null
+                } else {
+                    PersistentRecordSnapshotEntriesResult.Failed(
+                        "persistent indexed store changed during enumeration"
+                    )
+                }
+            PersistentBackendMetadataLoadResult.Corrupt ->
+                PersistentRecordSnapshotEntriesResult.Corrupt
+            is PersistentBackendMetadataLoadResult.Incompatible ->
+                PersistentRecordSnapshotEntriesResult.Incompatible(loaded.reason)
+            is PersistentBackendMetadataLoadResult.Failed ->
+                PersistentRecordSnapshotEntriesResult.Failed(
+                    loaded.reason,
+                    loaded.throwable
+                )
         }
     }
 
