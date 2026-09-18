@@ -137,12 +137,18 @@ internal class ConversationV3NativeRuntime private constructor(
         val chunkRecord = ConversationV3IndexCodec.encodeChunk(linked, persistedAt)
         when (val persisted = persistChunkOrValidateExisting(chunkRecord, linked)) {
             is ConversationV3PersistResult.Persisted -> Unit
-            is ConversationV3PersistResult.Rejected ->
+            is ConversationV3PersistResult.Rejected -> {
+                cache.remove(sessionId)
                 return PersistentConversationAppendResult.Rejected(persisted.reason)
-            is ConversationV3PersistResult.EncryptionUnavailable ->
+            }
+            is ConversationV3PersistResult.EncryptionUnavailable -> {
+                cache.remove(sessionId)
                 return PersistentConversationAppendResult.EncryptionUnavailable(persisted.category)
-            is ConversationV3PersistResult.Failed ->
+            }
+            is ConversationV3PersistResult.Failed -> {
+                cache.remove(sessionId)
                 return PersistentConversationAppendResult.Failed(persisted.reason)
+            }
         }
 
         val head = ConversationV3SessionHead(
@@ -258,14 +264,20 @@ internal class ConversationV3NativeRuntime private constructor(
         val chunkRecord = ConversationV3IndexCodec.encodeChunk(linked, persistedAt)
         when (val persisted = persistChunkOrValidateExisting(chunkRecord, linked)) {
             is ConversationV3PersistResult.Persisted -> Unit
-            is ConversationV3PersistResult.Rejected ->
+            is ConversationV3PersistResult.Rejected -> {
+                cache.remove(sessionId)
                 return PersistentConversationAppendPairResult.Rejected(persisted.reason)
-            is ConversationV3PersistResult.EncryptionUnavailable ->
+            }
+            is ConversationV3PersistResult.EncryptionUnavailable -> {
+                cache.remove(sessionId)
                 return PersistentConversationAppendPairResult.EncryptionUnavailable(
                     persisted.category
                 )
-            is ConversationV3PersistResult.Failed ->
+            }
+            is ConversationV3PersistResult.Failed -> {
+                cache.remove(sessionId)
                 return PersistentConversationAppendPairResult.Failed(persisted.reason)
+            }
         }
 
         val head = ConversationV3SessionHead(
