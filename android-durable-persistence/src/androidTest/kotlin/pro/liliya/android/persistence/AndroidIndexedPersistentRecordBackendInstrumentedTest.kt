@@ -145,6 +145,47 @@ class AndroidIndexedPersistentRecordBackendInstrumentedTest {
         }
 
     @Test
+    fun commit_rejects_corrupt_current_row_before_mutating_state() =
+        withCleanRoot { context, root ->
+            val storeId = PersistentStoreId("corrupt-before-commit")
+            val backend = AndroidIndexedPersistentRecordBackend.create(context, TEST_DIRECTORY)
+            val first = state(storeId, 1, mapOf("a" to "one"))
+            assertEquals(
+                PersistentBackendCommitResult.Committed(1),
+                backend.commit(storeId, 0, first)
+            )
+
+            val db = SQLiteDatabase.openDatabase(
+                File(root, "liliya-indexed-v2.sqlite3").absolutePath,
+                null,
+                SQLiteDatabase.OPEN_READWRITE
+            )
+            db.use {
+                val changed = android.content.ContentValues().apply {
+                    put("payload", "tampered".encodeToByteArray())
+                }
+                assertEquals(
+                    1,
+                    it.update(
+                        "records",
+                        changed,
+                        "store_id=? AND entity_id=?",
+                        arrayOf(storeId.value, "a")
+                    )
+                )
+            }
+
+            val second = state(storeId, 2, mapOf("a" to "one", "b" to "two"))
+            assertIs<PersistentBackendCommitResult.Failed>(
+                backend.commit(storeId, 1, second)
+            )
+            assertEquals(
+                PersistentBackendLoadResult.Corrupt,
+                AndroidIndexedPersistentRecordBackend.create(context, TEST_DIRECTORY).load(storeId)
+            )
+        }
+
+    @Test
     fun indexed_backend_accepts_more_than_legacy_25000_entry_ceiling() =
         withCleanRoot { context, _ ->
             val storeId = PersistentStoreId("large-indexed-store")
