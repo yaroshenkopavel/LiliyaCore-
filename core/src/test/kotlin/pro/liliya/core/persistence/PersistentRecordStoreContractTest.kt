@@ -18,6 +18,33 @@ import pro.liliya.core.logging.StructuredLogger
 import pro.liliya.core.observability.LoggerProvider
 
 class PersistentRecordStoreContractTest {
+    private class IndexedLookupFixtureBackend : IndexedPersistentRecordReadBackend {
+        private val delegate = InMemoryPersistentRecordBackend()
+        var exactResult: PersistentBackendEntryLoadResult = PersistentBackendEntryLoadResult.Missing
+
+        override fun load(storeId: PersistentStoreId): PersistentBackendLoadResult =
+            delegate.load(storeId)
+
+        override fun commit(
+            storeId: PersistentStoreId,
+            expectedRevision: Long,
+            state: PersistentBackendState
+        ): PersistentBackendCommitResult =
+            delegate.commit(storeId, expectedRevision, state)
+
+        override fun loadMetadata(storeId: PersistentStoreId): PersistentBackendMetadataLoadResult =
+            PersistentBackendMetadataLoadResult.Missing
+
+        override fun loadEntry(
+            storeId: PersistentStoreId,
+            entityId: PersistentEntityId
+        ): PersistentBackendEntryLoadResult = exactResult
+
+        override fun loadPage(
+            storeId: PersistentStoreId,
+            request: PersistentBackendPageRequest
+        ): PersistentBackendPageLoadResult = PersistentBackendPageLoadResult.Missing
+    }
     private data class Fixture(
         val foundation: FoundationComposition,
         val logs: InMemoryLogWriter
@@ -196,6 +223,43 @@ class PersistentRecordStoreContractTest {
         val reopened = open(f, backend, id)
         assertTrue(reopened.contains(PersistentEntityId("shared")))
         assertEquals(PersistentGeneration(1), reopened.inspect(PersistentEntityId("shared"))?.generation)
+    }
+
+    @Test
+    fun indexed_exact_lookup_preserves_missing_corrupt_incompatible_failed_and_found_states() {
+        val f = fixture()
+        val backend = IndexedLookupFixtureBackend()
+        val store = open(f, backend)
+        val id = PersistentEntityId("indexed")
+
+        assertEquals(PersistentRecordLookupResult.Missing, store.inspectResult(id))
+
+        backend.exactResult = PersistentBackendEntryLoadResult.Corrupt
+        assertEquals(PersistentRecordLookupResult.Corrupt, store.inspectResult(id))
+
+        backend.exactResult = PersistentBackendEntryLoadResult.Incompatible("future indexed format")
+        val incompatible = assertIs<PersistentRecordLookupResult.Incompatible>(
+            store.inspectResult(id)
+        )
+        assertEquals("future indexed format", incompatible.reason)
+
+        val failure = IllegalStateException("indexed read failed")
+        backend.exactResult = PersistentBackendEntryLoadResult.Failed(
+            "indexed read failed",
+            failure
+        )
+        val failed = assertIs<PersistentRecordLookupResult.Failed>(store.inspectResult(id))
+        assertEquals("indexed read failed", failed.reason)
+        assertEquals(failure, failed.throwable)
+
+        val snapshot = PersistentRecordSnapshot(
+            record("indexed"),
+            PersistentGeneration(7)
+        )
+        backend.exactResult = PersistentBackendEntryLoadResult.Loaded(snapshot)
+        val found = assertIs<PersistentRecordLookupResult.Found>(store.inspectResult(id))
+        assertEquals(PersistentGeneration(7), found.snapshot.generation)
+        assertEquals(id, found.snapshot.record.id)
     }
 
     @Test

@@ -71,16 +71,57 @@ class PersistentRecordStore private constructor(
         }
     }
 
+    /**
+     * Fail-closed exact lookup. Indexed backends are queried directly so a selected-record
+     * corruption/incompatibility/failure cannot be collapsed into "missing".
+     */
     @Synchronized
-    fun find(id: PersistentEntityId): PersistentRecord? = state.entries[id]?.record?.detached()
+    fun inspectResult(id: PersistentEntityId): PersistentRecordLookupResult {
+        val indexed = backend as? IndexedPersistentRecordReadBackend
+        if (indexed != null) {
+            return when (val loaded = indexed.loadEntry(storeId, id)) {
+                PersistentBackendEntryLoadResult.Missing -> PersistentRecordLookupResult.Missing
+                is PersistentBackendEntryLoadResult.Loaded ->
+                    PersistentRecordLookupResult.Found(
+                        PersistentRecordSnapshot(
+                            loaded.snapshot.record.detached(),
+                            loaded.snapshot.generation
+                        )
+                    )
+                PersistentBackendEntryLoadResult.Corrupt -> PersistentRecordLookupResult.Corrupt
+                is PersistentBackendEntryLoadResult.Incompatible ->
+                    PersistentRecordLookupResult.Incompatible(loaded.reason)
+                is PersistentBackendEntryLoadResult.Failed ->
+                    PersistentRecordLookupResult.Failed(loaded.reason, loaded.throwable)
+            }
+        }
 
-    @Synchronized
-    fun inspect(id: PersistentEntityId): PersistentRecordSnapshot? = state.entries[id]?.let {
-        PersistentRecordSnapshot(it.record.detached(), it.generation)
+        val current = state.entries[id] ?: return PersistentRecordLookupResult.Missing
+        return PersistentRecordLookupResult.Found(
+            PersistentRecordSnapshot(current.record.detached(), current.generation)
+        )
     }
 
+    /**
+     * Compatibility API. New fail-closed consumers must prefer inspectResult().
+     */
     @Synchronized
-    fun contains(id: PersistentEntityId): Boolean = state.entries.containsKey(id)
+    fun find(id: PersistentEntityId): PersistentRecord? =
+        (inspectResult(id) as? PersistentRecordLookupResult.Found)?.snapshot?.record?.detached()
+
+    /**
+     * Compatibility API. New fail-closed consumers must prefer inspectResult().
+     */
+    @Synchronized
+    fun inspect(id: PersistentEntityId): PersistentRecordSnapshot? =
+        (inspectResult(id) as? PersistentRecordLookupResult.Found)?.snapshot
+
+    /**
+     * Compatibility API. New fail-closed consumers must prefer inspectResult().
+     */
+    @Synchronized
+    fun contains(id: PersistentEntityId): Boolean =
+        inspectResult(id) is PersistentRecordLookupResult.Found
 
     @Synchronized
     fun snapshot(): List<PersistentRecord> = snapshotEntries().map { it.record }
