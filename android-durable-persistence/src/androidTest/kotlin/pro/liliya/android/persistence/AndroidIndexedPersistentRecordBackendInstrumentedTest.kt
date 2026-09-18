@@ -94,6 +94,35 @@ class AndroidIndexedPersistentRecordBackendInstrumentedTest {
         }
 
     @Test
+    fun missing_indexed_row_is_detected_as_corrupt_instead_of_silent_data_loss() =
+        withCleanRoot { context, root ->
+            val storeId = PersistentStoreId("row-loss")
+            val backend = AndroidIndexedPersistentRecordBackend.create(context, TEST_DIRECTORY)
+            assertEquals(
+                PersistentBackendCommitResult.Committed(1),
+                backend.commit(storeId, 0, state(storeId, 2, mapOf("a" to "one", "b" to "two")))
+            )
+
+            val db = SQLiteDatabase.openDatabase(
+                File(root, "liliya-indexed-v2.sqlite3").absolutePath,
+                null,
+                SQLiteDatabase.OPEN_READWRITE
+            )
+            db.use {
+                it.delete(
+                    "records",
+                    "store_id=? AND entity_id=?",
+                    arrayOf(storeId.value, "b")
+                )
+            }
+
+            assertEquals(
+                PersistentBackendLoadResult.Corrupt,
+                AndroidIndexedPersistentRecordBackend.create(context, TEST_DIRECTORY).load(storeId)
+            )
+        }
+
+    @Test
     fun indexed_backend_accepts_more_than_legacy_25000_entry_ceiling() =
         withCleanRoot { context, _ ->
             val storeId = PersistentStoreId("large-indexed-store")
