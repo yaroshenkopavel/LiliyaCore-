@@ -331,6 +331,283 @@ class PersistentRecordStore private constructor(
         }
     }
 
+    private fun installIndexed(
+        record: PersistentRecord,
+        indexed: IndexedPersistentRecordMutationBackend
+    ): PersistentInstallResult {
+        when (val existing = inspectResult(record.id)) {
+            PersistentRecordLookupResult.Missing -> Unit
+            is PersistentRecordLookupResult.Found ->
+                return rejectInstall(record, "persistent entity is already live")
+            PersistentRecordLookupResult.Corrupt ->
+                return PersistentInstallResult.Failed("persistent indexed store is corrupt")
+            is PersistentRecordLookupResult.Incompatible ->
+                return PersistentInstallResult.Failed(existing.reason)
+            is PersistentRecordLookupResult.Failed ->
+                return PersistentInstallResult.Failed(existing.reason, existing.throwable)
+        }
+
+        val currentCount = indexedEntryCount
+            ?: return PersistentInstallResult.Failed("persistent indexed metadata unavailable")
+        val nextValue = state.highWatermark + 1L
+        if (nextValue <= 0L) {
+            return PersistentInstallResult.Failed("persistent generation overflow")
+        }
+        val generation = PersistentGeneration(nextValue)
+        val entry = PersistentBackendEntry(generation, record.detached())
+
+        return when (
+            val committed = indexed.installEntry(
+                storeId = storeId,
+                expectedRevision = revision,
+                expectedHighWatermark = state.highWatermark,
+                entry = entry
+            )
+        ) {
+            is PersistentBackendMutationResult.Committed -> {
+                val validation = acceptIndexedMetadata(
+                    committed.metadata,
+                    expectedHighWatermark = nextValue,
+                    expectedEntryCount = currentCount + 1L
+                )
+                if (validation != null) {
+                    PersistentInstallResult.Failed(validation)
+                } else {
+                    applyIndexedMetadata(committed.metadata)
+                    observe(
+                        DiagnosticSeverity.INFO,
+                        "PERSISTENT_RECORD_COMMITTED",
+                        "persistent indexed record committed",
+                        metadata(record, generation)
+                    )
+                    PersistentInstallResult.Installed(ownership(record.detached(), generation))
+                }
+            }
+            PersistentBackendMutationResult.Conflict ->
+                rejectInstall(record, "persistent backend revision changed")
+            is PersistentBackendMutationResult.Rejected ->
+                rejectInstall(record, committed.reason)
+            PersistentBackendMutationResult.Corrupt ->
+                PersistentInstallResult.Failed("persistent indexed store is corrupt")
+            is PersistentBackendMutationResult.Incompatible ->
+                PersistentInstallResult.Failed(committed.reason)
+            is PersistentBackendMutationResult.Failed ->
+                PersistentInstallResult.Failed(committed.reason, committed.throwable)
+        }
+    }
+
+    private fun transitionIndexed(
+        indexed: IndexedPersistentRecordMutationBackend,
+        sourceId: PersistentEntityId,
+        sourceGeneration: PersistentGeneration,
+        replacement: PersistentRecord
+    ): PersistentRecordTransitionResult {
+        val current = when (val lookedUp = inspectResult(sourceId)) {
+            PersistentRecordLookupResult.Missing ->
+                return PersistentRecordTransitionResult.Rejected(
+                    "persistent transition source is not live"
+                )
+            is PersistentRecordLookupResult.Found -> lookedUp.snapshot
+            PersistentRecordLookupResult.Corrupt ->
+                return PersistentRecordTransitionResult.Failed(
+                    "persistent indexed store is corrupt"
+                )
+            is PersistentRecordLookupResult.Incompatible ->
+                return PersistentRecordTransitionResult.Failed(lookedUp.reason)
+            is PersistentRecordLookupResult.Failed ->
+                return PersistentRecordTransitionResult.Failed(
+                    lookedUp.reason,
+                    lookedUp.throwable
+                )
+        }
+        if (current.generation != sourceGeneration) {
+            return PersistentRecordTransitionResult.Rejected(
+                "persistent transition source generation is stale"
+            )
+        }
+
+        if (replacement.id != sourceId) {
+            when (val replacementLookup = inspectResult(replacement.id)) {
+                PersistentRecordLookupResult.Missing -> Unit
+                is PersistentRecordLookupResult.Found ->
+                    return PersistentRecordTransitionResult.Rejected(
+                        "persistent transition replacement entity is already live"
+                    )
+                PersistentRecordLookupResult.Corrupt ->
+                    return PersistentRecordTransitionResult.Failed(
+                        "persistent indexed store is corrupt"
+                    )
+                is PersistentRecordLookupResult.Incompatible ->
+                    return PersistentRecordTransitionResult.Failed(replacementLookup.reason)
+                is PersistentRecordLookupResult.Failed ->
+                    return PersistentRecordTransitionResult.Failed(
+                        replacementLookup.reason,
+                        replacementLookup.throwable
+                    )
+            }
+        }
+
+        val currentCount = indexedEntryCount
+            ?: return PersistentRecordTransitionResult.Failed(
+                "persistent indexed metadata unavailable"
+            )
+        val replacementEntry = PersistentBackendEntry(
+            sourceGeneration,
+            replacement.detached()
+        )
+
+        return when (
+            val committed = indexed.transitionEntry(
+                storeId = storeId,
+                expectedRevision = revision,
+                expectedHighWatermark = state.highWatermark,
+                sourceId = sourceId,
+                sourceGeneration = sourceGeneration,
+                replacement = replacementEntry
+            )
+        ) {
+            is PersistentBackendMutationResult.Committed -> {
+                val validation = acceptIndexedMetadata(
+                    committed.metadata,
+                    expectedHighWatermark = state.highWatermark,
+                    expectedEntryCount = currentCount
+                )
+                if (validation != null) {
+                    PersistentRecordTransitionResult.Failed(validation)
+                } else {
+                    applyIndexedMetadata(committed.metadata)
+                    observe(
+                        DiagnosticSeverity.INFO,
+                        "PERSISTENT_RECORD_TRANSITIONED",
+                        "persistent indexed record transitioned",
+                        metadata(replacement, sourceGeneration) +
+                            ("persistentSourceEntityId" to sourceId.value)
+                    )
+                    PersistentRecordTransitionResult.Committed(
+                        ownership(replacement.detached(), sourceGeneration)
+                    )
+                }
+            }
+            PersistentBackendMutationResult.Conflict ->
+                PersistentRecordTransitionResult.Rejected(
+                    "persistent backend revision changed"
+                )
+            is PersistentBackendMutationResult.Rejected ->
+                PersistentRecordTransitionResult.Rejected(committed.reason)
+            PersistentBackendMutationResult.Corrupt ->
+                PersistentRecordTransitionResult.Failed(
+                    "persistent indexed store is corrupt"
+                )
+            is PersistentBackendMutationResult.Incompatible ->
+                PersistentRecordTransitionResult.Failed(committed.reason)
+            is PersistentBackendMutationResult.Failed ->
+                PersistentRecordTransitionResult.Failed(
+                    committed.reason,
+                    committed.throwable
+                )
+        }
+    }
+
+    private fun removeIndexed(
+        indexed: IndexedPersistentRecordMutationBackend,
+        id: PersistentEntityId,
+        generation: PersistentGeneration
+    ): PersistentMutationResult {
+        val current = when (val lookedUp = inspectResult(id)) {
+            PersistentRecordLookupResult.Missing ->
+                return PersistentMutationResult.Rejected("persistent entity is not live")
+            is PersistentRecordLookupResult.Found -> lookedUp.snapshot
+            PersistentRecordLookupResult.Corrupt ->
+                return PersistentMutationResult.Failed("persistent indexed store is corrupt")
+            is PersistentRecordLookupResult.Incompatible ->
+                return PersistentMutationResult.Failed(lookedUp.reason)
+            is PersistentRecordLookupResult.Failed ->
+                return PersistentMutationResult.Failed(
+                    lookedUp.reason,
+                    lookedUp.throwable
+                )
+        }
+        if (current.generation != generation) {
+            return PersistentMutationResult.Rejected(
+                "persistent ownership generation is stale"
+            )
+        }
+
+        val currentCount = indexedEntryCount
+            ?: return PersistentMutationResult.Failed(
+                "persistent indexed metadata unavailable"
+            )
+        if (currentCount <= 0L) {
+            return PersistentMutationResult.Failed(
+                "persistent indexed entry count is inconsistent"
+            )
+        }
+
+        return when (
+            val committed = indexed.removeEntry(
+                storeId = storeId,
+                expectedRevision = revision,
+                expectedHighWatermark = state.highWatermark,
+                id = id,
+                generation = generation
+            )
+        ) {
+            is PersistentBackendMutationResult.Committed -> {
+                val validation = acceptIndexedMetadata(
+                    committed.metadata,
+                    expectedHighWatermark = state.highWatermark,
+                    expectedEntryCount = currentCount - 1L
+                )
+                if (validation != null) {
+                    PersistentMutationResult.Failed(validation)
+                } else {
+                    applyIndexedMetadata(committed.metadata)
+                    observe(
+                        DiagnosticSeverity.INFO,
+                        "PERSISTENT_RECORD_REMOVED",
+                        "persistent indexed record removed",
+                        metadata(current.record, generation)
+                    )
+                    PersistentMutationResult.Committed
+                }
+            }
+            PersistentBackendMutationResult.Conflict ->
+                PersistentMutationResult.Rejected("persistent backend revision changed")
+            is PersistentBackendMutationResult.Rejected ->
+                PersistentMutationResult.Rejected(committed.reason)
+            PersistentBackendMutationResult.Corrupt ->
+                PersistentMutationResult.Failed("persistent indexed store is corrupt")
+            is PersistentBackendMutationResult.Incompatible ->
+                PersistentMutationResult.Failed(committed.reason)
+            is PersistentBackendMutationResult.Failed ->
+                PersistentMutationResult.Failed(committed.reason, committed.throwable)
+        }
+    }
+
+    private fun acceptIndexedMetadata(
+        metadata: PersistentBackendMetadata,
+        expectedHighWatermark: Long,
+        expectedEntryCount: Long
+    ): String? = when {
+        metadata.revision <= revision ->
+            "persistent indexed backend returned non-monotonic revision"
+        metadata.highWatermark != expectedHighWatermark ->
+            "persistent indexed backend returned unexpected high watermark"
+        metadata.entryCount != expectedEntryCount ->
+            "persistent indexed backend returned unexpected entry count"
+        else -> null
+    }
+
+    private fun applyIndexedMetadata(metadata: PersistentBackendMetadata) {
+        revision = metadata.revision
+        state = PersistentBackendState(
+            storeId = storeId,
+            highWatermark = metadata.highWatermark,
+            entries = emptyMap()
+        )
+        indexedEntryCount = metadata.entryCount
+    }
+
     private fun ownership(
         record: PersistentRecord,
         generation: PersistentGeneration
@@ -449,6 +726,61 @@ class PersistentRecordStore private constructor(
 
     companion object {
         fun open(
+            foundation: FoundationComposition,
+            storeId: PersistentStoreId,
+            backend: PersistentRecordBackend
+        ): PersistentStoreOpenResult {
+            val indexed = backend as? IndexedPersistentRecordMutationBackend
+            if (indexed != null) {
+                return openIndexed(foundation, storeId, indexed)
+            }
+            return openLegacy(foundation, storeId, backend)
+        }
+
+        private fun openIndexed(
+            foundation: FoundationComposition,
+            storeId: PersistentStoreId,
+            backend: IndexedPersistentRecordMutationBackend
+        ): PersistentStoreOpenResult = when (val loaded = backend.loadMetadata(storeId)) {
+            PersistentBackendMetadataLoadResult.Missing ->
+                PersistentStoreOpenResult.Opened(
+                    PersistentRecordStore(
+                        foundation = foundation,
+                        storeId = storeId,
+                        backend = backend,
+                        initialRevision = 0L,
+                        initialState = PersistentBackendState(storeId, 0L, emptyMap()),
+                        initialIndexedEntryCount = 0L
+                    )
+                )
+
+            is PersistentBackendMetadataLoadResult.Loaded ->
+                PersistentStoreOpenResult.Opened(
+                    PersistentRecordStore(
+                        foundation = foundation,
+                        storeId = storeId,
+                        backend = backend,
+                        initialRevision = loaded.metadata.revision,
+                        initialState = PersistentBackendState(
+                            storeId,
+                            loaded.metadata.highWatermark,
+                            emptyMap()
+                        ),
+                        initialIndexedEntryCount = loaded.metadata.entryCount
+                    )
+                )
+
+            PersistentBackendMetadataLoadResult.Corrupt ->
+                PersistentStoreOpenResult.Corrupt
+
+            is PersistentBackendMetadataLoadResult.Incompatible ->
+                PersistentStoreOpenResult.Incompatible(loaded.reason)
+
+            is PersistentBackendMetadataLoadResult.Failed ->
+                PersistentStoreOpenResult.Failed(loaded.reason, loaded.throwable)
+        }
+
+        private fun openLegacy(
             foundation: FoundationComposition,
             storeId: PersistentStoreId,
             backend: PersistentRecordBackend
