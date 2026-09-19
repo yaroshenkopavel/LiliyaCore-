@@ -12,6 +12,12 @@ import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import org.junit.Test
 import org.junit.runner.RunWith
+import pro.liliya.core.cognitive.CognitiveConversationContextMessage
+import pro.liliya.core.cognitive.CognitiveConversationRole
+import pro.liliya.core.cognitive.CognitiveConversationSequence
+import pro.liliya.core.cognitive.CognitiveConversationSessionId
+import pro.liliya.core.cognitive.PersistentConversationAppendPairResult
+import pro.liliya.core.cognitive.PersistentConversationHistoryResult
 import pro.liliya.core.diagnostics.DiagnosticRecorder
 import pro.liliya.core.diagnostics.InMemoryDiagnosticSink
 import pro.liliya.core.encryption.CognitiveCiphertextDependency
@@ -155,6 +161,165 @@ class AndroidCognitiveStorageAssemblyInstrumentedTest {
             root.deleteRecursively()
         }
 
+    @Test
+    fun native_v3_conversation_survives_real_indexed_android_reconstruction() =
+        withCleanRoot { context, _ ->
+            val first = assertIs<AndroidCognitiveStorageOpenResult.Ready>(
+                AndroidCognitiveStorageAssembly.open(
+                    context = context,
+                    foundation = foundation(),
+                    directoryName = TEST_DIRECTORY
+                )
+            ).assembly
+
+            val protectorId = CognitiveKeyProtectorId(
+                "conversation-v3-" + System.nanoTime()
+            )
+            val descriptor =
+                assertIs<CognitiveEncryptionResult.Success<CognitiveKeyProtectorDescriptor>>(
+                    first.keyProtector.create(
+                        CognitiveKeyProtectorCreationRequest(
+                            id = protectorId,
+                            generation = CognitiveKeyProtectorGeneration(1),
+                            requestedSecurityLevel = CognitiveKeyProtectorSecurityLevel.SOFTWARE
+                        )
+                    )
+                ).value
+            val registered = assertIs<PersistentCognitiveDekRegistrationResult.Registered>(
+                first.dekStore.register(
+                    CognitiveDekId("conversation-v3-dek"),
+                    descriptor
+                )
+            )
+            val dekReference = registered.ownership.reference
+            val conversationStoreId = PersistentStoreId("conversation-v3-real-indexed")
+            val firstConversation = assertIs<AndroidEncryptedConversationOpenResult.Opened>(
+                first.openEncryptedConversation(
+                    storeId = conversationStoreId,
+                    activeDek = dekReference,
+                    maxRetainedMessages = 4,
+                    maxMessageChars = 8 * 1024
+                )
+            ).store
+
+            val sessionA = CognitiveConversationSessionId("private-session-A")
+            val sessionB = CognitiveConversationSessionId("private-session-B")
+            repeat(3) { turn ->
+                val sequence = turn.toLong() * 2L + 1L
+                assertIs<PersistentConversationAppendPairResult.Appended>(
+                    firstConversation.appendPair(
+                        sessionId = sessionA,
+                        user = CognitiveConversationContextMessage(
+                            CognitiveConversationSequence(sequence),
+                            CognitiveConversationRole.USER,
+                            "secret-a-user-" + turn
+                        ),
+                        assistant = CognitiveConversationContextMessage(
+                            CognitiveConversationSequence(sequence + 1L),
+                            CognitiveConversationRole.ASSISTANT,
+                            "secret-a-reply-" + turn
+                        ),
+                        persistedAt = Instant.parse("2026-09-19T00:00:0" + (turn + 1) + "Z")
+                    )
+                )
+            }
+            assertIs<PersistentConversationAppendPairResult.Appended>(
+                firstConversation.appendPair(
+                    sessionId = sessionB,
+                    user = CognitiveConversationContextMessage(
+                        CognitiveConversationSequence(1),
+                        CognitiveConversationRole.USER,
+                        "secret-b-user"
+                    ),
+                    assistant = CognitiveConversationContextMessage(
+                        CognitiveConversationSequence(2),
+                        CognitiveConversationRole.ASSISTANT,
+                        "secret-b-reply"
+                    ),
+                    persistedAt = Instant.parse("2026-09-19T00:00:10Z")
+                )
+            )
+
+            val durable = assertIs<PersistentBackendLoadResult.Loaded>(
+                first.backend.load(conversationStoreId)
+            )
+            val sensitive = listOf(
+                sessionA.value,
+                sessionB.value,
+                "secret-a-user-0",
+                "secret-a-reply-2",
+                "secret-b-user",
+                "secret-b-reply"
+            ).map { it.encodeToByteArray() }
+            for (entry in durable.state.entries.values) {
+                val payload = entry.record.payload.copyBytes()
+                for (needle in sensitive) {
+                    assertFalse(containsSubsequence(payload, needle))
+                }
+            }
+
+            val reconstructed = assertIs<AndroidCognitiveStorageOpenResult.Ready>(
+                AndroidCognitiveStorageAssembly.open(
+                    context = context,
+                    foundation = foundation(),
+                    directoryName = TEST_DIRECTORY
+                )
+            ).assembly
+            assertNotNull(reconstructed.dekStore.inspect(dekReference))
+
+            val reopenedConversation =
+                assertIs<AndroidEncryptedConversationOpenResult.Opened>(
+                    reconstructed.openEncryptedConversation(
+                        storeId = conversationStoreId,
+                        activeDek = dekReference,
+                        maxRetainedMessages = 4,
+                        maxMessageChars = 8 * 1024
+                    )
+                ).store
+
+            val reopenedA = assertNotNull(reopenedConversation.reopen(sessionA))
+            assertEquals(
+                listOf(3L, 4L, 5L, 6L),
+                reopenedA.messages.map { it.sequence.value }
+            )
+            assertEquals(
+                listOf(
+                    "secret-a-user-1",
+                    "secret-a-reply-1",
+                    "secret-a-user-2",
+                    "secret-a-reply-2"
+                ),
+                reopenedA.messages.map { it.content }
+            )
+
+            val fullHistory = assertIs<PersistentConversationHistoryResult.Found>(
+                reopenedConversation.history(
+                    sessionId = sessionA,
+                    maxMessages = 10
+                )
+            ).snapshot
+            assertEquals(
+                (1L..6L).toList(),
+                fullHistory.messages.map { it.sequence.value }
+            )
+            assertEquals(
+                listOf(
+                    "secret-a-user-0",
+                    "secret-a-reply-0",
+                    "secret-a-user-1",
+                    "secret-a-reply-1",
+                    "secret-a-user-2",
+                    "secret-a-reply-2"
+                ),
+                fullHistory.messages.map { it.content }
+            )
+
+            val reopenedB = assertNotNull(reopenedConversation.reopen(sessionB))
+            assertEquals(
+                listOf("secret-b-user", "secret-b-reply"),
+                reopenedB.messages.map { it.content }
+            )
+        }
     @Test
     fun missing_exact_protector_fails_closed_after_reconstruction() =
         withCleanRoot { context, _ ->
