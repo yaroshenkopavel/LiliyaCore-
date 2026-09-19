@@ -1,5 +1,7 @@
 package pro.liliya.core.cognitive
 
+import java.io.ByteArrayOutputStream
+import java.io.DataOutputStream
 import java.security.MessageDigest
 import java.time.Instant
 import java.util.concurrent.atomic.AtomicInteger
@@ -237,6 +239,56 @@ class ConversationV3NativeRuntimeContractTest {
                 at(3)
             )
         )
+    }
+
+    @Test
+    fun indexed_v2_archive_without_marker_reopens_through_legacy_fallback() {
+        val backend = CountingIndexedBackend()
+        val session = CognitiveConversationSessionId("indexed-v2-session")
+        val payload = ByteArrayOutputStream().use { output ->
+            DataOutputStream(output).use { data ->
+                data.writeInt(0x434E5632)
+                val sessionBytes = session.value.encodeToByteArray()
+                data.writeInt(sessionBytes.size)
+                data.write(sessionBytes)
+                data.writeInt(2)
+                for ((sequence, role, content) in listOf(
+                    Triple(1L, CognitiveConversationRole.USER, "old-user"),
+                    Triple(2L, CognitiveConversationRole.ASSISTANT, "old-reply")
+                )) {
+                    data.writeLong(sequence)
+                    data.writeInt(role.ordinal)
+                    val contentBytes = content.encodeToByteArray()
+                    data.writeInt(contentBytes.size)
+                    data.write(contentBytes)
+                }
+            }
+            output.toByteArray()
+        }
+        val chunkDigest = MessageDigest.getInstance("SHA-256")
+            .digest((session.value + ":1").encodeToByteArray())
+            .joinToString("") { "%02x".format(it) }
+
+        assertIs<CognitiveEncryptionResult.Success<*>>(
+            encryptedStore(backend).install(
+                CognitivePersistentRecordDraft(
+                    id = PersistentEntityId("conversation-chunk-$chunkDigest"),
+                    schemaId = PersistentSchemaId("cognitive-conversation-session"),
+                    schemaVersion = PersistentSchemaVersion(2),
+                    plaintext = CognitivePlaintext(payload),
+                    createdAt = at(1),
+                    dek = dekRef
+                )
+            )
+        )
+
+        backend.resetReadCounters()
+        val reopened = openConversation(backend, maxRetained = 4)
+        val snapshot = assertNotNull(reopened.reopen(session))
+        assertEquals(listOf(1L, 2L), snapshot.messages.map { it.sequence.value })
+        assertEquals(listOf("old-user", "old-reply"), snapshot.messages.map { it.content })
+        assertFalse(backend.entries.containsKey(ConversationV3IndexCodec.MARKER_ID))
+        assertTrue(backend.pageLoadCalls > 0)
     }
 
     @Test
