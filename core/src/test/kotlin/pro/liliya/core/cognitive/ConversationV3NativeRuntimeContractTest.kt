@@ -340,6 +340,159 @@ class ConversationV3NativeRuntimeContractTest {
     }
 
     @Test
+    fun prepare_migration_installs_only_mixed_marker_without_scanning_or_deleting_legacy_rows() {
+        val backend = CountingIndexedBackend()
+        val encrypted = encryptedStore(backend)
+        val session = CognitiveConversationSessionId("prepare-legacy-session")
+
+        val payload = ByteArrayOutputStream().use { output ->
+            DataOutputStream(output).use { data ->
+                data.writeInt(0x434E5632)
+                val sessionBytes = session.value.encodeToByteArray()
+                data.writeInt(sessionBytes.size)
+                data.write(sessionBytes)
+                data.writeInt(2)
+                for ((sequence, role, content) in listOf(
+                    Triple(1L, CognitiveConversationRole.USER, "old-user"),
+                    Triple(2L, CognitiveConversationRole.ASSISTANT, "old-reply")
+                )) {
+                    data.writeLong(sequence)
+                    data.writeInt(role.ordinal)
+                    val bytes = content.encodeToByteArray()
+                    data.writeInt(bytes.size)
+                    data.write(bytes)
+                }
+            }
+            output.toByteArray()
+        }
+        val legacyDigest = MessageDigest.getInstance("SHA-256")
+            .digest((session.value + ":1").encodeToByteArray())
+            .joinToString("") { "%02x".format(it) }
+        val legacyId = PersistentEntityId("conversation-chunk-$legacyDigest")
+        assertIs<CognitiveEncryptionResult.Success<*>>(
+            encrypted.install(
+                CognitivePersistentRecordDraft(
+                    id = legacyId,
+                    schemaId = PersistentSchemaId("cognitive-conversation-session"),
+                    schemaVersion = PersistentSchemaVersion(2),
+                    plaintext = CognitivePlaintext(payload),
+                    createdAt = at(1),
+                    dek = dekRef
+                )
+            )
+        )
+        val legacyBefore = assertNotNull(backend.entries[legacyId])
+
+        backend.resetReadCounters()
+        assertIs<PersistentConversationMigrationPrepareResult.Prepared>(
+            EncryptedPersistentConversationStore.prepareMigration(
+                encryptedStore = encryptedStore(backend),
+                activeDek = dekRef,
+                persistedAt = at(2)
+            )
+        )
+
+        assertEquals(0, backend.pageLoadCalls)
+        assertEquals(
+            legacyBefore,
+            assertNotNull(backend.entries[legacyId])
+        )
+        assertTrue(
+            backend.entries.containsKey(
+                ConversationV3MigrationCodec.MIXED_MARKER_ID
+            )
+        )
+        assertFalse(
+            backend.entries.containsKey(ConversationV3IndexCodec.MARKER_ID)
+        )
+
+        backend.resetReadCounters()
+        val mixed = assertIs<PersistentConversationOpenResult.Opened>(
+            EncryptedPersistentConversationStore.open(
+                encryptedStore = encryptedStore(backend),
+                activeDek = dekRef,
+                maxRetainedMessages = 4,
+                maxMessageChars = 1024
+            )
+        ).store
+        val snapshot = assertNotNull(mixed.reopen(session))
+        assertEquals(listOf("old-user", "old-reply"), snapshot.messages.map { it.content })
+        assertEquals(0, backend.pageLoadCalls)
+    }
+
+    @Test
+    fun prepare_migration_is_idempotent_and_rejects_native_or_empty_store() {
+        val backend = CountingIndexedBackend()
+
+        assertIs<PersistentConversationMigrationPrepareResult.Rejected>(
+            EncryptedPersistentConversationStore.prepareMigration(
+                encryptedStore = encryptedStore(backend),
+                activeDek = dekRef,
+                persistedAt = at(1)
+            )
+        )
+
+        val session = CognitiveConversationSessionId("prepare-idempotent-session")
+        val payload = ByteArrayOutputStream().use { output ->
+            DataOutputStream(output).use { data ->
+                data.writeInt(0x434E5632)
+                val sessionBytes = session.value.encodeToByteArray()
+                data.writeInt(sessionBytes.size)
+                data.write(sessionBytes)
+                data.writeInt(1)
+                data.writeLong(1L)
+                data.writeInt(CognitiveConversationRole.USER.ordinal)
+                val bytes = "legacy".encodeToByteArray()
+                data.writeInt(bytes.size)
+                data.write(bytes)
+            }
+            output.toByteArray()
+        }
+        assertIs<CognitiveEncryptionResult.Success<*>>(
+            encryptedStore(backend).install(
+                CognitivePersistentRecordDraft(
+                    id = PersistentEntityId(
+                        "conversation-chunk-" +
+                            MessageDigest.getInstance("SHA-256")
+                                .digest((session.value + ":1").encodeToByteArray())
+                                .joinToString("") { "%02x".format(it) }
+                    ),
+                    schemaId = PersistentSchemaId("cognitive-conversation-session"),
+                    schemaVersion = PersistentSchemaVersion(2),
+                    plaintext = CognitivePlaintext(payload),
+                    createdAt = at(2),
+                    dek = dekRef
+                )
+            )
+        )
+
+        assertIs<PersistentConversationMigrationPrepareResult.Prepared>(
+            EncryptedPersistentConversationStore.prepareMigration(
+                encryptedStore = encryptedStore(backend),
+                activeDek = dekRef,
+                persistedAt = at(3)
+            )
+        )
+        assertIs<PersistentConversationMigrationPrepareResult.AlreadyPrepared>(
+            EncryptedPersistentConversationStore.prepareMigration(
+                encryptedStore = encryptedStore(backend),
+                activeDek = dekRef,
+                persistedAt = at(4)
+            )
+        )
+
+        val nativeBackend = CountingIndexedBackend()
+        openConversation(nativeBackend)
+        assertIs<PersistentConversationMigrationPrepareResult.Rejected>(
+            EncryptedPersistentConversationStore.prepareMigration(
+                encryptedStore = encryptedStore(nativeBackend),
+                activeDek = dekRef,
+                persistedAt = at(5)
+            )
+        )
+    }
+
+    @Test
     fun mixed_mode_reopens_one_legacy_session_with_bounded_memory_and_no_global_scan() {
         val backend = CountingIndexedBackend()
         val encrypted = encryptedStore(backend)
