@@ -589,10 +589,18 @@ internal class ConversationV3NativeRuntime private constructor(
             is ConversationV3RecordRead.Found ->
                 when (val decoded = ConversationV3IndexCodec.decodeChunk(read.record)) {
                     is ConversationV3DecodeResult.Decoded ->
-                        if (decoded.value.snapshot.sessionId == sessionId) {
-                            ConversationV3SessionLoadChunk.Found(decoded.value)
-                        } else {
+                        if (decoded.value.snapshot.sessionId != sessionId) {
                             ConversationV3SessionLoadChunk.Corrupt
+                        } else if (
+                            decoded.value.snapshot.messages.any {
+                                it.content.length > maxMessageChars
+                            }
+                        ) {
+                            ConversationV3SessionLoadChunk.Incompatible(
+                                "durable conversation exceeds configured reconstruction bounds"
+                            )
+                        } else {
+                            ConversationV3SessionLoadChunk.Found(decoded.value)
                         }
                     ConversationV3DecodeResult.Corrupt ->
                         ConversationV3SessionLoadChunk.Corrupt
