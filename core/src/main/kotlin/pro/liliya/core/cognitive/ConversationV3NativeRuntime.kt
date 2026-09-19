@@ -562,6 +562,9 @@ internal class ConversationV3NativeRuntime private constructor(
             expectedLast = chunk.snapshot.messages.first().sequence.value - 1L
             next = chunk.previousChunkId
         }
+        if (selected.size < maxRetainedMessages && next == null && expectedLast != 0L) {
+            return null
+        }
         return CognitiveConversationContextSnapshot(
             sessionId,
             selected.sortedBy { it.sequence.value }.takeLast(maxRetainedMessages)
