@@ -59,17 +59,6 @@ private sealed interface ConversationV3PersistResult {
     data class Failed(val reason: String) : ConversationV3PersistResult
 }
 
-internal sealed interface ConversationV3MigrationWriteStepResult {
-    data object Ready : ConversationV3MigrationWriteStepResult
-    data object AlreadyMigrated : ConversationV3MigrationWriteStepResult
-    data class Rejected(val reason: String) : ConversationV3MigrationWriteStepResult
-    data object Corrupt : ConversationV3MigrationWriteStepResult
-    data class Incompatible(val reason: String) : ConversationV3MigrationWriteStepResult
-    data class EncryptionUnavailable(
-        val category: CognitiveEncryptionFailureCategory
-    ) : ConversationV3MigrationWriteStepResult
-}
-
 private data class ConversationV3NativeEntry(
     val snapshot: CognitiveConversationContextSnapshot,
     val lastSequence: Long,
@@ -91,113 +80,6 @@ internal class ConversationV3NativeRuntime private constructor(
     private val maxMessageChars: Int
 ) {
     private val cache = LinkedHashMap<CognitiveConversationSessionId, ConversationV3NativeEntry>()
-
-    @Synchronized
-    fun beginV2Migration(
-        sessionId: CognitiveConversationSessionId
-    ): ConversationV3MigrationWriteStepResult =
-        when (val loaded = loadSession(sessionId)) {
-            is ConversationV3SessionLoad.Found ->
-                ConversationV3MigrationWriteStepResult.AlreadyMigrated
-            ConversationV3SessionLoad.Absent ->
-                ConversationV3MigrationWriteStepResult.Ready
-            ConversationV3SessionLoad.Corrupt ->
-                ConversationV3MigrationWriteStepResult.Corrupt
-            is ConversationV3SessionLoad.Incompatible ->
-                ConversationV3MigrationWriteStepResult.Incompatible(loaded.reason)
-            is ConversationV3SessionLoad.EncryptionUnavailable ->
-                ConversationV3MigrationWriteStepResult.EncryptionUnavailable(
-                    loaded.category
-                )
-        }
-
-    @Synchronized
-    fun stageV2MigrationChunk(
-        linked: ConversationV3LinkedChunk,
-        persistedAt: Instant
-    ): ConversationV3MigrationWriteStepResult {
-        if (linked.snapshot.messages.any { it.content.length > maxMessageChars }) {
-            return ConversationV3MigrationWriteStepResult.Incompatible(
-                "durable conversation exceeds configured reconstruction bounds"
-            )
-        }
-        val record = ConversationV3IndexCodec.encodeChunk(linked, persistedAt)
-        return when (val persisted = persistChunkOrValidateExisting(record, linked)) {
-            is ConversationV3PersistResult.Persisted ->
-                ConversationV3MigrationWriteStepResult.Ready
-            is ConversationV3PersistResult.Rejected ->
-                ConversationV3MigrationWriteStepResult.Rejected(persisted.reason)
-            is ConversationV3PersistResult.EncryptionUnavailable ->
-                ConversationV3MigrationWriteStepResult.EncryptionUnavailable(
-                    persisted.category
-                )
-            is ConversationV3PersistResult.Failed ->
-                ConversationV3MigrationWriteStepResult.Rejected(persisted.reason)
-        }
-    }
-
-    @Synchronized
-    fun publishV2MigrationHead(
-        sessionId: CognitiveConversationSessionId,
-        lastSequence: Long,
-        latestChunkId: PersistentEntityId,
-        persistedAt: Instant
-    ): ConversationV3MigrationWriteStepResult {
-        when (val loaded = loadSession(sessionId)) {
-            is ConversationV3SessionLoad.Found ->
-                return if (
-                    loaded.entry.lastSequence == lastSequence &&
-                    loaded.entry.latestChunkId == latestChunkId
-                ) {
-                    ConversationV3MigrationWriteStepResult.AlreadyMigrated
-                } else {
-                    ConversationV3MigrationWriteStepResult.Rejected(
-                        "conversation v3 head conflicts with migration source"
-                    )
-                }
-            ConversationV3SessionLoad.Absent -> Unit
-            ConversationV3SessionLoad.Corrupt ->
-                return ConversationV3MigrationWriteStepResult.Corrupt
-            is ConversationV3SessionLoad.Incompatible ->
-                return ConversationV3MigrationWriteStepResult.Incompatible(
-                    loaded.reason
-                )
-            is ConversationV3SessionLoad.EncryptionUnavailable ->
-                return ConversationV3MigrationWriteStepResult.EncryptionUnavailable(
-                    loaded.category
-                )
-        }
-
-        val head = ConversationV3SessionHead(
-            sessionId = sessionId,
-            lastSequence = lastSequence,
-            latestChunkId = latestChunkId
-        )
-        return when (
-            val persisted = persistHead(
-                head = head,
-                previousGeneration = null,
-                persistedAt = persistedAt
-            )
-        ) {
-            is ConversationV3PersistResult.Persisted -> {
-                cache.remove(sessionId)
-                ConversationV3MigrationWriteStepResult.Ready
-            }
-            is ConversationV3PersistResult.Rejected ->
-                ConversationV3MigrationWriteStepResult.Rejected(
-                    persisted.reason
-                )
-            is ConversationV3PersistResult.EncryptionUnavailable ->
-                ConversationV3MigrationWriteStepResult.EncryptionUnavailable(
-                    persisted.category
-                )
-            is ConversationV3PersistResult.Failed ->
-                ConversationV3MigrationWriteStepResult.Rejected(
-                    persisted.reason
-                )
-        }
-    }
 
     @Synchronized
     fun append(
