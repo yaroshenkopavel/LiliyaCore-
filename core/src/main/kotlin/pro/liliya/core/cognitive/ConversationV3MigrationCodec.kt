@@ -16,6 +16,10 @@ import pro.liliya.core.persistence.PersistentSchemaVersion
 
 internal data object ConversationV3MixedModeMarker
 
+internal data class ConversationV3MigrationLock(
+    val sessionId: CognitiveConversationSessionId
+)
+
 internal data class ConversationV3TruncatedRootBoundary(
     val sessionId: CognitiveConversationSessionId,
     val firstRetainedSequence: Long,
@@ -39,11 +43,14 @@ internal object ConversationV3MigrationCodec {
     val MIXED_MARKER_ID = PersistentEntityId("conversation-v3-mixed-mode-marker")
     val MIXED_MARKER_SCHEMA_ID =
         PersistentSchemaId("cognitive-conversation-v3-mixed-mode")
+    val MIGRATION_LOCK_SCHEMA_ID =
+        PersistentSchemaId("cognitive-conversation-v3-migration-lock")
     val TRUNCATED_ROOT_SCHEMA_ID =
         PersistentSchemaId("cognitive-conversation-v3-truncated-root")
     val SCHEMA_VERSION = PersistentSchemaVersion(1)
 
     private const val MIXED_MAGIC = 0x434D5831 // CMX1
+    private const val MIGRATION_LOCK_MAGIC = 0x434D4C31 // CML1
     private const val TRUNCATED_ROOT_MAGIC = 0x43545231 // CTR1
     private const val MAX_STRING_BYTES = 65_536
 
@@ -97,6 +104,69 @@ internal object ConversationV3MigrationCodec {
                 )
             }
         } catch (_: EOFException) {
+            ConversationV3MigrationDecodeResult.Corrupt
+        } catch (_: RuntimeException) {
+            ConversationV3MigrationDecodeResult.Corrupt
+        }
+    }
+
+    fun migrationLockId(
+        sessionId: CognitiveConversationSessionId
+    ): PersistentEntityId =
+        PersistentEntityId(
+            "conversation-v3-migration-lock-" + digest(sessionId.value)
+        )
+
+    fun encodeMigrationLock(
+        lock: ConversationV3MigrationLock,
+        persistedAt: Instant
+    ): PersistentRecord {
+        val payload = ByteArrayOutputStream().use { output ->
+            DataOutputStream(output).use { data ->
+                data.writeInt(MIGRATION_LOCK_MAGIC)
+                data.writeString(lock.sessionId.value)
+            }
+            output.toByteArray()
+        }
+        return PersistentRecord(
+            id = migrationLockId(lock.sessionId),
+            schemaId = MIGRATION_LOCK_SCHEMA_ID,
+            schemaVersion = SCHEMA_VERSION,
+            payload = PersistentPayload(payload),
+            createdAt = persistedAt
+        )
+    }
+
+    fun decodeMigrationLock(
+        record: PersistentRecord
+    ): ConversationV3MigrationDecodeResult<ConversationV3MigrationLock> {
+        if (record.schemaId != MIGRATION_LOCK_SCHEMA_ID ||
+            record.schemaVersion != SCHEMA_VERSION
+        ) {
+            return ConversationV3MigrationDecodeResult.Incompatible(
+                "conversation v3 migration-lock schema mismatch"
+            )
+        }
+
+        return try {
+            val input = ByteArrayInputStream(record.payload.copyBytes())
+            val data = DataInputStream(input)
+            if (data.readInt() != MIGRATION_LOCK_MAGIC) {
+                return ConversationV3MigrationDecodeResult.Corrupt
+            }
+            val sessionId = CognitiveConversationSessionId(data.readString(input))
+            if (input.available() != 0 ||
+                record.id != migrationLockId(sessionId)
+            ) {
+                ConversationV3MigrationDecodeResult.Corrupt
+            } else {
+                ConversationV3MigrationDecodeResult.Decoded(
+                    ConversationV3MigrationLock(sessionId)
+                )
+            }
+        } catch (_: EOFException) {
+            ConversationV3MigrationDecodeResult.Corrupt
+        } catch (_: IllegalArgumentException) {
             ConversationV3MigrationDecodeResult.Corrupt
         } catch (_: RuntimeException) {
             ConversationV3MigrationDecodeResult.Corrupt

@@ -22,6 +22,18 @@ import pro.liliya.core.persistence.PersistentRecord
 import pro.liliya.core.persistence.PersistentSchemaId
 import pro.liliya.core.persistence.PersistentSchemaVersion
 
+sealed interface PersistentConversationSessionMigrationResult {
+    data object Migrated : PersistentConversationSessionMigrationResult
+    data object AlreadyMigrated : PersistentConversationSessionMigrationResult
+    data object Absent : PersistentConversationSessionMigrationResult
+    data class Rejected(val reason: String) : PersistentConversationSessionMigrationResult
+    data object Corrupt : PersistentConversationSessionMigrationResult
+    data class Incompatible(val reason: String) : PersistentConversationSessionMigrationResult
+    data class EncryptionUnavailable(
+        val category: CognitiveEncryptionFailureCategory
+    ) : PersistentConversationSessionMigrationResult
+}
+
 sealed interface PersistentConversationMigrationPrepareResult {
     data object Prepared : PersistentConversationMigrationPrepareResult
     data object AlreadyPrepared : PersistentConversationMigrationPrepareResult
@@ -109,6 +121,18 @@ class EncryptedPersistentConversationStore private constructor(
     init {
         require(maxRetainedMessages > 0) { "maximum retained conversation messages must be positive" }
         require(maxMessageChars > 0) { "maximum conversation message chars must be positive" }
+    }
+
+    @Synchronized
+    fun migrateV2Session(
+        sessionId: CognitiveConversationSessionId,
+        persistedAt: Instant
+    ): PersistentConversationSessionMigrationResult {
+        val mixed = mixedV3
+            ?: return PersistentConversationSessionMigrationResult.Rejected(
+                "conversation v2 migration requires mixed mode"
+            )
+        return mixed.migrateV2Session(sessionId, persistedAt)
     }
 
     @Synchronized
@@ -577,6 +601,7 @@ class EncryptedPersistentConversationStore private constructor(
                             restored = emptyMap(),
                             mixedV3 = ConversationV3MixedSessionRuntime(
                                 encryptedStore = encryptedStore,
+                                activeDek = activeDek,
                                 nativeV3 = native.runtime,
                                 maxRetainedMessages = maxRetainedMessages,
                                 maxMessageChars = maxMessageChars
@@ -673,10 +698,273 @@ private sealed interface ConversationV3LegacyExactRead {
 
 private class ConversationV3MixedSessionRuntime(
     private val encryptedStore: EncryptedPersistentRecordStore,
+    private val activeDek: CognitiveDekReference,
     private val nativeV3: ConversationV3NativeRuntime,
     private val maxRetainedMessages: Int,
     private val maxMessageChars: Int
 ) {
+    fun migrateV2Session(
+        sessionId: CognitiveConversationSessionId,
+        persistedAt: Instant
+    ): PersistentConversationSessionMigrationResult {
+        when (val native = nativeV3.reopenResult(sessionId)) {
+            is PersistentConversationReopenResult.Found ->
+                return PersistentConversationSessionMigrationResult.AlreadyMigrated
+            PersistentConversationReopenResult.Absent -> Unit
+            PersistentConversationReopenResult.Corrupt ->
+                return PersistentConversationSessionMigrationResult.Corrupt
+            is PersistentConversationReopenResult.Incompatible ->
+                return PersistentConversationSessionMigrationResult.Incompatible(
+                    native.reason
+                )
+            is PersistentConversationReopenResult.EncryptionUnavailable ->
+                return PersistentConversationSessionMigrationResult.EncryptionUnavailable(
+                    native.category
+                )
+        }
+
+        when (
+            val legacyRoot =
+                readLegacy(ConversationPersistentRecordCodec.entityId(sessionId))
+        ) {
+            is ConversationV3LegacyExactRead.Found ->
+                return PersistentConversationSessionMigrationResult.Rejected(
+                    "conversation v1 migration requires truncated-root handling"
+                )
+            ConversationV3LegacyExactRead.Missing -> Unit
+            ConversationV3LegacyExactRead.Corrupt ->
+                return PersistentConversationSessionMigrationResult.Corrupt
+            is ConversationV3LegacyExactRead.Incompatible ->
+                return PersistentConversationSessionMigrationResult.Incompatible(
+                    legacyRoot.reason
+                )
+            is ConversationV3LegacyExactRead.EncryptionUnavailable ->
+                return PersistentConversationSessionMigrationResult.EncryptionUnavailable(
+                    legacyRoot.category
+                )
+        }
+
+        val firstId = ConversationPersistentRecordCodec.chunkId(sessionId, 1L)
+        when (val first = readLegacy(firstId)) {
+            ConversationV3LegacyExactRead.Missing ->
+                return PersistentConversationSessionMigrationResult.Absent
+            ConversationV3LegacyExactRead.Corrupt ->
+                return PersistentConversationSessionMigrationResult.Corrupt
+            is ConversationV3LegacyExactRead.Incompatible ->
+                return PersistentConversationSessionMigrationResult.Incompatible(
+                    first.reason
+                )
+            is ConversationV3LegacyExactRead.EncryptionUnavailable ->
+                return PersistentConversationSessionMigrationResult.EncryptionUnavailable(
+                    first.category
+                )
+            is ConversationV3LegacyExactRead.Found ->
+                if (!first.decoded.chunk ||
+                    first.decoded.snapshot.sessionId != sessionId ||
+                    first.decoded.snapshot.messages.isEmpty() ||
+                    first.decoded.snapshot.messages.first().sequence.value != 1L
+                ) {
+                    return PersistentConversationSessionMigrationResult.Corrupt
+                }
+        }
+
+        when (val locked = installMigrationLock(sessionId, persistedAt)) {
+            is PersistentConversationSessionMigrationResult.Migrated -> Unit
+            is PersistentConversationSessionMigrationResult.AlreadyMigrated -> Unit
+            else -> return locked
+        }
+
+        var nextSequence = 1L
+        var previousV3Id: PersistentEntityId? = null
+        var latestV3Id: PersistentEntityId? = null
+        var lastSequence = 0L
+
+        while (true) {
+            val sourceId =
+                ConversationPersistentRecordCodec.chunkId(sessionId, nextSequence)
+            when (val source = readLegacy(sourceId)) {
+                ConversationV3LegacyExactRead.Missing -> break
+                ConversationV3LegacyExactRead.Corrupt ->
+                    return PersistentConversationSessionMigrationResult.Corrupt
+                is ConversationV3LegacyExactRead.Incompatible ->
+                    return PersistentConversationSessionMigrationResult.Incompatible(
+                        source.reason
+                    )
+                is ConversationV3LegacyExactRead.EncryptionUnavailable ->
+                    return PersistentConversationSessionMigrationResult.EncryptionUnavailable(
+                        source.category
+                    )
+                is ConversationV3LegacyExactRead.Found -> {
+                    val decoded = source.decoded
+                    val messages = decoded.snapshot.messages
+                    if (!decoded.chunk ||
+                        decoded.snapshot.sessionId != sessionId ||
+                        messages.isEmpty() ||
+                        messages.first().sequence.value != nextSequence ||
+                        !validateMessages(messages, allowTruncatedStart = false)
+                    ) {
+                        return PersistentConversationSessionMigrationResult.Corrupt
+                    }
+
+                    val linked = ConversationV3LinkedChunk(
+                        snapshot = decoded.snapshot,
+                        previousChunkId = previousV3Id
+                    )
+                    when (
+                        val staged =
+                            nativeV3.stageLockedMigrationChunk(
+                                linked = linked,
+                                persistedAt = persistedAt
+                            )
+                    ) {
+                        ConversationV3LockedMigrationResult.Ready -> Unit
+                        ConversationV3LockedMigrationResult.AlreadyMigrated ->
+                            Unit
+                        is ConversationV3LockedMigrationResult.Rejected ->
+                            return PersistentConversationSessionMigrationResult.Rejected(
+                                staged.reason
+                            )
+                        ConversationV3LockedMigrationResult.Corrupt ->
+                            return PersistentConversationSessionMigrationResult.Corrupt
+                        is ConversationV3LockedMigrationResult.Incompatible ->
+                            return PersistentConversationSessionMigrationResult.Incompatible(
+                                staged.reason
+                            )
+                        is ConversationV3LockedMigrationResult.EncryptionUnavailable ->
+                            return PersistentConversationSessionMigrationResult.EncryptionUnavailable(
+                                staged.category
+                            )
+                    }
+
+                    latestV3Id = ConversationV3IndexCodec.chunkId(
+                        sessionId,
+                        messages.first().sequence.value
+                    )
+                    previousV3Id = latestV3Id
+                    lastSequence = messages.last().sequence.value
+                    if (lastSequence == Long.MAX_VALUE) {
+                        return PersistentConversationSessionMigrationResult.Corrupt
+                    }
+                    nextSequence = lastSequence + 1L
+                }
+            }
+        }
+
+        val latest = latestV3Id
+            ?: return PersistentConversationSessionMigrationResult.Absent
+        return when (
+            val published = nativeV3.publishLockedMigrationHead(
+                sessionId = sessionId,
+                lastSequence = lastSequence,
+                latestChunkId = latest,
+                persistedAt = persistedAt
+            )
+        ) {
+            ConversationV3LockedMigrationResult.Ready ->
+                PersistentConversationSessionMigrationResult.Migrated
+            ConversationV3LockedMigrationResult.AlreadyMigrated ->
+                PersistentConversationSessionMigrationResult.AlreadyMigrated
+            is ConversationV3LockedMigrationResult.Rejected ->
+                PersistentConversationSessionMigrationResult.Rejected(
+                    published.reason
+                )
+            ConversationV3LockedMigrationResult.Corrupt ->
+                PersistentConversationSessionMigrationResult.Corrupt
+            is ConversationV3LockedMigrationResult.Incompatible ->
+                PersistentConversationSessionMigrationResult.Incompatible(
+                    published.reason
+                )
+            is ConversationV3LockedMigrationResult.EncryptionUnavailable ->
+                PersistentConversationSessionMigrationResult.EncryptionUnavailable(
+                    published.category
+                )
+        }
+    }
+
+    private fun installMigrationLock(
+        sessionId: CognitiveConversationSessionId,
+        persistedAt: Instant
+    ): PersistentConversationSessionMigrationResult {
+        val lockRecord = ConversationV3MigrationCodec.encodeMigrationLock(
+            ConversationV3MigrationLock(sessionId),
+            persistedAt
+        )
+        val existing = encryptedStore.open(lockRecord.id)
+        when (existing) {
+            is CognitiveEncryptionResult.Success -> {
+                val raw = encryptedStore.inspect(lockRecord.id)
+                    ?: return PersistentConversationSessionMigrationResult.Corrupt
+                val decoded = ConversationV3MigrationCodec.decodeMigrationLock(
+                    raw.record.copy(
+                        payload = PersistentPayload(existing.value.copyBytes())
+                    )
+                )
+                return when (decoded) {
+                    is ConversationV3MigrationDecodeResult.Decoded ->
+                        if (decoded.value.sessionId == sessionId) {
+                            PersistentConversationSessionMigrationResult.AlreadyMigrated
+                        } else {
+                            PersistentConversationSessionMigrationResult.Corrupt
+                        }
+                    ConversationV3MigrationDecodeResult.Corrupt ->
+                        PersistentConversationSessionMigrationResult.Corrupt
+                    is ConversationV3MigrationDecodeResult.Incompatible ->
+                        PersistentConversationSessionMigrationResult.Incompatible(
+                            decoded.reason
+                        )
+                }
+            }
+            is CognitiveEncryptionResult.Rejected ->
+                if (
+                    existing.category !=
+                        CognitiveEncryptionFailureCategory.INVALID_REQUEST
+                ) {
+                    return PersistentConversationSessionMigrationResult.EncryptionUnavailable(
+                        existing.category
+                    )
+                }
+            is CognitiveEncryptionResult.Failed ->
+                return PersistentConversationSessionMigrationResult.EncryptionUnavailable(
+                    existing.category
+                )
+        }
+
+        val bytes = lockRecord.payload.copyBytes()
+        val draft = CognitivePersistentRecordDraft(
+            id = lockRecord.id,
+            schemaId = lockRecord.schemaId,
+            schemaVersion = lockRecord.schemaVersion,
+            plaintext = CognitivePlaintext(bytes),
+            createdAt = lockRecord.createdAt,
+            dek = activeDek
+        )
+        return try {
+            when (val installed = encryptedStore.install(draft)) {
+                is CognitiveEncryptionResult.Success ->
+                    PersistentConversationSessionMigrationResult.Migrated
+                is CognitiveEncryptionResult.Rejected ->
+                    if (
+                        installed.category ==
+                            CognitiveEncryptionFailureCategory.PERSISTENCE_CONFLICT
+                    ) {
+                        PersistentConversationSessionMigrationResult.Rejected(
+                            "conversation migration lock conflict"
+                        )
+                    } else {
+                        PersistentConversationSessionMigrationResult.EncryptionUnavailable(
+                            installed.category
+                        )
+                    }
+                is CognitiveEncryptionResult.Failed ->
+                    PersistentConversationSessionMigrationResult.EncryptionUnavailable(
+                        installed.category
+                    )
+            }
+        } finally {
+            bytes.fill(0)
+        }
+    }
+
     fun reopenResult(
         sessionId: CognitiveConversationSessionId
     ): PersistentConversationReopenResult {
