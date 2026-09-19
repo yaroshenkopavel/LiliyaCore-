@@ -22,6 +22,17 @@ import pro.liliya.core.persistence.PersistentRecord
 import pro.liliya.core.persistence.PersistentSchemaId
 import pro.liliya.core.persistence.PersistentSchemaVersion
 
+sealed interface PersistentConversationMigrationPrepareResult {
+    data object Prepared : PersistentConversationMigrationPrepareResult
+    data object AlreadyPrepared : PersistentConversationMigrationPrepareResult
+    data class Rejected(val reason: String) : PersistentConversationMigrationPrepareResult
+    data object Corrupt : PersistentConversationMigrationPrepareResult
+    data class Incompatible(val reason: String) : PersistentConversationMigrationPrepareResult
+    data class EncryptionUnavailable(
+        val category: CognitiveEncryptionFailureCategory
+    ) : PersistentConversationMigrationPrepareResult
+}
+
 sealed interface PersistentConversationOpenResult {
     data class Opened(val store: EncryptedPersistentConversationStore) : PersistentConversationOpenResult
     data object Corrupt : PersistentConversationOpenResult
@@ -400,6 +411,124 @@ class EncryptedPersistentConversationStore private constructor(
     }
 
     companion object {
+        fun prepareMigration(
+            encryptedStore: EncryptedPersistentRecordStore,
+            activeDek: CognitiveDekReference,
+            persistedAt: Instant
+        ): PersistentConversationMigrationPrepareResult {
+            if (!encryptedStore.supportsIndexedLazyMode()) {
+                return PersistentConversationMigrationPrepareResult.Rejected(
+                    "conversation migration requires indexed lazy persistence"
+                )
+            }
+            if (encryptedStore.entryCount() == 0L) {
+                return PersistentConversationMigrationPrepareResult.Rejected(
+                    "empty conversation store does not require migration"
+                )
+            }
+
+            fun readMarker(
+                id: PersistentEntityId,
+                decode: (PersistentRecord) -> Any
+            ): Any? {
+                val plaintext = when (val opened = encryptedStore.open(id)) {
+                    is CognitiveEncryptionResult.Success -> opened.value
+                    is CognitiveEncryptionResult.Rejected ->
+                        return if (
+                            opened.category ==
+                                CognitiveEncryptionFailureCategory.INVALID_REQUEST
+                        ) {
+                            null
+                        } else {
+                            PersistentConversationMigrationPrepareResult.EncryptionUnavailable(
+                                opened.category
+                            )
+                        }
+                    is CognitiveEncryptionResult.Failed ->
+                        return PersistentConversationMigrationPrepareResult.EncryptionUnavailable(
+                            opened.category
+                        )
+                }
+                val raw = encryptedStore.inspect(id)
+                    ?: return PersistentConversationMigrationPrepareResult.Corrupt
+                return decode(
+                    raw.record.copy(
+                        payload = PersistentPayload(plaintext.copyBytes())
+                    )
+                )
+            }
+
+            when (
+                val native = readMarker(
+                    ConversationV3IndexCodec.MARKER_ID
+                ) { record -> ConversationV3IndexCodec.decodeMarker(record) }
+            ) {
+                null -> Unit
+                is PersistentConversationMigrationPrepareResult ->
+                    return native
+                is ConversationV3DecodeResult.Decoded<*> ->
+                    return PersistentConversationMigrationPrepareResult.Rejected(
+                        "native conversation v3 store does not require migration"
+                    )
+                ConversationV3DecodeResult.Corrupt ->
+                    return PersistentConversationMigrationPrepareResult.Corrupt
+                is ConversationV3DecodeResult.Incompatible ->
+                    return PersistentConversationMigrationPrepareResult.Incompatible(
+                        native.reason
+                    )
+                else -> return PersistentConversationMigrationPrepareResult.Corrupt
+            }
+
+            when (
+                val mixed = readMarker(
+                    ConversationV3MigrationCodec.MIXED_MARKER_ID
+                ) { record ->
+                    ConversationV3MigrationCodec.decodeMixedMarker(record)
+                }
+            ) {
+                null -> Unit
+                is PersistentConversationMigrationPrepareResult ->
+                    return mixed
+                is ConversationV3MigrationDecodeResult.Decoded<*> ->
+                    return PersistentConversationMigrationPrepareResult.AlreadyPrepared
+                ConversationV3MigrationDecodeResult.Corrupt ->
+                    return PersistentConversationMigrationPrepareResult.Corrupt
+                is ConversationV3MigrationDecodeResult.Incompatible ->
+                    return PersistentConversationMigrationPrepareResult.Incompatible(
+                        mixed.reason
+                    )
+                else -> return PersistentConversationMigrationPrepareResult.Corrupt
+            }
+
+            val marker =
+                ConversationV3MigrationCodec.encodeMixedMarker(persistedAt)
+            val bytes = marker.payload.copyBytes()
+            val draft = CognitivePersistentRecordDraft(
+                id = marker.id,
+                schemaId = marker.schemaId,
+                schemaVersion = marker.schemaVersion,
+                plaintext = CognitivePlaintext(bytes),
+                createdAt = marker.createdAt,
+                dek = activeDek
+            )
+            return try {
+                when (val installed = encryptedStore.install(draft)) {
+                    is CognitiveEncryptionResult.Success ->
+                        PersistentConversationMigrationPrepareResult.Prepared
+                    is CognitiveEncryptionResult.Rejected ->
+                        PersistentConversationMigrationPrepareResult.EncryptionUnavailable(
+                            installed.category
+                        )
+                    is CognitiveEncryptionResult.Failed ->
+                        PersistentConversationMigrationPrepareResult.EncryptionUnavailable(
+                            installed.category
+                        )
+                }
+            } finally {
+                bytes.fill(0)
+            }
+        }
+
         fun open(
             encryptedStore: EncryptedPersistentRecordStore,
             activeDek: CognitiveDekReference,
