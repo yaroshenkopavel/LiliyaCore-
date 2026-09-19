@@ -93,6 +93,112 @@ internal class ConversationV3NativeRuntime private constructor(
     private val cache = LinkedHashMap<CognitiveConversationSessionId, ConversationV3NativeEntry>()
 
     @Synchronized
+    fun stageLockedTruncatedRootChunk(
+        boundary: ConversationV3TruncatedRootBoundary,
+        snapshot: CognitiveConversationContextSnapshot,
+        persistedAt: Instant
+    ): ConversationV3LockedMigrationResult {
+        when (val lock = readMigrationLock(snapshot.sessionId)) {
+            ConversationV3LockedMigrationResult.Ready -> Unit
+            else -> return lock
+        }
+        if (snapshot.sessionId != boundary.sessionId ||
+            snapshot.messages.isEmpty() ||
+            snapshot.messages.size > 2 ||
+            snapshot.messages.first().sequence.value !=
+                boundary.firstRetainedSequence ||
+            snapshot.messages.any { it.content.length > maxMessageChars }
+        ) {
+            return ConversationV3LockedMigrationResult.Corrupt
+        }
+
+        when (
+            val boundaryRead = readPlainRecord(
+                ConversationV3MigrationCodec.truncatedRootId(
+                    snapshot.sessionId
+                )
+            )
+        ) {
+            is ConversationV3RecordRead.Found ->
+                when (
+                    val decoded =
+                        ConversationV3MigrationCodec.decodeTruncatedRoot(
+                            boundaryRead.record
+                        )
+                ) {
+                    is ConversationV3MigrationDecodeResult.Decoded ->
+                        if (decoded.value != boundary) {
+                            return ConversationV3LockedMigrationResult.Corrupt
+                        }
+                    ConversationV3MigrationDecodeResult.Corrupt ->
+                        return ConversationV3LockedMigrationResult.Corrupt
+                    is ConversationV3MigrationDecodeResult.Incompatible ->
+                        return ConversationV3LockedMigrationResult.Incompatible(
+                            decoded.reason
+                        )
+                }
+            ConversationV3RecordRead.Missing,
+            ConversationV3RecordRead.Corrupt ->
+                return ConversationV3LockedMigrationResult.Corrupt
+            is ConversationV3RecordRead.EncryptionUnavailable ->
+                return ConversationV3LockedMigrationResult.EncryptionUnavailable(
+                    boundaryRead.category
+                )
+        }
+
+        val expected = ConversationV3TruncatedRootChunk(snapshot)
+        val record = ConversationV3MigrationCodec.encodeTruncatedRootChunk(
+            expected,
+            persistedAt
+        )
+        val draft = draft(record)
+        return when (val installed = encryptedStore.install(draft)) {
+            is CognitiveEncryptionResult.Success ->
+                ConversationV3LockedMigrationResult.Ready
+            is CognitiveEncryptionResult.Rejected ->
+                if (
+                    installed.category !=
+                        CognitiveEncryptionFailureCategory.PERSISTENCE_CONFLICT
+                ) {
+                    ConversationV3LockedMigrationResult.EncryptionUnavailable(
+                        installed.category
+                    )
+                } else {
+                    when (val read = readPlainRecord(record.id)) {
+                        is ConversationV3RecordRead.Found ->
+                            when (
+                                val decoded =
+                                    ConversationV3MigrationCodec.decodeTruncatedRootChunk(
+                                        read.record
+                                    )
+                            ) {
+                                is ConversationV3MigrationDecodeResult.Decoded ->
+                                    if (decoded.value == expected) {
+                                        ConversationV3LockedMigrationResult.Ready
+                                    } else {
+                                        ConversationV3LockedMigrationResult.Rejected(
+                                            "conversation truncated-root chunk conflicts with durable history"
+                                        )
+                                    }
+                                else ->
+                                    ConversationV3LockedMigrationResult.Rejected(
+                                        "conversation truncated-root chunk conflicts with durable history"
+                                    )
+                            }
+                        else ->
+                            ConversationV3LockedMigrationResult.Rejected(
+                                "conversation truncated-root chunk conflicts with durable history"
+                            )
+                    }
+                }
+            is CognitiveEncryptionResult.Failed ->
+                ConversationV3LockedMigrationResult.Rejected(
+                    "encrypted conversation truncated-root persistence failed"
+                )
+        }
+    }
+
+    @Synchronized
     fun stageLockedMigrationChunk(
         linked: ConversationV3LinkedChunk,
         persistedAt: Instant
