@@ -406,6 +406,10 @@ class EncryptedPersistentConversationStore private constructor(
                             nativeV3 = native.runtime
                         )
                     )
+                ConversationV3NativeDecision.Mixed ->
+                    return PersistentConversationOpenResult.Incompatible(
+                        "mixed conversation migration runtime is not enabled"
+                    )
                 ConversationV3NativeDecision.LegacyFallback -> Unit
                 ConversationV3NativeDecision.Corrupt ->
                     return PersistentConversationOpenResult.Corrupt

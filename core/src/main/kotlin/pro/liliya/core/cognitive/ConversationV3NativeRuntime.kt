@@ -18,6 +18,7 @@ import pro.liliya.core.persistence.PersistentRecordSnapshot
 
 internal sealed interface ConversationV3NativeDecision {
     data class Native(val runtime: ConversationV3NativeRuntime) : ConversationV3NativeDecision
+    data object Mixed : ConversationV3NativeDecision
     data object LegacyFallback : ConversationV3NativeDecision
     data object Corrupt : ConversationV3NativeDecision
     data class Incompatible(val reason: String) : ConversationV3NativeDecision
@@ -743,40 +744,73 @@ internal class ConversationV3NativeRuntime private constructor(
             )
 
             val probe = runtime()
-            return when (val marker = probe.readPlainRecord(ConversationV3IndexCodec.MARKER_ID)) {
+            val nativeMarker = when (
+                val read = probe.readPlainRecord(ConversationV3IndexCodec.MARKER_ID)
+            ) {
                 is ConversationV3RecordRead.Found ->
-                    when (val decoded = ConversationV3IndexCodec.decodeMarker(marker.record)) {
-                        is ConversationV3DecodeResult.Decoded ->
-                            ConversationV3NativeDecision.Native(probe)
+                    when (val decoded = ConversationV3IndexCodec.decodeMarker(read.record)) {
+                        is ConversationV3DecodeResult.Decoded -> true
                         ConversationV3DecodeResult.Corrupt ->
-                            ConversationV3NativeDecision.Corrupt
+                            return ConversationV3NativeDecision.Corrupt
                         is ConversationV3DecodeResult.Incompatible ->
-                            ConversationV3NativeDecision.Incompatible(decoded.reason)
+                            return ConversationV3NativeDecision.Incompatible(decoded.reason)
                     }
-
-                ConversationV3RecordRead.Missing -> {
-                    if (encryptedStore.entryCount() != 0L) {
-                        ConversationV3NativeDecision.LegacyFallback
-                    } else {
-                        val markerRecord = ConversationV3IndexCodec.encodeMarker(Instant.EPOCH)
-                        when (val installed = encryptedStore.install(probe.draft(markerRecord))) {
-                            is CognitiveEncryptionResult.Success ->
-                                ConversationV3NativeDecision.Native(probe)
-                            is CognitiveEncryptionResult.Rejected ->
-                                ConversationV3NativeDecision.EncryptionUnavailable(
-                                    installed.category
-                                )
-                            is CognitiveEncryptionResult.Failed ->
-                                ConversationV3NativeDecision.EncryptionUnavailable(
-                                    installed.category
-                                )
-                        }
-                    }
-                }
-
-                ConversationV3RecordRead.Corrupt -> ConversationV3NativeDecision.Corrupt
+                ConversationV3RecordRead.Missing -> false
+                ConversationV3RecordRead.Corrupt ->
+                    return ConversationV3NativeDecision.Corrupt
                 is ConversationV3RecordRead.EncryptionUnavailable ->
-                    ConversationV3NativeDecision.EncryptionUnavailable(marker.category)
+                    return ConversationV3NativeDecision.EncryptionUnavailable(read.category)
+            }
+
+            val mixedMarker = when (
+                val read = probe.readPlainRecord(
+                    ConversationV3MigrationCodec.MIXED_MARKER_ID
+                )
+            ) {
+                is ConversationV3RecordRead.Found ->
+                    when (
+                        val decoded =
+                            ConversationV3MigrationCodec.decodeMixedMarker(read.record)
+                    ) {
+                        is ConversationV3MigrationDecodeResult.Decoded -> true
+                        ConversationV3MigrationDecodeResult.Corrupt ->
+                            return ConversationV3NativeDecision.Corrupt
+                        is ConversationV3MigrationDecodeResult.Incompatible ->
+                            return ConversationV3NativeDecision.Incompatible(decoded.reason)
+                    }
+                ConversationV3RecordRead.Missing -> false
+                ConversationV3RecordRead.Corrupt ->
+                    return ConversationV3NativeDecision.Corrupt
+                is ConversationV3RecordRead.EncryptionUnavailable ->
+                    return ConversationV3NativeDecision.EncryptionUnavailable(read.category)
+            }
+
+            if (nativeMarker && mixedMarker) {
+                return ConversationV3NativeDecision.Corrupt
+            }
+            if (nativeMarker) {
+                return ConversationV3NativeDecision.Native(probe)
+            }
+            if (mixedMarker) {
+                return ConversationV3NativeDecision.Mixed
+            }
+
+            if (encryptedStore.entryCount() != 0L) {
+                return ConversationV3NativeDecision.LegacyFallback
+            }
+
+            val markerRecord = ConversationV3IndexCodec.encodeMarker(Instant.EPOCH)
+            return when (val installed = encryptedStore.install(probe.draft(markerRecord))) {
+                is CognitiveEncryptionResult.Success ->
+                    ConversationV3NativeDecision.Native(probe)
+                is CognitiveEncryptionResult.Rejected ->
+                    ConversationV3NativeDecision.EncryptionUnavailable(
+                        installed.category
+                    )
+                is CognitiveEncryptionResult.Failed ->
+                    ConversationV3NativeDecision.EncryptionUnavailable(
+                        installed.category
+                    )
             }
         }
     }

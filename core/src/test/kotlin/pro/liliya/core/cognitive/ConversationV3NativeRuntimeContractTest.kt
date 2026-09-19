@@ -137,6 +137,74 @@ class ConversationV3NativeRuntimeContractTest {
     }
 
     @Test
+    fun mixed_mode_marker_is_detected_without_global_legacy_scan() {
+        val backend = CountingIndexedBackend()
+        val encrypted = encryptedStore(backend)
+        val markerRecord = ConversationV3MigrationCodec.encodeMixedMarker(at(1))
+        assertIs<CognitiveEncryptionResult.Success<*>>(
+            encrypted.install(
+                CognitivePersistentRecordDraft(
+                    id = markerRecord.id,
+                    schemaId = markerRecord.schemaId,
+                    schemaVersion = markerRecord.schemaVersion,
+                    plaintext = CognitivePlaintext(markerRecord.payload.copyBytes()),
+                    createdAt = markerRecord.createdAt,
+                    dek = dekRef
+                )
+            )
+        )
+
+        backend.resetReadCounters()
+        val opened = EncryptedPersistentConversationStore.open(
+            encryptedStore = encryptedStore(backend),
+            activeDek = dekRef,
+            maxRetainedMessages = 4,
+            maxMessageChars = 1024
+        )
+        val incompatible = assertIs<PersistentConversationOpenResult.Incompatible>(opened)
+        assertEquals(
+            "mixed conversation migration runtime is not enabled",
+            incompatible.reason
+        )
+        assertEquals(0, backend.pageLoadCalls)
+        assertTrue(backend.exactReadIds.contains(ConversationV3IndexCodec.MARKER_ID))
+        assertTrue(
+            backend.exactReadIds.contains(
+                ConversationV3MigrationCodec.MIXED_MARKER_ID
+            )
+        )
+    }
+
+    @Test
+    fun native_and_mixed_markers_together_fail_open_closed() {
+        val backend = CountingIndexedBackend()
+        openConversation(backend)
+
+        val encrypted = encryptedStore(backend)
+        val markerRecord = ConversationV3MigrationCodec.encodeMixedMarker(at(2))
+        assertIs<CognitiveEncryptionResult.Success<*>>(
+            encrypted.install(
+                CognitivePersistentRecordDraft(
+                    id = markerRecord.id,
+                    schemaId = markerRecord.schemaId,
+                    schemaVersion = markerRecord.schemaVersion,
+                    plaintext = CognitivePlaintext(markerRecord.payload.copyBytes()),
+                    createdAt = markerRecord.createdAt,
+                    dek = dekRef
+                )
+            )
+        )
+
+        val reopened = EncryptedPersistentConversationStore.open(
+            encryptedStore = encryptedStore(backend),
+            activeDek = dekRef,
+            maxRetainedMessages = 4,
+            maxMessageChars = 1024
+        )
+        assertIs<PersistentConversationOpenResult.Corrupt>(reopened)
+    }
+
+    @Test
     fun corrupted_native_v3_marker_fails_open_closed() {
         val backend = CountingIndexedBackend()
         openConversation(backend)
