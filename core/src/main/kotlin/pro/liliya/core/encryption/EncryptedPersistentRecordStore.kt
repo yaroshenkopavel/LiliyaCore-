@@ -353,6 +353,9 @@ class EncryptedPersistentRecordStore(
 
     internal fun inspect(id: PersistentEntityId): PersistentRecordSnapshot? = store.inspect(id)
 
+    internal fun inspectResult(id: PersistentEntityId): PersistentRecordLookupResult =
+        store.inspectResult(id)
+
     internal fun generationHighWatermark(): Long = store.generationHighWatermark()
 
     internal fun entryCount(): Long = store.entryCount()
