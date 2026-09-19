@@ -1220,9 +1220,38 @@ internal class ConversationV3NativeRuntime private constructor(
                 is CognitiveEncryptionResult.Success ->
                     ConversationV3NativeDecision.Native(probe)
                 is CognitiveEncryptionResult.Rejected ->
-                    ConversationV3NativeDecision.EncryptionUnavailable(
-                        installed.category
-                    )
+                    if (
+                        installed.category !=
+                            CognitiveEncryptionFailureCategory.PERSISTENCE_CONFLICT
+                    ) {
+                        ConversationV3NativeDecision.EncryptionUnavailable(
+                            installed.category
+                        )
+                    } else {
+                        when (encryptedStore.refreshIndexedMetadata()) {
+                            is EncryptedPersistentMetadataRefreshResult.Refreshed ->
+                                detectOrInitialize(
+                                    encryptedStore,
+                                    activeDek,
+                                    maxRetainedMessages,
+                                    maxMessageChars
+                                )
+                            EncryptedPersistentMetadataRefreshResult.Unchanged ->
+                                ConversationV3NativeDecision.EncryptionUnavailable(
+                                    CognitiveEncryptionFailureCategory.PERSISTENCE_CONFLICT
+                                )
+                            EncryptedPersistentMetadataRefreshResult.Corrupt ->
+                                ConversationV3NativeDecision.Corrupt
+                            is EncryptedPersistentMetadataRefreshResult.Incompatible ->
+                                ConversationV3NativeDecision.Incompatible(
+                                    "conversation marker refresh is incompatible"
+                                )
+                            is EncryptedPersistentMetadataRefreshResult.Failed ->
+                                ConversationV3NativeDecision.EncryptionUnavailable(
+                                    CognitiveEncryptionFailureCategory.PERSISTENCE_FAILED
+                                )
+                        }
+                    }
                 is CognitiveEncryptionResult.Failed ->
                     ConversationV3NativeDecision.EncryptionUnavailable(
                         installed.category
