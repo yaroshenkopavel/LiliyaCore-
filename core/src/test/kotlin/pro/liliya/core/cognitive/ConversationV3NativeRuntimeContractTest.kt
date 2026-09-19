@@ -155,16 +155,18 @@ class ConversationV3NativeRuntimeContractTest {
         )
 
         backend.resetReadCounters()
-        val opened = EncryptedPersistentConversationStore.open(
-            encryptedStore = encryptedStore(backend),
-            activeDek = dekRef,
-            maxRetainedMessages = 4,
-            maxMessageChars = 1024
-        )
-        val incompatible = assertIs<PersistentConversationOpenResult.Incompatible>(opened)
-        assertEquals(
-            "mixed conversation migration runtime is not enabled",
-            incompatible.reason
+        val opened = assertIs<PersistentConversationOpenResult.Opened>(
+            EncryptedPersistentConversationStore.open(
+                encryptedStore = encryptedStore(backend),
+                activeDek = dekRef,
+                maxRetainedMessages = 4,
+                maxMessageChars = 1024
+            )
+        ).store
+        assertIs<PersistentConversationReopenResult.Absent>(
+            opened.reopenResult(
+                CognitiveConversationSessionId("missing-mixed-session")
+            )
         )
         assertEquals(0, backend.pageLoadCalls)
         assertTrue(backend.exactReadIds.contains(ConversationV3IndexCodec.MARKER_ID))
