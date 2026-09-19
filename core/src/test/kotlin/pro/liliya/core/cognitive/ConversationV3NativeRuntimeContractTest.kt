@@ -155,16 +155,18 @@ class ConversationV3NativeRuntimeContractTest {
         )
 
         backend.resetReadCounters()
-        val opened = EncryptedPersistentConversationStore.open(
-            encryptedStore = encryptedStore(backend),
-            activeDek = dekRef,
-            maxRetainedMessages = 4,
-            maxMessageChars = 1024
-        )
-        val incompatible = assertIs<PersistentConversationOpenResult.Incompatible>(opened)
-        assertEquals(
-            "mixed conversation migration runtime is not enabled",
-            incompatible.reason
+        val opened = assertIs<PersistentConversationOpenResult.Opened>(
+            EncryptedPersistentConversationStore.open(
+                encryptedStore = encryptedStore(backend),
+                activeDek = dekRef,
+                maxRetainedMessages = 4,
+                maxMessageChars = 1024
+            )
+        ).store
+        assertIs<PersistentConversationReopenResult.Absent>(
+            opened.reopenResult(
+                CognitiveConversationSessionId("missing-mixed-session")
+            )
         )
         assertEquals(0, backend.pageLoadCalls)
         assertTrue(backend.exactReadIds.contains(ConversationV3IndexCodec.MARKER_ID))
@@ -333,6 +335,134 @@ class ConversationV3NativeRuntimeContractTest {
                 msg(3, CognitiveConversationRole.USER, "u2"),
                 msg(4, CognitiveConversationRole.ASSISTANT, "a2"),
                 at(3)
+            )
+        )
+    }
+
+    @Test
+    fun mixed_mode_reopens_one_legacy_session_with_bounded_memory_and_no_global_scan() {
+        val backend = CountingIndexedBackend()
+        val encrypted = encryptedStore(backend)
+        val sessionA = CognitiveConversationSessionId("mixed-legacy-A")
+        val sessionB = CognitiveConversationSessionId("mixed-legacy-B")
+
+        fun legacyChunkId(
+            session: CognitiveConversationSessionId,
+            firstSequence: Long
+        ): PersistentEntityId {
+            val digest = MessageDigest.getInstance("SHA-256")
+                .digest((session.value + ":" + firstSequence).encodeToByteArray())
+                .joinToString("") { "%02x".format(it) }
+            return PersistentEntityId("conversation-chunk-$digest")
+        }
+
+        fun installChunk(
+            session: CognitiveConversationSessionId,
+            firstSequence: Long,
+            userText: String,
+            assistantText: String,
+            second: Long
+        ) {
+            val payload = ByteArrayOutputStream().use { output ->
+                DataOutputStream(output).use { data ->
+                    data.writeInt(0x434E5632)
+                    val sessionBytes = session.value.encodeToByteArray()
+                    data.writeInt(sessionBytes.size)
+                    data.write(sessionBytes)
+                    data.writeInt(2)
+                    for ((sequence, role, content) in listOf(
+                        Triple(
+                            firstSequence,
+                            CognitiveConversationRole.USER,
+                            userText
+                        ),
+                        Triple(
+                            firstSequence + 1L,
+                            CognitiveConversationRole.ASSISTANT,
+                            assistantText
+                        )
+                    )) {
+                        data.writeLong(sequence)
+                        data.writeInt(role.ordinal)
+                        val bytes = content.encodeToByteArray()
+                        data.writeInt(bytes.size)
+                        data.write(bytes)
+                    }
+                }
+                output.toByteArray()
+            }
+            assertIs<CognitiveEncryptionResult.Success<*>>(
+                encrypted.install(
+                    CognitivePersistentRecordDraft(
+                        id = legacyChunkId(session, firstSequence),
+                        schemaId = PersistentSchemaId(
+                            "cognitive-conversation-session"
+                        ),
+                        schemaVersion = PersistentSchemaVersion(2),
+                        plaintext = CognitivePlaintext(payload),
+                        createdAt = at(second),
+                        dek = dekRef
+                    )
+                )
+            )
+        }
+
+        installChunk(sessionA, 1L, "a-u1", "a-r1", 1L)
+        installChunk(sessionA, 3L, "a-u2", "a-r2", 2L)
+        installChunk(sessionA, 5L, "a-u3", "a-r3", 3L)
+        installChunk(sessionB, 1L, "b-u1", "b-r1", 4L)
+
+        val mixedMarker = ConversationV3MigrationCodec.encodeMixedMarker(at(5))
+        assertIs<CognitiveEncryptionResult.Success<*>>(
+            encrypted.install(
+                CognitivePersistentRecordDraft(
+                    id = mixedMarker.id,
+                    schemaId = mixedMarker.schemaId,
+                    schemaVersion = mixedMarker.schemaVersion,
+                    plaintext = CognitivePlaintext(mixedMarker.payload.copyBytes()),
+                    createdAt = mixedMarker.createdAt,
+                    dek = dekRef
+                )
+            )
+        )
+
+        backend.resetReadCounters()
+        val mixed = assertIs<PersistentConversationOpenResult.Opened>(
+            EncryptedPersistentConversationStore.open(
+                encryptedStore = encryptedStore(backend),
+                activeDek = dekRef,
+                maxRetainedMessages = 4,
+                maxMessageChars = 1024
+            )
+        ).store
+
+        val reopened = assertNotNull(mixed.reopen(sessionA))
+        assertEquals(
+            listOf(3L, 4L, 5L, 6L),
+            reopened.messages.map { it.sequence.value }
+        )
+        assertEquals(0, backend.pageLoadCalls)
+        assertFalse(backend.exactReadIds.contains(legacyChunkId(sessionB, 1L)))
+
+        val history = assertIs<PersistentConversationHistoryResult.Found>(
+            mixed.history(
+                sessionId = sessionA,
+                maxMessages = 10
+            )
+        ).snapshot
+        assertEquals(
+            (1L..6L).toList(),
+            history.messages.map { it.sequence.value }
+        )
+        assertEquals(0, backend.pageLoadCalls)
+        assertFalse(backend.exactReadIds.contains(legacyChunkId(sessionB, 1L)))
+
+        assertIs<PersistentConversationAppendPairResult.Rejected>(
+            mixed.appendPair(
+                sessionA,
+                msg(7L, CognitiveConversationRole.USER, "blocked-u"),
+                msg(8L, CognitiveConversationRole.ASSISTANT, "blocked-r"),
+                at(6)
             )
         )
     }
