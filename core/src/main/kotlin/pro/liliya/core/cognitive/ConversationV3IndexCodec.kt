@@ -162,6 +162,9 @@ internal object ConversationV3IndexCodec {
         require(chunk.snapshot.messages.size in 1..2)
         val first = chunk.snapshot.messages.first().sequence.value
         require(first > 0L)
+        require((first == 1L) == (chunk.previousChunkId == null)) {
+            "conversation v3 predecessor boundary mismatch"
+        }
         val bytes = ByteArrayOutputStream().use { output ->
             DataOutputStream(output).use { data ->
                 data.writeInt(CHUNK_MAGIC)
@@ -214,7 +217,13 @@ internal object ConversationV3IndexCodec {
             }
             if (input.available() != 0) return ConversationV3DecodeResult.Corrupt
             val first = messages.first().sequence.value
-            if (messages.last().sequence.value != first + count - 1L) {
+            if (first <= 0L ||
+                first > Long.MAX_VALUE - (count - 1L) ||
+                messages.last().sequence.value != first + count - 1L
+            ) {
+                return ConversationV3DecodeResult.Corrupt
+            }
+            if ((first == 1L) != (previous == null)) {
                 return ConversationV3DecodeResult.Corrupt
             }
             if (record.id != chunkId(sessionId, first)) return ConversationV3DecodeResult.Corrupt
