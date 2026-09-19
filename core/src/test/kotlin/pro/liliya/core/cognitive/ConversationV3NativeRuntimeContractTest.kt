@@ -883,6 +883,11 @@ class ConversationV3NativeRuntimeContractTest {
         )
         assertTrue(
             backend.entries.containsKey(
+                ConversationV3MigrationCodec.migrationReceiptId(session)
+            )
+        )
+        assertTrue(
+            backend.entries.containsKey(
                 ConversationV3IndexCodec.chunkId(session, 1L)
             )
         )
@@ -900,6 +905,92 @@ class ConversationV3NativeRuntimeContractTest {
         assertIs<PersistentConversationSessionMigrationResult.AlreadyMigrated>(
             mixed.migrateV2Session(session, at(5))
         )
+    }
+
+    @Test
+    fun migration_receipt_is_recovered_after_head_publish_receipt_conflict() {
+        val backend = CountingIndexedBackend()
+        val encrypted = encryptedStore(backend)
+        val session = CognitiveConversationSessionId("receipt-recovery-session")
+
+        val digest = MessageDigest.getInstance("SHA-256")
+            .digest((session.value + ":1").encodeToByteArray())
+            .joinToString("") { "%02x".format(it) }
+        val sourceId = PersistentEntityId("conversation-chunk-$digest")
+        val payload = ByteArrayOutputStream().use { output ->
+            DataOutputStream(output).use { data ->
+                data.writeInt(0x434E5632)
+                val sessionBytes = session.value.encodeToByteArray()
+                data.writeInt(sessionBytes.size)
+                data.write(sessionBytes)
+                data.writeInt(2)
+                for ((sequence, role, content) in listOf(
+                    Triple(1L, CognitiveConversationRole.USER, "receipt-u1"),
+                    Triple(2L, CognitiveConversationRole.ASSISTANT, "receipt-a2")
+                )) {
+                    data.writeLong(sequence)
+                    data.writeInt(role.ordinal)
+                    val bytes = content.encodeToByteArray()
+                    data.writeInt(bytes.size)
+                    data.write(bytes)
+                }
+            }
+            output.toByteArray()
+        }
+        assertIs<CognitiveEncryptionResult.Success<*>>(
+            encrypted.install(
+                CognitivePersistentRecordDraft(
+                    id = sourceId,
+                    schemaId = PersistentSchemaId("cognitive-conversation-session"),
+                    schemaVersion = PersistentSchemaVersion(2),
+                    plaintext = CognitivePlaintext(payload),
+                    createdAt = at(1),
+                    dek = dekRef
+                )
+            )
+        )
+        assertIs<PersistentConversationMigrationPrepareResult.Prepared>(
+            EncryptedPersistentConversationStore.prepareMigration(
+                encryptedStore = encryptedStore(backend),
+                activeDek = dekRef,
+                persistedAt = at(2)
+            )
+        )
+        val mixed = assertIs<PersistentConversationOpenResult.Opened>(
+            EncryptedPersistentConversationStore.open(
+                encryptedStore = encryptedStore(backend),
+                activeDek = dekRef,
+                maxRetainedMessages = 4,
+                maxMessageChars = 1024
+            )
+        ).store
+
+        backend.failNextReceiptInstall = true
+        assertIs<PersistentConversationSessionMigrationResult.Rejected>(
+            mixed.migrateV2Session(session, at(3))
+        )
+        assertTrue(
+            backend.entries.containsKey(
+                ConversationV3IndexCodec.headId(session)
+            )
+        )
+        assertFalse(
+            backend.entries.containsKey(
+                ConversationV3MigrationCodec.migrationReceiptId(session)
+            )
+        )
+
+        backend.resetReadCounters()
+        assertIs<PersistentConversationSessionMigrationResult.AlreadyMigrated>(
+            mixed.migrateV2Session(session, at(4))
+        )
+        assertTrue(
+            backend.entries.containsKey(
+                ConversationV3MigrationCodec.migrationReceiptId(session)
+            )
+        )
+        assertTrue(backend.exactReadIds.contains(sourceId))
+        assertEquals(0, backend.pageLoadCalls)
     }
 
     @Test
@@ -1151,6 +1242,11 @@ class ConversationV3NativeRuntimeContractTest {
         assertTrue(
             backend.entries.containsKey(
                 ConversationV3MigrationCodec.truncatedRootId(session)
+            )
+        )
+        assertTrue(
+            backend.entries.containsKey(
+                ConversationV3MigrationCodec.migrationReceiptId(session)
             )
         )
         assertEquals(
@@ -1437,6 +1533,7 @@ class ConversationV3NativeRuntimeContractTest {
         var fullCommitCalls = 0
         var pageLoadCalls = 0
         var failNextHeadTransition = false
+        var failNextReceiptInstall = false
         val exactReadIds = ArrayList<PersistentEntityId>()
 
         fun resetReadCounters() {
@@ -1542,6 +1639,15 @@ class ConversationV3NativeRuntimeContractTest {
             expectedHighWatermark: Long,
             entry: PersistentBackendEntry
         ): PersistentBackendMutationResult {
+            if (
+                failNextReceiptInstall &&
+                entry.record.id.value.startsWith(
+                    "conversation-v3-migration-receipt-"
+                )
+            ) {
+                failNextReceiptInstall = false
+                return PersistentBackendMutationResult.Conflict
+            }
             if (expectedRevision != revision ||
                 expectedHighWatermark != highWatermark
             ) {
