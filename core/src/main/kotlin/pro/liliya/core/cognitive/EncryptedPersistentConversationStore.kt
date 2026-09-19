@@ -949,8 +949,8 @@ private class ConversationV3MixedSessionRuntime(
                 is CognitiveEncryptionResult.Success ->
                     PersistentConversationMigrationFinalizationResult.Finalized
                 is CognitiveEncryptionResult.Rejected ->
-                    PersistentConversationMigrationFinalizationResult.Rejected(
-                        "conversation store changed before native finalization"
+                    PersistentConversationMigrationFinalizationResult.StaleProof(
+                        "migration completeness proof became stale before native finalization"
                     )
                 is CognitiveEncryptionResult.Failed ->
                     PersistentConversationMigrationFinalizationResult.Failed(
