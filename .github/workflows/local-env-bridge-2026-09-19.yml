@@ -1,4 +1,4 @@
-name: Exact V04 Source Bridge 2026-09-19
+name: V05 Exact Patch Bridge 2026-09-19
 
 on:
   push:
@@ -6,14 +6,16 @@ on:
       - technical/local-env-bridge-2026-09-19
 
 permissions:
-  contents: read
+  contents: write
 
 env:
   TARGET_SHA: d4954d4daa314f1e0f258961255bd533f6f3f23e
   TARGET_TREE: 3748c873f8572b68e6bef7aebe27f5de078b495f
+  EXPECTED_TREE: 6f89347c821c47ebc380fc8f38a308a3661d5145
+  PRODUCT_BRANCH: development/core-next-episodic-indexed-retrieval-407
 
 jobs:
-  export-source:
+  publish-exact-v05:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -21,23 +23,33 @@ jobs:
         with:
           ref: ${{ env.TARGET_SHA }}
           fetch-depth: 0
-      - name: Verify exact v0.4 source
+      - name: Verify exact parent
         shell: bash
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$TARGET_SHA"
           test "$(git rev-parse HEAD^{tree})" = "$TARGET_TREE"
-      - name: Package source
+      - name: Apply exact local staged patch
+        shell: bash
+        env:
+          PATCH_B64: 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
+        run: |
+          set -euo pipefail
+          printf '%s' "$PATCH_B64" | base64 -d | gzip -d > /tmp/v05.patch
+          git apply --index --binary /tmp/v05.patch
+          ACTUAL_TREE="$(git write-tree)"
+          echo "ACTUAL_TREE=$ACTUAL_TREE"
+          test "$ACTUAL_TREE" = "$EXPECTED_TREE"
+          test "$(git diff --cached --name-only | wc -l)" -eq 3
+          git diff --cached --name-only
+      - name: Create one clean product commit and push
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/export"
-          git archive --format=tar.gz --output="$RUNNER_TEMP/export/LiliyaCore-v04-worktree.tar.gz" HEAD
-          tar -czf "$RUNNER_TEMP/export/LiliyaCore-v04-git.tar.gz" .git
-          sha256sum "$RUNNER_TEMP/export/"*.tar.gz > "$RUNNER_TEMP/export/source.sha256"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: exact-source-d4954d4
-          path: ${{ runner.temp }}/export/
-          retention-days: 1
-          compression-level: 0
+          git config user.name "yaroshenkopavel"
+          git config user.email "78513566+yaroshenkopavel@users.noreply.github.com"
+          git checkout -b "$PRODUCT_BRANCH"
+          git commit -m "Core Next: add index-aware episodic retrieval (#407)"
+          test "$(git rev-parse HEAD^)" = "$TARGET_SHA"
+          test "$(git rev-parse HEAD^{tree})" = "$EXPECTED_TREE"
+          git push origin "HEAD:refs/heads/$PRODUCT_BRANCH"
