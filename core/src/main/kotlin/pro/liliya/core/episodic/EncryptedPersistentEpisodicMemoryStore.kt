@@ -47,11 +47,16 @@ sealed interface EpisodePageResult {
     data class Failed(val reason: String, val throwable: Throwable? = null) : EpisodePageResult
 }
 
+interface EpisodicMemoryRepository {
+    fun store(record: EpisodeRecord): EpisodeStoreResult
+    fun lookup(id: EpisodeId): EpisodeLookupResult
+}
+
 class EncryptedPersistentEpisodicMemoryStore private constructor(
     private val encryptedStore: EncryptedPersistentRecordStore,
     private val activeDek: CognitiveDekReference
-) {
-    fun store(record: EpisodeRecord): EpisodeStoreResult {
+) : EpisodicMemoryRepository {
+    override fun store(record: EpisodeRecord): EpisodeStoreResult {
         val encoded = EpisodicMemoryPersistentCodec.encode(record)
         val bytes = encoded.payload.copyBytes()
         val installed = try {
@@ -77,7 +82,7 @@ class EncryptedPersistentEpisodicMemoryStore private constructor(
         }
     }
 
-    fun lookup(id: EpisodeId): EpisodeLookupResult {
+    override fun lookup(id: EpisodeId): EpisodeLookupResult {
         val persistentId = PersistentEntityId(id.value)
         val snapshot = when (val inspected = encryptedStore.inspectResult(persistentId)) {
             PersistentRecordLookupResult.Missing -> return EpisodeLookupResult.Missing
