@@ -365,7 +365,10 @@ class ConversationV3NativeRuntimeContractTest {
             }
             output.toByteArray()
         }
-        val legacyId = ConversationPersistentRecordCodec.chunkId(session, 1L)
+        val legacyDigest = MessageDigest.getInstance("SHA-256")
+            .digest((session.value + ":1").encodeToByteArray())
+            .joinToString("") { "%02x".format(it) }
+        val legacyId = PersistentEntityId("conversation-chunk-$legacyDigest")
         assertIs<CognitiveEncryptionResult.Success<*>>(
             encrypted.install(
                 CognitivePersistentRecordDraft(
@@ -448,7 +451,12 @@ class ConversationV3NativeRuntimeContractTest {
         assertIs<CognitiveEncryptionResult.Success<*>>(
             encryptedStore(backend).install(
                 CognitivePersistentRecordDraft(
-                    id = ConversationPersistentRecordCodec.chunkId(session, 1L),
+                    id = PersistentEntityId(
+                        "conversation-chunk-" +
+                            MessageDigest.getInstance("SHA-256")
+                                .digest((session.value + ":1").encodeToByteArray())
+                                .joinToString("") { "%02x".format(it) }
+                    ),
                     schemaId = PersistentSchemaId("cognitive-conversation-session"),
                     schemaVersion = PersistentSchemaVersion(2),
                     plaintext = CognitivePlaintext(payload),
