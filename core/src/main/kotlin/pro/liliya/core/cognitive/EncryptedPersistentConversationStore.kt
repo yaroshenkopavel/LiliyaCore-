@@ -26,6 +26,24 @@ import pro.liliya.core.persistence.PersistentRecord
 import pro.liliya.core.persistence.PersistentSchemaId
 import pro.liliya.core.persistence.PersistentSchemaVersion
 
+internal sealed interface PersistentConversationMigrationFinalizationResult {
+    data object Finalized : PersistentConversationMigrationFinalizationResult
+    data object AlreadyFinalized : PersistentConversationMigrationFinalizationResult
+    data object MissingProof : PersistentConversationMigrationFinalizationResult
+    data class StaleProof(val reason: String) :
+        PersistentConversationMigrationFinalizationResult
+    data object Corrupt : PersistentConversationMigrationFinalizationResult
+    data class Incompatible(val reason: String) :
+        PersistentConversationMigrationFinalizationResult
+    data class EncryptionUnavailable(
+        val category: CognitiveEncryptionFailureCategory
+    ) : PersistentConversationMigrationFinalizationResult
+    data class Rejected(val reason: String) :
+        PersistentConversationMigrationFinalizationResult
+    data class Failed(val reason: String) :
+        PersistentConversationMigrationFinalizationResult
+}
+
 internal sealed interface PersistentConversationMigrationCompletenessResult {
     data class Proven(
         val proof: ConversationV3MigrationCompletenessProof
@@ -150,6 +168,20 @@ class EncryptedPersistentConversationStore private constructor(
     init {
         require(maxRetainedMessages > 0) { "maximum retained conversation messages must be positive" }
         require(maxMessageChars > 0) { "maximum conversation message chars must be positive" }
+    }
+
+    @Synchronized
+    internal fun finalizeMigrationToNative(
+        persistedAt: Instant
+    ): PersistentConversationMigrationFinalizationResult {
+        if (nativeV3 != null && mixedV3 == null) {
+            return PersistentConversationMigrationFinalizationResult.AlreadyFinalized
+        }
+        val mixed = mixedV3
+            ?: return PersistentConversationMigrationFinalizationResult.Incompatible(
+                "native finalization requires mixed mode"
+            )
+        return mixed.finalizeMigrationToNative(persistedAt)
     }
 
     @Synchronized
@@ -758,6 +790,178 @@ private class ConversationV3MixedSessionRuntime(
     private val maxRetainedMessages: Int,
     private val maxMessageChars: Int
 ) {
+    fun finalizeMigrationToNative(
+        persistedAt: Instant
+    ): PersistentConversationMigrationFinalizationResult {
+        val metadata = encryptedStore.indexedMetadataSnapshot()
+            ?: return PersistentConversationMigrationFinalizationResult.Incompatible(
+                "native finalization requires indexed metadata"
+            )
+
+        val proofPlaintext = when (
+            val opened = encryptedStore.open(
+                ConversationV3MigrationCodec.COMPLETENESS_PROOF_ID
+            )
+        ) {
+            is CognitiveEncryptionResult.Success -> opened.value
+            is CognitiveEncryptionResult.Rejected ->
+                return if (
+                    opened.category ==
+                        CognitiveEncryptionFailureCategory.INVALID_REQUEST
+                ) {
+                    PersistentConversationMigrationFinalizationResult.MissingProof
+                } else {
+                    PersistentConversationMigrationFinalizationResult
+                        .EncryptionUnavailable(opened.category)
+                }
+            is CognitiveEncryptionResult.Failed ->
+                return PersistentConversationMigrationFinalizationResult
+                    .EncryptionUnavailable(opened.category)
+        }
+        val proofRaw = encryptedStore.inspect(
+            ConversationV3MigrationCodec.COMPLETENESS_PROOF_ID
+        ) ?: return PersistentConversationMigrationFinalizationResult.Corrupt
+        val proof = when (
+            val decoded =
+                ConversationV3MigrationCodec.decodeCompletenessProof(
+                    proofRaw.record.copy(
+                        payload = PersistentPayload(
+                            proofPlaintext.copyBytes()
+                        )
+                    )
+                )
+        ) {
+            is ConversationV3MigrationDecodeResult.Decoded -> decoded.value
+            ConversationV3MigrationDecodeResult.Corrupt ->
+                return PersistentConversationMigrationFinalizationResult.Corrupt
+            is ConversationV3MigrationDecodeResult.Incompatible ->
+                return PersistentConversationMigrationFinalizationResult
+                    .Incompatible(decoded.reason)
+        }
+
+        if (
+            metadata.revision != proof.auditedRevision + 1L ||
+            metadata.highWatermark != proof.auditedHighWatermark + 1L ||
+            metadata.entryCount != proof.auditedEntryCount + 1L ||
+            proofRaw.generation.value != proof.auditedHighWatermark + 1L
+        ) {
+            return PersistentConversationMigrationFinalizationResult.StaleProof(
+                "migration completeness proof is not fresh"
+            )
+        }
+
+        val mixedPlaintext = when (
+            val opened = encryptedStore.open(
+                ConversationV3MigrationCodec.MIXED_MARKER_ID
+            )
+        ) {
+            is CognitiveEncryptionResult.Success -> opened.value
+            is CognitiveEncryptionResult.Rejected ->
+                if (
+                    opened.category ==
+                        CognitiveEncryptionFailureCategory.INVALID_REQUEST
+                ) {
+                    return when (
+                        val native = encryptedStore.open(
+                            ConversationV3IndexCodec.MARKER_ID
+                        )
+                    ) {
+                        is CognitiveEncryptionResult.Success ->
+                            PersistentConversationMigrationFinalizationResult
+                                .AlreadyFinalized
+                        is CognitiveEncryptionResult.Rejected ->
+                            if (
+                                native.category ==
+                                    CognitiveEncryptionFailureCategory.INVALID_REQUEST
+                            ) {
+                                PersistentConversationMigrationFinalizationResult
+                                    .Corrupt
+                            } else {
+                                PersistentConversationMigrationFinalizationResult
+                                    .EncryptionUnavailable(native.category)
+                            }
+                        is CognitiveEncryptionResult.Failed ->
+                            PersistentConversationMigrationFinalizationResult
+                                .EncryptionUnavailable(native.category)
+                    }
+                } else {
+                    return PersistentConversationMigrationFinalizationResult
+                        .EncryptionUnavailable(opened.category)
+                }
+            is CognitiveEncryptionResult.Failed ->
+                return PersistentConversationMigrationFinalizationResult
+                    .EncryptionUnavailable(opened.category)
+        }
+        val mixedRaw = encryptedStore.inspect(
+            ConversationV3MigrationCodec.MIXED_MARKER_ID
+        ) ?: return PersistentConversationMigrationFinalizationResult.Corrupt
+        when (
+            ConversationV3MigrationCodec.decodeMixedMarker(
+                mixedRaw.record.copy(
+                    payload = PersistentPayload(mixedPlaintext.copyBytes())
+                )
+            )
+        ) {
+            is ConversationV3MigrationDecodeResult.Decoded -> Unit
+            ConversationV3MigrationDecodeResult.Corrupt ->
+                return PersistentConversationMigrationFinalizationResult.Corrupt
+            is ConversationV3MigrationDecodeResult.Incompatible ->
+                return PersistentConversationMigrationFinalizationResult
+                    .Incompatible(
+                        "conversation mixed marker is incompatible"
+                    )
+        }
+
+        when (val native = encryptedStore.open(ConversationV3IndexCodec.MARKER_ID)) {
+            is CognitiveEncryptionResult.Success ->
+                return PersistentConversationMigrationFinalizationResult.Corrupt
+            is CognitiveEncryptionResult.Rejected ->
+                if (
+                    native.category !=
+                        CognitiveEncryptionFailureCategory.INVALID_REQUEST
+                ) {
+                    return PersistentConversationMigrationFinalizationResult
+                        .EncryptionUnavailable(native.category)
+                }
+            is CognitiveEncryptionResult.Failed ->
+                return PersistentConversationMigrationFinalizationResult
+                    .EncryptionUnavailable(native.category)
+        }
+
+        val marker = ConversationV3IndexCodec.encodeMarker(persistedAt)
+        val bytes = marker.payload.copyBytes()
+        val draft = CognitivePersistentRecordDraft(
+            id = marker.id,
+            schemaId = marker.schemaId,
+            schemaVersion = marker.schemaVersion,
+            plaintext = CognitivePlaintext(bytes),
+            createdAt = marker.createdAt,
+            dek = activeDek
+        )
+        return try {
+            when (
+                encryptedStore.transitionExact(
+                    sourceId = mixedRaw.record.id,
+                    sourceGeneration = mixedRaw.generation,
+                    replacement = draft
+                )
+            ) {
+                is CognitiveEncryptionResult.Success ->
+                    PersistentConversationMigrationFinalizationResult.Finalized
+                is CognitiveEncryptionResult.Rejected ->
+                    PersistentConversationMigrationFinalizationResult.StaleProof(
+                        "migration completeness proof became stale before native finalization"
+                    )
+                is CognitiveEncryptionResult.Failed ->
+                    PersistentConversationMigrationFinalizationResult.Failed(
+                        "conversation native marker transition failed"
+                    )
+            }
+        } finally {
+            bytes.fill(0)
+        }
+    }
+
     fun proveMigrationCompleteness(
         persistedAt: Instant,
         pageSize: Int

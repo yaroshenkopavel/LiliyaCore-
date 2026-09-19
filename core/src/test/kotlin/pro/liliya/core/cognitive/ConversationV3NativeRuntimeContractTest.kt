@@ -930,6 +930,156 @@ class ConversationV3NativeRuntimeContractTest {
                 pageSize = 2
             )
         )
+
+        val mixedMarkerBefore = assertNotNull(
+            backend.entries[
+                ConversationV3MigrationCodec.MIXED_MARKER_ID
+            ]
+        )
+        assertIs<PersistentConversationMigrationFinalizationResult.Finalized>(
+            mixed.finalizeMigrationToNative(at(8))
+        )
+        assertFalse(
+            backend.entries.containsKey(
+                ConversationV3MigrationCodec.MIXED_MARKER_ID
+            )
+        )
+        val nativeMarker = assertNotNull(
+            backend.entries[ConversationV3IndexCodec.MARKER_ID]
+        )
+        assertEquals(
+            mixedMarkerBefore.generation,
+            nativeMarker.generation
+        )
+        assertEquals(
+            sourceOne,
+            assertNotNull(backend.entries[legacyChunkId(1L)])
+        )
+        assertEquals(
+            sourceThree,
+            assertNotNull(backend.entries[legacyChunkId(3L)])
+        )
+
+        val native = openConversation(backend, maxRetained = 6)
+        assertEquals(
+            listOf(1L, 2L, 3L, 4L),
+            assertNotNull(native.reopen(session)).messages.map {
+                it.sequence.value
+            }
+        )
+        assertIs<PersistentConversationAppendPairResult.Appended>(
+            native.appendPair(
+                session,
+                msg(5L, CognitiveConversationRole.USER, "u5"),
+                msg(6L, CognitiveConversationRole.ASSISTANT, "a6"),
+                at(9)
+            )
+        )
+        assertIs<
+            PersistentConversationMigrationFinalizationResult.AlreadyFinalized
+        >(
+            native.finalizeMigrationToNative(at(10))
+        )
+    }
+
+    @Test
+    fun native_finalization_requires_fresh_completeness_proof() {
+        val backend = CountingIndexedBackend()
+        val encrypted = encryptedStore(backend)
+        val session = CognitiveConversationSessionId("finalization-proof-session")
+        val digest = MessageDigest.getInstance("SHA-256")
+            .digest((session.value + ":1").encodeToByteArray())
+            .joinToString("") { "%02x".format(it) }
+        val sourceId = PersistentEntityId("conversation-chunk-$digest")
+        val payload = ByteArrayOutputStream().use { output ->
+            DataOutputStream(output).use { data ->
+                data.writeInt(0x434E5632)
+                val sessionBytes = session.value.encodeToByteArray()
+                data.writeInt(sessionBytes.size)
+                data.write(sessionBytes)
+                data.writeInt(2)
+                for ((sequence, role, content) in listOf(
+                    Triple(1L, CognitiveConversationRole.USER, "u1"),
+                    Triple(2L, CognitiveConversationRole.ASSISTANT, "a2")
+                )) {
+                    data.writeLong(sequence)
+                    data.writeInt(role.ordinal)
+                    val bytes = content.encodeToByteArray()
+                    data.writeInt(bytes.size)
+                    data.write(bytes)
+                }
+            }
+            output.toByteArray()
+        }
+        assertIs<CognitiveEncryptionResult.Success<*>>(
+            encrypted.install(
+                CognitivePersistentRecordDraft(
+                    id = sourceId,
+                    schemaId = PersistentSchemaId(
+                        "cognitive-conversation-session"
+                    ),
+                    schemaVersion = PersistentSchemaVersion(2),
+                    plaintext = CognitivePlaintext(payload),
+                    createdAt = at(1),
+                    dek = dekRef
+                )
+            )
+        )
+        assertIs<PersistentConversationMigrationPrepareResult.Prepared>(
+            EncryptedPersistentConversationStore.prepareMigration(
+                encryptedStore = encryptedStore(backend),
+                activeDek = dekRef,
+                persistedAt = at(2)
+            )
+        )
+        val mixed = assertIs<PersistentConversationOpenResult.Opened>(
+            EncryptedPersistentConversationStore.open(
+                encryptedStore = encryptedStore(backend),
+                activeDek = dekRef,
+                maxRetainedMessages = 4,
+                maxMessageChars = 1024
+            )
+        ).store
+        assertIs<PersistentConversationSessionMigrationResult.Migrated>(
+            mixed.migrateV2Session(session, at(3))
+        )
+
+        assertIs<PersistentConversationMigrationFinalizationResult.MissingProof>(
+            mixed.finalizeMigrationToNative(at(4))
+        )
+        assertIs<PersistentConversationMigrationCompletenessResult.Proven>(
+            mixed.proveMigrationCompleteness(
+                persistedAt = at(5),
+                pageSize = 2
+            )
+        )
+
+        val mutationPayload = byteArrayOf(1, 2, 3, 4)
+        assertIs<CognitiveEncryptionResult.Success<*>>(
+            encryptedStore(backend).install(
+                CognitivePersistentRecordDraft(
+                    id = PersistentEntityId("post-proof-mutation"),
+                    schemaId = PersistentSchemaId("test-post-proof"),
+                    schemaVersion = PersistentSchemaVersion(1),
+                    plaintext = CognitivePlaintext(mutationPayload),
+                    createdAt = at(6),
+                    dek = dekRef
+                )
+            )
+        )
+        assertIs<PersistentConversationMigrationFinalizationResult.StaleProof>(
+            mixed.finalizeMigrationToNative(at(7))
+        )
+        assertTrue(
+            backend.entries.containsKey(
+                ConversationV3MigrationCodec.MIXED_MARKER_ID
+            )
+        )
+        assertFalse(
+            backend.entries.containsKey(
+                ConversationV3IndexCodec.MARKER_ID
+            )
+        )
     }
 
     @Test
