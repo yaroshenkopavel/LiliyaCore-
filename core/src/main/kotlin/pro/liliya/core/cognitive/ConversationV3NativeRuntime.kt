@@ -701,7 +701,8 @@ internal class ConversationV3NativeRuntime private constructor(
         var next = head.latestChunkId
         while (next != null && selected.size < maxRetainedMessages) {
             if (!seen.add(next)) return null
-            val chunk = when (val read = readChunk(next, sessionId)) {
+            val read = readChunk(next, sessionId)
+            val chunk = when (read) {
                 is ConversationV3SessionLoadChunk.Found -> read.chunk
                 else -> return null
             }
@@ -713,6 +714,13 @@ internal class ConversationV3NativeRuntime private constructor(
             selected += chunk.snapshot.messages.asReversed()
             expectedLast = chunk.snapshot.messages.first().sequence.value - 1L
             next = chunk.previousChunkId
+            if (
+                read is ConversationV3SessionLoadChunk.Found &&
+                read.truncatedRoot &&
+                next == null
+            ) {
+                expectedLast = 0L
+            }
         }
         if (selected.size < maxRetainedMessages && next == null && expectedLast != 0L) {
             return null
@@ -724,7 +732,10 @@ internal class ConversationV3NativeRuntime private constructor(
     }
 
     private sealed interface ConversationV3SessionLoadChunk {
-        data class Found(val chunk: ConversationV3LinkedChunk) : ConversationV3SessionLoadChunk
+        data class Found(
+            val chunk: ConversationV3LinkedChunk,
+            val truncatedRoot: Boolean = false
+        ) : ConversationV3SessionLoadChunk
         data object Missing : ConversationV3SessionLoadChunk
         data object Corrupt : ConversationV3SessionLoadChunk
         data class Incompatible(val reason: String) : ConversationV3SessionLoadChunk
@@ -777,30 +788,116 @@ internal class ConversationV3NativeRuntime private constructor(
     ): ConversationV3SessionLoadChunk =
         when (val read = readPlainRecord(id)) {
             is ConversationV3RecordRead.Found ->
-                when (val decoded = ConversationV3IndexCodec.decodeChunk(read.record)) {
-                    is ConversationV3DecodeResult.Decoded ->
-                        if (decoded.value.snapshot.sessionId != sessionId) {
-                            ConversationV3SessionLoadChunk.Corrupt
-                        } else if (
-                            decoded.value.snapshot.messages.any {
-                                it.content.length > maxMessageChars
-                            }
-                        ) {
-                            ConversationV3SessionLoadChunk.Incompatible(
-                                "durable conversation exceeds configured reconstruction bounds"
+                if (
+                    read.record.schemaId ==
+                        ConversationV3MigrationCodec.TRUNCATED_ROOT_CHUNK_SCHEMA_ID
+                ) {
+                    when (
+                        val decoded =
+                            ConversationV3MigrationCodec.decodeTruncatedRootChunk(
+                                read.record
                             )
-                        } else {
-                            ConversationV3SessionLoadChunk.Found(decoded.value)
+                    ) {
+                        is ConversationV3MigrationDecodeResult.Decoded -> {
+                            val snapshot = decoded.value.snapshot
+                            if (snapshot.sessionId != sessionId ||
+                                snapshot.messages.any {
+                                    it.content.length > maxMessageChars
+                                }
+                            ) {
+                                ConversationV3SessionLoadChunk.Corrupt
+                            } else {
+                                when (
+                                    val boundaryRead = readPlainRecord(
+                                        ConversationV3MigrationCodec.truncatedRootId(
+                                            sessionId
+                                        )
+                                    )
+                                ) {
+                                    is ConversationV3RecordRead.Found ->
+                                        when (
+                                            val boundary =
+                                                ConversationV3MigrationCodec.decodeTruncatedRoot(
+                                                    boundaryRead.record
+                                                )
+                                        ) {
+                                            is ConversationV3MigrationDecodeResult.Decoded ->
+                                                if (
+                                                    boundary.value.sessionId ==
+                                                        sessionId &&
+                                                    boundary.value.firstRetainedSequence ==
+                                                        snapshot.messages.first()
+                                                            .sequence.value
+                                                ) {
+                                                    ConversationV3SessionLoadChunk.Found(
+                                                        ConversationV3LinkedChunk(
+                                                            snapshot = snapshot,
+                                                            previousChunkId = null
+                                                        ),
+                                                        truncatedRoot = true
+                                                    )
+                                                } else {
+                                                    ConversationV3SessionLoadChunk.Corrupt
+                                                }
+                                            ConversationV3MigrationDecodeResult.Corrupt ->
+                                                ConversationV3SessionLoadChunk.Corrupt
+                                            is ConversationV3MigrationDecodeResult.Incompatible ->
+                                                ConversationV3SessionLoadChunk.Incompatible(
+                                                    boundary.reason
+                                                )
+                                        }
+                                    ConversationV3RecordRead.Missing,
+                                    ConversationV3RecordRead.Corrupt ->
+                                        ConversationV3SessionLoadChunk.Corrupt
+                                    is ConversationV3RecordRead.EncryptionUnavailable ->
+                                        ConversationV3SessionLoadChunk.EncryptionUnavailable(
+                                            boundaryRead.category
+                                        )
+                                }
+                            }
                         }
-                    ConversationV3DecodeResult.Corrupt ->
-                        ConversationV3SessionLoadChunk.Corrupt
-                    is ConversationV3DecodeResult.Incompatible ->
-                        ConversationV3SessionLoadChunk.Incompatible(decoded.reason)
+                        ConversationV3MigrationDecodeResult.Corrupt ->
+                            ConversationV3SessionLoadChunk.Corrupt
+                        is ConversationV3MigrationDecodeResult.Incompatible ->
+                            ConversationV3SessionLoadChunk.Incompatible(decoded.reason)
+                    }
+                } else {
+                    when (
+                        val decoded =
+                            ConversationV3IndexCodec.decodeChunk(read.record)
+                    ) {
+                        is ConversationV3DecodeResult.Decoded ->
+                            if (decoded.value.snapshot.sessionId != sessionId) {
+                                ConversationV3SessionLoadChunk.Corrupt
+                            } else if (
+                                decoded.value.snapshot.messages.any {
+                                    it.content.length > maxMessageChars
+                                }
+                            ) {
+                                ConversationV3SessionLoadChunk.Incompatible(
+                                    "durable conversation exceeds configured reconstruction bounds"
+                                )
+                            } else {
+                                ConversationV3SessionLoadChunk.Found(
+                                    decoded.value
+                                )
+                            }
+                        ConversationV3DecodeResult.Corrupt ->
+                            ConversationV3SessionLoadChunk.Corrupt
+                        is ConversationV3DecodeResult.Incompatible ->
+                            ConversationV3SessionLoadChunk.Incompatible(
+                                decoded.reason
+                            )
+                    }
                 }
-            ConversationV3RecordRead.Missing -> ConversationV3SessionLoadChunk.Missing
-            ConversationV3RecordRead.Corrupt -> ConversationV3SessionLoadChunk.Corrupt
+            ConversationV3RecordRead.Missing ->
+                ConversationV3SessionLoadChunk.Missing
+            ConversationV3RecordRead.Corrupt ->
+                ConversationV3SessionLoadChunk.Corrupt
             is ConversationV3RecordRead.EncryptionUnavailable ->
-                ConversationV3SessionLoadChunk.EncryptionUnavailable(read.category)
+                ConversationV3SessionLoadChunk.EncryptionUnavailable(
+                    read.category
+                )
         }
 
     private fun persistChunkOrValidateExisting(
