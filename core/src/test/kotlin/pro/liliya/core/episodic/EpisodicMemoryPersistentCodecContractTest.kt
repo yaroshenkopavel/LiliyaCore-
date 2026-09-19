@@ -52,7 +52,7 @@ class EpisodicMemoryPersistentCodecContractTest {
                 PersistentRecord(
                     encoded.id,
                     encoded.schemaId,
-                    PersistentSchemaVersion(2),
+                    PersistentSchemaVersion(99),
                     encoded.payload,
                     encoded.createdAt
                 )
@@ -98,4 +98,50 @@ class EpisodicMemoryPersistentCodecContractTest {
             )
         )
     }
+    @Test
+    fun legacy_v1_payload_remains_readable_without_extraction_provenance() {
+        val encoded = EpisodicMemoryPersistentCodec.encode(episode)
+        val legacyPayload = legacyV1Payload(episode)
+        val decoded = assertIs<EpisodePersistentDecodeResult.Decoded>(
+            EpisodicMemoryPersistentCodec.decode(
+                PersistentRecord(
+                    encoded.id,
+                    encoded.schemaId,
+                    PersistentSchemaVersion(1),
+                    PersistentPayload(legacyPayload),
+                    encoded.createdAt
+                )
+            )
+        )
+        assertEquals(episode.copy(extraction = null), decoded.record)
+    }
+
+    private fun legacyV1Payload(record: EpisodeRecord): ByteArray {
+        val output = java.io.ByteArrayOutputStream()
+        java.io.DataOutputStream(output).use { data ->
+            fun writeString(value: String) {
+                val bytes = value.toByteArray(Charsets.UTF_8)
+                data.writeInt(bytes.size)
+                data.write(bytes)
+            }
+            fun writeInstant(value: Instant) {
+                data.writeLong(value.epochSecond)
+                data.writeInt(value.nano)
+            }
+            data.writeInt(0x45505331)
+            writeString(record.id.value)
+            data.writeInt(record.evidence.size)
+            record.evidence.forEach { reference ->
+                writeString(reference.namespace.value)
+                writeString(reference.id.value)
+            }
+            writeString(record.description)
+            writeInstant(record.observedAt)
+            data.writeBoolean(record.eventAt != null)
+            record.eventAt?.let(::writeInstant)
+            writeInstant(record.derivedAt)
+        }
+        return output.toByteArray()
+    }
+
 }

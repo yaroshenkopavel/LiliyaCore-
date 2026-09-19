@@ -21,7 +21,8 @@ internal sealed interface EpisodePersistentDecodeResult {
 
 internal object EpisodicMemoryPersistentCodec {
     val schemaId = PersistentSchemaId("episodic-memory-record")
-    val schemaVersion = PersistentSchemaVersion(1)
+    val schemaVersion = PersistentSchemaVersion(2)
+    private val legacySchemaVersion = PersistentSchemaVersion(1)
     private const val MAGIC = 0x45505331
     private const val MAX_EVIDENCE_REFERENCES = 256
 
@@ -40,6 +41,12 @@ internal object EpisodicMemoryPersistentCodec {
                 data.writeBoolean(record.eventAt != null)
                 record.eventAt?.let { data.writeInstant(it) }
                 data.writeInstant(record.derivedAt)
+                data.writeBoolean(record.extraction != null)
+                record.extraction?.let { extraction ->
+                    data.writeString(extraction.extractorId)
+                    data.writeString(extraction.extractorVersion)
+                    data.writeInstant(extraction.extractedAt)
+                }
             }
             output.toByteArray()
         }
@@ -56,7 +63,7 @@ internal object EpisodicMemoryPersistentCodec {
         if (record.schemaId != schemaId) {
             return EpisodePersistentDecodeResult.Incompatible("episodic schema id mismatch")
         }
-        if (record.schemaVersion != schemaVersion) {
+        if (record.schemaVersion != legacySchemaVersion && record.schemaVersion != schemaVersion) {
             return EpisodePersistentDecodeResult.Incompatible("episodic schema version mismatch")
         }
         return try {
@@ -78,12 +85,25 @@ internal object EpisodicMemoryPersistentCodec {
             val observedAt = data.readInstant()
             val eventAt = if (data.readBoolean()) data.readInstant() else null
             val derivedAt = data.readInstant()
+            val extraction = if (record.schemaVersion == schemaVersion) {
+                if (data.readBoolean()) {
+                    EpisodeExtractionProvenance(
+                        extractorId = data.readString(input),
+                        extractorVersion = data.readString(input),
+                        extractedAt = data.readInstant()
+                    )
+                } else {
+                    null
+                }
+            } else {
+                null
+            }
             if (input.available() != 0) return EpisodePersistentDecodeResult.Corrupt
             if (record.id.value != id.value || record.createdAt != derivedAt) {
                 return EpisodePersistentDecodeResult.Corrupt
             }
             EpisodePersistentDecodeResult.Decoded(
-                EpisodeRecord(id, evidence, description, observedAt, eventAt, derivedAt)
+                EpisodeRecord(id, evidence, description, observedAt, eventAt, derivedAt, extraction)
             )
         } catch (_: EOFException) {
             EpisodePersistentDecodeResult.Corrupt
