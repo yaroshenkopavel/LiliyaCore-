@@ -90,7 +90,8 @@ class EncryptedPersistentConversationStore private constructor(
     private val maxRetainedMessages: Int,
     private val maxMessageChars: Int,
     restored: Map<CognitiveConversationSessionId, Entry>,
-    private val nativeV3: ConversationV3NativeRuntime? = null
+    private val nativeV3: ConversationV3NativeRuntime? = null,
+    private val mixedV3: ConversationV3MixedSessionRuntime? = null
 ) {
     private val entries = LinkedHashMap(restored)
 
@@ -105,6 +106,11 @@ class EncryptedPersistentConversationStore private constructor(
         message: CognitiveConversationContextMessage,
         persistedAt: Instant
     ): PersistentConversationAppendResult {
+        mixedV3?.let {
+            return PersistentConversationAppendResult.Rejected(
+                "mixed conversation write migration is not enabled"
+            )
+        }
         nativeV3?.let { return it.append(sessionId, message, persistedAt) }
 
         if (message.content.length > maxMessageChars) {
@@ -172,6 +178,11 @@ class EncryptedPersistentConversationStore private constructor(
         assistant: CognitiveConversationContextMessage,
         persistedAt: Instant
     ): PersistentConversationAppendPairResult {
+        mixedV3?.let {
+            return PersistentConversationAppendPairResult.Rejected(
+                "mixed conversation write migration is not enabled"
+            )
+        }
         nativeV3?.let {
             return it.appendPair(sessionId, user, assistant, persistedAt)
         }
@@ -253,6 +264,7 @@ class EncryptedPersistentConversationStore private constructor(
     fun reopenResult(
         sessionId: CognitiveConversationSessionId
     ): PersistentConversationReopenResult {
+        mixedV3?.let { return it.reopenResult(sessionId) }
         nativeV3?.let { return it.reopenResult(sessionId) }
         val snapshot = entries[sessionId]?.snapshot
             ?: return PersistentConversationReopenResult.Absent
@@ -276,7 +288,11 @@ class EncryptedPersistentConversationStore private constructor(
 
     @Synchronized
     fun sessionCountResult(): PersistentConversationSessionCountResult =
-        nativeV3?.sessionCountResult()
+        mixedV3?.let {
+            PersistentConversationSessionCountResult.Incompatible(
+                "mixed conversation session count requires migration catalogue"
+            )
+        } ?: nativeV3?.sessionCountResult()
             ?: PersistentConversationSessionCountResult.Count(entries.size)
 
     @Synchronized
@@ -300,6 +316,13 @@ class EncryptedPersistentConversationStore private constructor(
         beforeSequenceExclusive: Long = Long.MAX_VALUE,
         maxMessages: Int
     ): PersistentConversationHistoryResult {
+        mixedV3?.let {
+            return it.history(
+                sessionId = sessionId,
+                beforeSequenceExclusive = beforeSequenceExclusive,
+                maxMessages = maxMessages
+            )
+        }
         nativeV3?.let {
             return it.history(
                 sessionId = sessionId,
@@ -406,9 +429,21 @@ class EncryptedPersistentConversationStore private constructor(
                             nativeV3 = native.runtime
                         )
                     )
-                ConversationV3NativeDecision.Mixed ->
-                    return PersistentConversationOpenResult.Incompatible(
-                        "mixed conversation migration runtime is not enabled"
+                is ConversationV3NativeDecision.Mixed ->
+                    return PersistentConversationOpenResult.Opened(
+                        EncryptedPersistentConversationStore(
+                            encryptedStore = encryptedStore,
+                            activeDek = activeDek,
+                            maxRetainedMessages = maxRetainedMessages,
+                            maxMessageChars = maxMessageChars,
+                            restored = emptyMap(),
+                            mixedV3 = ConversationV3MixedSessionRuntime(
+                                encryptedStore = encryptedStore,
+                                nativeV3 = native.runtime,
+                                maxRetainedMessages = maxRetainedMessages,
+                                maxMessageChars = maxMessageChars
+                            )
+                        )
                     )
                 ConversationV3NativeDecision.LegacyFallback -> Unit
                 ConversationV3NativeDecision.Corrupt ->
@@ -483,6 +518,255 @@ class EncryptedPersistentConversationStore private constructor(
                     restored
                 )
             )
+        }
+    }
+}
+
+private sealed interface ConversationV3LegacyExactRead {
+    data class Found(val decoded: ConversationDecodeResult.Decoded) :
+        ConversationV3LegacyExactRead
+    data object Missing : ConversationV3LegacyExactRead
+    data object Corrupt : ConversationV3LegacyExactRead
+    data class Incompatible(val reason: String) : ConversationV3LegacyExactRead
+    data class EncryptionUnavailable(
+        val category: CognitiveEncryptionFailureCategory
+    ) : ConversationV3LegacyExactRead
+}
+
+private class ConversationV3MixedSessionRuntime(
+    private val encryptedStore: EncryptedPersistentRecordStore,
+    private val nativeV3: ConversationV3NativeRuntime,
+    private val maxRetainedMessages: Int,
+    private val maxMessageChars: Int
+) {
+    fun reopenResult(
+        sessionId: CognitiveConversationSessionId
+    ): PersistentConversationReopenResult {
+        when (val native = nativeV3.reopenResult(sessionId)) {
+            is PersistentConversationReopenResult.Found -> return native
+            PersistentConversationReopenResult.Absent -> Unit
+            PersistentConversationReopenResult.Corrupt -> return native
+            is PersistentConversationReopenResult.Incompatible -> return native
+            is PersistentConversationReopenResult.EncryptionUnavailable -> return native
+        }
+
+        val tail = ArrayDeque<CognitiveConversationContextMessage>()
+        var foundAny = false
+        var nextSequence = 1L
+
+        when (val legacy = readLegacy(ConversationPersistentRecordCodec.entityId(sessionId))) {
+            is ConversationV3LegacyExactRead.Found -> {
+                if (legacy.decoded.chunk ||
+                    legacy.decoded.snapshot.sessionId != sessionId ||
+                    !validateMessages(legacy.decoded.snapshot.messages, allowTruncatedStart = true)
+                ) {
+                    return PersistentConversationReopenResult.Corrupt
+                }
+                val messages = legacy.decoded.snapshot.messages
+                if (messages.isNotEmpty()) {
+                    foundAny = true
+                    nextSequence = messages.last().sequence.value + 1L
+                    if (nextSequence <= 0L) return PersistentConversationReopenResult.Corrupt
+                    retainTail(tail, messages)
+                }
+            }
+            ConversationV3LegacyExactRead.Missing -> Unit
+            ConversationV3LegacyExactRead.Corrupt ->
+                return PersistentConversationReopenResult.Corrupt
+            is ConversationV3LegacyExactRead.Incompatible ->
+                return PersistentConversationReopenResult.Incompatible(legacy.reason)
+            is ConversationV3LegacyExactRead.EncryptionUnavailable ->
+                return PersistentConversationReopenResult.EncryptionUnavailable(legacy.category)
+        }
+
+        while (true) {
+            val id = ConversationPersistentRecordCodec.chunkId(sessionId, nextSequence)
+            when (val chunk = readLegacy(id)) {
+                is ConversationV3LegacyExactRead.Found -> {
+                    val messages = chunk.decoded.snapshot.messages
+                    if (!chunk.decoded.chunk ||
+                        chunk.decoded.snapshot.sessionId != sessionId ||
+                        messages.isEmpty() ||
+                        !validateMessages(messages, allowTruncatedStart = false) ||
+                        messages.first().sequence.value != nextSequence
+                    ) {
+                        return PersistentConversationReopenResult.Corrupt
+                    }
+                    foundAny = true
+                    retainTail(tail, messages)
+                    nextSequence = messages.last().sequence.value + 1L
+                    if (nextSequence <= 0L) return PersistentConversationReopenResult.Corrupt
+                }
+                ConversationV3LegacyExactRead.Missing -> break
+                ConversationV3LegacyExactRead.Corrupt ->
+                    return PersistentConversationReopenResult.Corrupt
+                is ConversationV3LegacyExactRead.Incompatible ->
+                    return PersistentConversationReopenResult.Incompatible(chunk.reason)
+                is ConversationV3LegacyExactRead.EncryptionUnavailable ->
+                    return PersistentConversationReopenResult.EncryptionUnavailable(chunk.category)
+            }
+        }
+
+        return if (!foundAny) {
+            PersistentConversationReopenResult.Absent
+        } else {
+            PersistentConversationReopenResult.Found(
+                CognitiveConversationContextSnapshot(sessionId, tail.toList())
+            )
+        }
+    }
+
+    fun history(
+        sessionId: CognitiveConversationSessionId,
+        beforeSequenceExclusive: Long,
+        maxMessages: Int
+    ): PersistentConversationHistoryResult {
+        require(maxMessages > 0) { "history page size must be positive" }
+
+        when (val native = nativeV3.reopenResult(sessionId)) {
+            is PersistentConversationReopenResult.Found ->
+                return nativeV3.history(
+                    sessionId,
+                    beforeSequenceExclusive,
+                    maxMessages
+                )
+            PersistentConversationReopenResult.Absent -> Unit
+            PersistentConversationReopenResult.Corrupt ->
+                return PersistentConversationHistoryResult.Corrupt
+            is PersistentConversationReopenResult.Incompatible ->
+                return PersistentConversationHistoryResult.Corrupt
+            is PersistentConversationReopenResult.EncryptionUnavailable ->
+                return PersistentConversationHistoryResult.EncryptionUnavailable(native.category)
+        }
+
+        val selected = ArrayDeque<CognitiveConversationContextMessage>()
+        var foundAny = false
+        var nextSequence = 1L
+
+        fun consider(messages: List<CognitiveConversationContextMessage>) {
+            for (message in messages) {
+                if (message.sequence.value < beforeSequenceExclusive) {
+                    selected.addLast(message)
+                    while (selected.size > maxMessages) selected.removeFirst()
+                }
+            }
+        }
+
+        when (val legacy = readLegacy(ConversationPersistentRecordCodec.entityId(sessionId))) {
+            is ConversationV3LegacyExactRead.Found -> {
+                if (legacy.decoded.chunk ||
+                    legacy.decoded.snapshot.sessionId != sessionId ||
+                    !validateMessages(legacy.decoded.snapshot.messages, allowTruncatedStart = true)
+                ) {
+                    return PersistentConversationHistoryResult.Corrupt
+                }
+                val messages = legacy.decoded.snapshot.messages
+                if (messages.isNotEmpty()) {
+                    foundAny = true
+                    consider(messages)
+                    nextSequence = messages.last().sequence.value + 1L
+                    if (nextSequence <= 0L) return PersistentConversationHistoryResult.Corrupt
+                }
+            }
+            ConversationV3LegacyExactRead.Missing -> Unit
+            ConversationV3LegacyExactRead.Corrupt ->
+                return PersistentConversationHistoryResult.Corrupt
+            is ConversationV3LegacyExactRead.Incompatible ->
+                return PersistentConversationHistoryResult.Corrupt
+            is ConversationV3LegacyExactRead.EncryptionUnavailable ->
+                return PersistentConversationHistoryResult.EncryptionUnavailable(legacy.category)
+        }
+
+        while (true) {
+            val id = ConversationPersistentRecordCodec.chunkId(sessionId, nextSequence)
+            when (val chunk = readLegacy(id)) {
+                is ConversationV3LegacyExactRead.Found -> {
+                    val messages = chunk.decoded.snapshot.messages
+                    if (!chunk.decoded.chunk ||
+                        chunk.decoded.snapshot.sessionId != sessionId ||
+                        messages.isEmpty() ||
+                        !validateMessages(messages, allowTruncatedStart = false) ||
+                        messages.first().sequence.value != nextSequence
+                    ) {
+                        return PersistentConversationHistoryResult.Corrupt
+                    }
+                    foundAny = true
+                    consider(messages)
+                    nextSequence = messages.last().sequence.value + 1L
+                    if (nextSequence <= 0L) return PersistentConversationHistoryResult.Corrupt
+                }
+                ConversationV3LegacyExactRead.Missing -> break
+                ConversationV3LegacyExactRead.Corrupt ->
+                    return PersistentConversationHistoryResult.Corrupt
+                is ConversationV3LegacyExactRead.Incompatible ->
+                    return PersistentConversationHistoryResult.Corrupt
+                is ConversationV3LegacyExactRead.EncryptionUnavailable ->
+                    return PersistentConversationHistoryResult.EncryptionUnavailable(chunk.category)
+            }
+        }
+
+        return if (!foundAny) {
+            PersistentConversationHistoryResult.Absent
+        } else {
+            PersistentConversationHistoryResult.Found(
+                CognitiveConversationContextSnapshot(sessionId, selected.toList())
+            )
+        }
+    }
+
+    private fun validateMessages(
+        messages: List<CognitiveConversationContextMessage>,
+        allowTruncatedStart: Boolean
+    ): Boolean {
+        if (messages.any { it.content.length > maxMessageChars }) return false
+        if (messages.isEmpty()) return true
+        val first = messages.first().sequence.value
+        if (first <= 0L) return false
+        if (!allowTruncatedStart && first <= 0L) return false
+        for (index in 1 until messages.size) {
+            if (messages[index].sequence.value != messages[index - 1].sequence.value + 1L) {
+                return false
+            }
+        }
+        return true
+    }
+
+    private fun retainTail(
+        tail: ArrayDeque<CognitiveConversationContextMessage>,
+        messages: List<CognitiveConversationContextMessage>
+    ) {
+        for (message in messages) {
+            tail.addLast(message)
+            while (tail.size > maxRetainedMessages) tail.removeFirst()
+        }
+    }
+
+    private fun readLegacy(id: PersistentEntityId): ConversationV3LegacyExactRead {
+        val plaintext = when (val opened = encryptedStore.open(id)) {
+            is CognitiveEncryptionResult.Success -> opened.value
+            is CognitiveEncryptionResult.Rejected ->
+                return if (
+                    opened.category == CognitiveEncryptionFailureCategory.INVALID_REQUEST
+                ) {
+                    ConversationV3LegacyExactRead.Missing
+                } else {
+                    ConversationV3LegacyExactRead.EncryptionUnavailable(opened.category)
+                }
+            is CognitiveEncryptionResult.Failed ->
+                return ConversationV3LegacyExactRead.EncryptionUnavailable(opened.category)
+        }
+        val raw = encryptedStore.inspect(id)
+            ?: return ConversationV3LegacyExactRead.Corrupt
+        val record = raw.record.copy(
+            payload = PersistentPayload(plaintext.copyBytes())
+        )
+        return when (val decoded = ConversationPersistentRecordCodec.decode(record)) {
+            is ConversationDecodeResult.Decoded ->
+                ConversationV3LegacyExactRead.Found(decoded)
+            ConversationDecodeResult.Corrupt ->
+                ConversationV3LegacyExactRead.Corrupt
+            is ConversationDecodeResult.Incompatible ->
+                ConversationV3LegacyExactRead.Incompatible(decoded.reason)
         }
     }
 }
@@ -562,14 +846,14 @@ private object ConversationPersistentRecordCodec {
         }
     }
 
-    private fun entityId(sessionId: CognitiveConversationSessionId): PersistentEntityId {
+    fun entityId(sessionId: CognitiveConversationSessionId): PersistentEntityId {
         val digest = MessageDigest.getInstance("SHA-256")
             .digest(sessionId.value.toByteArray(StandardCharsets.UTF_8))
             .joinToString("") { "%02x".format(it) }
         return PersistentEntityId("conversation-$digest")
     }
 
-    private fun chunkId(sessionId: CognitiveConversationSessionId, firstSequence: Long): PersistentEntityId {
+    fun chunkId(sessionId: CognitiveConversationSessionId, firstSequence: Long): PersistentEntityId {
         val digest = MessageDigest.getInstance("SHA-256")
             .digest((sessionId.value + ":" + firstSequence).toByteArray(StandardCharsets.UTF_8))
             .joinToString("") { "%02x".format(it) }
