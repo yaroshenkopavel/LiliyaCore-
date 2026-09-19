@@ -3,6 +3,20 @@ package pro.liliya.core.persistence
 import pro.liliya.core.diagnostics.DiagnosticSeverity
 import pro.liliya.core.foundation.FoundationComposition
 
+internal sealed interface PersistentRecordPageResult {
+    data object Empty : PersistentRecordPageResult
+    data class Loaded(
+        val entries: List<PersistentRecordSnapshot>,
+        val nextCursor: PersistentBackendPageCursor?
+    ) : PersistentRecordPageResult
+    data object Corrupt : PersistentRecordPageResult
+    data class Incompatible(val reason: String) : PersistentRecordPageResult
+    data class Failed(
+        val reason: String,
+        val throwable: Throwable? = null
+    ) : PersistentRecordPageResult
+}
+
 internal sealed interface PersistentRecordTransitionResult {
     data class Committed(val ownership: PersistentRecordOwnership) : PersistentRecordTransitionResult
     data class Rejected(val reason: String) : PersistentRecordTransitionResult
@@ -229,6 +243,163 @@ class PersistentRecordStore private constructor(
             PersistentRecordSnapshotEntriesResult.Loaded(collected)
         }
     }
+
+    /**
+     * Bounded fail-closed indexed enumeration for explicit audit/finalization work.
+     * Each call verifies the store metadata barrier and page monotonicity, so callers can stream
+     * the store without retaining an unbounded set of previously seen ids.
+     */
+    @Synchronized
+    internal fun snapshotPageResult(
+        request: PersistentBackendPageRequest
+    ): PersistentRecordPageResult {
+        val indexed = backend as? IndexedPersistentRecordReadBackend
+            ?: return PersistentRecordPageResult.Incompatible(
+                "persistent bounded paging requires indexed backend"
+            )
+        if (indexedEntryCount == null) {
+            return PersistentRecordPageResult.Incompatible(
+                "persistent bounded paging requires metadata-only indexed store"
+            )
+        }
+
+        indexedMetadataBarrier(indexed)?.let { barrier ->
+            return when (barrier) {
+                PersistentRecordSnapshotEntriesResult.Empty ->
+                    PersistentRecordPageResult.Empty
+                is PersistentRecordSnapshotEntriesResult.Loaded ->
+                    PersistentRecordPageResult.Failed(
+                        "unexpected loaded metadata barrier"
+                    )
+                PersistentRecordSnapshotEntriesResult.Corrupt ->
+                    PersistentRecordPageResult.Corrupt
+                is PersistentRecordSnapshotEntriesResult.Incompatible ->
+                    PersistentRecordPageResult.Incompatible(barrier.reason)
+                is PersistentRecordSnapshotEntriesResult.Failed ->
+                    PersistentRecordPageResult.Failed(
+                        barrier.reason,
+                        barrier.throwable
+                    )
+            }
+        }
+
+        val loaded = when (
+            val result = indexed.loadPage(storeId, request)
+        ) {
+            PersistentBackendPageLoadResult.Missing -> {
+                return if (
+                    indexedEntryCount == 0L &&
+                    request.cursorExclusive == null
+                ) {
+                    PersistentRecordPageResult.Empty
+                } else {
+                    PersistentRecordPageResult.Corrupt
+                }
+            }
+            is PersistentBackendPageLoadResult.Loaded -> result.page
+            PersistentBackendPageLoadResult.Corrupt ->
+                return PersistentRecordPageResult.Corrupt
+            is PersistentBackendPageLoadResult.Incompatible ->
+                return PersistentRecordPageResult.Incompatible(result.reason)
+            is PersistentBackendPageLoadResult.Failed ->
+                return PersistentRecordPageResult.Failed(
+                    result.reason,
+                    result.throwable
+                )
+        }
+
+        indexedMetadataBarrier(indexed)?.let { barrier ->
+            return when (barrier) {
+                PersistentRecordSnapshotEntriesResult.Empty ->
+                    PersistentRecordPageResult.Empty
+                is PersistentRecordSnapshotEntriesResult.Loaded ->
+                    PersistentRecordPageResult.Failed(
+                        "unexpected loaded metadata barrier"
+                    )
+                PersistentRecordSnapshotEntriesResult.Corrupt ->
+                    PersistentRecordPageResult.Corrupt
+                is PersistentRecordSnapshotEntriesResult.Incompatible ->
+                    PersistentRecordPageResult.Incompatible(barrier.reason)
+                is PersistentRecordSnapshotEntriesResult.Failed ->
+                    PersistentRecordPageResult.Failed(
+                        barrier.reason,
+                        barrier.throwable
+                    )
+            }
+        }
+
+        if (loaded.entries.isEmpty()) {
+            return if (loaded.nextCursor == null && indexedEntryCount == 0L) {
+                PersistentRecordPageResult.Empty
+            } else {
+                PersistentRecordPageResult.Corrupt
+            }
+        }
+
+        fun key(snapshot: PersistentRecordSnapshot) =
+            snapshot.record.createdAt to snapshot.record.id.value
+
+        fun after(
+            left: Pair<java.time.Instant, String>,
+            right: Pair<java.time.Instant, String>
+        ): Boolean =
+            left.first > right.first ||
+                (left.first == right.first && left.second > right.second)
+
+        fun before(
+            left: Pair<java.time.Instant, String>,
+            right: Pair<java.time.Instant, String>
+        ): Boolean =
+            left.first < right.first ||
+                (left.first == right.first && left.second < right.second)
+
+        val cursorKey = request.cursorExclusive?.let {
+            it.createdAt to it.entityId.value
+        }
+        var previous = cursorKey
+        for (snapshot in loaded.entries) {
+            val current = key(snapshot)
+            if (previous != null) {
+                val valid = when (request.order) {
+                    PersistentBackendPageOrder.OLDEST_FIRST ->
+                        after(current, previous)
+                    PersistentBackendPageOrder.NEWEST_FIRST ->
+                        before(current, previous)
+                }
+                if (!valid) return PersistentRecordPageResult.Corrupt
+            }
+            previous = current
+        }
+
+        loaded.nextCursor?.let { next ->
+            val last = loaded.entries.last().record
+            if (next.createdAt != last.createdAt ||
+                next.entityId != last.id
+            ) {
+                return PersistentRecordPageResult.Corrupt
+            }
+        }
+
+        return PersistentRecordPageResult.Loaded(
+            entries = loaded.entries.map {
+                PersistentRecordSnapshot(
+                    it.record.detached(),
+                    it.generation
+                )
+            },
+            nextCursor = loaded.nextCursor
+        )
+    }
+
+    @Synchronized
+    internal fun indexedMetadataSnapshot(): PersistentBackendMetadata? =
+        indexedEntryCount?.let { count ->
+            PersistentBackendMetadata(
+                revision = revision,
+                highWatermark = state.highWatermark,
+                entryCount = count
+            )
+        }
 
     private fun indexedMetadataBarrier(
         indexed: IndexedPersistentRecordReadBackend
