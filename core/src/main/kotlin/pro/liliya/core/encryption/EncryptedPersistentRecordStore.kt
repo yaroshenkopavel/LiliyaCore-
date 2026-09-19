@@ -6,6 +6,10 @@ import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.nio.charset.StandardCharsets
 import java.time.Instant
+import pro.liliya.core.persistence.PersistentBackendMetadata
+import pro.liliya.core.persistence.PersistentBackendPageCursor
+import pro.liliya.core.persistence.PersistentBackendPageRequest
+import pro.liliya.core.persistence.PersistentRecordPageResult
 import pro.liliya.core.persistence.PersistentEntityId
 import pro.liliya.core.persistence.PersistentGeneration
 import pro.liliya.core.persistence.PersistentInstallResult
@@ -24,6 +28,24 @@ import pro.liliya.core.persistence.PersistentSchemaVersion
 /** Exact DEK material resolution seam. Key protection/unwrap is supplied by a later reviewed layer. */
 interface CognitiveDekMaterialResolver {
     fun resolve(reference: CognitiveDekReference): CognitiveEncryptionResult<CognitiveDekMaterial>
+}
+
+internal sealed interface EncryptedPersistentRecordPageResult {
+    data object Empty : EncryptedPersistentRecordPageResult
+    data class Loaded(
+        val entries: List<PersistentRecordSnapshot>,
+        val nextCursor: PersistentBackendPageCursor?
+    ) : EncryptedPersistentRecordPageResult
+    data object Corrupt : EncryptedPersistentRecordPageResult
+    data class Incompatible(val reason: String) :
+        EncryptedPersistentRecordPageResult
+    data class EncryptionUnavailable(
+        val category: CognitiveEncryptionFailureCategory
+    ) : EncryptedPersistentRecordPageResult
+    data class Failed(
+        val reason: String,
+        val throwable: Throwable? = null
+    ) : EncryptedPersistentRecordPageResult
 }
 
 data class CognitivePersistentRecordDraft(
@@ -195,6 +217,59 @@ class EncryptedPersistentRecordStore(
                     )
             }
         }
+
+    internal fun decryptedPageResult(
+        request: PersistentBackendPageRequest
+    ): EncryptedPersistentRecordPageResult =
+        when (val page = store.snapshotPageResult(request)) {
+            PersistentRecordPageResult.Empty ->
+                EncryptedPersistentRecordPageResult.Empty
+            PersistentRecordPageResult.Corrupt ->
+                EncryptedPersistentRecordPageResult.Corrupt
+            is PersistentRecordPageResult.Incompatible ->
+                EncryptedPersistentRecordPageResult.Incompatible(page.reason)
+            is PersistentRecordPageResult.Failed ->
+                EncryptedPersistentRecordPageResult.Failed(
+                    page.reason,
+                    page.throwable
+                )
+            is PersistentRecordPageResult.Loaded -> {
+                val decrypted =
+                    ArrayList<PersistentRecordSnapshot>(page.entries.size)
+                for (snapshot in page.entries) {
+                    val plaintext = when (
+                        val opened = open(snapshot.record.id)
+                    ) {
+                        is CognitiveEncryptionResult.Success -> opened.value
+                        is CognitiveEncryptionResult.Rejected ->
+                            return EncryptedPersistentRecordPageResult
+                                .EncryptionUnavailable(opened.category)
+                        is CognitiveEncryptionResult.Failed ->
+                            return EncryptedPersistentRecordPageResult
+                                .EncryptionUnavailable(opened.category)
+                    }
+                    decrypted += PersistentRecordSnapshot(
+                        record = PersistentRecord(
+                            id = snapshot.record.id,
+                            schemaId = snapshot.record.schemaId,
+                            schemaVersion = snapshot.record.schemaVersion,
+                            payload = PersistentPayload(
+                                plaintext.copyBytes()
+                            ),
+                            createdAt = snapshot.record.createdAt
+                        ),
+                        generation = snapshot.generation
+                    )
+                }
+                EncryptedPersistentRecordPageResult.Loaded(
+                    entries = decrypted,
+                    nextCursor = page.nextCursor
+                )
+            }
+        }
+
+    internal fun indexedMetadataSnapshot(): PersistentBackendMetadata? =
+        store.indexedMetadataSnapshot()
 
     internal fun decryptedSnapshotEntries():
         CognitiveEncryptionResult<List<PersistentRecordSnapshot>> {
