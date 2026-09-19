@@ -1424,6 +1424,448 @@ private class ConversationV3MixedSessionRuntime(
         }
     }
 
+    private sealed interface MigrationReceiptAuditRead {
+        data class Found(
+            val receipt: ConversationV3MigrationReceipt
+        ) : MigrationReceiptAuditRead
+
+        data object Missing : MigrationReceiptAuditRead
+        data object Corrupt : MigrationReceiptAuditRead
+
+        data class Incompatible(
+            val reason: String
+        ) : MigrationReceiptAuditRead
+
+        data class EncryptionUnavailable(
+            val category: CognitiveEncryptionFailureCategory
+        ) : MigrationReceiptAuditRead
+    }
+
+    private fun readMigrationReceipt(
+        sessionId: CognitiveConversationSessionId
+    ): MigrationReceiptAuditRead {
+        val id = ConversationV3MigrationCodec.migrationReceiptId(sessionId)
+        val plaintext = when (val opened = encryptedStore.open(id)) {
+            is CognitiveEncryptionResult.Success -> opened.value
+            is CognitiveEncryptionResult.Rejected ->
+                return if (
+                    opened.category ==
+                        CognitiveEncryptionFailureCategory.INVALID_REQUEST
+                ) {
+                    MigrationReceiptAuditRead.Missing
+                } else {
+                    MigrationReceiptAuditRead.EncryptionUnavailable(
+                        opened.category
+                    )
+                }
+            is CognitiveEncryptionResult.Failed ->
+                return MigrationReceiptAuditRead.EncryptionUnavailable(
+                    opened.category
+                )
+        }
+        val raw = encryptedStore.inspect(id)
+            ?: return MigrationReceiptAuditRead.Corrupt
+        return when (
+            val decoded =
+                ConversationV3MigrationCodec.decodeMigrationReceipt(
+                    raw.record.copy(
+                        payload = PersistentPayload(
+                            plaintext.copyBytes()
+                        )
+                    )
+                )
+        ) {
+            is ConversationV3MigrationDecodeResult.Decoded ->
+                if (decoded.value.sessionId == sessionId) {
+                    MigrationReceiptAuditRead.Found(decoded.value)
+                } else {
+                    MigrationReceiptAuditRead.Corrupt
+                }
+            ConversationV3MigrationDecodeResult.Corrupt ->
+                MigrationReceiptAuditRead.Corrupt
+            is ConversationV3MigrationDecodeResult.Incompatible ->
+                MigrationReceiptAuditRead.Incompatible(decoded.reason)
+        }
+    }
+
+    private fun validateLegacyReceiptCoverage(
+        record: PersistentRecord,
+        decoded: ConversationDecodeResult.Decoded,
+        receipt: ConversationV3MigrationReceipt
+    ): PersistentConversationMigrationCompletenessResult? {
+        val sessionId = decoded.snapshot.sessionId
+        if (receipt.sessionId != sessionId ||
+            receipt.targetHeadId != ConversationV3IndexCodec.headId(sessionId)
+        ) {
+            return PersistentConversationMigrationCompletenessResult.Corrupt
+        }
+
+        return if (decoded.chunk) {
+            val expectedSource = when (receipt.sourceKind) {
+                ConversationV3MigrationSourceKind.V2_COMPLETE ->
+                    ConversationPersistentRecordCodec.chunkId(sessionId, 1L)
+                ConversationV3MigrationSourceKind.V1_TRUNCATED ->
+                    ConversationPersistentRecordCodec.entityId(sessionId)
+            }
+            if (receipt.sourceLegacyEntityId != expectedSource) {
+                PersistentConversationMigrationCompletenessResult.Corrupt
+            } else {
+                null
+            }
+        } else {
+            if (receipt.sourceKind !=
+                ConversationV3MigrationSourceKind.V1_TRUNCATED ||
+                receipt.sourceLegacyEntityId != record.id ||
+                record.id !=
+                    ConversationPersistentRecordCodec.entityId(sessionId)
+            ) {
+                PersistentConversationMigrationCompletenessResult.Corrupt
+            } else {
+                null
+            }
+        }
+    }
+
+    private fun validateReceiptSourceAndHead(
+        receipt: ConversationV3MigrationReceipt
+    ): PersistentConversationMigrationCompletenessResult? {
+        val sessionId = receipt.sessionId
+        var latestV3Id: PersistentEntityId? = null
+        var lastSequence = 0L
+
+        when (receipt.sourceKind) {
+            ConversationV3MigrationSourceKind.V2_COMPLETE -> {
+                val expectedSource =
+                    ConversationPersistentRecordCodec.chunkId(
+                        sessionId,
+                        1L
+                    )
+                if (receipt.sourceLegacyEntityId != expectedSource) {
+                    return PersistentConversationMigrationCompletenessResult
+                        .Corrupt
+                }
+
+                var nextSequence = 1L
+                var foundAny = false
+                while (true) {
+                    val sourceId =
+                        ConversationPersistentRecordCodec.chunkId(
+                            sessionId,
+                            nextSequence
+                        )
+                    when (val source = readLegacy(sourceId)) {
+                        ConversationV3LegacyExactRead.Missing -> break
+                        ConversationV3LegacyExactRead.Corrupt ->
+                            return PersistentConversationMigrationCompletenessResult
+                                .Corrupt
+                        is ConversationV3LegacyExactRead.Incompatible ->
+                            return PersistentConversationMigrationCompletenessResult
+                                .Incompatible(source.reason)
+                        is ConversationV3LegacyExactRead.EncryptionUnavailable ->
+                            return PersistentConversationMigrationCompletenessResult
+                                .EncryptionUnavailable(source.category)
+                        is ConversationV3LegacyExactRead.Found -> {
+                            val decoded = source.decoded
+                            val messages = decoded.snapshot.messages
+                            if (!decoded.chunk ||
+                                decoded.snapshot.sessionId != sessionId ||
+                                messages.isEmpty() ||
+                                messages.first().sequence.value != nextSequence ||
+                                !validateMessages(
+                                    messages,
+                                    allowTruncatedStart = false
+                                )
+                            ) {
+                                return PersistentConversationMigrationCompletenessResult
+                                    .Corrupt
+                            }
+                            foundAny = true
+                            latestV3Id =
+                                ConversationV3IndexCodec.chunkId(
+                                    sessionId,
+                                    messages.first().sequence.value
+                                )
+                            lastSequence =
+                                messages.last().sequence.value
+                            if (lastSequence == Long.MAX_VALUE) {
+                                return PersistentConversationMigrationCompletenessResult
+                                    .Corrupt
+                            }
+                            nextSequence = lastSequence + 1L
+                        }
+                    }
+                }
+                if (!foundAny) {
+                    return PersistentConversationMigrationCompletenessResult
+                        .Incomplete(
+                            "migration receipt source v2 chain is missing"
+                        )
+                }
+            }
+
+            ConversationV3MigrationSourceKind.V1_TRUNCATED -> {
+                val expectedSource =
+                    ConversationPersistentRecordCodec.entityId(sessionId)
+                if (receipt.sourceLegacyEntityId != expectedSource) {
+                    return PersistentConversationMigrationCompletenessResult
+                        .Corrupt
+                }
+
+                val root = when (
+                    val source = readLegacy(expectedSource)
+                ) {
+                    is ConversationV3LegacyExactRead.Found ->
+                        source.decoded
+                    ConversationV3LegacyExactRead.Missing ->
+                        return PersistentConversationMigrationCompletenessResult
+                            .Incomplete(
+                                "migration receipt source v1 root is missing"
+                            )
+                    ConversationV3LegacyExactRead.Corrupt ->
+                        return PersistentConversationMigrationCompletenessResult
+                            .Corrupt
+                    is ConversationV3LegacyExactRead.Incompatible ->
+                        return PersistentConversationMigrationCompletenessResult
+                            .Incompatible(source.reason)
+                    is ConversationV3LegacyExactRead.EncryptionUnavailable ->
+                        return PersistentConversationMigrationCompletenessResult
+                            .EncryptionUnavailable(source.category)
+                }
+                val rootMessages = root.snapshot.messages
+                if (root.chunk ||
+                    root.snapshot.sessionId != sessionId ||
+                    rootMessages.isEmpty() ||
+                    rootMessages.first().sequence.value <= 1L ||
+                    !validateMessages(
+                        rootMessages,
+                        allowTruncatedStart = true
+                    )
+                ) {
+                    return PersistentConversationMigrationCompletenessResult
+                        .Corrupt
+                }
+
+                val boundaryId =
+                    ConversationV3MigrationCodec.truncatedRootId(
+                        sessionId
+                    )
+                val boundaryPlaintext = when (
+                    val opened = encryptedStore.open(boundaryId)
+                ) {
+                    is CognitiveEncryptionResult.Success -> opened.value
+                    is CognitiveEncryptionResult.Rejected ->
+                        return if (
+                            opened.category ==
+                                CognitiveEncryptionFailureCategory.INVALID_REQUEST
+                        ) {
+                            PersistentConversationMigrationCompletenessResult
+                                .Incomplete(
+                                    "truncated migration boundary is missing"
+                                )
+                        } else {
+                            PersistentConversationMigrationCompletenessResult
+                                .EncryptionUnavailable(opened.category)
+                        }
+                    is CognitiveEncryptionResult.Failed ->
+                        return PersistentConversationMigrationCompletenessResult
+                            .EncryptionUnavailable(opened.category)
+                }
+                val boundaryRaw = encryptedStore.inspect(boundaryId)
+                    ?: return PersistentConversationMigrationCompletenessResult
+                        .Corrupt
+                val boundary = when (
+                    val decoded =
+                        ConversationV3MigrationCodec.decodeTruncatedRoot(
+                            boundaryRaw.record.copy(
+                                payload = PersistentPayload(
+                                    boundaryPlaintext.copyBytes()
+                                )
+                            )
+                        )
+                ) {
+                    is ConversationV3MigrationDecodeResult.Decoded ->
+                        decoded.value
+                    ConversationV3MigrationDecodeResult.Corrupt ->
+                        return PersistentConversationMigrationCompletenessResult
+                            .Corrupt
+                    is ConversationV3MigrationDecodeResult.Incompatible ->
+                        return PersistentConversationMigrationCompletenessResult
+                            .Incompatible(decoded.reason)
+                }
+                if (boundary.sessionId != sessionId ||
+                    boundary.firstRetainedSequence !=
+                        rootMessages.first().sequence.value ||
+                    boundary.sourceLegacyEntityId != expectedSource
+                ) {
+                    return PersistentConversationMigrationCompletenessResult
+                        .Corrupt
+                }
+
+                var offset = 0
+                while (offset < rootMessages.size) {
+                    val partEnd =
+                        minOf(offset + 2, rootMessages.size)
+                    val first =
+                        rootMessages[offset].sequence.value
+                    latestV3Id =
+                        ConversationV3IndexCodec.chunkId(
+                            sessionId,
+                            first
+                        )
+                    lastSequence =
+                        rootMessages[partEnd - 1].sequence.value
+                    offset = partEnd
+                }
+
+                if (lastSequence == Long.MAX_VALUE) {
+                    return PersistentConversationMigrationCompletenessResult
+                        .Corrupt
+                }
+                var nextSequence = lastSequence + 1L
+                while (true) {
+                    val sourceId =
+                        ConversationPersistentRecordCodec.chunkId(
+                            sessionId,
+                            nextSequence
+                        )
+                    when (val source = readLegacy(sourceId)) {
+                        ConversationV3LegacyExactRead.Missing -> break
+                        ConversationV3LegacyExactRead.Corrupt ->
+                            return PersistentConversationMigrationCompletenessResult
+                                .Corrupt
+                        is ConversationV3LegacyExactRead.Incompatible ->
+                            return PersistentConversationMigrationCompletenessResult
+                                .Incompatible(source.reason)
+                        is ConversationV3LegacyExactRead.EncryptionUnavailable ->
+                            return PersistentConversationMigrationCompletenessResult
+                                .EncryptionUnavailable(source.category)
+                        is ConversationV3LegacyExactRead.Found -> {
+                            val decoded = source.decoded
+                            val messages = decoded.snapshot.messages
+                            if (!decoded.chunk ||
+                                decoded.snapshot.sessionId != sessionId ||
+                                messages.isEmpty() ||
+                                messages.first().sequence.value != nextSequence ||
+                                !validateMessages(
+                                    messages,
+                                    allowTruncatedStart = false
+                                )
+                            ) {
+                                return PersistentConversationMigrationCompletenessResult
+                                    .Corrupt
+                            }
+                            latestV3Id =
+                                ConversationV3IndexCodec.chunkId(
+                                    sessionId,
+                                    messages.first().sequence.value
+                                )
+                            lastSequence =
+                                messages.last().sequence.value
+                            if (lastSequence == Long.MAX_VALUE) {
+                                return PersistentConversationMigrationCompletenessResult
+                                    .Corrupt
+                            }
+                            nextSequence = lastSequence + 1L
+                        }
+                    }
+                }
+            }
+        }
+
+        val latest = latestV3Id
+            ?: return PersistentConversationMigrationCompletenessResult
+                .Incomplete(
+                    "migration receipt has no retained source history"
+                )
+        if (!validateMigrationHead(
+                sessionId = sessionId,
+                lastSequence = lastSequence,
+                latestChunkId = latest
+            )
+        ) {
+            return PersistentConversationMigrationCompletenessResult
+                .Incomplete(
+                    "migration receipt target head does not match source history"
+                )
+        }
+
+        return when (val reopened = nativeV3.reopenResult(sessionId)) {
+            is PersistentConversationReopenResult.Found -> null
+            PersistentConversationReopenResult.Absent ->
+                PersistentConversationMigrationCompletenessResult.Incomplete(
+                    "migration receipt target session is absent"
+                )
+            PersistentConversationReopenResult.Corrupt ->
+                PersistentConversationMigrationCompletenessResult.Corrupt
+            is PersistentConversationReopenResult.Incompatible ->
+                PersistentConversationMigrationCompletenessResult.Incompatible(
+                    reopened.reason
+                )
+            is PersistentConversationReopenResult.EncryptionUnavailable ->
+                PersistentConversationMigrationCompletenessResult
+                    .EncryptionUnavailable(reopened.category)
+        }
+    }
+
+    private fun validateMigrationHead(
+        sessionId: CognitiveConversationSessionId,
+        lastSequence: Long,
+        latestChunkId: PersistentEntityId
+    ): Boolean {
+        val headId = ConversationV3IndexCodec.headId(sessionId)
+        val plaintext = when (val opened = encryptedStore.open(headId)) {
+            is CognitiveEncryptionResult.Success -> opened.value
+            else -> return false
+        }
+        val raw = encryptedStore.inspect(headId) ?: return false
+        return when (
+            val decoded =
+                ConversationV3IndexCodec.decodeHead(
+                    raw.record.copy(
+                        payload = PersistentPayload(
+                            plaintext.copyBytes()
+                        )
+                    )
+                )
+        ) {
+            is ConversationV3DecodeResult.Decoded ->
+                decoded.value.sessionId == sessionId &&
+                    decoded.value.lastSequence == lastSequence &&
+                    decoded.value.latestChunkId == latestChunkId
+            else -> false
+        }
+    }
+
+    private fun updateCompletenessDigest(
+        digest: MessageDigest,
+        snapshot: PersistentRecordSnapshot
+    ) {
+        val record = snapshot.record
+        val payload = record.payload.copyBytes()
+        val encoded = ByteArrayOutputStream().use { output ->
+            DataOutputStream(output).use { data ->
+                fun writeString(value: String) {
+                    val bytes =
+                        value.toByteArray(StandardCharsets.UTF_8)
+                    data.writeInt(bytes.size)
+                    data.write(bytes)
+                }
+                writeString(record.id.value)
+                writeString(record.schemaId.value)
+                data.writeInt(record.schemaVersion.value)
+                data.writeLong(snapshot.generation.value)
+                data.writeLong(record.createdAt.epochSecond)
+                data.writeInt(record.createdAt.nano)
+                data.writeInt(payload.size)
+                data.write(payload)
+            }
+            output.toByteArray()
+        }
+        digest.update(encoded)
+        payload.fill(0)
+        encoded.fill(0)
+    }
+
     private fun installMigrationReceipt(
         receipt: ConversationV3MigrationReceipt,
         persistedAt: Instant
