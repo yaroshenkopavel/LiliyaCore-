@@ -718,10 +718,11 @@ private class ConversationV3MixedSessionRuntime(
         sessionId: CognitiveConversationSessionId,
         persistedAt: Instant
     ): PersistentConversationSessionMigrationResult {
-        when (val native = nativeV3.reopenResult(sessionId)) {
-            is PersistentConversationReopenResult.Found ->
-                return PersistentConversationSessionMigrationResult.AlreadyMigrated
-            PersistentConversationReopenResult.Absent -> Unit
+        val nativeAlreadyPresent = when (
+            val native = nativeV3.reopenResult(sessionId)
+        ) {
+            is PersistentConversationReopenResult.Found -> true
+            PersistentConversationReopenResult.Absent -> false
             PersistentConversationReopenResult.Corrupt ->
                 return PersistentConversationSessionMigrationResult.Corrupt
             is PersistentConversationReopenResult.Incompatible ->
@@ -900,7 +901,7 @@ private class ConversationV3MixedSessionRuntime(
 
         val latest = latestV3Id
             ?: return PersistentConversationSessionMigrationResult.Corrupt
-        return when (
+        when (
             val published = nativeV3.publishLockedMigrationHead(
                 sessionId = sessionId,
                 lastSequence = lastSequence,
@@ -908,24 +909,37 @@ private class ConversationV3MixedSessionRuntime(
                 persistedAt = persistedAt
             )
         ) {
-            ConversationV3LockedMigrationResult.Ready ->
-                PersistentConversationSessionMigrationResult.Migrated
-            ConversationV3LockedMigrationResult.AlreadyMigrated ->
-                PersistentConversationSessionMigrationResult.AlreadyMigrated
+            ConversationV3LockedMigrationResult.Ready,
+            ConversationV3LockedMigrationResult.AlreadyMigrated -> Unit
             is ConversationV3LockedMigrationResult.Rejected ->
-                PersistentConversationSessionMigrationResult.Rejected(
+                return PersistentConversationSessionMigrationResult.Rejected(
                     published.reason
                 )
             ConversationV3LockedMigrationResult.Corrupt ->
-                PersistentConversationSessionMigrationResult.Corrupt
+                return PersistentConversationSessionMigrationResult.Corrupt
             is ConversationV3LockedMigrationResult.Incompatible ->
-                PersistentConversationSessionMigrationResult.Incompatible(
+                return PersistentConversationSessionMigrationResult.Incompatible(
                     published.reason
                 )
             is ConversationV3LockedMigrationResult.EncryptionUnavailable ->
-                PersistentConversationSessionMigrationResult.EncryptionUnavailable(
+                return PersistentConversationSessionMigrationResult.EncryptionUnavailable(
                     published.category
                 )
+        }
+        val receipt = ConversationV3MigrationReceipt(
+            sessionId = sessionId,
+            sourceKind = ConversationV3MigrationSourceKind.V1_TRUNCATED,
+            sourceLegacyEntityId = sourceId,
+            targetHeadId = ConversationV3IndexCodec.headId(sessionId)
+        )
+        return when (val accounted = installMigrationReceipt(receipt, persistedAt)) {
+            is PersistentConversationSessionMigrationResult.Migrated ->
+                if (nativeAlreadyPresent) {
+                    PersistentConversationSessionMigrationResult.AlreadyMigrated
+                } else {
+                    accounted
+                }
+            else -> accounted
         }
     }
 
@@ -933,10 +947,11 @@ private class ConversationV3MixedSessionRuntime(
         sessionId: CognitiveConversationSessionId,
         persistedAt: Instant
     ): PersistentConversationSessionMigrationResult {
-        when (val native = nativeV3.reopenResult(sessionId)) {
-            is PersistentConversationReopenResult.Found ->
-                return PersistentConversationSessionMigrationResult.AlreadyMigrated
-            PersistentConversationReopenResult.Absent -> Unit
+        val nativeAlreadyPresent = when (
+            val native = nativeV3.reopenResult(sessionId)
+        ) {
+            is PersistentConversationReopenResult.Found -> true
+            PersistentConversationReopenResult.Absent -> false
             PersistentConversationReopenResult.Corrupt ->
                 return PersistentConversationSessionMigrationResult.Corrupt
             is PersistentConversationReopenResult.Incompatible ->
@@ -1078,7 +1093,7 @@ private class ConversationV3MixedSessionRuntime(
 
         val latest = latestV3Id
             ?: return PersistentConversationSessionMigrationResult.Absent
-        return when (
+        when (
             val published = nativeV3.publishLockedMigrationHead(
                 sessionId = sessionId,
                 lastSequence = lastSequence,
@@ -1086,24 +1101,124 @@ private class ConversationV3MixedSessionRuntime(
                 persistedAt = persistedAt
             )
         ) {
-            ConversationV3LockedMigrationResult.Ready ->
-                PersistentConversationSessionMigrationResult.Migrated
-            ConversationV3LockedMigrationResult.AlreadyMigrated ->
-                PersistentConversationSessionMigrationResult.AlreadyMigrated
+            ConversationV3LockedMigrationResult.Ready,
+            ConversationV3LockedMigrationResult.AlreadyMigrated -> Unit
             is ConversationV3LockedMigrationResult.Rejected ->
-                PersistentConversationSessionMigrationResult.Rejected(
+                return PersistentConversationSessionMigrationResult.Rejected(
                     published.reason
                 )
             ConversationV3LockedMigrationResult.Corrupt ->
-                PersistentConversationSessionMigrationResult.Corrupt
+                return PersistentConversationSessionMigrationResult.Corrupt
             is ConversationV3LockedMigrationResult.Incompatible ->
-                PersistentConversationSessionMigrationResult.Incompatible(
+                return PersistentConversationSessionMigrationResult.Incompatible(
                     published.reason
                 )
             is ConversationV3LockedMigrationResult.EncryptionUnavailable ->
-                PersistentConversationSessionMigrationResult.EncryptionUnavailable(
+                return PersistentConversationSessionMigrationResult.EncryptionUnavailable(
                     published.category
                 )
+        }
+        val receipt = ConversationV3MigrationReceipt(
+            sessionId = sessionId,
+            sourceKind = ConversationV3MigrationSourceKind.V2_COMPLETE,
+            sourceLegacyEntityId = firstId,
+            targetHeadId = ConversationV3IndexCodec.headId(sessionId)
+        )
+        return when (val accounted = installMigrationReceipt(receipt, persistedAt)) {
+            is PersistentConversationSessionMigrationResult.Migrated ->
+                if (nativeAlreadyPresent) {
+                    PersistentConversationSessionMigrationResult.AlreadyMigrated
+                } else {
+                    accounted
+                }
+            else -> accounted
+        }
+    }
+
+    private fun installMigrationReceipt(
+        receipt: ConversationV3MigrationReceipt,
+        persistedAt: Instant
+    ): PersistentConversationSessionMigrationResult {
+        val record = ConversationV3MigrationCodec.encodeMigrationReceipt(
+            receipt,
+            persistedAt
+        )
+        when (val existing = encryptedStore.open(record.id)) {
+            is CognitiveEncryptionResult.Success -> {
+                val raw = encryptedStore.inspect(record.id)
+                    ?: return PersistentConversationSessionMigrationResult.Corrupt
+                return when (
+                    val decoded =
+                        ConversationV3MigrationCodec.decodeMigrationReceipt(
+                            raw.record.copy(
+                                payload = PersistentPayload(
+                                    existing.value.copyBytes()
+                                )
+                            )
+                        )
+                ) {
+                    is ConversationV3MigrationDecodeResult.Decoded ->
+                        if (decoded.value == receipt) {
+                            PersistentConversationSessionMigrationResult.AlreadyMigrated
+                        } else {
+                            PersistentConversationSessionMigrationResult.Corrupt
+                        }
+                    ConversationV3MigrationDecodeResult.Corrupt ->
+                        PersistentConversationSessionMigrationResult.Corrupt
+                    is ConversationV3MigrationDecodeResult.Incompatible ->
+                        PersistentConversationSessionMigrationResult.Incompatible(
+                            decoded.reason
+                        )
+                }
+            }
+            is CognitiveEncryptionResult.Rejected ->
+                if (
+                    existing.category !=
+                        CognitiveEncryptionFailureCategory.INVALID_REQUEST
+                ) {
+                    return PersistentConversationSessionMigrationResult.EncryptionUnavailable(
+                        existing.category
+                    )
+                }
+            is CognitiveEncryptionResult.Failed ->
+                return PersistentConversationSessionMigrationResult.EncryptionUnavailable(
+                    existing.category
+                )
+        }
+
+        val bytes = record.payload.copyBytes()
+        val draft = CognitivePersistentRecordDraft(
+            id = record.id,
+            schemaId = record.schemaId,
+            schemaVersion = record.schemaVersion,
+            plaintext = CognitivePlaintext(bytes),
+            createdAt = record.createdAt,
+            dek = activeDek
+        )
+        return try {
+            when (val installed = encryptedStore.install(draft)) {
+                is CognitiveEncryptionResult.Success ->
+                    PersistentConversationSessionMigrationResult.Migrated
+                is CognitiveEncryptionResult.Rejected ->
+                    if (
+                        installed.category ==
+                            CognitiveEncryptionFailureCategory.PERSISTENCE_CONFLICT
+                    ) {
+                        PersistentConversationSessionMigrationResult.Rejected(
+                            "conversation migration receipt conflict"
+                        )
+                    } else {
+                        PersistentConversationSessionMigrationResult.EncryptionUnavailable(
+                            installed.category
+                        )
+                    }
+                is CognitiveEncryptionResult.Failed ->
+                    PersistentConversationSessionMigrationResult.EncryptionUnavailable(
+                        installed.category
+                    )
+            }
+        } finally {
+            bytes.fill(0)
         }
     }
 
