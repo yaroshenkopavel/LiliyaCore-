@@ -3,7 +3,7 @@ name: Local First JDK17 Repair Bridge 2026-09-19
 on:
   push:
     branches:
-      - technical/local-env-bridge-2026-09-19
+      - technical/local-env-jdk17-repair-2026-09-19
 
 permissions:
   contents: read
