@@ -319,7 +319,12 @@ class AndroidCognitiveStorageAssemblyInstrumentedTest {
                 listOf("secret-b-user", "secret-b-reply"),
                 reopenedB.messages.map { it.content }
             )
+
+            assertIs<CognitiveEncryptionResult.Success<Unit>>(
+                reconstructed.keyProtector.retire(descriptor)
+            )
         }
+
     @Test
     fun missing_exact_protector_fails_closed_after_reconstruction() =
         withCleanRoot { context, _ ->
