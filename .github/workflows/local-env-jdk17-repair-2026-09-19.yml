@@ -1,0 +1,59 @@
+name: Local First JDK17 Repair Bridge 2026-09-19
+
+on:
+  push:
+    branches:
+      - technical/local-env-bridge-2026-09-19
+
+permissions:
+  contents: read
+
+env:
+  TARGET_SHA: 25d9b6a8e118154bedafa5772b6fc0bd89469f2f
+
+jobs:
+  export-jdk17:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact target
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TARGET_SHA }}
+          fetch-depth: 1
+
+      - name: Verify exact source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          test "$(git rev-parse HEAD^{tree})" = "995c92d89169eeac481f0fdab0ede11418bcf5d0"
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Package dereferenced JDK 17
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/export"
+          REAL_JAVA_HOME="$(readlink -f "$JAVA_HOME")"
+          test -x "$REAL_JAVA_HOME/bin/java"
+          tar -C "$(dirname "$REAL_JAVA_HOME")" -czf "$RUNNER_TEMP/export/jdk17-real.tar.gz" "$(basename "$REAL_JAVA_HOME")"
+          tar -tzf "$RUNNER_TEMP/export/jdk17-real.tar.gz" > "$RUNNER_TEMP/export/jdk17-real.list"
+          grep -q '/bin/java$' "$RUNNER_TEMP/export/jdk17-real.list"
+          sha256sum "$RUNNER_TEMP/export/jdk17-real.tar.gz" > "$RUNNER_TEMP/export/jdk17-real.sha256"
+          "$REAL_JAVA_HOME/bin/java" -version
+
+      - name: Upload JDK 17
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-first-jdk17-real
+          path: |
+            ${{ runner.temp }}/export/jdk17-real.tar.gz
+            ${{ runner.temp }}/export/jdk17-real.sha256
+          retention-days: 1
+          compression-level: 0
