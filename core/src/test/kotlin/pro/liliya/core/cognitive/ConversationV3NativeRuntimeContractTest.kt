@@ -349,6 +349,50 @@ class ConversationV3NativeRuntimeContractTest {
     }
 
     @Test
+    fun historical_chunk_respects_current_message_bound_when_read_lazily() {
+        val backend = CountingIndexedBackend()
+        val session = CognitiveConversationSessionId("historical-bound-v3")
+        val writer = openConversation(backend, maxRetained = 2)
+
+        assertIs<PersistentConversationAppendPairResult.Appended>(
+            writer.appendPair(
+                session,
+                msg(1, CognitiveConversationRole.USER, "oversized"),
+                msg(2, CognitiveConversationRole.ASSISTANT, "a1"),
+                at(1)
+            )
+        )
+        assertIs<PersistentConversationAppendPairResult.Appended>(
+            writer.appendPair(
+                session,
+                msg(3, CognitiveConversationRole.USER, "u2"),
+                msg(4, CognitiveConversationRole.ASSISTANT, "a2"),
+                at(2)
+            )
+        )
+
+        val reopened = assertIs<PersistentConversationOpenResult.Opened>(
+            EncryptedPersistentConversationStore.open(
+                encryptedStore = encryptedStore(backend),
+                activeDek = dekRef,
+                maxRetainedMessages = 2,
+                maxMessageChars = 4
+            )
+        ).store
+        assertEquals(
+            listOf(3L, 4L),
+            assertNotNull(reopened.reopen(session)).messages.map { it.sequence.value }
+        )
+        assertIs<PersistentConversationHistoryResult.Corrupt>(
+            reopened.history(
+                sessionId = session,
+                beforeSequenceExclusive = 3L,
+                maxMessages = 2
+            )
+        )
+    }
+
+    @Test
     fun native_v3_keeps_complete_history_while_working_tail_is_bounded() {
         val backend = CountingIndexedBackend()
         val session = CognitiveConversationSessionId("long-v3-session")
