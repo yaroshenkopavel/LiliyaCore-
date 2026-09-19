@@ -262,6 +262,20 @@ class EncryptedPersistentConversationStoreContractTest {
     }
 
     @Test
+    fun pair_preserving_store_rejects_retention_below_two_messages() {
+        val backend = InMemoryPersistentRecordBackend()
+        val opened = EncryptedPersistentConversationStore.open(
+            encryptedStore(backend, resolver(material)),
+            dekRef,
+            maxRetainedMessages = 1,
+            maxMessageChars = 1024
+        )
+
+        val incompatible = assertIs<PersistentConversationOpenResult.Incompatible>(opened)
+        assertTrue(incompatible.reason.contains("at least two retained messages"))
+    }
+
+    @Test
     fun unknown_session_reopen_is_absent_and_does_not_manufacture_state() {
         val backend = InMemoryPersistentRecordBackend()
         val store = openConversation(backend, maxRetained = 4)
