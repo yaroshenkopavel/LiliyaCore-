@@ -4,6 +4,7 @@ import java.time.Instant
 import pro.liliya.core.decision.DecisionGeneration
 import pro.liliya.core.decision.DecisionId
 import pro.liliya.core.decision.DecisionOptionId
+import pro.liliya.core.execution.ExecutionActionId
 
 @JvmInline
 value class OrchestrationIntentId(val value: String) {
@@ -27,7 +28,8 @@ class OrchestrationIntent(
     val id: OrchestrationIntentId,
     val decision: OrchestrationDecisionReference,
     val description: String,
-    val createdAt: Instant
+    val createdAt: Instant,
+    val actionId: ExecutionActionId? = null
 ) {
     init {
         require(description.isNotBlank()) { "orchestration intent description must not be blank" }
@@ -38,18 +40,20 @@ class OrchestrationIntent(
             id == other.id &&
             decision == other.decision &&
             description == other.description &&
-            createdAt == other.createdAt
+            createdAt == other.createdAt &&
+            actionId == other.actionId
 
     override fun hashCode(): Int {
         var result = id.hashCode()
         result = 31 * result + decision.hashCode()
         result = 31 * result + description.hashCode()
         result = 31 * result + createdAt.hashCode()
+        result = 31 * result + (actionId?.hashCode() ?: 0)
         return result
     }
 
     override fun toString(): String =
-        "OrchestrationIntent(id=$id, decision=$decision, description=<redacted>, createdAt=$createdAt)"
+        "OrchestrationIntent(id=$id, decision=$decision, description=<redacted>, createdAt=$createdAt, actionId=$actionId)"
 }
 
 data class OrchestrationSnapshot(

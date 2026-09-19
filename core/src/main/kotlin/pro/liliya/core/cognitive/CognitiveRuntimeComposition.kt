@@ -4,6 +4,7 @@ import pro.liliya.core.decision.DecisionComposition
 import pro.liliya.core.diagnostics.DiagnosticSeverity
 import pro.liliya.core.foundation.FoundationComposition
 import pro.liliya.core.learning.LearningComposition
+import pro.liliya.core.orchestration.OrchestrationComposition
 import pro.liliya.core.planning.PlanningComposition
 import pro.liliya.core.reasoning.ReasoningComposition
 import pro.liliya.core.reflection.ReflectionComposition
@@ -32,7 +33,9 @@ class CognitiveRuntimeComposition(
     outcomeMaterialization: CognitiveOutcomeMaterializationPort? = null,
     reflection: ReflectionComposition? = null,
     learning: LearningComposition? = null,
-    private val streamingInference: CognitiveStreamingInferencePort? = null
+    orchestration: OrchestrationComposition? = null,
+    private val streamingInference: CognitiveStreamingInferencePort? = null,
+    orchestrationActionResolver: CognitiveOrchestrationActionResolver? = null
 ) {
     init {
         require(scope.value.length <= limits.maxRuntimeScopeIdChars) {
@@ -73,6 +76,27 @@ class CognitiveRuntimeComposition(
     } else {
         null
     }
+    private val orchestrationProposalBridge = if (
+        planning != null &&
+        reasoning != null &&
+        decision != null &&
+        orchestration != null &&
+        orchestrationActionResolver != null
+    ) {
+        CognitiveOrchestrationProposalBridge(
+            foundation = foundation,
+            turns = turns,
+            scope = scope,
+            planning = planning,
+            reasoning = reasoning,
+            decisions = decision,
+            orchestration = orchestration,
+            actionResolver = orchestrationActionResolver
+        )
+    } else {
+        null
+    }
+
     private val finalizationCoordinator = if (
         outcomeMaterialization != null &&
         planning != null &&
@@ -293,6 +317,16 @@ class CognitiveRuntimeComposition(
             )
         }
         return result
+    }
+
+    fun proposeOrchestration(
+        request: CognitiveOrchestrationProposalRequest
+    ): CognitiveOrchestrationProposalResult {
+        val bridge = orchestrationProposalBridge
+            ?: return CognitiveOrchestrationProposalResult.Rejected(
+                CognitiveOrchestrationProposalFailure.DEPENDENCIES_UNAVAILABLE
+            )
+        return bridge.propose(request)
     }
 
     fun finalizeCognition(reference: CognitiveTurnReference): CognitiveFinalizationResult {

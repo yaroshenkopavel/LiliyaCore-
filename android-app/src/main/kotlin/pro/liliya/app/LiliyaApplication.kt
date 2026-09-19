@@ -27,6 +27,7 @@ class LiliyaApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        ProductionAndroidConversationSessionState.initialize(this)
         ProductionAndroidLocalModelSelection.restore(File(filesDir, "models"))
     }
 
@@ -112,6 +113,12 @@ class LiliyaApplication : Application() {
             callback = callback
         )
     }
+
+    internal fun currentConversationSnapshot() =
+        runtimeOwner.conversationSnapshot()
+
+    internal fun startNewConversation(): Boolean =
+        runtimeOwner.newConversation()
 
     internal fun requestApplicationChat(
         message: String,

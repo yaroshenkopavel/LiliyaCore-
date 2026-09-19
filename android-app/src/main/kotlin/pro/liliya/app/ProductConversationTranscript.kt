@@ -1,5 +1,8 @@
 package pro.liliya.app
 
+import pro.liliya.android.runtime.ProductConversationSnapshot
+import pro.liliya.android.runtime.ProductConversationSnapshotRole
+
 internal data class ProductConversationTranscriptSnapshot(
     val speakers: List<String>,
     val messages: List<String>
@@ -135,6 +138,22 @@ internal class ProductConversationTranscript private constructor(
     }
 
     companion object {
+        fun restore(snapshot: ProductConversationSnapshot): ProductConversationTranscript {
+            val restored = mutableListOf<Entry>()
+            for (message in snapshot.messages) {
+                val normalized = message.text.trim()
+                if (normalized.isEmpty()) continue
+                restored += Entry(
+                    speaker = when (message.role) {
+                        ProductConversationSnapshotRole.USER -> Speaker.USER
+                        ProductConversationSnapshotRole.ASSISTANT -> Speaker.LILIYA
+                    },
+                    message = normalized
+                )
+            }
+            return ProductConversationTranscript(restored)
+        }
+
         fun restore(snapshot: ProductConversationTranscriptSnapshot): ProductConversationTranscript {
             if (snapshot.speakers.size != snapshot.messages.size) {
                 return ProductConversationTranscript()
