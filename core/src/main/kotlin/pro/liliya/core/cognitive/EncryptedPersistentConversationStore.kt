@@ -99,6 +99,17 @@ sealed interface PersistentConversationOpenResult {
     data class EncryptionUnavailable(val category: CognitiveEncryptionFailureCategory) : PersistentConversationOpenResult
 }
 
+sealed interface PersistentConversationConflictRefreshResult {
+    data object Unchanged : PersistentConversationConflictRefreshResult
+    data object Refreshed : PersistentConversationConflictRefreshResult
+    data object ReopenRequired : PersistentConversationConflictRefreshResult
+    data object Corrupt : PersistentConversationConflictRefreshResult
+    data class Incompatible(val reason: String) :
+        PersistentConversationConflictRefreshResult
+    data class Failed(val reason: String) :
+        PersistentConversationConflictRefreshResult
+}
+
 sealed interface PersistentConversationAppendResult {
     data class Appended(val snapshot: CognitiveConversationContextSnapshot) : PersistentConversationAppendResult
     data class AlreadyPresent(val snapshot: CognitiveConversationContextSnapshot) : PersistentConversationAppendResult
@@ -168,6 +179,24 @@ class EncryptedPersistentConversationStore private constructor(
     init {
         require(maxRetainedMessages > 0) { "maximum retained conversation messages must be positive" }
         require(maxMessageChars > 0) { "maximum conversation message chars must be positive" }
+    }
+
+    /**
+     * Explicit recovery barrier after an external-writer persistence conflict.
+     * The rejected append is never replayed here. A caller must re-read durable state and rebuild
+     * the next domain mutation. Mixed mode requires reopening because its format marker may change.
+     */
+    @Synchronized
+    fun refreshAfterExternalWriterConflict(
+        sessionId: CognitiveConversationSessionId
+    ): PersistentConversationConflictRefreshResult {
+        nativeV3?.let { return it.refreshAfterExternalWriterConflict(sessionId) }
+        if (mixedV3 != null) {
+            return PersistentConversationConflictRefreshResult.ReopenRequired
+        }
+        return PersistentConversationConflictRefreshResult.Incompatible(
+            "conversation metadata refresh requires indexed native-v3 mode"
+        )
     }
 
     @Synchronized

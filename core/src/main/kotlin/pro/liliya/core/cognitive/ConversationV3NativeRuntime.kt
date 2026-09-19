@@ -8,6 +8,7 @@ import pro.liliya.core.encryption.CognitiveEncryptionFailureCategory
 import pro.liliya.core.encryption.CognitiveEncryptionResult
 import pro.liliya.core.encryption.CognitivePersistentRecordDraft
 import pro.liliya.core.encryption.CognitivePlaintext
+import pro.liliya.core.encryption.EncryptedPersistentMetadataRefreshResult
 import pro.liliya.core.encryption.EncryptedPersistentRecordStore
 import pro.liliya.core.persistence.PersistentEntityId
 import pro.liliya.core.persistence.PersistentGeneration
@@ -91,6 +92,29 @@ internal class ConversationV3NativeRuntime private constructor(
     private val maxMessageChars: Int
 ) {
     private val cache = LinkedHashMap<CognitiveConversationSessionId, ConversationV3NativeEntry>()
+
+    @Synchronized
+    fun refreshAfterExternalWriterConflict(
+        sessionId: CognitiveConversationSessionId
+    ): PersistentConversationConflictRefreshResult {
+        cache.remove(sessionId)
+        return when (val refreshed = encryptedStore.refreshIndexedMetadata()) {
+            EncryptedPersistentMetadataRefreshResult.Unchanged ->
+                PersistentConversationConflictRefreshResult.Unchanged
+            is EncryptedPersistentMetadataRefreshResult.Refreshed ->
+                PersistentConversationConflictRefreshResult.Refreshed
+            EncryptedPersistentMetadataRefreshResult.Corrupt ->
+                PersistentConversationConflictRefreshResult.Corrupt
+            is EncryptedPersistentMetadataRefreshResult.Incompatible ->
+                PersistentConversationConflictRefreshResult.Incompatible(
+                    refreshed.reason
+                )
+            is EncryptedPersistentMetadataRefreshResult.Failed ->
+                PersistentConversationConflictRefreshResult.Failed(
+                    refreshed.reason
+                )
+        }
+    }
 
     @Synchronized
     fun stageLockedTruncatedRootChunk(
