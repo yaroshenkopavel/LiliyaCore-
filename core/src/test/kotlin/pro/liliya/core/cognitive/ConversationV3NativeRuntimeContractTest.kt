@@ -1550,6 +1550,53 @@ class ConversationV3NativeRuntimeContractTest {
         )
     }
 
+    @Test
+    fun external_writer_conflict_requires_explicit_refresh_and_fresh_head_read() {
+        val backend = CountingIndexedBackend()
+        val first = openConversation(backend)
+        val stale = openConversation(backend)
+        val session = CognitiveConversationSessionId("external-writer-refresh")
+
+        assertIs<PersistentConversationAppendPairResult.Appended>(
+            first.appendPair(
+                session,
+                msg(1, CognitiveConversationRole.USER, "u1"),
+                msg(2, CognitiveConversationRole.ASSISTANT, "a2"),
+                at(1)
+            )
+        )
+
+        assertIs<PersistentConversationAppendPairResult.Rejected>(
+            stale.appendPair(
+                session,
+                msg(3, CognitiveConversationRole.USER, "u3"),
+                msg(4, CognitiveConversationRole.ASSISTANT, "a4"),
+                at(2)
+            )
+        )
+
+        assertIs<PersistentConversationConflictRefreshResult.Refreshed>(
+            stale.refreshAfterExternalWriterConflict(session)
+        )
+        val fresh = assertIs<PersistentConversationReopenResult.Found>(
+            stale.reopenResult(session)
+        ).snapshot
+        assertEquals(listOf(1L, 2L), fresh.messages.map { it.sequence.value })
+
+        val appended = assertIs<PersistentConversationAppendPairResult.Appended>(
+            stale.appendPair(
+                session,
+                msg(3, CognitiveConversationRole.USER, "u3"),
+                msg(4, CognitiveConversationRole.ASSISTANT, "a4"),
+                at(3)
+            )
+        )
+        assertEquals(
+            listOf(1L, 2L, 3L, 4L),
+            appended.snapshot.messages.map { it.sequence.value }
+        )
+    }
+
     private fun containsSubsequence(
         haystack: ByteArray,
         needle: ByteArray
