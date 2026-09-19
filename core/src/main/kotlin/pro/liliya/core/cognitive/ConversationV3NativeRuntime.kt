@@ -450,6 +450,7 @@ internal class ConversationV3NativeRuntime private constructor(
 
         val headId = ConversationV3IndexCodec.headId(sessionId)
         var headGeneration: PersistentGeneration? = null
+        var headMissing = false
         var head = when (val read = readPlainRecord(headId)) {
             is ConversationV3RecordRead.Found -> {
                 headGeneration = read.generation
@@ -461,12 +462,50 @@ internal class ConversationV3NativeRuntime private constructor(
                         return ConversationV3SessionLoad.Incompatible(decoded.reason)
                 }
             }
-            ConversationV3RecordRead.Missing ->
+            ConversationV3RecordRead.Missing -> {
+                headMissing = true
                 ConversationV3SessionHead(sessionId, 0L, null)
+            }
             ConversationV3RecordRead.Corrupt ->
                 return ConversationV3SessionLoad.Corrupt
             is ConversationV3RecordRead.EncryptionUnavailable ->
                 return ConversationV3SessionLoad.EncryptionUnavailable(read.category)
+        }
+
+        if (headMissing) {
+            when (
+                val lockRead = readPlainRecord(
+                    ConversationV3MigrationCodec.migrationLockId(sessionId)
+                )
+            ) {
+                is ConversationV3RecordRead.Found ->
+                    when (
+                        val decoded =
+                            ConversationV3MigrationCodec.decodeMigrationLock(
+                                lockRead.record
+                            )
+                    ) {
+                        is ConversationV3MigrationDecodeResult.Decoded ->
+                            if (decoded.value.sessionId == sessionId) {
+                                return ConversationV3SessionLoad.Absent
+                            } else {
+                                return ConversationV3SessionLoad.Corrupt
+                            }
+                        ConversationV3MigrationDecodeResult.Corrupt ->
+                            return ConversationV3SessionLoad.Corrupt
+                        is ConversationV3MigrationDecodeResult.Incompatible ->
+                            return ConversationV3SessionLoad.Incompatible(
+                                decoded.reason
+                            )
+                    }
+                ConversationV3RecordRead.Missing -> Unit
+                ConversationV3RecordRead.Corrupt ->
+                    return ConversationV3SessionLoad.Corrupt
+                is ConversationV3RecordRead.EncryptionUnavailable ->
+                    return ConversationV3SessionLoad.EncryptionUnavailable(
+                        lockRead.category
+                    )
+            }
         }
 
         var advanced = false
