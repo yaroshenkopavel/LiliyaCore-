@@ -244,6 +244,10 @@ class EncryptedPersistentRecordStore(
 
     internal fun generationHighWatermark(): Long = store.generationHighWatermark()
 
+    internal fun entryCount(): Long = store.entryCount()
+
+    internal fun supportsIndexedLazyMode(): Boolean = store.supportsIndexedLazyMode()
+
     internal fun removeExact(
         id: PersistentEntityId,
         generation: PersistentGeneration
