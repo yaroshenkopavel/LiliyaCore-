@@ -626,6 +626,103 @@ class PersistentRecordStoreContractTest {
     }
 
     @Test
+    fun indexed_metadata_refresh_recovers_install_after_external_writer_conflict() {
+        val f = fixture()
+        val backend = LazyIndexedMutationFixtureBackend()
+        val storeId = PersistentStoreId("indexed-refresh-install")
+        val first = open(f, backend, storeId)
+        val stale = open(f, backend, storeId)
+
+        assertIs<PersistentInstallResult.Installed>(first.install(record("one")))
+        assertIs<PersistentInstallResult.Rejected>(stale.install(record("two")))
+
+        val refreshed = assertIs<PersistentRecordMetadataRefreshResult.Refreshed>(
+            stale.refreshIndexedMetadata()
+        )
+        assertEquals(1L, refreshed.metadata.revision)
+        assertEquals(1L, refreshed.metadata.highWatermark)
+        assertEquals(1L, refreshed.metadata.entryCount)
+
+        val installed = assertIs<PersistentInstallResult.Installed>(
+            stale.install(record("two"))
+        )
+        assertEquals(PersistentGeneration(2), installed.ownership.generation)
+    }
+
+    @Test
+    fun indexed_metadata_refresh_invalidates_pre_refresh_ownership_handles() {
+        val f = fixture()
+        val backend = LazyIndexedMutationFixtureBackend()
+        val storeId = PersistentStoreId("indexed-refresh-ownership")
+        val stale = open(f, backend, storeId)
+        val oldOwnership = assertIs<PersistentInstallResult.Installed>(
+            stale.install(record("one"))
+        ).ownership
+        val external = open(f, backend, storeId)
+
+        assertIs<PersistentInstallResult.Installed>(external.install(record("two")))
+        assertIs<PersistentRecordMetadataRefreshResult.Refreshed>(
+            stale.refreshIndexedMetadata()
+        )
+
+        val rejected = assertIs<PersistentMutationResult.Rejected>(
+            oldOwnership.remove()
+        )
+        assertTrue(rejected.reason.contains("stale after metadata refresh"))
+        assertIs<PersistentRecordLookupResult.Found>(
+            stale.inspectResult(PersistentEntityId("one"))
+        )
+    }
+
+    @Test
+    fun indexed_metadata_refresh_requires_fresh_exact_read_before_transition_retry() {
+        val f = fixture()
+        val backend = LazyIndexedMutationFixtureBackend()
+        val storeId = PersistentStoreId("indexed-refresh-transition")
+        val seed = open(f, backend, storeId)
+        assertIs<PersistentInstallResult.Installed>(seed.install(record("head")))
+
+        val stale = open(f, backend, storeId)
+        val external = open(f, backend, storeId)
+        assertIs<PersistentRecordTransitionResult.Committed>(
+            external.transitionExact(
+                sourceId = PersistentEntityId("head"),
+                sourceGeneration = PersistentGeneration(1),
+                replacement = record("head", "external")
+            )
+        )
+        assertIs<PersistentRecordTransitionResult.Rejected>(
+            stale.transitionExact(
+                sourceId = PersistentEntityId("head"),
+                sourceGeneration = PersistentGeneration(1),
+                replacement = record("head", "stale-attempt")
+            )
+        )
+
+        assertIs<PersistentRecordMetadataRefreshResult.Refreshed>(
+            stale.refreshIndexedMetadata()
+        )
+        val fresh = assertIs<PersistentRecordLookupResult.Found>(
+            stale.inspectResult(PersistentEntityId("head"))
+        ).snapshot
+        assertEquals("external", fresh.record.payload.copyBytes().decodeToString())
+
+        assertIs<PersistentRecordTransitionResult.Committed>(
+            stale.transitionExact(
+                sourceId = fresh.record.id,
+                sourceGeneration = fresh.generation,
+                replacement = record("head", "fresh-retry")
+            )
+        )
+        assertEquals(
+            "fresh-retry",
+            assertIs<PersistentRecordLookupResult.Found>(
+                stale.inspectResult(PersistentEntityId("head"))
+            ).snapshot.record.payload.copyBytes().decodeToString()
+        )
+    }
+
+    @Test
     fun persistence_api_contains_no_authority_license_android_scheduler_or_cognitive_policy_semantics() {
         val forbidden = setOf(
             "authority", "permission", "license", "entitlement", "android", "keystore",
