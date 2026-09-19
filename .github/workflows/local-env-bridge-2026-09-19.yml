@@ -52,4 +52,4 @@ jobs:
           git commit -m "Core Next: add index-aware episodic retrieval (#407)"
           test "$(git rev-parse HEAD^)" = "$TARGET_SHA"
           test "$(git rev-parse HEAD^{tree})" = "$EXPECTED_TREE"
-          git push origin "HEAD:refs/heads/$PRODUCT_BRANCH"
+          git push --force-with-lease="refs/heads/$PRODUCT_BRANCH:38d7599e31af5934507fcbf30d78d201a3a2de9f" origin "HEAD:refs/heads/$PRODUCT_BRANCH"
