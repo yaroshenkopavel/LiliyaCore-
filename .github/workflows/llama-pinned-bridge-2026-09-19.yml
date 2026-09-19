@@ -1,0 +1,45 @@
+name: Pinned llama.cpp Offline Bridge 2026-09-19
+
+on:
+  push:
+    branches:
+      - technical/llama-pinned-bridge-2026-09-19
+
+permissions:
+  contents: read
+
+jobs:
+  export-pinned-llama:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout bridge branch
+        uses: actions/checkout@v4
+
+      - name: Build exact pinned local Git mirror
+        shell: bash
+        run: |
+          set -euo pipefail
+          COMMIT=0f3a71be15af836d277c9f918adfafb45732677e
+          OUT="$RUNNER_TEMP/llama-export"
+          REPO="$RUNNER_TEMP/llama.cpp.git"
+          mkdir -p "$OUT"
+          git init --bare "$REPO"
+          git -C "$REPO" remote add origin https://github.com/ggml-org/llama.cpp.git
+          git -C "$REPO" fetch --depth=1 origin "$COMMIT"
+          test "$(git -C "$REPO" rev-parse FETCH_HEAD)" = "$COMMIT"
+          git -C "$REPO" update-ref refs/heads/pinned "$COMMIT"
+          git -C "$REPO" cat-file -e "$COMMIT^{commit}"
+          tar -C "$RUNNER_TEMP" -czf "$OUT/llama-cpp-pinned-git.tar.gz" llama.cpp.git
+          gzip -t "$OUT/llama-cpp-pinned-git.tar.gz"
+          sha256sum "$OUT/llama-cpp-pinned-git.tar.gz" > "$OUT/SHA256SUMS"
+          printf '%s\n' "$COMMIT" > "$OUT/PINNED_COMMIT"
+
+      - name: Upload pinned llama.cpp Git mirror
+        uses: actions/upload-artifact@v4
+        with:
+          name: liliya-llama-cpp-pinned-git-20260919
+          path: ${{ runner.temp }}/llama-export/**
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
