@@ -73,7 +73,7 @@ interface EpisodicIndexProjectionStore {
 class EncryptedPersistentEpisodicIndexStore private constructor(
     private val encryptedStore: EncryptedPersistentRecordStore,
     private val activeDek: CognitiveDekReference
-) : EpisodicIndexProjectionStore {
+) : EpisodicIndexProjectionStore, EpisodicIndexReadStore {
     override fun project(snapshot: EpisodeSnapshot): EpisodeIndexProjectionResult {
         val entries = EpisodeIndexProjector.project(snapshot)
         var indexed = 0
@@ -264,11 +264,11 @@ class EncryptedPersistentEpisodicIndexStore private constructor(
             is EpisodeIndexManifestResult.Failed -> EpisodeIndexCompleteness.INCOMPLETE
         }
 
-    fun temporalPage(
+    override fun temporalPage(
         axis: EpisodeTemporalAxis,
         limit: Int,
         order: PersistentBackendPageOrder,
-        cursorExclusive: PersistentBackendPageCursor? = null
+        cursorExclusive: PersistentBackendPageCursor?
     ): EpisodeIndexPageResult = page(
         PersistentBackendPageRequest(
             limit = limit,
@@ -278,10 +278,10 @@ class EncryptedPersistentEpisodicIndexStore private constructor(
         )
     )
 
-    fun provenancePage(
+    override fun provenancePage(
         limit: Int,
         order: PersistentBackendPageOrder,
-        cursorExclusive: PersistentBackendPageCursor? = null
+        cursorExclusive: PersistentBackendPageCursor?
     ): EpisodeIndexPageResult = page(
         PersistentBackendPageRequest(
             limit = limit,
