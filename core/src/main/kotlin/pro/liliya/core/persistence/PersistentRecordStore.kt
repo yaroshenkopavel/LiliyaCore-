@@ -23,6 +23,19 @@ internal sealed interface PersistentRecordTransitionResult {
     data class Failed(val reason: String, val throwable: Throwable? = null) : PersistentRecordTransitionResult
 }
 
+internal sealed interface PersistentRecordMetadataRefreshResult {
+    data object Unchanged : PersistentRecordMetadataRefreshResult
+    data class Refreshed(
+        val metadata: PersistentBackendMetadata
+    ) : PersistentRecordMetadataRefreshResult
+    data object Corrupt : PersistentRecordMetadataRefreshResult
+    data class Incompatible(val reason: String) : PersistentRecordMetadataRefreshResult
+    data class Failed(
+        val reason: String,
+        val throwable: Throwable? = null
+    ) : PersistentRecordMetadataRefreshResult
+}
+
 class PersistentRecordStore private constructor(
     private val foundation: FoundationComposition,
     val storeId: PersistentStoreId,
@@ -34,6 +47,7 @@ class PersistentRecordStore private constructor(
     private var revision: Long = initialRevision
     private var state: PersistentBackendState = initialState.detached()
     private var indexedEntryCount: Long? = initialIndexedEntryCount
+    private var ownershipEpoch: Long = 0L
 
     private val indexedMutationBackend: IndexedPersistentRecordMutationBackend?
         get() = if (indexedEntryCount != null) {
@@ -400,6 +414,67 @@ class PersistentRecordStore private constructor(
                 entryCount = count
             )
         }
+
+    /**
+     * Explicitly reconciles cached indexed metadata after an external writer wins a revision.
+     * No mutation is replayed. A successful refresh invalidates ownership handles issued before
+     * the refresh; callers must perform a fresh exact read before constructing another mutation.
+     */
+    @Synchronized
+    internal fun refreshIndexedMetadata(): PersistentRecordMetadataRefreshResult {
+        val indexed = indexedMutationBackend
+            ?: return PersistentRecordMetadataRefreshResult.Incompatible(
+                "persistent metadata refresh requires indexed mutation backend"
+            )
+        val current = indexedMetadataSnapshot()
+            ?: return PersistentRecordMetadataRefreshResult.Incompatible(
+                "persistent indexed metadata unavailable"
+            )
+
+        return when (val loaded = indexed.loadMetadata(storeId)) {
+            PersistentBackendMetadataLoadResult.Missing ->
+                if (current.revision == 0L &&
+                    current.highWatermark == 0L &&
+                    current.entryCount == 0L
+                ) {
+                    PersistentRecordMetadataRefreshResult.Unchanged
+                } else {
+                    PersistentRecordMetadataRefreshResult.Corrupt
+                }
+
+            is PersistentBackendMetadataLoadResult.Loaded -> {
+                val metadata = loaded.metadata
+                when {
+                    metadata.revision < current.revision ||
+                        metadata.highWatermark < current.highWatermark ->
+                        PersistentRecordMetadataRefreshResult.Corrupt
+
+                    metadata.revision == current.revision &&
+                        metadata != current ->
+                        PersistentRecordMetadataRefreshResult.Corrupt
+
+                    metadata == current ->
+                        PersistentRecordMetadataRefreshResult.Unchanged
+
+                    else -> {
+                        applyIndexedMetadata(metadata)
+                        ownershipEpoch += 1L
+                        PersistentRecordMetadataRefreshResult.Refreshed(metadata)
+                    }
+                }
+            }
+
+            PersistentBackendMetadataLoadResult.Corrupt ->
+                PersistentRecordMetadataRefreshResult.Corrupt
+            is PersistentBackendMetadataLoadResult.Incompatible ->
+                PersistentRecordMetadataRefreshResult.Incompatible(loaded.reason)
+            is PersistentBackendMetadataLoadResult.Failed ->
+                PersistentRecordMetadataRefreshResult.Failed(
+                    loaded.reason,
+                    loaded.throwable
+                )
+        }
+    }
 
     private fun indexedMetadataBarrier(
         indexed: IndexedPersistentRecordReadBackend
@@ -832,17 +907,27 @@ class PersistentRecordStore private constructor(
     private fun ownership(
         record: PersistentRecord,
         generation: PersistentGeneration
-    ): PersistentRecordOwnership = object : PersistentRecordOwnership {
-        override val record: PersistentRecord = record.detached()
-        override val generation: PersistentGeneration = generation
-        override fun remove(): PersistentMutationResult = removeExact(record.id, generation)
+    ): PersistentRecordOwnership {
+        val issuedOwnershipEpoch = ownershipEpoch
+        return object : PersistentRecordOwnership {
+            override val record: PersistentRecord = record.detached()
+            override val generation: PersistentGeneration = generation
+            override fun remove(): PersistentMutationResult =
+                removeExact(record.id, generation, issuedOwnershipEpoch)
+        }
     }
 
     @Synchronized
     internal fun removeExact(
         id: PersistentEntityId,
-        generation: PersistentGeneration
+        generation: PersistentGeneration,
+        expectedOwnershipEpoch: Long? = null
     ): PersistentMutationResult {
+        if (expectedOwnershipEpoch != null && expectedOwnershipEpoch != ownershipEpoch) {
+            return PersistentMutationResult.Rejected(
+                "persistent ownership became stale after metadata refresh"
+            )
+        }
         indexedMutationBackend?.let { return removeIndexed(it, id, generation) }
 
         val current = state.entries[id]
