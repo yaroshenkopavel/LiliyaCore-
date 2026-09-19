@@ -426,16 +426,18 @@ class PersistentRecordStore private constructor(
             ?: return PersistentRecordMetadataRefreshResult.Incompatible(
                 "persistent metadata refresh requires indexed mutation backend"
             )
-        val current = indexedMetadataSnapshot()
+        val currentEntryCount = indexedEntryCount
             ?: return PersistentRecordMetadataRefreshResult.Incompatible(
                 "persistent indexed metadata unavailable"
             )
+        val currentRevision = revision
+        val currentHighWatermark = state.highWatermark
 
         return when (val loaded = indexed.loadMetadata(storeId)) {
             PersistentBackendMetadataLoadResult.Missing ->
-                if (current.revision == 0L &&
-                    current.highWatermark == 0L &&
-                    current.entryCount == 0L
+                if (currentRevision == 0L &&
+                    currentHighWatermark == 0L &&
+                    currentEntryCount == 0L
                 ) {
                     PersistentRecordMetadataRefreshResult.Unchanged
                 } else {
@@ -444,16 +446,19 @@ class PersistentRecordStore private constructor(
 
             is PersistentBackendMetadataLoadResult.Loaded -> {
                 val metadata = loaded.metadata
+                val unchanged =
+                    metadata.revision == currentRevision &&
+                        metadata.highWatermark == currentHighWatermark &&
+                        metadata.entryCount == currentEntryCount
                 when {
-                    metadata.revision < current.revision ||
-                        metadata.highWatermark < current.highWatermark ->
+                    metadata.revision < currentRevision ||
+                        metadata.highWatermark < currentHighWatermark ->
                         PersistentRecordMetadataRefreshResult.Corrupt
 
-                    metadata.revision == current.revision &&
-                        metadata != current ->
+                    metadata.revision == currentRevision && !unchanged ->
                         PersistentRecordMetadataRefreshResult.Corrupt
 
-                    metadata == current ->
+                    unchanged ->
                         PersistentRecordMetadataRefreshResult.Unchanged
 
                     else -> {
