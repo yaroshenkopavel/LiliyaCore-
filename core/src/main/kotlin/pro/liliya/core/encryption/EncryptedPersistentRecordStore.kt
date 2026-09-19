@@ -6,13 +6,21 @@ import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.nio.charset.StandardCharsets
 import java.time.Instant
+import pro.liliya.core.persistence.PersistentBackendMetadata
+import pro.liliya.core.persistence.PersistentBackendPageCursor
+import pro.liliya.core.persistence.PersistentBackendPageRequest
+import pro.liliya.core.persistence.PersistentRecordPageResult
 import pro.liliya.core.persistence.PersistentEntityId
 import pro.liliya.core.persistence.PersistentGeneration
 import pro.liliya.core.persistence.PersistentInstallResult
+import pro.liliya.core.persistence.PersistentMutationResult
 import pro.liliya.core.persistence.PersistentPayload
 import pro.liliya.core.persistence.PersistentRecord
 import pro.liliya.core.persistence.PersistentRecordOwnership
+import pro.liliya.core.persistence.PersistentRecordLookupResult
+import pro.liliya.core.persistence.PersistentRecordMetadataRefreshResult
 import pro.liliya.core.persistence.PersistentRecordSnapshot
+import pro.liliya.core.persistence.PersistentRecordSnapshotEntriesResult
 import pro.liliya.core.persistence.PersistentRecordStore
 import pro.liliya.core.persistence.PersistentRecordTransitionResult
 import pro.liliya.core.persistence.PersistentSchemaId
@@ -21,6 +29,38 @@ import pro.liliya.core.persistence.PersistentSchemaVersion
 /** Exact DEK material resolution seam. Key protection/unwrap is supplied by a later reviewed layer. */
 interface CognitiveDekMaterialResolver {
     fun resolve(reference: CognitiveDekReference): CognitiveEncryptionResult<CognitiveDekMaterial>
+}
+
+internal sealed interface EncryptedPersistentMetadataRefreshResult {
+    data object Unchanged : EncryptedPersistentMetadataRefreshResult
+    data class Refreshed(
+        val metadata: PersistentBackendMetadata
+    ) : EncryptedPersistentMetadataRefreshResult
+    data object Corrupt : EncryptedPersistentMetadataRefreshResult
+    data class Incompatible(val reason: String) :
+        EncryptedPersistentMetadataRefreshResult
+    data class Failed(
+        val reason: String,
+        val throwable: Throwable? = null
+    ) : EncryptedPersistentMetadataRefreshResult
+}
+
+internal sealed interface EncryptedPersistentRecordPageResult {
+    data object Empty : EncryptedPersistentRecordPageResult
+    data class Loaded(
+        val entries: List<PersistentRecordSnapshot>,
+        val nextCursor: PersistentBackendPageCursor?
+    ) : EncryptedPersistentRecordPageResult
+    data object Corrupt : EncryptedPersistentRecordPageResult
+    data class Incompatible(val reason: String) :
+        EncryptedPersistentRecordPageResult
+    data class EncryptionUnavailable(
+        val category: CognitiveEncryptionFailureCategory
+    ) : EncryptedPersistentRecordPageResult
+    data class Failed(
+        val reason: String,
+        val throwable: Throwable? = null
+    ) : EncryptedPersistentRecordPageResult
 }
 
 data class CognitivePersistentRecordDraft(
@@ -193,10 +233,102 @@ class EncryptedPersistentRecordStore(
             }
         }
 
+    internal fun decryptedPageResult(
+        request: PersistentBackendPageRequest
+    ): EncryptedPersistentRecordPageResult =
+        when (val page = store.snapshotPageResult(request)) {
+            PersistentRecordPageResult.Empty ->
+                EncryptedPersistentRecordPageResult.Empty
+            PersistentRecordPageResult.Corrupt ->
+                EncryptedPersistentRecordPageResult.Corrupt
+            is PersistentRecordPageResult.Incompatible ->
+                EncryptedPersistentRecordPageResult.Incompatible(page.reason)
+            is PersistentRecordPageResult.Failed ->
+                EncryptedPersistentRecordPageResult.Failed(
+                    page.reason,
+                    page.throwable
+                )
+            is PersistentRecordPageResult.Loaded -> {
+                val decrypted =
+                    ArrayList<PersistentRecordSnapshot>(page.entries.size)
+                for (snapshot in page.entries) {
+                    val plaintext = when (
+                        val opened = open(snapshot.record.id)
+                    ) {
+                        is CognitiveEncryptionResult.Success -> opened.value
+                        is CognitiveEncryptionResult.Rejected ->
+                            return EncryptedPersistentRecordPageResult
+                                .EncryptionUnavailable(opened.category)
+                        is CognitiveEncryptionResult.Failed ->
+                            return EncryptedPersistentRecordPageResult
+                                .EncryptionUnavailable(opened.category)
+                    }
+                    decrypted += PersistentRecordSnapshot(
+                        record = PersistentRecord(
+                            id = snapshot.record.id,
+                            schemaId = snapshot.record.schemaId,
+                            schemaVersion = snapshot.record.schemaVersion,
+                            payload = PersistentPayload(
+                                plaintext.copyBytes()
+                            ),
+                            createdAt = snapshot.record.createdAt
+                        ),
+                        generation = snapshot.generation
+                    )
+                }
+                EncryptedPersistentRecordPageResult.Loaded(
+                    entries = decrypted,
+                    nextCursor = page.nextCursor
+                )
+            }
+        }
+
+    internal fun indexedMetadataSnapshot(): PersistentBackendMetadata? =
+        store.indexedMetadataSnapshot()
+
+    /**
+     * Explicitly refreshes indexed metadata after an observed external-writer conflict.
+     * Callers must discard cached domain state and rebuild encrypted mutations after this returns.
+     */
+    internal fun refreshIndexedMetadata(): EncryptedPersistentMetadataRefreshResult =
+        when (val refreshed = store.refreshIndexedMetadata()) {
+            PersistentRecordMetadataRefreshResult.Unchanged ->
+                EncryptedPersistentMetadataRefreshResult.Unchanged
+            is PersistentRecordMetadataRefreshResult.Refreshed ->
+                EncryptedPersistentMetadataRefreshResult.Refreshed(refreshed.metadata)
+            PersistentRecordMetadataRefreshResult.Corrupt ->
+                EncryptedPersistentMetadataRefreshResult.Corrupt
+            is PersistentRecordMetadataRefreshResult.Incompatible ->
+                EncryptedPersistentMetadataRefreshResult.Incompatible(refreshed.reason)
+            is PersistentRecordMetadataRefreshResult.Failed ->
+                EncryptedPersistentMetadataRefreshResult.Failed(
+                    refreshed.reason,
+                    refreshed.throwable
+                )
+        }
+
     internal fun decryptedSnapshotEntries():
         CognitiveEncryptionResult<List<PersistentRecordSnapshot>> {
-        val decrypted = ArrayList<PersistentRecordSnapshot>()
-        for (snapshot in store.snapshotEntries()) {
+        val snapshots = when (val listed = store.snapshotEntriesResult()) {
+            PersistentRecordSnapshotEntriesResult.Empty -> emptyList()
+            is PersistentRecordSnapshotEntriesResult.Loaded -> listed.entries
+            PersistentRecordSnapshotEntriesResult.Corrupt ->
+                return CognitiveEncryptionResult.Failed(
+                    CognitiveEncryptionFailureCategory.PERSISTENCE_FAILED
+                )
+            is PersistentRecordSnapshotEntriesResult.Incompatible ->
+                return CognitiveEncryptionResult.Failed(
+                    CognitiveEncryptionFailureCategory.PERSISTENCE_FAILED
+                )
+            is PersistentRecordSnapshotEntriesResult.Failed ->
+                return CognitiveEncryptionResult.Failed(
+                    CognitiveEncryptionFailureCategory.PERSISTENCE_FAILED,
+                    listed.throwable
+                )
+        }
+
+        val decrypted = ArrayList<PersistentRecordSnapshot>(snapshots.size)
+        for (snapshot in snapshots) {
             val plaintext = when (val opened = open(snapshot.record.id)) {
                 is CognitiveEncryptionResult.Success -> opened.value
                 is CognitiveEncryptionResult.Rejected -> return opened
@@ -219,11 +351,43 @@ class EncryptedPersistentRecordStore(
     internal fun snapshotEntries(): List<pro.liliya.core.persistence.PersistentRecordSnapshot> =
         store.snapshotEntries()
 
+    internal fun inspect(id: PersistentEntityId): PersistentRecordSnapshot? = store.inspect(id)
+
+    internal fun inspectResult(id: PersistentEntityId): PersistentRecordLookupResult =
+        store.inspectResult(id)
+
     internal fun generationHighWatermark(): Long = store.generationHighWatermark()
 
+    internal fun entryCount(): Long = store.entryCount()
+
+    internal fun supportsIndexedLazyMode(): Boolean = store.supportsIndexedLazyMode()
+
+    internal fun removeExact(
+        id: PersistentEntityId,
+        generation: PersistentGeneration
+    ): PersistentMutationResult = store.removeExact(id, generation)
+
     fun open(id: PersistentEntityId): CognitiveEncryptionResult<CognitivePlaintext> {
-        val snapshot = store.inspect(id)
-            ?: return CognitiveEncryptionResult.Rejected(CognitiveEncryptionFailureCategory.INVALID_REQUEST)
+        val snapshot = when (val lookedUp = store.inspectResult(id)) {
+            PersistentRecordLookupResult.Missing ->
+                return CognitiveEncryptionResult.Rejected(
+                    CognitiveEncryptionFailureCategory.INVALID_REQUEST
+                )
+            is PersistentRecordLookupResult.Found -> lookedUp.snapshot
+            PersistentRecordLookupResult.Corrupt ->
+                return CognitiveEncryptionResult.Failed(
+                    CognitiveEncryptionFailureCategory.PERSISTENCE_FAILED
+                )
+            is PersistentRecordLookupResult.Incompatible ->
+                return CognitiveEncryptionResult.Failed(
+                    CognitiveEncryptionFailureCategory.PERSISTENCE_FAILED
+                )
+            is PersistentRecordLookupResult.Failed ->
+                return CognitiveEncryptionResult.Failed(
+                    CognitiveEncryptionFailureCategory.PERSISTENCE_FAILED,
+                    lookedUp.throwable
+                )
+        }
         val envelope = when (
             val decoded = CognitivePersistentEnvelopeCodec.decode(snapshot.record.payload.copyBytes())
         ) {
