@@ -601,6 +601,7 @@ class EncryptedPersistentConversationStore private constructor(
                             restored = emptyMap(),
                             mixedV3 = ConversationV3MixedSessionRuntime(
                                 encryptedStore = encryptedStore,
+                                activeDek = activeDek,
                                 nativeV3 = native.runtime,
                                 maxRetainedMessages = maxRetainedMessages,
                                 maxMessageChars = maxMessageChars
@@ -697,6 +698,7 @@ private sealed interface ConversationV3LegacyExactRead {
 
 private class ConversationV3MixedSessionRuntime(
     private val encryptedStore: EncryptedPersistentRecordStore,
+    private val activeDek: CognitiveDekReference,
     private val nativeV3: ConversationV3NativeRuntime,
     private val maxRetainedMessages: Int,
     private val maxMessageChars: Int
