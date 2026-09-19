@@ -26,6 +26,10 @@ internal data class ConversationV3TruncatedRootBoundary(
     val sourceLegacyEntityId: PersistentEntityId
 )
 
+internal data class ConversationV3TruncatedRootChunk(
+    val snapshot: CognitiveConversationContextSnapshot
+)
+
 internal sealed interface ConversationV3MigrationDecodeResult<out T> {
     data class Decoded<T>(val value: T) : ConversationV3MigrationDecodeResult<T>
     data object Corrupt : ConversationV3MigrationDecodeResult<Nothing>
@@ -47,11 +51,14 @@ internal object ConversationV3MigrationCodec {
         PersistentSchemaId("cognitive-conversation-v3-migration-lock")
     val TRUNCATED_ROOT_SCHEMA_ID =
         PersistentSchemaId("cognitive-conversation-v3-truncated-root")
+    val TRUNCATED_ROOT_CHUNK_SCHEMA_ID =
+        PersistentSchemaId("cognitive-conversation-v3-truncated-root-chunk")
     val SCHEMA_VERSION = PersistentSchemaVersion(1)
 
     private const val MIXED_MAGIC = 0x434D5831 // CMX1
     private const val MIGRATION_LOCK_MAGIC = 0x434D4C31 // CML1
     private const val TRUNCATED_ROOT_MAGIC = 0x43545231 // CTR1
+    private const val TRUNCATED_ROOT_CHUNK_MAGIC = 0x43544331 // CTC1
     private const val MAX_STRING_BYTES = 65_536
 
     fun truncatedRootId(
@@ -232,6 +239,107 @@ internal object ConversationV3MigrationCodec {
                         sessionId = sessionId,
                         firstRetainedSequence = firstRetainedSequence,
                         sourceLegacyEntityId = sourceLegacyEntityId
+                    )
+                )
+            }
+        } catch (_: EOFException) {
+            ConversationV3MigrationDecodeResult.Corrupt
+        } catch (_: IllegalArgumentException) {
+            ConversationV3MigrationDecodeResult.Corrupt
+        } catch (_: RuntimeException) {
+            ConversationV3MigrationDecodeResult.Corrupt
+        }
+    }
+
+    fun encodeTruncatedRootChunk(
+        chunk: ConversationV3TruncatedRootChunk,
+        persistedAt: Instant
+    ): PersistentRecord {
+        require(chunk.snapshot.messages.size in 1..2)
+        val first = chunk.snapshot.messages.first().sequence.value
+        require(first > 1L) {
+            "truncated-root chunk must begin after sequence 1"
+        }
+        val bytes = ByteArrayOutputStream().use { output ->
+            DataOutputStream(output).use { data ->
+                data.writeInt(TRUNCATED_ROOT_CHUNK_MAGIC)
+                data.writeString(chunk.snapshot.sessionId.value)
+                data.writeInt(chunk.snapshot.messages.size)
+                for (message in chunk.snapshot.messages) {
+                    data.writeLong(message.sequence.value)
+                    data.writeInt(message.role.ordinal)
+                    data.writeString(message.content)
+                }
+            }
+            output.toByteArray()
+        }
+        return PersistentRecord(
+            id = ConversationV3IndexCodec.chunkId(
+                chunk.snapshot.sessionId,
+                first
+            ),
+            schemaId = TRUNCATED_ROOT_CHUNK_SCHEMA_ID,
+            schemaVersion = SCHEMA_VERSION,
+            payload = PersistentPayload(bytes),
+            createdAt = persistedAt
+        )
+    }
+
+    fun decodeTruncatedRootChunk(
+        record: PersistentRecord
+    ): ConversationV3MigrationDecodeResult<ConversationV3TruncatedRootChunk> {
+        if (record.schemaId != TRUNCATED_ROOT_CHUNK_SCHEMA_ID ||
+            record.schemaVersion != SCHEMA_VERSION
+        ) {
+            return ConversationV3MigrationDecodeResult.Incompatible(
+                "conversation v3 truncated-root chunk schema mismatch"
+            )
+        }
+
+        return try {
+            val input = ByteArrayInputStream(record.payload.copyBytes())
+            val data = DataInputStream(input)
+            if (data.readInt() != TRUNCATED_ROOT_CHUNK_MAGIC) {
+                return ConversationV3MigrationDecodeResult.Corrupt
+            }
+            val sessionId = CognitiveConversationSessionId(data.readString(input))
+            val count = data.readInt()
+            if (count !in 1..2) {
+                return ConversationV3MigrationDecodeResult.Corrupt
+            }
+            val messages = ArrayList<CognitiveConversationContextMessage>(count)
+            repeat(count) {
+                val sequence = data.readLong()
+                val role = CognitiveConversationRole.entries.getOrNull(
+                    data.readInt()
+                ) ?: return ConversationV3MigrationDecodeResult.Corrupt
+                val content = data.readString(input)
+                messages += CognitiveConversationContextMessage(
+                    CognitiveConversationSequence(sequence),
+                    role,
+                    content
+                )
+            }
+            if (input.available() != 0) {
+                return ConversationV3MigrationDecodeResult.Corrupt
+            }
+            val first = messages.first().sequence.value
+            if (first <= 1L ||
+                first > Long.MAX_VALUE - (count - 1L) ||
+                messages.last().sequence.value != first + count - 1L ||
+                record.id != ConversationV3IndexCodec.chunkId(
+                    sessionId,
+                    first
+                )
+            ) {
+                ConversationV3MigrationDecodeResult.Corrupt
+            } else {
+                ConversationV3MigrationDecodeResult.Decoded(
+                    ConversationV3TruncatedRootChunk(
+                        CognitiveConversationContextSnapshot(
+                            sessionId,
+                            messages
+                        )
                     )
                 )
             }
