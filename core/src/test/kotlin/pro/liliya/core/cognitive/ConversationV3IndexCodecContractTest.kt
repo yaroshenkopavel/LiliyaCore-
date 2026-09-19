@@ -120,6 +120,39 @@ class ConversationV3IndexCodecContractTest {
     }
 
     @Test
+    fun linked_chunk_predecessor_boundary_is_strict() {
+        val firstMessage = CognitiveConversationContextMessage(
+            CognitiveConversationSequence(1),
+            CognitiveConversationRole.USER,
+            "first"
+        )
+        kotlin.test.assertFailsWith<IllegalArgumentException> {
+            ConversationV3IndexCodec.encodeChunk(
+                ConversationV3LinkedChunk(
+                    CognitiveConversationContextSnapshot(session, listOf(firstMessage)),
+                    previousChunkId = PersistentEntityId("unexpected-predecessor")
+                ),
+                at
+            )
+        }
+
+        val laterMessage = CognitiveConversationContextMessage(
+            CognitiveConversationSequence(3),
+            CognitiveConversationRole.USER,
+            "later"
+        )
+        kotlin.test.assertFailsWith<IllegalArgumentException> {
+            ConversationV3IndexCodec.encodeChunk(
+                ConversationV3LinkedChunk(
+                    CognitiveConversationContextSnapshot(session, listOf(laterMessage)),
+                    previousChunkId = null
+                ),
+                at
+            )
+        }
+    }
+
+    @Test
     fun decoder_rejects_entity_id_substitution() {
         val record = ConversationV3IndexCodec.encodeChunk(
             ConversationV3LinkedChunk(
