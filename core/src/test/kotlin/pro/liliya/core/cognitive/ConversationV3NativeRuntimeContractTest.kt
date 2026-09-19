@@ -28,8 +28,8 @@ import pro.liliya.core.encryption.CognitiveNonceSource
 import pro.liliya.core.encryption.CognitivePersistentRecordDraft
 import pro.liliya.core.encryption.CognitivePlaintext
 import pro.liliya.core.encryption.EncryptedPersistentRecordStore
-import pro.liliya.core.foundation.CorrelationIdGenerator
 import pro.liliya.core.foundation.FoundationComposition
+import pro.liliya.core.logging.CorrelationIdGenerator
 import pro.liliya.core.logging.InMemoryLogWriter
 import pro.liliya.core.logging.StructuredLogger
 import pro.liliya.core.observability.LoggerProvider
@@ -64,7 +64,6 @@ class ConversationV3NativeRuntimeContractTest {
         CognitiveDekGeneration(1)
     )
     private val material = CognitiveDekMaterial(
-        profile,
         ByteArray(32) { (it + 1).toByte() }
     )
 
