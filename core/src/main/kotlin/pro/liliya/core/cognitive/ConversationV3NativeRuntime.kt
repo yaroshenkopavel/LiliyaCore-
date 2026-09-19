@@ -18,7 +18,7 @@ import pro.liliya.core.persistence.PersistentRecordSnapshot
 
 internal sealed interface ConversationV3NativeDecision {
     data class Native(val runtime: ConversationV3NativeRuntime) : ConversationV3NativeDecision
-    data object Mixed : ConversationV3NativeDecision
+    data class Mixed(val runtime: ConversationV3NativeRuntime) : ConversationV3NativeDecision
     data object LegacyFallback : ConversationV3NativeDecision
     data object Corrupt : ConversationV3NativeDecision
     data class Incompatible(val reason: String) : ConversationV3NativeDecision
@@ -792,7 +792,7 @@ internal class ConversationV3NativeRuntime private constructor(
                 return ConversationV3NativeDecision.Native(probe)
             }
             if (mixedMarker) {
-                return ConversationV3NativeDecision.Mixed
+                return ConversationV3NativeDecision.Mixed(probe)
             }
 
             if (encryptedStore.entryCount() != 0L) {
