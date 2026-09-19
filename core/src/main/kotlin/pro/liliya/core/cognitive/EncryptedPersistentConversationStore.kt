@@ -15,12 +15,41 @@ import pro.liliya.core.encryption.CognitiveEncryptionResult
 import pro.liliya.core.encryption.CognitivePersistentRecordDraft
 import pro.liliya.core.encryption.CognitivePlaintext
 import pro.liliya.core.encryption.EncryptedPersistentRecordStore
+import pro.liliya.core.encryption.EncryptedPersistentRecordPageResult
+import pro.liliya.core.persistence.PersistentBackendPageOrder
+import pro.liliya.core.persistence.PersistentBackendPageRequest
+import pro.liliya.core.persistence.PersistentRecordSnapshot
 import pro.liliya.core.persistence.PersistentEntityId
 import pro.liliya.core.persistence.PersistentPayload
 import pro.liliya.core.persistence.PersistentRecordOwnership
 import pro.liliya.core.persistence.PersistentRecord
 import pro.liliya.core.persistence.PersistentSchemaId
 import pro.liliya.core.persistence.PersistentSchemaVersion
+
+internal sealed interface PersistentConversationMigrationCompletenessResult {
+    data class Proven(
+        val proof: ConversationV3MigrationCompletenessProof
+    ) : PersistentConversationMigrationCompletenessResult
+
+    data class AlreadyProven(
+        val proof: ConversationV3MigrationCompletenessProof
+    ) : PersistentConversationMigrationCompletenessResult
+
+    data class Incomplete(val reason: String) :
+        PersistentConversationMigrationCompletenessResult
+
+    data object Corrupt : PersistentConversationMigrationCompletenessResult
+
+    data class Incompatible(val reason: String) :
+        PersistentConversationMigrationCompletenessResult
+
+    data class EncryptionUnavailable(
+        val category: CognitiveEncryptionFailureCategory
+    ) : PersistentConversationMigrationCompletenessResult
+
+    data class Failed(val reason: String) :
+        PersistentConversationMigrationCompletenessResult
+}
 
 sealed interface PersistentConversationSessionMigrationResult {
     data object Migrated : PersistentConversationSessionMigrationResult
@@ -121,6 +150,21 @@ class EncryptedPersistentConversationStore private constructor(
     init {
         require(maxRetainedMessages > 0) { "maximum retained conversation messages must be positive" }
         require(maxMessageChars > 0) { "maximum conversation message chars must be positive" }
+    }
+
+    @Synchronized
+    internal fun proveMigrationCompleteness(
+        persistedAt: Instant,
+        pageSize: Int = 256
+    ): PersistentConversationMigrationCompletenessResult {
+        require(pageSize in 1..PersistentBackendPageRequest.MAX_PAGE_SIZE) {
+            "migration completeness page size is out of bounds"
+        }
+        val mixed = mixedV3
+            ?: return PersistentConversationMigrationCompletenessResult.Incompatible(
+                "migration completeness proof requires mixed mode"
+            )
+        return mixed.proveMigrationCompleteness(persistedAt, pageSize)
     }
 
     @Synchronized
@@ -714,6 +758,251 @@ private class ConversationV3MixedSessionRuntime(
     private val maxRetainedMessages: Int,
     private val maxMessageChars: Int
 ) {
+    fun proveMigrationCompleteness(
+        persistedAt: Instant,
+        pageSize: Int
+    ): PersistentConversationMigrationCompletenessResult {
+        val metadata = encryptedStore.indexedMetadataSnapshot()
+            ?: return PersistentConversationMigrationCompletenessResult.Incompatible(
+                "migration completeness proof requires indexed metadata"
+            )
+
+        when (
+            val existing =
+                encryptedStore.open(
+                    ConversationV3MigrationCodec.COMPLETENESS_PROOF_ID
+                )
+        ) {
+            is CognitiveEncryptionResult.Success -> {
+                val raw = encryptedStore.inspect(
+                    ConversationV3MigrationCodec.COMPLETENESS_PROOF_ID
+                ) ?: return PersistentConversationMigrationCompletenessResult.Corrupt
+                val proof = when (
+                    val decoded =
+                        ConversationV3MigrationCodec.decodeCompletenessProof(
+                            raw.record.copy(
+                                payload = PersistentPayload(
+                                    existing.value.copyBytes()
+                                )
+                            )
+                        )
+                ) {
+                    is ConversationV3MigrationDecodeResult.Decoded ->
+                        decoded.value
+                    ConversationV3MigrationDecodeResult.Corrupt ->
+                        return PersistentConversationMigrationCompletenessResult.Corrupt
+                    is ConversationV3MigrationDecodeResult.Incompatible ->
+                        return PersistentConversationMigrationCompletenessResult.Incompatible(
+                            decoded.reason
+                        )
+                }
+                return if (
+                    metadata.revision == proof.auditedRevision + 1L &&
+                    metadata.highWatermark ==
+                        proof.auditedHighWatermark + 1L &&
+                    metadata.entryCount == proof.auditedEntryCount + 1L &&
+                    raw.generation.value ==
+                        proof.auditedHighWatermark + 1L
+                ) {
+                    PersistentConversationMigrationCompletenessResult
+                        .AlreadyProven(proof)
+                } else {
+                    PersistentConversationMigrationCompletenessResult
+                        .Incomplete(
+                            "existing migration completeness proof is stale"
+                        )
+                }
+            }
+            is CognitiveEncryptionResult.Rejected ->
+                if (
+                    existing.category !=
+                        CognitiveEncryptionFailureCategory.INVALID_REQUEST
+                ) {
+                    return PersistentConversationMigrationCompletenessResult
+                        .EncryptionUnavailable(existing.category)
+                }
+            is CognitiveEncryptionResult.Failed ->
+                return PersistentConversationMigrationCompletenessResult
+                    .EncryptionUnavailable(existing.category)
+        }
+
+        val digest = MessageDigest.getInstance("SHA-256")
+        var cursor: pro.liliya.core.persistence.PersistentBackendPageCursor? =
+            null
+        var scannedCount = 0L
+        var legacyRecordCount = 0L
+        var receiptCount = 0L
+
+        while (true) {
+            val page = when (
+                val loaded = encryptedStore.decryptedPageResult(
+                    PersistentBackendPageRequest(
+                        limit = pageSize,
+                        order = PersistentBackendPageOrder.OLDEST_FIRST,
+                        cursorExclusive = cursor
+                    )
+                )
+            ) {
+                EncryptedPersistentRecordPageResult.Empty -> break
+                EncryptedPersistentRecordPageResult.Corrupt ->
+                    return PersistentConversationMigrationCompletenessResult.Corrupt
+                is EncryptedPersistentRecordPageResult.Incompatible ->
+                    return PersistentConversationMigrationCompletenessResult
+                        .Incompatible(loaded.reason)
+                is EncryptedPersistentRecordPageResult.EncryptionUnavailable ->
+                    return PersistentConversationMigrationCompletenessResult
+                        .EncryptionUnavailable(loaded.category)
+                is EncryptedPersistentRecordPageResult.Failed ->
+                    return PersistentConversationMigrationCompletenessResult
+                        .Failed(loaded.reason)
+                is EncryptedPersistentRecordPageResult.Loaded -> loaded
+            }
+
+            for (snapshot in page.entries) {
+                scannedCount += 1L
+                updateCompletenessDigest(digest, snapshot)
+                val record = snapshot.record
+
+                if (
+                    record.schemaId ==
+                        PersistentSchemaId("cognitive-conversation-session")
+                ) {
+                    legacyRecordCount += 1L
+                    val decoded = when (
+                        val result =
+                            ConversationPersistentRecordCodec.decode(record)
+                    ) {
+                        is ConversationDecodeResult.Decoded -> result
+                        ConversationDecodeResult.Corrupt ->
+                            return PersistentConversationMigrationCompletenessResult
+                                .Corrupt
+                        is ConversationDecodeResult.Incompatible ->
+                            return PersistentConversationMigrationCompletenessResult
+                                .Incompatible(result.reason)
+                    }
+                    val receipt = when (
+                        val read =
+                            readMigrationReceipt(decoded.snapshot.sessionId)
+                    ) {
+                        is MigrationReceiptAuditRead.Found -> read.receipt
+                        MigrationReceiptAuditRead.Missing ->
+                            return PersistentConversationMigrationCompletenessResult
+                                .Incomplete(
+                                    "legacy conversation is not accounted by migration receipt"
+                                )
+                        MigrationReceiptAuditRead.Corrupt ->
+                            return PersistentConversationMigrationCompletenessResult
+                                .Corrupt
+                        is MigrationReceiptAuditRead.Incompatible ->
+                            return PersistentConversationMigrationCompletenessResult
+                                .Incompatible(read.reason)
+                        is MigrationReceiptAuditRead.EncryptionUnavailable ->
+                            return PersistentConversationMigrationCompletenessResult
+                                .EncryptionUnavailable(read.category)
+                    }
+                    val coverage = validateLegacyReceiptCoverage(
+                        record = record,
+                        decoded = decoded,
+                        receipt = receipt
+                    )
+                    if (coverage != null) return coverage
+                } else if (
+                    record.schemaId ==
+                        ConversationV3MigrationCodec.MIGRATION_RECEIPT_SCHEMA_ID
+                ) {
+                    receiptCount += 1L
+                    val receipt = when (
+                        val decoded =
+                            ConversationV3MigrationCodec.decodeMigrationReceipt(
+                                record
+                            )
+                    ) {
+                        is ConversationV3MigrationDecodeResult.Decoded ->
+                            decoded.value
+                        ConversationV3MigrationDecodeResult.Corrupt ->
+                            return PersistentConversationMigrationCompletenessResult
+                                .Corrupt
+                        is ConversationV3MigrationDecodeResult.Incompatible ->
+                            return PersistentConversationMigrationCompletenessResult
+                                .Incompatible(decoded.reason)
+                    }
+                    validateReceiptSourceAndHead(receipt)?.let {
+                        return it
+                    }
+                } else if (
+                    record.id ==
+                        ConversationV3MigrationCodec.COMPLETENESS_PROOF_ID
+                ) {
+                    return PersistentConversationMigrationCompletenessResult.Corrupt
+                }
+            }
+
+            val next = page.nextCursor ?: break
+            if (next == cursor) {
+                return PersistentConversationMigrationCompletenessResult.Corrupt
+            }
+            cursor = next
+        }
+
+        if (scannedCount != metadata.entryCount) {
+            return PersistentConversationMigrationCompletenessResult.Incomplete(
+                "migration completeness scan did not cover indexed entry count"
+            )
+        }
+
+        val proof = ConversationV3MigrationCompletenessProof(
+            auditedRevision = metadata.revision,
+            auditedHighWatermark = metadata.highWatermark,
+            auditedEntryCount = metadata.entryCount,
+            legacyRecordCount = legacyRecordCount,
+            receiptCount = receiptCount,
+            digestHex = digest.digest().joinToString("") {
+                "%02x".format(it)
+            }
+        )
+        val record =
+            ConversationV3MigrationCodec.encodeCompletenessProof(
+                proof,
+                persistedAt
+            )
+        val bytes = record.payload.copyBytes()
+        val draft = CognitivePersistentRecordDraft(
+            id = record.id,
+            schemaId = record.schemaId,
+            schemaVersion = record.schemaVersion,
+            plaintext = CognitivePlaintext(bytes),
+            createdAt = record.createdAt,
+            dek = activeDek
+        )
+        return try {
+            when (val installed = encryptedStore.install(draft)) {
+                is CognitiveEncryptionResult.Success ->
+                    PersistentConversationMigrationCompletenessResult.Proven(
+                        proof
+                    )
+                is CognitiveEncryptionResult.Rejected ->
+                    if (
+                        installed.category ==
+                            CognitiveEncryptionFailureCategory.PERSISTENCE_CONFLICT
+                    ) {
+                        PersistentConversationMigrationCompletenessResult
+                            .Incomplete(
+                                "conversation store changed before completeness proof commit"
+                            )
+                    } else {
+                        PersistentConversationMigrationCompletenessResult
+                            .EncryptionUnavailable(installed.category)
+                    }
+                is CognitiveEncryptionResult.Failed ->
+                    PersistentConversationMigrationCompletenessResult.Failed(
+                        "migration completeness proof persistence failed"
+                    )
+            }
+        } finally {
+            bytes.fill(0)
+        }
+    }
+
     fun migrateV1TruncatedSession(
         sessionId: CognitiveConversationSessionId,
         persistedAt: Instant
