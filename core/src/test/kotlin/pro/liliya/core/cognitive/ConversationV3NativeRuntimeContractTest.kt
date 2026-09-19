@@ -137,6 +137,34 @@ class ConversationV3NativeRuntimeContractTest {
     }
 
     @Test
+    fun corrupted_native_v3_marker_fails_open_closed() {
+        val backend = CountingIndexedBackend()
+        openConversation(backend)
+
+        val markerId = ConversationV3IndexCodec.MARKER_ID
+        val markerRow = assertNotNull(backend.entries[markerId])
+        val bytes = markerRow.record.payload.copyBytes()
+        bytes[bytes.lastIndex] = (bytes.last().toInt() xor 0x01).toByte()
+        backend.entries[markerId] = markerRow.copy(
+            record = markerRow.record.copy(
+                payload = pro.liliya.core.persistence.PersistentPayload(bytes)
+            )
+        )
+
+        val reopened = EncryptedPersistentConversationStore.open(
+            encryptedStore = encryptedStore(backend),
+            activeDek = dekRef,
+            maxRetainedMessages = 4,
+            maxMessageChars = 1024
+        )
+        assertFalse(reopened is PersistentConversationOpenResult.Opened)
+        assertTrue(
+            reopened is PersistentConversationOpenResult.EncryptionUnavailable ||
+                reopened is PersistentConversationOpenResult.Corrupt
+        )
+    }
+
+    @Test
     fun corrupted_native_v3_head_is_not_reported_as_absent() {
         val backend = CountingIndexedBackend()
         val session = CognitiveConversationSessionId("corrupt-head-session")
