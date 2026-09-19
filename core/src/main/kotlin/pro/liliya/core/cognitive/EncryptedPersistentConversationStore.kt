@@ -177,7 +177,7 @@ class EncryptedPersistentConversationStore private constructor(
     private val entries = LinkedHashMap(restored)
 
     init {
-        require(maxRetainedMessages > 0) { "maximum retained conversation messages must be positive" }
+        require(maxRetainedMessages >= 2) { "maximum retained conversation messages must preserve one USER/ASSISTANT pair" }
         require(maxMessageChars > 0) { "maximum conversation message chars must be positive" }
     }
 
@@ -684,8 +684,10 @@ class EncryptedPersistentConversationStore private constructor(
             maxRetainedMessages: Int,
             maxMessageChars: Int
         ): PersistentConversationOpenResult {
-            if (maxRetainedMessages <= 0 || maxMessageChars <= 0) {
-                return PersistentConversationOpenResult.Incompatible("conversation persistence bounds must be positive")
+            if (maxRetainedMessages < 2 || maxMessageChars <= 0) {
+                return PersistentConversationOpenResult.Incompatible(
+                    "conversation persistence requires at least two retained messages and positive message chars"
+                )
             }
 
             when (

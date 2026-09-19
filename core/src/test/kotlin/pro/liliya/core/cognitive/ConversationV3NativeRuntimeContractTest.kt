@@ -1619,6 +1619,24 @@ class ConversationV3NativeRuntimeContractTest {
         )
     }
 
+    @Test
+    fun indexed_native_store_rejects_retention_below_one_complete_pair() {
+        val backend = CountingIndexedBackend()
+        val opened = EncryptedPersistentConversationStore.open(
+            encryptedStore = encryptedStore(backend),
+            activeDek = dekRef,
+            maxRetainedMessages = 1,
+            maxMessageChars = 1024
+        )
+
+        val incompatible = assertIs<PersistentConversationOpenResult.Incompatible>(opened)
+        assertTrue(incompatible.reason.contains("at least two retained messages"))
+        assertTrue(backend.exactReadIds.isEmpty())
+        assertEquals(0, backend.fullLoadCalls)
+        assertEquals(0, backend.fullCommitCalls)
+        assertTrue(backend.entries.isEmpty())
+    }
+
     private fun containsSubsequence(
         haystack: ByteArray,
         needle: ByteArray
