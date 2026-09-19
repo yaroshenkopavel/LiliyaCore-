@@ -169,6 +169,37 @@ class ConversationV3NativeRuntimeContractTest {
     }
 
     @Test
+    fun missing_predecessor_before_working_tail_is_complete_fails_reopen_closed() {
+        val backend = CountingIndexedBackend()
+        val session = CognitiveConversationSessionId("truncated-v3-chain")
+        val store = openConversation(backend, maxRetained = 6)
+
+        assertIs<PersistentConversationAppendPairResult.Appended>(
+            store.appendPair(
+                session,
+                msg(1, CognitiveConversationRole.USER, "u1"),
+                msg(2, CognitiveConversationRole.ASSISTANT, "a1"),
+                at(1)
+            )
+        )
+        assertIs<PersistentConversationAppendPairResult.Appended>(
+            store.appendPair(
+                session,
+                msg(3, CognitiveConversationRole.USER, "u2"),
+                msg(4, CognitiveConversationRole.ASSISTANT, "a2"),
+                at(2)
+            )
+        )
+
+        backend.entries.remove(ConversationV3IndexCodec.chunkId(session, 1L))
+
+        val reopened = openConversation(backend, maxRetained = 6)
+        assertIs<PersistentConversationReopenResult.Corrupt>(
+            reopened.reopenResult(session)
+        )
+    }
+
+    @Test
     fun orphan_chunk_after_head_conflict_is_recovered_without_global_scan() {
         val backend = CountingIndexedBackend()
         val session = CognitiveConversationSessionId("recover-v3-session")
