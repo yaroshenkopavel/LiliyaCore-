@@ -516,9 +516,18 @@ class EncryptedPersistentConversationStore private constructor(
                     is CognitiveEncryptionResult.Success ->
                         PersistentConversationMigrationPrepareResult.Prepared
                     is CognitiveEncryptionResult.Rejected ->
-                        PersistentConversationMigrationPrepareResult.EncryptionUnavailable(
-                            installed.category
-                        )
+                        if (
+                            installed.category ==
+                                CognitiveEncryptionFailureCategory.PERSISTENCE_CONFLICT
+                        ) {
+                            PersistentConversationMigrationPrepareResult.Rejected(
+                                "conversation migration preparation conflict"
+                            )
+                        } else {
+                            PersistentConversationMigrationPrepareResult.EncryptionUnavailable(
+                                installed.category
+                            )
+                        }
                     is CognitiveEncryptionResult.Failed ->
                         PersistentConversationMigrationPrepareResult.EncryptionUnavailable(
                             installed.category
