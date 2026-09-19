@@ -1030,6 +1030,239 @@ class ConversationV3NativeRuntimeContractTest {
         assertEquals(0, backend.pageLoadCalls)
     }
 
+    @Test
+    fun truncated_v1_session_migrates_without_renumbering_or_deleting_source() {
+        val backend = CountingIndexedBackend()
+        val encrypted = encryptedStore(backend)
+        val session = CognitiveConversationSessionId("truncated-v1-session")
+
+        fun legacyRootId(): PersistentEntityId {
+            val digest = MessageDigest.getInstance("SHA-256")
+                .digest(session.value.encodeToByteArray())
+                .joinToString("") { "%02x".format(it) }
+            return PersistentEntityId("conversation-$digest")
+        }
+
+        fun legacyChunkId(firstSequence: Long): PersistentEntityId {
+            val digest = MessageDigest.getInstance("SHA-256")
+                .digest((session.value + ":" + firstSequence).encodeToByteArray())
+                .joinToString("") { "%02x".format(it) }
+            return PersistentEntityId("conversation-chunk-$digest")
+        }
+
+        val legacyPayload = ByteArrayOutputStream().use { output ->
+            DataOutputStream(output).use { data ->
+                data.writeInt(0x434E5631)
+                val sessionBytes = session.value.encodeToByteArray()
+                data.writeInt(sessionBytes.size)
+                data.write(sessionBytes)
+                data.writeInt(4)
+                for ((sequence, role, content) in listOf(
+                    Triple(57L, CognitiveConversationRole.USER, "old-u57"),
+                    Triple(58L, CognitiveConversationRole.ASSISTANT, "old-a58"),
+                    Triple(59L, CognitiveConversationRole.USER, "old-u59"),
+                    Triple(60L, CognitiveConversationRole.ASSISTANT, "old-a60")
+                )) {
+                    data.writeLong(sequence)
+                    data.writeInt(role.ordinal)
+                    val bytes = content.encodeToByteArray()
+                    data.writeInt(bytes.size)
+                    data.write(bytes)
+                }
+            }
+            output.toByteArray()
+        }
+        assertIs<CognitiveEncryptionResult.Success<*>>(
+            encrypted.install(
+                CognitivePersistentRecordDraft(
+                    id = legacyRootId(),
+                    schemaId = PersistentSchemaId("cognitive-conversation-session"),
+                    schemaVersion = PersistentSchemaVersion(1),
+                    plaintext = CognitivePlaintext(legacyPayload),
+                    createdAt = at(1),
+                    dek = dekRef
+                )
+            )
+        )
+
+        val continuationPayload = ByteArrayOutputStream().use { output ->
+            DataOutputStream(output).use { data ->
+                data.writeInt(0x434E5632)
+                val sessionBytes = session.value.encodeToByteArray()
+                data.writeInt(sessionBytes.size)
+                data.write(sessionBytes)
+                data.writeInt(2)
+                for ((sequence, role, content) in listOf(
+                    Triple(61L, CognitiveConversationRole.USER, "new-u61"),
+                    Triple(62L, CognitiveConversationRole.ASSISTANT, "new-a62")
+                )) {
+                    data.writeLong(sequence)
+                    data.writeInt(role.ordinal)
+                    val bytes = content.encodeToByteArray()
+                    data.writeInt(bytes.size)
+                    data.write(bytes)
+                }
+            }
+            output.toByteArray()
+        }
+        assertIs<CognitiveEncryptionResult.Success<*>>(
+            encrypted.install(
+                CognitivePersistentRecordDraft(
+                    id = legacyChunkId(61L),
+                    schemaId = PersistentSchemaId("cognitive-conversation-session"),
+                    schemaVersion = PersistentSchemaVersion(2),
+                    plaintext = CognitivePlaintext(continuationPayload),
+                    createdAt = at(2),
+                    dek = dekRef
+                )
+            )
+        )
+
+        val sourceRoot = assertNotNull(backend.entries[legacyRootId()])
+        val sourceContinuation = assertNotNull(backend.entries[legacyChunkId(61L)])
+
+        assertIs<PersistentConversationMigrationPrepareResult.Prepared>(
+            EncryptedPersistentConversationStore.prepareMigration(
+                encryptedStore = encryptedStore(backend),
+                activeDek = dekRef,
+                persistedAt = at(3)
+            )
+        )
+        val mixed = assertIs<PersistentConversationOpenResult.Opened>(
+            EncryptedPersistentConversationStore.open(
+                encryptedStore = encryptedStore(backend),
+                activeDek = dekRef,
+                maxRetainedMessages = 8,
+                maxMessageChars = 1024
+            )
+        ).store
+
+        backend.resetReadCounters()
+        assertIs<PersistentConversationSessionMigrationResult.Migrated>(
+            mixed.migrateV1TruncatedSession(session, at(4))
+        )
+
+        assertEquals(0, backend.pageLoadCalls)
+        assertEquals(sourceRoot, assertNotNull(backend.entries[legacyRootId()]))
+        assertEquals(
+            sourceContinuation,
+            assertNotNull(backend.entries[legacyChunkId(61L)])
+        )
+        assertTrue(
+            backend.entries.containsKey(
+                ConversationV3MigrationCodec.truncatedRootId(session)
+            )
+        )
+        assertEquals(
+            ConversationV3MigrationCodec.TRUNCATED_ROOT_CHUNK_SCHEMA_ID,
+            assertNotNull(
+                backend.entries[
+                    ConversationV3IndexCodec.chunkId(session, 57L)
+                ]
+            ).record.schemaId
+        )
+
+        val reopened = assertNotNull(mixed.reopen(session))
+        assertEquals(
+            listOf(57L, 58L, 59L, 60L, 61L, 62L),
+            reopened.messages.map { it.sequence.value }
+        )
+        val history = assertIs<PersistentConversationHistoryResult.Found>(
+            mixed.history(
+                sessionId = session,
+                maxMessages = 10
+            )
+        ).snapshot
+        assertEquals(
+            listOf(57L, 58L, 59L, 60L, 61L, 62L),
+            history.messages.map { it.sequence.value }
+        )
+        assertFalse(history.messages.any { it.sequence.value < 57L })
+
+        assertIs<PersistentConversationSessionMigrationResult.AlreadyMigrated>(
+            mixed.migrateV1TruncatedSession(session, at(5))
+        )
+    }
+
+    @Test
+    fun migrated_truncated_root_requires_its_authenticated_boundary() {
+        val backend = CountingIndexedBackend()
+        val encrypted = encryptedStore(backend)
+        val session = CognitiveConversationSessionId("truncated-boundary-required")
+        val rootId = PersistentEntityId(
+            "conversation-" +
+                MessageDigest.getInstance("SHA-256")
+                    .digest(session.value.encodeToByteArray())
+                    .joinToString("") { "%02x".format(it) }
+        )
+
+        val payload = ByteArrayOutputStream().use { output ->
+            DataOutputStream(output).use { data ->
+                data.writeInt(0x434E5631)
+                val sessionBytes = session.value.encodeToByteArray()
+                data.writeInt(sessionBytes.size)
+                data.write(sessionBytes)
+                data.writeInt(2)
+                for ((sequence, role, content) in listOf(
+                    Triple(9L, CognitiveConversationRole.USER, "u9"),
+                    Triple(10L, CognitiveConversationRole.ASSISTANT, "a10")
+                )) {
+                    data.writeLong(sequence)
+                    data.writeInt(role.ordinal)
+                    val bytes = content.encodeToByteArray()
+                    data.writeInt(bytes.size)
+                    data.write(bytes)
+                }
+            }
+            output.toByteArray()
+        }
+        assertIs<CognitiveEncryptionResult.Success<*>>(
+            encrypted.install(
+                CognitivePersistentRecordDraft(
+                    id = rootId,
+                    schemaId = PersistentSchemaId("cognitive-conversation-session"),
+                    schemaVersion = PersistentSchemaVersion(1),
+                    plaintext = CognitivePlaintext(payload),
+                    createdAt = at(1),
+                    dek = dekRef
+                )
+            )
+        )
+        assertIs<PersistentConversationMigrationPrepareResult.Prepared>(
+            EncryptedPersistentConversationStore.prepareMigration(
+                encryptedStore = encryptedStore(backend),
+                activeDek = dekRef,
+                persistedAt = at(2)
+            )
+        )
+        val mixed = assertIs<PersistentConversationOpenResult.Opened>(
+            EncryptedPersistentConversationStore.open(
+                encryptedStore = encryptedStore(backend),
+                activeDek = dekRef,
+                maxRetainedMessages = 4,
+                maxMessageChars = 1024
+            )
+        ).store
+        assertIs<PersistentConversationSessionMigrationResult.Migrated>(
+            mixed.migrateV1TruncatedSession(session, at(3))
+        )
+
+        backend.entries.remove(
+            ConversationV3MigrationCodec.truncatedRootId(session)
+        )
+        val reconstructed = assertIs<PersistentConversationOpenResult.Opened>(
+            EncryptedPersistentConversationStore.open(
+                encryptedStore = encryptedStore(backend),
+                activeDek = dekRef,
+                maxRetainedMessages = 4,
+                maxMessageChars = 1024
+            )
+        ).store
+        assertIs<PersistentConversationReopenResult.Corrupt>(
+            reconstructed.reopenResult(session)
+        )
+    }
+
     private fun containsSubsequence(
         haystack: ByteArray,
         needle: ByteArray
