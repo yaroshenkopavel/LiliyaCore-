@@ -754,45 +754,10 @@ internal class ConversationV3NativeRuntime private constructor(
                         when (val installed = encryptedStore.install(probe.draft(markerRecord))) {
                             is CognitiveEncryptionResult.Success ->
                                 ConversationV3NativeDecision.Native(probe)
-                            is CognitiveEncryptionResult.Rejected -> {
-                                if (installed.category !=
-                                    CognitiveEncryptionFailureCategory.PERSISTENCE_CONFLICT
-                                ) {
-                                    ConversationV3NativeDecision.EncryptionUnavailable(
-                                        installed.category
-                                    )
-                                } else {
-                                    when (
-                                        val reread = probe.readPlainRecord(
-                                            ConversationV3IndexCodec.MARKER_ID
-                                        )
-                                    ) {
-                                        is ConversationV3RecordRead.Found ->
-                                            when (
-                                                val decoded =
-                                                    ConversationV3IndexCodec.decodeMarker(
-                                                        reread.record
-                                                    )
-                                            ) {
-                                                is ConversationV3DecodeResult.Decoded ->
-                                                    ConversationV3NativeDecision.Native(probe)
-                                                ConversationV3DecodeResult.Corrupt ->
-                                                    ConversationV3NativeDecision.Corrupt
-                                                is ConversationV3DecodeResult.Incompatible ->
-                                                    ConversationV3NativeDecision.Incompatible(
-                                                        decoded.reason
-                                                    )
-                                            }
-                                        ConversationV3RecordRead.Missing,
-                                        ConversationV3RecordRead.Corrupt ->
-                                            ConversationV3NativeDecision.Corrupt
-                                        is ConversationV3RecordRead.EncryptionUnavailable ->
-                                            ConversationV3NativeDecision.EncryptionUnavailable(
-                                                reread.category
-                                            )
-                                    }
-                                }
-                            }
+                            is CognitiveEncryptionResult.Rejected ->
+                                ConversationV3NativeDecision.EncryptionUnavailable(
+                                    installed.category
+                                )
                             is CognitiveEncryptionResult.Failed ->
                                 ConversationV3NativeDecision.EncryptionUnavailable(
                                     installed.category
