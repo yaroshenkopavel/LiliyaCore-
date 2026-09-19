@@ -1551,6 +1551,28 @@ class ConversationV3NativeRuntimeContractTest {
     }
 
     @Test
+    fun concurrent_native_marker_initialization_refreshes_and_accepts_committed_marker() {
+        val backend = CountingIndexedBackend().apply {
+            raceNextNativeMarkerInstall = true
+        }
+
+        val opened = openConversation(backend)
+
+        assertEquals(1, backend.entries.size)
+        assertTrue(
+            backend.entries.containsKey(ConversationV3IndexCodec.MARKER_ID)
+        )
+        assertEquals(
+            PersistentConversationReopenResult.Absent,
+            opened.reopenResult(
+                CognitiveConversationSessionId("marker-race-session")
+            )
+        )
+        assertEquals(0, backend.fullLoadCalls)
+        assertEquals(0, backend.fullCommitCalls)
+    }
+
+    @Test
     fun external_writer_conflict_requires_explicit_refresh_and_fresh_head_read() {
         val backend = CountingIndexedBackend()
         val first = openConversation(backend)
@@ -1772,6 +1794,7 @@ class ConversationV3NativeRuntimeContractTest {
         var pageLoadCalls = 0
         var failNextHeadTransition = false
         var failNextReceiptInstall = false
+        var raceNextNativeMarkerInstall = false
         val exactReadIds = ArrayList<PersistentEntityId>()
 
         fun resetReadCounters() {
@@ -1877,6 +1900,17 @@ class ConversationV3NativeRuntimeContractTest {
             expectedHighWatermark: Long,
             entry: PersistentBackendEntry
         ): PersistentBackendMutationResult {
+            if (
+                raceNextNativeMarkerInstall &&
+                entry.record.id == ConversationV3IndexCodec.MARKER_ID
+            ) {
+                raceNextNativeMarkerInstall = false
+                entries[entry.record.id] =
+                    PersistentRecordSnapshot(entry.record, entry.generation)
+                revision += 1L
+                highWatermark = entry.generation.value
+                return PersistentBackendMutationResult.Conflict
+            }
             if (
                 failNextReceiptInstall &&
                 entry.record.id.value.startsWith(
