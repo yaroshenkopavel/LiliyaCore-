@@ -780,6 +780,256 @@ class ConversationV3NativeRuntimeContractTest {
         assertEquals(10, chunkRows)
     }
 
+    @Test
+    fun mixed_v2_session_migrates_idempotently_without_deleting_source_rows() {
+        val backend = CountingIndexedBackend()
+        val encrypted = encryptedStore(backend)
+        val session = CognitiveConversationSessionId("migrate-v2-session")
+
+        fun legacyChunkId(firstSequence: Long): PersistentEntityId {
+            val digest = MessageDigest.getInstance("SHA-256")
+                .digest((session.value + ":" + firstSequence).encodeToByteArray())
+                .joinToString("") { "%02x".format(it) }
+            return PersistentEntityId("conversation-chunk-$digest")
+        }
+
+        fun installLegacyPair(
+            firstSequence: Long,
+            userText: String,
+            assistantText: String,
+            second: Long
+        ) {
+            val payload = ByteArrayOutputStream().use { output ->
+                DataOutputStream(output).use { data ->
+                    data.writeInt(0x434E5632)
+                    val sessionBytes = session.value.encodeToByteArray()
+                    data.writeInt(sessionBytes.size)
+                    data.write(sessionBytes)
+                    data.writeInt(2)
+                    for ((sequence, role, content) in listOf(
+                        Triple(
+                            firstSequence,
+                            CognitiveConversationRole.USER,
+                            userText
+                        ),
+                        Triple(
+                            firstSequence + 1L,
+                            CognitiveConversationRole.ASSISTANT,
+                            assistantText
+                        )
+                    )) {
+                        data.writeLong(sequence)
+                        data.writeInt(role.ordinal)
+                        val bytes = content.encodeToByteArray()
+                        data.writeInt(bytes.size)
+                        data.write(bytes)
+                    }
+                }
+                output.toByteArray()
+            }
+            assertIs<CognitiveEncryptionResult.Success<*>>(
+                encrypted.install(
+                    CognitivePersistentRecordDraft(
+                        id = legacyChunkId(firstSequence),
+                        schemaId = PersistentSchemaId(
+                            "cognitive-conversation-session"
+                        ),
+                        schemaVersion = PersistentSchemaVersion(2),
+                        plaintext = CognitivePlaintext(payload),
+                        createdAt = at(second),
+                        dek = dekRef
+                    )
+                )
+            )
+        }
+
+        installLegacyPair(1L, "u1", "a1", 1L)
+        installLegacyPair(3L, "u2", "a2", 2L)
+        val sourceOne = assertNotNull(backend.entries[legacyChunkId(1L)])
+        val sourceThree = assertNotNull(backend.entries[legacyChunkId(3L)])
+
+        assertIs<PersistentConversationMigrationPrepareResult.Prepared>(
+            EncryptedPersistentConversationStore.prepareMigration(
+                encryptedStore = encryptedStore(backend),
+                activeDek = dekRef,
+                persistedAt = at(3)
+            )
+        )
+        val mixed = assertIs<PersistentConversationOpenResult.Opened>(
+            EncryptedPersistentConversationStore.open(
+                encryptedStore = encryptedStore(backend),
+                activeDek = dekRef,
+                maxRetainedMessages = 4,
+                maxMessageChars = 1024
+            )
+        ).store
+
+        backend.resetReadCounters()
+        assertIs<PersistentConversationSessionMigrationResult.Migrated>(
+            mixed.migrateV2Session(session, at(4))
+        )
+        assertEquals(0, backend.pageLoadCalls)
+        assertEquals(sourceOne, assertNotNull(backend.entries[legacyChunkId(1L)]))
+        assertEquals(sourceThree, assertNotNull(backend.entries[legacyChunkId(3L)]))
+        assertTrue(
+            backend.entries.containsKey(
+                ConversationV3MigrationCodec.migrationLockId(session)
+            )
+        )
+        assertTrue(
+            backend.entries.containsKey(
+                ConversationV3IndexCodec.headId(session)
+            )
+        )
+        assertTrue(
+            backend.entries.containsKey(
+                ConversationV3IndexCodec.chunkId(session, 1L)
+            )
+        )
+        assertTrue(
+            backend.entries.containsKey(
+                ConversationV3IndexCodec.chunkId(session, 3L)
+            )
+        )
+
+        val reopened = assertNotNull(mixed.reopen(session))
+        assertEquals(
+            listOf(1L, 2L, 3L, 4L),
+            reopened.messages.map { it.sequence.value }
+        )
+        assertIs<PersistentConversationSessionMigrationResult.AlreadyMigrated>(
+            mixed.migrateV2Session(session, at(5))
+        )
+    }
+
+    @Test
+    fun migration_lock_keeps_partial_v3_orphans_invisible_until_head_is_published() {
+        val backend = CountingIndexedBackend()
+        val encrypted = encryptedStore(backend)
+        val session = CognitiveConversationSessionId("locked-partial-migration")
+
+        fun legacyChunkId(firstSequence: Long): PersistentEntityId {
+            val digest = MessageDigest.getInstance("SHA-256")
+                .digest((session.value + ":" + firstSequence).encodeToByteArray())
+                .joinToString("") { "%02x".format(it) }
+            return PersistentEntityId("conversation-chunk-$digest")
+        }
+
+        fun installLegacyPair(
+            firstSequence: Long,
+            userText: String,
+            assistantText: String,
+            second: Long
+        ) {
+            val payload = ByteArrayOutputStream().use { output ->
+                DataOutputStream(output).use { data ->
+                    data.writeInt(0x434E5632)
+                    val sessionBytes = session.value.encodeToByteArray()
+                    data.writeInt(sessionBytes.size)
+                    data.write(sessionBytes)
+                    data.writeInt(2)
+                    for ((sequence, role, content) in listOf(
+                        Triple(firstSequence, CognitiveConversationRole.USER, userText),
+                        Triple(firstSequence + 1L, CognitiveConversationRole.ASSISTANT, assistantText)
+                    )) {
+                        data.writeLong(sequence)
+                        data.writeInt(role.ordinal)
+                        val bytes = content.encodeToByteArray()
+                        data.writeInt(bytes.size)
+                        data.write(bytes)
+                    }
+                }
+                output.toByteArray()
+            }
+            assertIs<CognitiveEncryptionResult.Success<*>>(
+                encrypted.install(
+                    CognitivePersistentRecordDraft(
+                        id = legacyChunkId(firstSequence),
+                        schemaId = PersistentSchemaId(
+                            "cognitive-conversation-session"
+                        ),
+                        schemaVersion = PersistentSchemaVersion(2),
+                        plaintext = CognitivePlaintext(payload),
+                        createdAt = at(second),
+                        dek = dekRef
+                    )
+                )
+            )
+        }
+
+        installLegacyPair(1L, "legacy-u1", "legacy-a1", 1L)
+        installLegacyPair(3L, "legacy-u2", "legacy-a2", 2L)
+        assertIs<PersistentConversationMigrationPrepareResult.Prepared>(
+            EncryptedPersistentConversationStore.prepareMigration(
+                encryptedStore = encryptedStore(backend),
+                activeDek = dekRef,
+                persistedAt = at(3)
+            )
+        )
+
+        val lock = ConversationV3MigrationCodec.encodeMigrationLock(
+            ConversationV3MigrationLock(session),
+            at(4)
+        )
+        assertIs<CognitiveEncryptionResult.Success<*>>(
+            encryptedStore(backend).install(
+                CognitivePersistentRecordDraft(
+                    id = lock.id,
+                    schemaId = lock.schemaId,
+                    schemaVersion = lock.schemaVersion,
+                    plaintext = CognitivePlaintext(lock.payload.copyBytes()),
+                    createdAt = lock.createdAt,
+                    dek = dekRef
+                )
+            )
+        )
+
+        val orphan = ConversationV3IndexCodec.encodeChunk(
+            ConversationV3LinkedChunk(
+                snapshot = CognitiveConversationContextSnapshot(
+                    session,
+                    listOf(
+                        msg(1L, CognitiveConversationRole.USER, "legacy-u1"),
+                        msg(2L, CognitiveConversationRole.ASSISTANT, "legacy-a1")
+                    )
+                ),
+                previousChunkId = null
+            ),
+            at(5)
+        )
+        assertIs<CognitiveEncryptionResult.Success<*>>(
+            encryptedStore(backend).install(
+                CognitivePersistentRecordDraft(
+                    id = orphan.id,
+                    schemaId = orphan.schemaId,
+                    schemaVersion = orphan.schemaVersion,
+                    plaintext = CognitivePlaintext(orphan.payload.copyBytes()),
+                    createdAt = orphan.createdAt,
+                    dek = dekRef
+                )
+            )
+        )
+
+        backend.resetReadCounters()
+        val mixed = assertIs<PersistentConversationOpenResult.Opened>(
+            EncryptedPersistentConversationStore.open(
+                encryptedStore = encryptedStore(backend),
+                activeDek = dekRef,
+                maxRetainedMessages = 4,
+                maxMessageChars = 1024
+            )
+        ).store
+        val snapshot = assertNotNull(mixed.reopen(session))
+        assertEquals(
+            listOf("legacy-u1", "legacy-a1", "legacy-u2", "legacy-a2"),
+            snapshot.messages.map { it.content }
+        )
+        assertFalse(
+            backend.entries.containsKey(ConversationV3IndexCodec.headId(session))
+        )
+        assertEquals(0, backend.pageLoadCalls)
+    }
+
     private fun containsSubsequence(
         haystack: ByteArray,
         needle: ByteArray
