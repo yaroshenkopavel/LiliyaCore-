@@ -349,6 +349,76 @@ class PersistentRecordStoreContractTest {
     }
 
     @Test
+    fun indexed_snapshot_page_is_bounded_cursor_driven_and_revision_barriered() {
+        val f = fixture()
+        val backend = LazyIndexedMutationFixtureBackend()
+        val store = open(
+            f,
+            backend,
+            PersistentStoreId("bounded-page-seam")
+        )
+
+        assertIs<PersistentInstallResult.Installed>(
+            store.install(
+                record(
+                    "one",
+                    createdAt = Instant.parse("2026-08-30T13:20:01Z")
+                )
+            )
+        )
+        assertIs<PersistentInstallResult.Installed>(
+            store.install(
+                record(
+                    "two",
+                    createdAt = Instant.parse("2026-08-30T13:20:02Z")
+                )
+            )
+        )
+
+        val first = assertIs<PersistentRecordPageResult.Loaded>(
+            store.snapshotPageResult(
+                PersistentBackendPageRequest(
+                    limit = 1,
+                    order = PersistentBackendPageOrder.OLDEST_FIRST,
+                    cursorExclusive = null
+                )
+            )
+        )
+        assertEquals(
+            listOf("one"),
+            first.entries.map { it.record.id.value }
+        )
+        val cursor = assertNotNull(first.nextCursor)
+
+        val second = assertIs<PersistentRecordPageResult.Loaded>(
+            store.snapshotPageResult(
+                PersistentBackendPageRequest(
+                    limit = 1,
+                    order = PersistentBackendPageOrder.OLDEST_FIRST,
+                    cursorExclusive = cursor
+                )
+            )
+        )
+        assertEquals(
+            listOf("two"),
+            second.entries.map { it.record.id.value }
+        )
+        assertNull(second.nextCursor)
+
+        backend.advanceRevisionOnNextPage = true
+        val failed = assertIs<PersistentRecordPageResult.Failed>(
+            store.snapshotPageResult(
+                PersistentBackendPageRequest(
+                    limit = 1,
+                    order = PersistentBackendPageOrder.OLDEST_FIRST,
+                    cursorExclusive = null
+                )
+            )
+        )
+        assertTrue(failed.reason.contains("changed during enumeration"))
+    }
+
+    @Test
     fun indexed_snapshot_enumeration_rejects_revision_change_with_same_entry_count() {
         val f = fixture()
         val backend = LazyIndexedMutationFixtureBackend()
