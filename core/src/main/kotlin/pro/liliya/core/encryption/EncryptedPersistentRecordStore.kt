@@ -18,6 +18,7 @@ import pro.liliya.core.persistence.PersistentPayload
 import pro.liliya.core.persistence.PersistentRecord
 import pro.liliya.core.persistence.PersistentRecordOwnership
 import pro.liliya.core.persistence.PersistentRecordLookupResult
+import pro.liliya.core.persistence.PersistentRecordMetadataRefreshResult
 import pro.liliya.core.persistence.PersistentRecordSnapshot
 import pro.liliya.core.persistence.PersistentRecordSnapshotEntriesResult
 import pro.liliya.core.persistence.PersistentRecordStore
@@ -28,6 +29,20 @@ import pro.liliya.core.persistence.PersistentSchemaVersion
 /** Exact DEK material resolution seam. Key protection/unwrap is supplied by a later reviewed layer. */
 interface CognitiveDekMaterialResolver {
     fun resolve(reference: CognitiveDekReference): CognitiveEncryptionResult<CognitiveDekMaterial>
+}
+
+internal sealed interface EncryptedPersistentMetadataRefreshResult {
+    data object Unchanged : EncryptedPersistentMetadataRefreshResult
+    data class Refreshed(
+        val metadata: PersistentBackendMetadata
+    ) : EncryptedPersistentMetadataRefreshResult
+    data object Corrupt : EncryptedPersistentMetadataRefreshResult
+    data class Incompatible(val reason: String) :
+        EncryptedPersistentMetadataRefreshResult
+    data class Failed(
+        val reason: String,
+        val throwable: Throwable? = null
+    ) : EncryptedPersistentMetadataRefreshResult
 }
 
 internal sealed interface EncryptedPersistentRecordPageResult {
@@ -270,6 +285,27 @@ class EncryptedPersistentRecordStore(
 
     internal fun indexedMetadataSnapshot(): PersistentBackendMetadata? =
         store.indexedMetadataSnapshot()
+
+    /**
+     * Explicitly refreshes indexed metadata after an observed external-writer conflict.
+     * Callers must discard cached domain state and rebuild encrypted mutations after this returns.
+     */
+    internal fun refreshIndexedMetadata(): EncryptedPersistentMetadataRefreshResult =
+        when (val refreshed = store.refreshIndexedMetadata()) {
+            PersistentRecordMetadataRefreshResult.Unchanged ->
+                EncryptedPersistentMetadataRefreshResult.Unchanged
+            is PersistentRecordMetadataRefreshResult.Refreshed ->
+                EncryptedPersistentMetadataRefreshResult.Refreshed(refreshed.metadata)
+            PersistentRecordMetadataRefreshResult.Corrupt ->
+                EncryptedPersistentMetadataRefreshResult.Corrupt
+            is PersistentRecordMetadataRefreshResult.Incompatible ->
+                EncryptedPersistentMetadataRefreshResult.Incompatible(refreshed.reason)
+            is PersistentRecordMetadataRefreshResult.Failed ->
+                EncryptedPersistentMetadataRefreshResult.Failed(
+                    refreshed.reason,
+                    refreshed.throwable
+                )
+        }
 
     internal fun decryptedSnapshotEntries():
         CognitiveEncryptionResult<List<PersistentRecordSnapshot>> {
