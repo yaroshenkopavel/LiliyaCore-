@@ -52,10 +52,19 @@ interface EpisodicMemoryRepository {
     fun lookup(id: EpisodeId): EpisodeLookupResult
 }
 
+interface EpisodicIndexSource {
+    fun indexSourceCheckpoint(): EpisodeIndexSourceCheckpoint?
+    fun page(
+        limit: Int,
+        order: PersistentBackendPageOrder = PersistentBackendPageOrder.NEWEST_FIRST,
+        cursorExclusive: PersistentBackendPageCursor? = null
+    ): EpisodePageResult
+}
+
 class EncryptedPersistentEpisodicMemoryStore private constructor(
     private val encryptedStore: EncryptedPersistentRecordStore,
     private val activeDek: CognitiveDekReference
-) : EpisodicMemoryRepository {
+) : EpisodicMemoryRepository, EpisodicIndexSource {
     override fun store(record: EpisodeRecord): EpisodeStoreResult {
         val encoded = EpisodicMemoryPersistentCodec.encode(record)
         val bytes = encoded.payload.copyBytes()
@@ -122,6 +131,9 @@ class EncryptedPersistentEpisodicMemoryStore private constructor(
         }
     }
 
+    override fun indexSourceCheckpoint(): EpisodeIndexSourceCheckpoint? =
+        encryptedStore.indexedMetadataSnapshot()?.toEpisodeIndexSourceCheckpoint()
+
     fun queryTemporal(
         query: EpisodeTemporalQuery
     ): EpisodeTemporalQueryResult =
@@ -130,10 +142,10 @@ class EncryptedPersistentEpisodicMemoryStore private constructor(
             pageLoader = encryptedStore::decryptedPageResult
         )
 
-    fun page(
+    override fun page(
         limit: Int,
-        order: PersistentBackendPageOrder = PersistentBackendPageOrder.NEWEST_FIRST,
-        cursorExclusive: PersistentBackendPageCursor? = null
+        order: PersistentBackendPageOrder,
+        cursorExclusive: PersistentBackendPageCursor?
     ): EpisodePageResult = when (
         val page = encryptedStore.decryptedPageResult(
             PersistentBackendPageRequest(
