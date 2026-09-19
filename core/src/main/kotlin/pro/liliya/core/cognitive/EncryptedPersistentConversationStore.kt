@@ -15,7 +15,6 @@ import pro.liliya.core.encryption.CognitiveEncryptionResult
 import pro.liliya.core.encryption.CognitivePersistentRecordDraft
 import pro.liliya.core.encryption.CognitivePlaintext
 import pro.liliya.core.encryption.EncryptedPersistentRecordStore
-import pro.liliya.core.encryption.EncryptedPersistentMetadataRefreshResult
 import pro.liliya.core.encryption.EncryptedPersistentRecordPageResult
 import pro.liliya.core.persistence.PersistentBackendPageOrder
 import pro.liliya.core.persistence.PersistentBackendPageRequest
