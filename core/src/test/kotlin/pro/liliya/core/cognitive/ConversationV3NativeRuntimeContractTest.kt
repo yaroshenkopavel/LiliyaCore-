@@ -905,6 +905,31 @@ class ConversationV3NativeRuntimeContractTest {
         assertIs<PersistentConversationSessionMigrationResult.AlreadyMigrated>(
             mixed.migrateV2Session(session, at(5))
         )
+
+        backend.resetReadCounters()
+        val proven =
+            assertIs<PersistentConversationMigrationCompletenessResult.Proven>(
+                mixed.proveMigrationCompleteness(
+                    persistedAt = at(6),
+                    pageSize = 2
+                )
+            ).proof
+        assertEquals(2L, proven.legacyRecordCount)
+        assertEquals(1L, proven.receiptCount)
+        assertTrue(backend.pageLoadCalls > 1)
+        assertTrue(
+            backend.entries.containsKey(
+                ConversationV3MigrationCodec.COMPLETENESS_PROOF_ID
+            )
+        )
+        assertIs<
+            PersistentConversationMigrationCompletenessResult.AlreadyProven
+        >(
+            mixed.proveMigrationCompleteness(
+                persistedAt = at(7),
+                pageSize = 2
+            )
+        )
     }
 
     @Test
@@ -1119,6 +1144,22 @@ class ConversationV3NativeRuntimeContractTest {
             backend.entries.containsKey(ConversationV3IndexCodec.headId(session))
         )
         assertEquals(0, backend.pageLoadCalls)
+
+        val incomplete =
+            assertIs<
+                PersistentConversationMigrationCompletenessResult.Incomplete
+            >(
+                mixed.proveMigrationCompleteness(
+                    persistedAt = at(6),
+                    pageSize = 2
+                )
+            )
+        assertTrue(incomplete.reason.contains("not accounted"))
+        assertFalse(
+            backend.entries.containsKey(
+                ConversationV3MigrationCodec.COMPLETENESS_PROOF_ID
+            )
+        )
     }
 
     @Test

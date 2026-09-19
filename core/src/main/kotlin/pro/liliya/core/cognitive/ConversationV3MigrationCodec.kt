@@ -32,6 +32,15 @@ internal data class ConversationV3MigrationReceipt(
     val targetHeadId: PersistentEntityId
 )
 
+internal data class ConversationV3MigrationCompletenessProof(
+    val auditedRevision: Long,
+    val auditedHighWatermark: Long,
+    val auditedEntryCount: Long,
+    val legacyRecordCount: Long,
+    val receiptCount: Long,
+    val digestHex: String
+)
+
 internal data class ConversationV3TruncatedRootBoundary(
     val sessionId: CognitiveConversationSessionId,
     val firstRetainedSequence: Long,
@@ -63,6 +72,10 @@ internal object ConversationV3MigrationCodec {
         PersistentSchemaId("cognitive-conversation-v3-migration-lock")
     val MIGRATION_RECEIPT_SCHEMA_ID =
         PersistentSchemaId("cognitive-conversation-v3-migration-receipt")
+    val COMPLETENESS_PROOF_ID =
+        PersistentEntityId("conversation-v3-migration-completeness-proof")
+    val COMPLETENESS_PROOF_SCHEMA_ID =
+        PersistentSchemaId("cognitive-conversation-v3-migration-completeness-proof")
     val TRUNCATED_ROOT_SCHEMA_ID =
         PersistentSchemaId("cognitive-conversation-v3-truncated-root")
     val TRUNCATED_ROOT_CHUNK_SCHEMA_ID =
@@ -72,6 +85,7 @@ internal object ConversationV3MigrationCodec {
     private const val MIXED_MAGIC = 0x434D5831 // CMX1
     private const val MIGRATION_LOCK_MAGIC = 0x434D4C31 // CML1
     private const val MIGRATION_RECEIPT_MAGIC = 0x434D5231 // CMR1
+    private const val COMPLETENESS_PROOF_MAGIC = 0x434D5031 // CMP1
     private const val TRUNCATED_ROOT_MAGIC = 0x43545231 // CTR1
     private const val TRUNCATED_ROOT_CHUNK_MAGIC = 0x43544331 // CTC1
     private const val MAX_STRING_BYTES = 65_536
@@ -270,6 +284,95 @@ internal object ConversationV3MigrationCodec {
                         sourceKind = sourceKind,
                         sourceLegacyEntityId = sourceLegacyEntityId,
                         targetHeadId = targetHeadId
+                    )
+                )
+            }
+        } catch (_: EOFException) {
+            ConversationV3MigrationDecodeResult.Corrupt
+        } catch (_: IllegalArgumentException) {
+            ConversationV3MigrationDecodeResult.Corrupt
+        } catch (_: RuntimeException) {
+            ConversationV3MigrationDecodeResult.Corrupt
+        }
+    }
+
+    fun encodeCompletenessProof(
+        proof: ConversationV3MigrationCompletenessProof,
+        persistedAt: Instant
+    ): PersistentRecord {
+        require(proof.auditedRevision >= 0L)
+        require(proof.auditedHighWatermark >= 0L)
+        require(proof.auditedEntryCount >= 0L)
+        require(proof.legacyRecordCount >= 0L)
+        require(proof.receiptCount >= 0L)
+        require(proof.digestHex.length == 64 &&
+            proof.digestHex.all { it in '0'..'9' || it in 'a'..'f' }
+        ) {
+            "migration completeness digest must be lowercase SHA-256 hex"
+        }
+        val payload = ByteArrayOutputStream().use { output ->
+            DataOutputStream(output).use { data ->
+                data.writeInt(COMPLETENESS_PROOF_MAGIC)
+                data.writeLong(proof.auditedRevision)
+                data.writeLong(proof.auditedHighWatermark)
+                data.writeLong(proof.auditedEntryCount)
+                data.writeLong(proof.legacyRecordCount)
+                data.writeLong(proof.receiptCount)
+                data.writeString(proof.digestHex)
+            }
+            output.toByteArray()
+        }
+        return PersistentRecord(
+            id = COMPLETENESS_PROOF_ID,
+            schemaId = COMPLETENESS_PROOF_SCHEMA_ID,
+            schemaVersion = SCHEMA_VERSION,
+            payload = PersistentPayload(payload),
+            createdAt = persistedAt
+        )
+    }
+
+    fun decodeCompletenessProof(
+        record: PersistentRecord
+    ): ConversationV3MigrationDecodeResult<ConversationV3MigrationCompletenessProof> {
+        if (record.id != COMPLETENESS_PROOF_ID ||
+            record.schemaId != COMPLETENESS_PROOF_SCHEMA_ID ||
+            record.schemaVersion != SCHEMA_VERSION
+        ) {
+            return ConversationV3MigrationDecodeResult.Incompatible(
+                "conversation v3 migration completeness-proof schema mismatch"
+            )
+        }
+        return try {
+            val input = ByteArrayInputStream(record.payload.copyBytes())
+            val data = DataInputStream(input)
+            if (data.readInt() != COMPLETENESS_PROOF_MAGIC) {
+                return ConversationV3MigrationDecodeResult.Corrupt
+            }
+            val revision = data.readLong()
+            val highWatermark = data.readLong()
+            val entryCount = data.readLong()
+            val legacyCount = data.readLong()
+            val receiptCount = data.readLong()
+            val digestHex = data.readString(input)
+            if (revision < 0L ||
+                highWatermark < 0L ||
+                entryCount < 0L ||
+                legacyCount < 0L ||
+                receiptCount < 0L ||
+                digestHex.length != 64 ||
+                digestHex.any { it !in '0'..'9' && it !in 'a'..'f' } ||
+                input.available() != 0
+            ) {
+                ConversationV3MigrationDecodeResult.Corrupt
+            } else {
+                ConversationV3MigrationDecodeResult.Decoded(
+                    ConversationV3MigrationCompletenessProof(
+                        auditedRevision = revision,
+                        auditedHighWatermark = highWatermark,
+                        auditedEntryCount = entryCount,
+                        legacyRecordCount = legacyCount,
+                        receiptCount = receiptCount,
+                        digestHex = digestHex
                     )
                 )
             }
