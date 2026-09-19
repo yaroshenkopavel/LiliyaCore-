@@ -122,6 +122,14 @@ class EncryptedPersistentEpisodicMemoryStore private constructor(
         }
     }
 
+    fun queryTemporal(
+        query: EpisodeTemporalQuery
+    ): EpisodeTemporalQueryResult =
+        EpisodeTemporalQueryExecutor.execute(
+            query = query,
+            pageLoader = encryptedStore::decryptedPageResult
+        )
+
     fun page(
         limit: Int,
         order: PersistentBackendPageOrder = PersistentBackendPageOrder.NEWEST_FIRST,
