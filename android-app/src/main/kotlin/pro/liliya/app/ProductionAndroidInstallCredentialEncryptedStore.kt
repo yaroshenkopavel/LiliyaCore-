@@ -291,7 +291,7 @@ internal class ProductionAndroidInstallCredentialEncryptedStore private construc
         private const val MAX_NONCE_BYTES = 32
         private const val MIN_ID_BYTES = 8
         private const val MAX_ID_BYTES = 128
-        private const val SECRET_BYTES = 32
+        private const val SECRET_BYTES = 64
         private const val HEADER_BYTES = 16
         private const val MAX_PLAINTEXT_BYTES = HEADER_BYTES + MAX_ID_BYTES + SECRET_BYTES
         private const val MAX_CIPHERTEXT_BYTES = MAX_PLAINTEXT_BYTES + 32
