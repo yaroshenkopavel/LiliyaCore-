@@ -8,6 +8,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.WindowInsets
 import android.widget.Button
+import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
 
@@ -21,7 +22,10 @@ import android.widget.TextView
  */
 class LiliyaProvisioningActivity : Activity() {
     private lateinit var status: TextView
+    private lateinit var activationCode: EditText
+    private lateinit var activate: Button
     private lateinit var selectCredential: Button
+    private var activationInFlight = false
     private var stateSaved = false
 
     private val app: LiliyaApplication
@@ -33,14 +37,14 @@ class LiliyaProvisioningActivity : Activity() {
         val content = buildContent()
         setContentView(content)
         content.requestApplyInsets()
-        restoreImportState()
+        restoreProvisioningState()
     }
 
     override fun onStart() {
         super.onStart()
         val restoredAfterSavedState = stateSaved
         stateSaved = false
-        if (restoredAfterSavedState) restoreImportState()
+        if (restoredAfterSavedState) restoreProvisioningState()
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -120,12 +124,118 @@ class LiliyaProvisioningActivity : Activity() {
             }
             addView(status)
 
+            activationCode = EditText(this@LiliyaProvisioningActivity).apply {
+                hint = "Код активации"
+                isSingleLine = true
+            }
+            addView(activationCode)
+
+            activate = Button(this@LiliyaProvisioningActivity).apply {
+                text = "Активировать"
+                setOnClickListener { requestActivation() }
+            }
+            addView(activate)
+
             selectCredential = Button(this@LiliyaProvisioningActivity).apply {
-                text = "Импортировать доступ продукта"
+                text = "Старый способ: импортировать доступ"
                 setOnClickListener { launchProductAuthPicker() }
             }
             addView(selectCredential)
         }
+    }
+
+    private fun restoreProvisioningState() {
+        if (app.hasFirstRunAcquisitionConfiguration()) {
+            openRuntimeHost()
+            return
+        }
+
+        when (val snapshot = app.observeActivation(::deliverActivationCompletion)) {
+            ProductionAndroidActivationTaskSnapshot.Idle -> {
+                activationInFlight = false
+                when (app.restorePendingActivationConfiguration()) {
+                    ProductionAndroidActivationResult.Activated,
+                    ProductionAndroidActivationResult.AlreadyActivated -> {
+                        openRuntimeHost()
+                        return
+                    }
+                    ProductionAndroidActivationResult.ProductProfileRequired -> {
+                        renderReadyForActivation("Требуется профиль продукта")
+                        return
+                    }
+                    else -> Unit
+                }
+            }
+            is ProductionAndroidActivationTaskSnapshot.InFlight -> {
+                activationInFlight = true
+                renderActivationInFlight()
+                return
+            }
+            is ProductionAndroidActivationTaskSnapshot.Completed -> {
+                activationInFlight = true
+                renderActivationInFlight()
+                deliverActivationCompletion(snapshot)
+                return
+            }
+        }
+
+        restoreImportState()
+    }
+
+    private fun requestActivation() {
+        if (activationInFlight) return
+        val code = activationCode.text?.toString()?.trim().orEmpty()
+        if (code.isBlank()) {
+            renderReadyForActivation("Введите код активации")
+            return
+        }
+        activationInFlight = true
+        renderActivationInFlight()
+        when (app.requestActivation(code, ::deliverActivationCompletion)) {
+            is ProductionAndroidActivationTaskRequestResult.Started -> {
+                activationCode.text?.clear()
+            }
+            ProductionAndroidActivationTaskRequestResult.Busy -> restoreProvisioningState()
+        }
+    }
+
+    private fun deliverActivationCompletion(
+        completed: ProductionAndroidActivationTaskSnapshot.Completed
+    ) {
+        runOnUiThread {
+            if (isFinishing || isDestroyed || isChangingConfigurations || stateSaved) return@runOnUiThread
+            if (!app.consumeActivation(completed.requestId)) return@runOnUiThread
+            activationInFlight = false
+            when (val result = completed.result) {
+                ProductionAndroidActivationResult.Activated,
+                ProductionAndroidActivationResult.AlreadyActivated -> openRuntimeHost()
+                ProductionAndroidActivationResult.ProductProfileRequired ->
+                    renderReadyForActivation("Требуется профиль продукта")
+                is ProductionAndroidActivationResult.ServiceRejected ->
+                    renderReadyForActivation("Код активации отклонён")
+                is ProductionAndroidActivationResult.TransportFailed ->
+                    renderReadyForActivation("Не удалось связаться с сервером лицензии")
+                ProductionAndroidActivationResult.Failed ->
+                    renderReadyForActivation("Не удалось выполнить активацию")
+            }
+        }
+    }
+
+    private fun renderReadyForActivation(message: String) {
+        status.text = message
+        activationCode.visibility = View.VISIBLE
+        activationCode.isEnabled = true
+        activate.visibility = View.VISIBLE
+        activate.isEnabled = true
+        selectCredential.visibility = View.VISIBLE
+        selectCredential.isEnabled = true
+    }
+
+    private fun renderActivationInFlight() {
+        status.text = "Активация…"
+        activationCode.isEnabled = false
+        activate.isEnabled = false
+        selectCredential.isEnabled = false
     }
 
     private fun restoreImportState() {
@@ -168,11 +278,19 @@ class LiliyaProvisioningActivity : Activity() {
             ProductionAndroidFirstRunDeploymentBootstrapResult.AlreadyConfigured -> openRuntimeHost()
             ProductionAndroidFirstRunDeploymentBootstrapResult.ProductProfileRequired -> {
                 status.text = "Требуется профиль продукта"
+                activationCode.visibility = View.VISIBLE
+                activationCode.isEnabled = false
+                activate.visibility = View.VISIBLE
+                activate.isEnabled = false
                 selectCredential.visibility = View.GONE
                 selectCredential.isEnabled = false
             }
             ProductionAndroidFirstRunDeploymentBootstrapResult.Failed -> {
                 status.text = "Не удалось настроить профиль продукта"
+                activationCode.visibility = View.VISIBLE
+                activationCode.isEnabled = false
+                activate.visibility = View.VISIBLE
+                activate.isEnabled = false
                 selectCredential.visibility = View.GONE
                 selectCredential.isEnabled = false
             }
@@ -181,12 +299,18 @@ class LiliyaProvisioningActivity : Activity() {
 
     private fun renderReadyForImport(message: String) {
         status.text = message
+        activationCode.visibility = View.VISIBLE
+        activationCode.isEnabled = true
+        activate.visibility = View.VISIBLE
+        activate.isEnabled = true
         selectCredential.isEnabled = true
         selectCredential.visibility = View.VISIBLE
     }
 
     private fun renderImportInFlight() {
         status.text = "Импорт доступа продукта…"
+        activationCode.isEnabled = false
+        activate.isEnabled = false
         selectCredential.isEnabled = false
         selectCredential.visibility = View.VISIBLE
     }
