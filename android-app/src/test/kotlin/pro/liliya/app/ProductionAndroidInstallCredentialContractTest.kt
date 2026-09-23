@@ -36,7 +36,7 @@ class ProductionAndroidInstallCredentialContractTest {
 
         val copy = material.copySecret()
         copy[0] = 99
-        assertEquals(0, material.copySecret()[0].toInt())
+        assertEquals('0'.code, material.copySecret()[0].toInt())
 
         material.close()
         assertTrue(material.installSecret.all { it == 0.toByte() })
