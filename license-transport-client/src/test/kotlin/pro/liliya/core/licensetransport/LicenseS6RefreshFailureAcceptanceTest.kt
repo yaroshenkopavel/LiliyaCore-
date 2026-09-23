@@ -67,14 +67,17 @@ class LicenseS6RefreshFailureAcceptanceTest {
         val issuePayloadBeforeRefresh = issue.envelope.payload.copyBytes()
         val issueSignatureBeforeRefresh = issue.envelope.signature.copyBytes()
         val verifiedIssue = verify(issue.envelope, publicKeyDer)
+        val trustedRefreshRequest = LicenseRefreshRequestFactory.fromVerifiedLicense(
+            verifiedIssue,
+            LicenseServiceRequestId("s6-refresh-002")
+        )
+        assertEquals(LicenseServiceOperation.REFRESH, trustedRefreshRequest.operation)
+        assertEquals(verifiedIssue.entitlement.subject, trustedRefreshRequest.subjectReference)
+        assertEquals(verifiedIssue.entitlement.productId, trustedRefreshRequest.productId)
 
         val refreshed = assertIs<LicenseClientTransportResult.Signed>(
             normalTransport.execute(
-                request(
-                    operation = LicenseServiceOperation.REFRESH,
-                    subject = "s6-refresh-subject",
-                    requestId = "s6-refresh-002"
-                )
+                trustedRefreshRequest
             )
         )
         val verifiedRefresh = verify(refreshed.envelope, publicKeyDer)
