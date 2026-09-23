@@ -150,6 +150,21 @@ class LiliyaProvisioningActivity : Activity() {
             return
         }
 
+        when (val importSnapshot =
+            app.observeProductAuthCredentialImport(::deliverImportCompletion)
+        ) {
+            is ProductionAndroidProductAuthImportTaskSnapshot.InFlight -> {
+                renderImportInFlight()
+                return
+            }
+            is ProductionAndroidProductAuthImportTaskSnapshot.Completed -> {
+                renderImportInFlight()
+                deliverImportCompletion(importSnapshot)
+                return
+            }
+            ProductionAndroidProductAuthImportTaskSnapshot.Idle -> Unit
+        }
+
         when (val snapshot = app.observeActivation(::deliverActivationCompletion)) {
             ProductionAndroidActivationTaskSnapshot.Idle -> {
                 activationInFlight = false
