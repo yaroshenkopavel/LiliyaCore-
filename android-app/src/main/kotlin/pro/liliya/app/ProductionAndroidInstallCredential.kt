@@ -11,7 +11,11 @@ internal data class ProductionAndroidInstallCredentialMaterial(
         require(installId.all { it.isLetterOrDigit() || it == '-' || it == '_' }) {
             "install id contains unsupported characters"
         }
-        require(installSecret.size == SECRET_BYTES) { "install secret must be 256-bit" }
+        require(installSecret.size == SECRET_TEXT_BYTES) { "install secret must encode 256-bit entropy" }
+        require(installSecret.all { byte ->
+            val c = byte.toInt().toChar()
+            c in '0'..'9' || c in 'a'..'f'
+        }) { "install secret must be lowercase hexadecimal" }
     }
 
     fun copySecret(): ByteArray = installSecret.copyOf()
@@ -24,7 +28,7 @@ internal data class ProductionAndroidInstallCredentialMaterial(
         "ProductionAndroidInstallCredentialMaterial(installId=<redacted>,installSecret=<redacted>)"
 
     private companion object {
-        const val SECRET_BYTES = 32
+        const val SECRET_TEXT_BYTES = 64
     }
 }
 
@@ -33,16 +37,18 @@ internal class ProductionAndroidInstallCredentialGenerator(
 ) {
     fun generate(): ProductionAndroidInstallCredentialMaterial {
         val idBytes = ByteArray(INSTALL_ID_BYTES)
-        val secret = ByteArray(SECRET_BYTES)
+        val secretEntropy = ByteArray(SECRET_BYTES)
         random.nextBytes(idBytes)
-        random.nextBytes(secret)
+        random.nextBytes(secretEntropy)
+        val secretText = secretEntropy.toHex().encodeToByteArray()
         return try {
             ProductionAndroidInstallCredentialMaterial(
                 installId = "liliya-" + idBytes.toHex(),
-                installSecret = secret
+                installSecret = secretText
             )
         } finally {
             idBytes.fill(0)
+            secretEntropy.fill(0)
         }
     }
 
