@@ -13,7 +13,7 @@ internal data class ProductionAndroidInstallCredentialMaterial(
         }
         require(installSecret.size == SECRET_TEXT_BYTES) { "install secret must encode 256-bit entropy" }
         require(installSecret.all { byte ->
-            val c = byte.toInt().toChar()
+            val c = byte.toInt().and(0xff).toChar()
             c in '0'..'9' || c in 'a'..'f'
         }) { "install secret must be lowercase hexadecimal" }
     }
