@@ -9,10 +9,12 @@ import kotlin.test.assertTrue
 class LicenseActivationTransportClientContractTest {
     @Test
     fun activation_request_contains_server_contract_and_never_uses_authorization_header() {
-        var captured: LicenseHttpEngineRequest? = null
+        var capturedBody: ByteArray? = null
+        var capturedAuthorization: ByteArray? = null
         val client = client(
             LicenseHttpEngine { request, _ ->
-                captured = request
+                capturedBody = request.body.copyOf()
+                capturedAuthorization = request.authorizationBearer?.copyOf()
                 LicenseHttpEngineResult.Response(
                     LicenseHttpEngineResponse(
                         status = 401,
@@ -31,9 +33,8 @@ class LicenseActivationTransportClientContractTest {
         )
 
         assertIs<LicenseClientTransportResult.ServiceRejected>(result)
-        val request = requireNotNull(captured)
-        assertEquals(null, request.authorizationBearer)
-        val body = request.body.toString(Charsets.UTF_8)
+        assertEquals(null, capturedAuthorization)
+        val body = requireNotNull(capturedBody).toString(Charsets.UTF_8)
         assertTrue(body.contains("\"kind\":\"activate\""))
         assertTrue(body.contains("\"activationRequestId\":\"activation-request-1\""))
         assertTrue(body.contains("\"installId\":\"liliya-00112233445566778899aabbccddeeff\""))
