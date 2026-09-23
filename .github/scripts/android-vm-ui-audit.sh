@@ -42,8 +42,10 @@ def bounds(node):
     return tuple(map(int, match.groups()))
 
 title = bounds(exact_text("Liliya — подготовка доступа"))
-status = bounds(exact_text("Требуется доступ продукта"))
-button = bounds(exact_text("Импортировать доступ продукта"))
+status = bounds(exact_text("Требуется профиль продукта"))
+activation_code = bounds(exact_text("Код активации"))
+activate = bounds(exact_text("Активировать"))
+fallback = bounds(exact_text("Старый способ: импортировать доступ"))
 
 minimum_top = (density * 40 + 159) // 160
 if title[1] < minimum_top:
@@ -51,10 +53,16 @@ if title[1] < minimum_top:
         f"{orientation}: title top {title[1]}px is inside unsafe top region; "
         f"minimum is {minimum_top}px at density {density}"
     )
-if not (title[1] < title[3] <= status[1] < status[3] <= button[1] < button[3]):
+if not (
+    title[1] < title[3] <= status[1] < status[3] <=
+    activation_code[1] < activation_code[3] <=
+    activate[1] < activate[3] <=
+    fallback[1] < fallback[3]
+):
     raise SystemExit(
         f"{orientation}: provisioning controls overlap or are out of order: "
-        f"title={title}, status={status}, button={button}"
+        f"title={title}, status={status}, activation_code={activation_code}, "
+        f"activate={activate}, fallback={fallback}"
     )
 PY
 }
@@ -71,8 +79,10 @@ adb exec-out screencap -p > "$out/provisioning-portrait.png"
 adb shell dumpsys activity activities > "$out/activities-portrait.txt"
 
 grep -Fq "Liliya — подготовка доступа" "$out/provisioning-portrait.xml"
-grep -Fq "Требуется доступ продукта" "$out/provisioning-portrait.xml"
-grep -Fq "Импортировать доступ продукта" "$out/provisioning-portrait.xml"
+grep -Fq "Требуется профиль продукта" "$out/provisioning-portrait.xml"
+grep -Fq "Код активации" "$out/provisioning-portrait.xml"
+grep -Fq "Активировать" "$out/provisioning-portrait.xml"
+grep -Fq "Старый способ: импортировать доступ" "$out/provisioning-portrait.xml"
 grep -Fq "pro.liliya.app/.LiliyaProvisioningActivity" "$out/activities-portrait.txt"
 verify_layout "$out/provisioning-portrait.xml" portrait
 
@@ -85,8 +95,10 @@ adb exec-out screencap -p > "$out/provisioning-landscape.png"
 adb shell dumpsys activity activities > "$out/activities-landscape.txt"
 
 grep -Fq "Liliya — подготовка доступа" "$out/provisioning-landscape.xml"
-grep -Fq "Требуется доступ продукта" "$out/provisioning-landscape.xml"
-grep -Fq "Импортировать доступ продукта" "$out/provisioning-landscape.xml"
+grep -Fq "Требуется профиль продукта" "$out/provisioning-landscape.xml"
+grep -Fq "Код активации" "$out/provisioning-landscape.xml"
+grep -Fq "Активировать" "$out/provisioning-landscape.xml"
+grep -Fq "Старый способ: импортировать доступ" "$out/provisioning-landscape.xml"
 grep -Fq "pro.liliya.app/.LiliyaProvisioningActivity" "$out/activities-landscape.txt"
 verify_layout "$out/provisioning-landscape.xml" landscape
 
