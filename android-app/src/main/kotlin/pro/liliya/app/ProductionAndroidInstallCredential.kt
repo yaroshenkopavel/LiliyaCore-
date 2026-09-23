@@ -54,7 +54,7 @@ internal class ProductionAndroidInstallCredentialGenerator(
 
     private fun ByteArray.toHex(): String =
         buildString(size * 2) {
-            forEach { value ->
+            this@toHex.forEach { value ->
                 append(HEX[(value.toInt() ushr 4) and 0x0f])
                 append(HEX[value.toInt() and 0x0f])
             }
