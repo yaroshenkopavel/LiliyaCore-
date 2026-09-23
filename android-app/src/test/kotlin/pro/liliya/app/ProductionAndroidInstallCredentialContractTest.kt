@@ -15,7 +15,7 @@ class ProductionAndroidInstallCredentialContractTest {
         val second = generator.generate()
         try {
             assertTrue(first.installId.matches(Regex("^liliya-[0-9a-f]{32}$")))
-            assertEquals(32, first.installSecret.size)
+            assertEquals(64, first.installSecret.size)
             assertNotEquals(first.installId, second.installId)
             assertFalse(first.installSecret.contentEquals(second.installSecret))
             assertTrue("<redacted>" in first.toString())
@@ -28,7 +28,7 @@ class ProductionAndroidInstallCredentialContractTest {
 
     @Test
     fun material_owns_secret_copy_and_zeroizes_on_close() {
-        val secret = ByteArray(32) { it.toByte() }
+        val secret = "0123456789abcdef".repeat(4).encodeToByteArray()
         val material = ProductionAndroidInstallCredentialMaterial(
             installId = "liliya-00112233445566778899aabbccddeeff",
             installSecret = secret.copyOf()
