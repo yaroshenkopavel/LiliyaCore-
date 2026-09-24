@@ -47,7 +47,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout exact source
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
@@ -103,12 +103,12 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: Checkout exact source
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Download exact ONNX provenance bundle
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: semantic-onnx-provenance
           path: ${{ runner.temp }}/semantic-onnx-download
@@ -160,18 +160,18 @@ jobs:
           PY
 
       - name: Set up Java 17
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
         with:
           distribution: temurin
           java-version: '17'
 
       - name: Set up Gradle 9.6.1
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a
         with:
           gradle-version: '9.6.1'
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v4
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
         with:
           packages: platform-tools
 
@@ -251,7 +251,7 @@ jobs:
           cat "$out/qwen3-candidate-physical-test-bundle.json"
 
       - name: Publish exact candidate APK bundle
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: qwen3-candidate-physical-test-bundle-${{ github.event.pull_request.head.sha || github.sha }}
           path: ${{ runner.temp }}/qwen3-candidate-physical-bundle
@@ -290,7 +290,7 @@ jobs:
             > "$RUNNER_TEMP/qwen3-rish-bridge-probe.json"
 
       - name: Download exact candidate APK bundle
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: qwen3-candidate-physical-test-bundle-${{ github.sha }}
           path: ${{ runner.temp }}/qwen3-candidate-physical-bundle
@@ -495,7 +495,7 @@ jobs:
           cat "$RUNNER_TEMP/qwen3-candidate-evidence.json"
 
       - name: Publish physical Qwen3 candidate evidence
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: qwen3-candidate-physical-evidence-${{ github.sha }}
           path: |

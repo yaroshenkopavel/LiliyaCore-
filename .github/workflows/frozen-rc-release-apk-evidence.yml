@@ -26,7 +26,7 @@ jobs:
           printf '%s\n' "${GITHUB_SHA}" > "$RUNNER_TEMP/evidence-tooling-sha.txt"
 
       - name: Checkout frozen RC implementation
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: ${{ env.FROZEN_REF }}
 
@@ -41,18 +41,18 @@ jobs:
           printf 'source sha: %s\nsource tree: %s\n' "$actual_sha" "$actual_tree"
 
       - name: Set up Java 17
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
         with:
           distribution: temurin
           java-version: '17'
 
       - name: Set up Gradle 9.6.1
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a
         with:
           gradle-version: '9.6.1'
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v4
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
         with:
           packages: platform-tools
 
@@ -172,7 +172,7 @@ jobs:
           echo "$sha  android-app-release-unsigned.apk" > "$out/SHA256SUMS"
 
       - name: Upload exact frozen RC unsigned release APK evidence
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: frozen-rc-unsigned-release-apk-${{ env.FROZEN_SHA }}
           retention-days: 30

@@ -35,7 +35,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
@@ -85,7 +85,7 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: Checkout frozen RC implementation
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: rc/30b9ad-acceptance
 
@@ -96,16 +96,16 @@ jobs:
           test "$(git rev-parse HEAD)" = "$RC_SHA"
           test "$(git rev-parse HEAD^{tree})" = "$RC_TREE"
 
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
         with:
           distribution: temurin
           java-version: '17'
 
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a
         with:
           gradle-version: '9.6.1'
 
-      - uses: android-actions/setup-android@v4
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
         with:
           packages: platform-tools
 
@@ -161,7 +161,7 @@ jobs:
           )
           PY
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: qwen3-frozen-rc-resource-bundle-30b9ad2853bf31f17a84b524a6f643ee1d23d72f
           path: ${{ runner.temp }}/qwen3-frozen-rc-resource-bundle
@@ -193,7 +193,7 @@ jobs:
           curl --fail --silent --show-error -H "Authorization: Bearer $token" \
             "$METRICS_BRIDGE_URL/v1/probe" > "$RUNNER_TEMP/qwen3-resource-metrics-probe.json"
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: qwen3-frozen-rc-resource-bundle-30b9ad2853bf31f17a84b524a6f643ee1d23d72f
           path: ${{ runner.temp }}/qwen3-frozen-rc-resource-bundle
@@ -331,7 +331,7 @@ jobs:
           print(json.dumps(summary, indent=2, sort_keys=True))
           PY
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: qwen3-frozen-rc-resource-evidence-30b9ad2853bf31f17a84b524a6f643ee1d23d72f
           path: |
