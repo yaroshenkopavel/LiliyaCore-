@@ -67,6 +67,52 @@ class EpisodeMaterializerContractTest {
         assertEquals(candidate.extraction.extractedAt, result.snapshot.record.derivedAt)
     }
 
+
+    @Test
+    fun structured_context_is_persisted_and_participates_in_deterministic_identity() {
+        val repository = FakeRepository()
+        val base = candidate(listOf(ref("conversation-v3", "chunk-structured")))
+        val firstContext = EpisodeStructuredContext(
+            entities = listOf(EpisodeEntityReference("person", "user", "actor")),
+            task = EpisodeContextReference("task", "episodic-v0.6"),
+            tags = setOf("memory"),
+            significance = EpisodeSignificance.HIGH,
+            extractionConfidence = EpisodeExtractionConfidence.MEDIUM
+        )
+        val materializer = EpisodeMaterializer(repository) {
+            RawEvidenceVerificationResult.Present(it)
+        }
+
+        val first = assertIs<EpisodeMaterializationResult.Materialized>(
+            materializer.materialize(base.copy(context = firstContext))
+        )
+        assertEquals(firstContext, first.snapshot.record.context)
+
+        val replay = assertIs<EpisodeMaterializationResult.AlreadyMaterialized>(
+            materializer.materialize(
+                base.copy(
+                    context = firstContext,
+                    extraction = base.extraction.copy(
+                        extractedAt = base.extraction.extractedAt.plusSeconds(30)
+                    )
+                )
+            )
+        )
+        assertEquals(first.snapshot.record.id, replay.snapshot.record.id)
+
+        val changed = assertIs<EpisodeMaterializationResult.Materialized>(
+            materializer.materialize(
+                base.copy(
+                    context = firstContext.copy(
+                        task = EpisodeContextReference("task", "semantic-claims")
+                    )
+                )
+            )
+        )
+        kotlin.test.assertNotEquals(first.snapshot.record.id, changed.snapshot.record.id)
+        assertEquals(2, repository.storeCalls)
+    }
+
     @Test
     fun replay_uses_same_identity_and_does_not_create_duplicate_episode() {
         val repository = FakeRepository()
