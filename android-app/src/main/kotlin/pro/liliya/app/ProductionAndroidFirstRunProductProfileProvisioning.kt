@@ -19,7 +19,9 @@ import pro.liliya.core.licensetransport.LicenseServiceTransportRequest
 internal data class ProductionAndroidFirstRunProductProfile(
     val transport: LicenseHttpTransportConfig,
     val licenseRequest: LicenseServiceTransportRequest,
-    val productInputTemplate: ProductionAndroidFirstRunProductInputTemplate
+    val productInputTemplate: ProductionAndroidFirstRunProductInputTemplate,
+    /** Explicit deployment CA, supplied with the trusted product profile. */
+    val tlsTrustAnchorDer: ByteArray? = null
 )
 
 internal fun interface ProductionAndroidFirstRunProductProfileSource {
@@ -93,4 +95,3 @@ internal fun LiliyaApplication.configureAuthenticatedFirstRunProduct(
         context = this,
         source = source
     )
-

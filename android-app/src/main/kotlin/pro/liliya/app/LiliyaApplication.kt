@@ -8,6 +8,7 @@ import pro.liliya.android.runtime.AndroidProductRuntimeStartupCompositionRequest
 import pro.liliya.android.runtime.AndroidProductRuntimeStartupProvisioningPorts
 import pro.liliya.android.runtime.AndroidProductRuntimeStartupRequestSourceInput
 import pro.liliya.android.runtime.AndroidProductRuntimeStartupInputAssemblyInput
+import pro.liliya.core.licensetransport.LicenseServiceTransportRequest
 
 class LiliyaApplication : Application() {
     val runtimeOwner: ProductionAndroidAppRuntimeOwner = ProductionAndroidAppRuntimeOwner()
@@ -35,6 +36,18 @@ class LiliyaApplication : Application() {
 
     fun configureRuntime(sources: ProductionAndroidRuntimeWiringSources): Boolean =
         ProductionAndroidRuntimeConfiguration.install(sources)
+
+    /** Install the reviewed network trust with product-owned runtime inputs before first run. */
+    internal fun installDeploymentFirstRunProfile(
+        legacyProductAuthRequest: LicenseServiceTransportRequest,
+        productTemplate: ProductionAndroidFirstRunProductInputTemplate
+    ): Boolean = ProductionAndroidFirstRunProductProfileSourceOwner.install(
+        ProductionAndroidDeploymentProfile.source(
+            context = this,
+            legacyProductAuthRequest = legacyProductAuthRequest,
+            productTemplate = productTemplate
+        )
+    )
 
     fun configureFirstRun(
         input: AndroidProductRuntimeFirstRunProductInput
