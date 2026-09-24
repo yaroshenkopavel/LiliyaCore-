@@ -135,7 +135,7 @@ internal class ProductionAndroidLanLicenseHttpEngine(
                 socket.outputStream.write(headers.toByteArray(Charsets.UTF_8))
                 socket.outputStream.write(request.body)
                 socket.outputStream.flush()
-                val response = readResponse(socket.inputStream)
+                val response = readLicensingLanResponse(socket.inputStream)
                 if (cancellation.isCancelled()) {
                     LicenseHttpEngineResult.Failed(LicenseClientTransportFailure.CANCELLED)
                 } else {
@@ -153,17 +153,33 @@ internal class ProductionAndroidLanLicenseHttpEngine(
         }
     }
 
-    private fun readResponse(input: InputStream): LicenseHttpEngineResponse {
-        val bytes = ByteArrayOutputStream()
-        val chunk = ByteArray(2048)
-        while (bytes.size() <= 131072) {
-            val count = input.read(chunk)
-            if (count < 0) break
-            bytes.write(chunk, 0, count)
-        }
-        if (bytes.size() > 131072) throw IOException("oversized license response")
-        return parseLicensingLanResponse(bytes.toByteArray())
+}
+
+internal fun readLicensingLanResponse(input: InputStream): LicenseHttpEngineResponse {
+    val header = ByteArrayOutputStream()
+    val marker = "\r\n\r\n".toByteArray(Charsets.US_ASCII)
+    var matched = 0
+    while (header.size() <= 8192) {
+        val next = input.read()
+        if (next < 0) throw IOException("truncated HTTP headers")
+        header.write(next)
+        matched = if (next == (marker[matched].toInt() and 0xff)) matched + 1 else 0
+        if (matched == marker.size) break
     }
+    if (matched != marker.size || header.size() > 8192) throw IOException("oversized HTTP headers")
+    val headerText = header.toString(Charsets.US_ASCII.name())
+    val lengths = Regex("(?im)^Content-Length: ([0-9]+)\\r?$")
+        .findAll(headerText).map { it.groupValues[1].toIntOrNull() }.toList()
+    val length = lengths.singleOrNull() ?: throw IOException("missing HTTP length")
+    if (length !in 0..131072) throw IOException("oversized HTTP body")
+    val body = ByteArray(length)
+    var offset = 0
+    while (offset < body.size) {
+        val count = input.read(body, offset, body.size - offset)
+        if (count < 0) throw IOException("truncated HTTP body")
+        offset += count
+    }
+    return parseLicensingLanResponse(header.toByteArray() + body)
 }
 
 internal fun parseLicensingLanResponse(wire: ByteArray): LicenseHttpEngineResponse {

@@ -34,17 +34,9 @@ internal class StrictLicensingReadyProbe(
                     "GET /health/ready HTTP/1.1\r\nHost: $logicalHost\r\n".toByteArray(Charsets.US_ASCII) +
                         "Connection: close\r\nAccept: application/json\r\n\r\n".toByteArray(Charsets.US_ASCII)
                 )
-                val response = ByteArray(4096)
-                var length = 0
-                while (length < response.size) {
-                    val count = tls.inputStream.read(response, length, response.size - length)
-                    if (count < 0) break
-                    length += count
-                }
-                val text = String(response, 0, length, Charsets.US_ASCII)
-                val separator = text.indexOf("\r\n\r\n")
-                separator >= 0 && text.startsWith("HTTP/1.1 200 ") &&
-                    text.substring(separator + 4) == "{\"status\":\"ready\"}"
+                val response = readLicensingLanResponse(tls.inputStream)
+                response.status == 200 &&
+                    response.body.contentEquals("{\"status\":\"ready\"}".toByteArray())
         }
     } catch (_: Exception) {
         false
