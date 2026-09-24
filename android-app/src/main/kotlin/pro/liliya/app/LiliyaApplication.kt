@@ -8,6 +8,7 @@ import pro.liliya.android.runtime.AndroidProductRuntimeStartupCompositionRequest
 import pro.liliya.android.runtime.AndroidProductRuntimeStartupProvisioningPorts
 import pro.liliya.android.runtime.AndroidProductRuntimeStartupRequestSourceInput
 import pro.liliya.android.runtime.AndroidProductRuntimeStartupInputAssemblyInput
+import pro.liliya.core.licensetransport.LicenseServiceTransportRequest
 
 class LiliyaApplication : Application() {
     val runtimeOwner: ProductionAndroidAppRuntimeOwner = ProductionAndroidAppRuntimeOwner()
@@ -25,6 +26,9 @@ class LiliyaApplication : Application() {
     @Volatile
     private var firstRunAcquisitionTask = ProductionAndroidFirstRunAcquisitionTask()
 
+    @Volatile
+    private var activationTask = ProductionAndroidActivationTask()
+
     override fun onCreate() {
         super.onCreate()
         ProductionAndroidLocalModelSelection.restore(File(filesDir, "models"))
@@ -32,6 +36,18 @@ class LiliyaApplication : Application() {
 
     fun configureRuntime(sources: ProductionAndroidRuntimeWiringSources): Boolean =
         ProductionAndroidRuntimeConfiguration.install(sources)
+
+    /** Install the reviewed network trust with product-owned runtime inputs before first run. */
+    internal fun installDeploymentFirstRunProfile(
+        legacyProductAuthRequest: LicenseServiceTransportRequest,
+        productTemplate: ProductionAndroidFirstRunProductInputTemplate
+    ): Boolean = ProductionAndroidFirstRunProductProfileSourceOwner.install(
+        ProductionAndroidDeploymentProfile.source(
+            context = this,
+            legacyProductAuthRequest = legacyProductAuthRequest,
+            productTemplate = productTemplate
+        )
+    )
 
     fun configureFirstRun(
         input: AndroidProductRuntimeFirstRunProductInput
@@ -79,6 +95,25 @@ class LiliyaApplication : Application() {
 
     internal fun consumeFirstRunAcquisition(requestId: Long): Boolean =
         firstRunAcquisitionTask.consume(requestId)
+
+    internal fun requestActivation(
+        activationCode: String,
+        listener: (ProductionAndroidActivationTaskSnapshot.Completed) -> Unit
+    ): ProductionAndroidActivationTaskRequestResult =
+        activationTask.request(
+            activate = { ProductionAndroidActivationFlow.activate(this, activationCode) },
+            listener = listener
+        )
+
+    internal fun observeActivation(
+        listener: (ProductionAndroidActivationTaskSnapshot.Completed) -> Unit
+    ): ProductionAndroidActivationTaskSnapshot = activationTask.observe(listener)
+
+    internal fun consumeActivation(requestId: Long): Boolean =
+        activationTask.consume(requestId)
+
+    internal fun restorePendingActivationConfiguration(): ProductionAndroidActivationResult =
+        ProductionAndroidActivationFlow.restorePendingConfiguration(this)
 
     fun provisionRuntime(
         ports: AndroidProductRuntimeStartupProvisioningPorts
@@ -184,6 +219,15 @@ class LiliyaApplication : Application() {
     ): ProductionAndroidFirstRunAcquisitionTask {
         val previous = firstRunAcquisitionTask
         firstRunAcquisitionTask = replacement
+        return previous
+    }
+
+    @Synchronized
+    internal fun replaceActivationTaskForTests(
+        replacement: ProductionAndroidActivationTask
+    ): ProductionAndroidActivationTask {
+        val previous = activationTask
+        activationTask = replacement
         return previous
     }
 

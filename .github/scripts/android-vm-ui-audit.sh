@@ -42,8 +42,10 @@ def bounds(node):
     return tuple(map(int, match.groups()))
 
 title = bounds(exact_text("Liliya — подготовка доступа"))
-status = bounds(exact_text("Требуется доступ продукта"))
-button = bounds(exact_text("Импортировать доступ продукта"))
+status = bounds(exact_text("Требуется профиль продукта"))
+activation_code = bounds(exact_text("Код активации"))
+activate = bounds(exact_text("Активировать"))
+fallback = bounds(exact_text("Старый способ: импортировать доступ"))
 
 minimum_top = (density * 40 + 159) // 160
 if title[1] < minimum_top:
@@ -51,43 +53,77 @@ if title[1] < minimum_top:
         f"{orientation}: title top {title[1]}px is inside unsafe top region; "
         f"minimum is {minimum_top}px at density {density}"
     )
-if not (title[1] < title[3] <= status[1] < status[3] <= button[1] < button[3]):
+if not (
+    title[1] < title[3] <= status[1] < status[3] <=
+    activation_code[1] < activation_code[3] <=
+    activate[1] < activate[3] <=
+    fallback[1] < fallback[3]
+):
     raise SystemExit(
         f"{orientation}: provisioning controls overlap or are out of order: "
-        f"title={title}, status={status}, button={button}"
+        f"title={title}, status={status}, activation_code={activation_code}, "
+        f"activate={activate}, fallback={fallback}"
     )
 PY
+}
+
+verify_snapshot() {
+  local xml="$1"
+  local activities="$2"
+  local orientation="$3"
+  local expected
+  for expected in \
+    "Liliya — подготовка доступа" \
+    "Требуется профиль продукта" \
+    "Код активации" \
+    "Активировать" \
+    "Старый способ: импортировать доступ"; do
+    if ! grep -Fq "$expected" "$xml"; then
+      echo "$orientation: missing visible label: $expected" >&2
+      return 1
+    fi
+  done
+  if ! grep -Fq "pro.liliya.app/.LiliyaProvisioningActivity" "$activities"; then
+    echo "$orientation: provisioning Activity is not foreground" >&2
+    return 1
+  fi
+  verify_layout "$xml" "$orientation"
+}
+
+capture_and_verify() {
+  local orientation="$1"
+  local remote="/sdcard/liliya-window-$orientation.xml"
+  local xml="$out/provisioning-$orientation.xml"
+  local activities="$out/activities-$orientation.txt"
+  local diagnostic="$out/check-$orientation.txt"
+  local attempt
+  for attempt in 1 2 3 4 5; do
+    if adb shell uiautomator dump "$remote" >/dev/null &&
+       adb pull "$remote" "$xml" >/dev/null; then
+      adb exec-out screencap -p > "$out/provisioning-$orientation.png"
+      adb shell dumpsys activity activities > "$activities"
+      if verify_snapshot "$xml" "$activities" "$orientation" > "$diagnostic" 2>&1; then
+        echo "$orientation: expected UI verified on attempt $attempt"
+        return 0
+      fi
+    else
+      echo "$orientation: UI dump not yet available" > "$diagnostic"
+    fi
+    sleep 2
+  done
+  cat "$diagnostic" >&2
+  echo "$orientation: provisioning UI did not settle after five captures" >&2
+  return 1
 }
 
 adb install -r "$apk"
 adb shell pm clear pro.liliya.app >/dev/null
 adb shell am start -W -n pro.liliya.app/.LiliyaProvisioningActivity > "$out/start-portrait.txt"
 cat "$out/start-portrait.txt"
-sleep 2
-
-adb shell uiautomator dump /sdcard/liliya-window.xml >/dev/null
-adb pull /sdcard/liliya-window.xml "$out/provisioning-portrait.xml" >/dev/null
-adb exec-out screencap -p > "$out/provisioning-portrait.png"
-adb shell dumpsys activity activities > "$out/activities-portrait.txt"
-
-grep -Fq "Liliya — подготовка доступа" "$out/provisioning-portrait.xml"
-grep -Fq "Требуется доступ продукта" "$out/provisioning-portrait.xml"
-grep -Fq "Импортировать доступ продукта" "$out/provisioning-portrait.xml"
-grep -Fq "pro.liliya.app/.LiliyaProvisioningActivity" "$out/activities-portrait.txt"
-verify_layout "$out/provisioning-portrait.xml" portrait
+capture_and_verify portrait
 
 adb shell settings put system accelerometer_rotation 0
 adb shell settings put system user_rotation 1
-sleep 2
-adb shell uiautomator dump /sdcard/liliya-window-landscape.xml >/dev/null
-adb pull /sdcard/liliya-window-landscape.xml "$out/provisioning-landscape.xml" >/dev/null
-adb exec-out screencap -p > "$out/provisioning-landscape.png"
-adb shell dumpsys activity activities > "$out/activities-landscape.txt"
-
-grep -Fq "Liliya — подготовка доступа" "$out/provisioning-landscape.xml"
-grep -Fq "Требуется доступ продукта" "$out/provisioning-landscape.xml"
-grep -Fq "Импортировать доступ продукта" "$out/provisioning-landscape.xml"
-grep -Fq "pro.liliya.app/.LiliyaProvisioningActivity" "$out/activities-landscape.txt"
-verify_layout "$out/provisioning-landscape.xml" landscape
+capture_and_verify landscape
 
 adb shell settings put system user_rotation 0
