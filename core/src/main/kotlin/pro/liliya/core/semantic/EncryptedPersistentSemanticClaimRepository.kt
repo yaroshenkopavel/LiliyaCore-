@@ -159,8 +159,11 @@ class EncryptedPersistentSemanticClaimRepository(
     fun storeRelation(
         relation: SemanticClaimRelation
     ): SemanticRelationStoreResult {
+        val canonicalRelation =
+            SemanticClaimRelationPersistentCodec.canonical(relation)
+
         val source = when (
-            val loaded = loadExactClaim(relation.source)
+            val loaded = loadExactClaim(canonicalRelation.source)
         ) {
             is ClaimLookupResult.Found -> loaded.record
             ClaimLookupResult.Missing ->
@@ -179,7 +182,7 @@ class EncryptedPersistentSemanticClaimRepository(
         }
 
         val target = when (
-            val loaded = loadExactClaim(relation.target)
+            val loaded = loadExactClaim(canonicalRelation.target)
         ) {
             is ClaimLookupResult.Found -> loaded.record
             ClaimLookupResult.Missing ->
@@ -205,7 +208,7 @@ class EncryptedPersistentSemanticClaimRepository(
             )
         }
         if (
-            relation.type == SemanticClaimRelationType.SUPERSEDES &&
+            canonicalRelation.type == SemanticClaimRelationType.SUPERSEDES &&
             source.id == target.id &&
             source.version.value <= target.version.value
         ) {
@@ -214,12 +217,15 @@ class EncryptedPersistentSemanticClaimRepository(
             )
         }
 
-        val encoded = SemanticClaimRelationPersistentCodec.encode(relation)
+        val encoded =
+            SemanticClaimRelationPersistentCodec.encode(canonicalRelation)
         when (val existing = loadExactRelation(encoded.id)) {
             RelationLookupResult.Missing -> Unit
             is RelationLookupResult.Found -> {
-                return if (existing.relation == relation) {
-                    SemanticRelationStoreResult.AlreadyPresent(relation)
+                return if (existing.relation == canonicalRelation) {
+                    SemanticRelationStoreResult.AlreadyPresent(
+                        canonicalRelation
+                    )
                 } else {
                     SemanticRelationStoreResult.Rejected(
                         "semantic relation id already exists with different content"
@@ -255,14 +261,17 @@ class EncryptedPersistentSemanticClaimRepository(
 
         return when (installed) {
             is CognitiveEncryptionResult.Success ->
-                SemanticRelationStoreResult.Stored(relation)
+                SemanticRelationStoreResult.Stored(canonicalRelation)
 
             is CognitiveEncryptionResult.Rejected ->
                 if (
                     installed.category ==
                     CognitiveEncryptionFailureCategory.PERSISTENCE_CONFLICT
                 ) {
-                    classifyRelationInstallConflict(relation, encoded.id)
+                    classifyRelationInstallConflict(
+                        canonicalRelation,
+                        encoded.id
+                    )
                 } else {
                     SemanticRelationStoreResult.EncryptionUnavailable(
                         installed.category

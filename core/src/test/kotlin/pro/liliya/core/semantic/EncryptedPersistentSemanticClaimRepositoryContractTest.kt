@@ -126,6 +126,40 @@ class EncryptedPersistentSemanticClaimRepositoryContractTest {
     }
 
     @Test
+    fun contradiction_relation_is_symmetric_and_reverse_replay_is_idempotent() {
+        val backend = IndexedBackend()
+        val repository = openRepository(backend, "semantic-contradiction-symmetric")
+        val one = claim("Russian", 1, "preferred_language", "episode-contradiction-one")
+        val two = claim("Ukrainian", 1, "preferred_language", "episode-contradiction-two")
+        assertIs<SemanticClaimStoreResult.Stored>(repository.storeClaim(one))
+        assertIs<SemanticClaimStoreResult.Stored>(repository.storeClaim(two))
+
+        val forward = SemanticClaimRelation(
+            type = SemanticClaimRelationType.CONTRADICTS,
+            source = SemanticClaimVersionReference(one.id, one.version),
+            target = SemanticClaimVersionReference(two.id, two.version),
+            recordedAt = Instant.parse("2026-09-24T21:05:00Z")
+        )
+        val reverse = forward.copy(
+            source = forward.target,
+            target = forward.source
+        )
+
+        assertEquals(
+            SemanticClaimRelationPersistentCodec.relationId(forward),
+            SemanticClaimRelationPersistentCodec.relationId(reverse)
+        )
+        val stored = assertIs<SemanticRelationStoreResult.Stored>(
+            repository.storeRelation(forward)
+        )
+        val replay = assertIs<SemanticRelationStoreResult.AlreadyPresent>(
+            repository.storeRelation(reverse)
+        )
+        assertEquals(stored.relation, replay.relation)
+        assertEquals(0, backend.pageLoadCalls)
+    }
+
+    @Test
     fun contradiction_across_different_predicates_is_rejected() {
         val repository = openRepository(IndexedBackend(), "semantic-cross-group")
         val language = claim("Russian", 1, "preferred_language", "episode-language")
