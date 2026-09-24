@@ -55,7 +55,7 @@ internal object ProductionAndroidLanTls {
         val certificate = CertificateFactory.getInstance("X.509")
             .generateCertificate(caCertificateDer.inputStream())
         val anchors = KeyStore.getInstance(KeyStore.getDefaultType())
-        anchors.load(null)
+        anchors.load(null, null)
         anchors.setCertificateEntry("deployment-ca", certificate)
         val manager = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm())
         manager.init(anchors)
