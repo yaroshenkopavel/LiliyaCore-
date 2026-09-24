@@ -69,7 +69,7 @@ internal object SemanticClaimPersistentCodec {
         }
 
         return PersistentRecord(
-            id = PersistentEntityId(recordKey(record)),
+            id = persistentId(record.id, record.version),
             schemaId = schemaId,
             schemaVersion = schemaVersion,
             payload = PersistentPayload(bytes),
@@ -153,7 +153,7 @@ internal object SemanticClaimPersistentCodec {
                 )
             )
 
-            if (record.id.value != recordKey(decoded) ||
+            if (record.id != persistentId(decoded.id, decoded.version) ||
                 record.createdAt != extraction.extractedAt
             ) {
                 return SemanticClaimPersistentDecodeResult.Corrupt
@@ -169,8 +169,11 @@ internal object SemanticClaimPersistentCodec {
         }
     }
 
-    private fun recordKey(record: SemanticClaimRecord): String =
-        "${record.id.value}:v${record.version.value}"
+    fun persistentId(
+        claimId: SemanticClaimId,
+        version: SemanticClaimVersion
+    ): PersistentEntityId =
+        PersistentEntityId("${claimId.value}:v${version.value}")
 
     private fun DataOutputStream.writeClaimObject(value: SemanticClaimObject) {
         when (value) {
