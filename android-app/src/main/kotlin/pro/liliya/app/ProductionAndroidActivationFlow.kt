@@ -64,15 +64,22 @@ internal object ProductionAndroidActivationFlow {
                 }
 
                 val client = try {
-                    LicenseActivationTransportClient(
-                        LicenseActivationTransportConfig(
+                    val configuration = LicenseActivationTransportConfig(
                             endpoint = activationEndpoint,
                             connectTimeoutMillis = profile.transport.connectTimeoutMillis,
                             readTimeoutMillis = profile.transport.readTimeoutMillis,
                             developmentAllowInsecureHttp =
                                 profile.transport.developmentAllowInsecureHttp
-                        )
                     )
+                    if (activationEndpoint.host == "liliya-licensing.internal") {
+                        val engine = ProductionAndroidLanConnection.discoverEngine(context, profile)
+                            ?: return ProductionAndroidActivationResult.TransportFailed(
+                                LicenseClientTransportFailure.CONNECT_FAILURE
+                            )
+                        LicenseActivationTransportClient(configuration, engine)
+                    } else {
+                        LicenseActivationTransportClient(configuration)
+                    }
                 } catch (_: Throwable) {
                     return ProductionAndroidActivationResult.Failed
                 }

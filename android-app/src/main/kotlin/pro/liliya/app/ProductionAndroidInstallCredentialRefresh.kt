@@ -64,8 +64,17 @@ internal object ProductionAndroidInstallCredentialRefresh {
                     verified = verifiedCurrentLicense,
                     requestId = LicenseServiceRequestId(UUID.randomUUID().toString())
                 )
+                val client = if (profile.transport.endpoint.host == "liliya-licensing.internal") {
+                    val engine = ProductionAndroidLanConnection.discoverEngine(context, profile)
+                        ?: return ProductionAndroidRefreshResult.TransportFailed(
+                            LicenseClientTransportFailure.CONNECT_FAILURE
+                        )
+                    LicenseHttpTransportClient(profile.transport, engine)
+                } else {
+                    LicenseHttpTransportClient(profile.transport)
+                }
                 LicenseHttpBearerCredential.of(secret).use { credential ->
-                    LicenseHttpTransportClient(profile.transport).execute(request, credential)
+                    client.execute(request, credential)
                 }
             } catch (_: RuntimeException) {
                 LicenseClientTransportResult.Failed(LicenseClientTransportFailure.INVALID_LOCAL_REQUEST)

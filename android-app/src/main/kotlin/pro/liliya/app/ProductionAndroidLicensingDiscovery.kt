@@ -5,9 +5,10 @@ import android.net.ConnectivityManager
 import android.net.Network
 import java.net.Inet4Address
 import java.net.InetAddress
-import java.net.InetSocketAddress
-import javax.net.ssl.SNIHostName
-import javax.net.ssl.SSLSocket
+import java.util.concurrent.ExecutorCompletionService
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.Callable
 import javax.net.ssl.SSLSocketFactory
 
 /** A candidate is selected only after its TLS identity and readiness response are verified. */
@@ -26,16 +27,8 @@ internal class StrictLicensingReadyProbe(
     }
 
     override fun isReady(network: Network, address: Inet4Address): Boolean = try {
-        network.socketFactory.createSocket().use { raw ->
-            raw.connect(InetSocketAddress(address, port), 350)
-            raw.soTimeout = 1200
-            (factory.createSocket(raw, logicalHost, port, true) as SSLSocket).use { tls ->
-                tls.soTimeout = 1200
-                tls.sslParameters = tls.sslParameters.apply {
-                    endpointIdentificationAlgorithm = "HTTPS"
-                    serverNames = listOf(SNIHostName(logicalHost))
-                }
-                tls.startHandshake()
+        ProductionAndroidLanTls.connect(network, address, port, factory, 350, 1200)
+            .use { tls ->
                 tls.outputStream.write(
                     "GET /health/ready HTTP/1.1\r\nHost: $logicalHost\r\n".toByteArray(Charsets.US_ASCII) +
                         "Connection: close\r\nAccept: application/json\r\n\r\n".toByteArray(Charsets.US_ASCII)
@@ -51,7 +44,6 @@ internal class StrictLicensingReadyProbe(
                 val separator = text.indexOf("\r\n\r\n")
                 separator >= 0 && text.startsWith("HTTP/1.1 200 ") &&
                     text.substring(separator + 4) == "{\"status\":\"ready\"}"
-            }
         }
     } catch (_: Exception) {
         false
@@ -61,8 +53,10 @@ internal class StrictLicensingReadyProbe(
 internal object ProductionAndroidLicensingDiscovery {
     private const val MAX_CANDIDATES = 512
 
+    data class Found(val network: Network, val address: Inet4Address)
+
     /** Uses only the active Android network; no fixed gateway, interface name or IP range. */
-    fun discover(context: Context, probe: LicensingReadyProbe): Inet4Address? {
+    fun discover(context: Context, probe: LicensingReadyProbe): Found? {
         val connectivity = context.getSystemService(ConnectivityManager::class.java)
             ?: return null
         val network = connectivity.activeNetwork ?: return null
@@ -75,12 +69,27 @@ internal object ProductionAndroidLicensingDiscovery {
             val local = link.address as? Inet4Address ?: return@forEach
             candidates.addAll(localCandidates(local, link.prefixLength))
         }
-        val deadline = System.nanoTime() + 12_000_000_000L
-        for (address in candidates.take(MAX_CANDIDATES)) {
-            if (System.nanoTime() >= deadline) break
-            if (runCatching { probe.isReady(network, address) }.getOrDefault(false)) {
-                return address
+        if (candidates.isEmpty()) return null
+        val executor = Executors.newFixedThreadPool(16)
+        try {
+            val completion = ExecutorCompletionService<Found?>(executor)
+            val ordered = candidates.take(MAX_CANDIDATES)
+            ordered.forEach { address ->
+                completion.submit(Callable<Found?> {
+                    if (runCatching { probe.isReady(network, address) }.getOrDefault(false)) {
+                        Found(network, address)
+                    } else null
+                })
             }
+            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(12)
+            repeat(ordered.size) {
+                val remaining = deadline - System.nanoTime()
+                if (remaining <= 0) return null
+                val result = completion.poll(remaining, TimeUnit.NANOSECONDS) ?: return null
+                result.get()?.let { return it }
+            }
+        } finally {
+            executor.shutdownNow()
         }
         return null
     }
