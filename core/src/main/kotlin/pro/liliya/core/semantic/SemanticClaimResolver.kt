@@ -5,7 +5,8 @@ import java.time.Instant
 enum class SemanticResolutionOperator {
     CURRENT_VALUE,
     HISTORICAL_VALUE,
-    PREVIOUS_VALUE
+    PREVIOUS_VALUE,
+    AGGREGATION
 }
 
 enum class SemanticClaimCardinality {
@@ -24,8 +25,15 @@ data class SemanticResolutionQuery(
     val operator: SemanticResolutionOperator,
     val worldTime: Instant,
     val knowledgeTime: Instant,
-    val cardinality: SemanticClaimCardinality
-)
+    val cardinality: SemanticClaimCardinality,
+    val policyId: String? = null
+) {
+    init {
+        require(policyId == null || policyId.isNotBlank()) {
+            "semantic resolution policy id must not be blank"
+        }
+    }
+}
 
 data class SemanticResolutionAudit(
     val operator: SemanticResolutionOperator,
@@ -36,7 +44,8 @@ data class SemanticResolutionAudit(
     val visibleVersionCount: Int,
     val temporalCandidateCount: Int,
     val selectedClaimIds: List<SemanticClaimId>,
-    val conflictReason: SemanticConflictReason? = null
+    val conflictReason: SemanticConflictReason? = null,
+    val policyId: String? = null
 )
 
 sealed interface SemanticResolutionResult {
@@ -85,7 +94,8 @@ object DeterministicSemanticClaimResolver {
 
         val temporal = when (query.operator) {
             SemanticResolutionOperator.CURRENT_VALUE,
-            SemanticResolutionOperator.HISTORICAL_VALUE ->
+            SemanticResolutionOperator.HISTORICAL_VALUE,
+            SemanticResolutionOperator.AGGREGATION ->
                 canonical.filter { it.isValidAt(query.worldTime) }
 
             SemanticResolutionOperator.PREVIOUS_VALUE ->
@@ -193,7 +203,8 @@ object DeterministicSemanticClaimResolver {
                 visibleVersionCount = visibleCount,
                 temporalCandidateCount = temporalCount,
                 selectedClaimIds = candidates.map { it.id }.distinct(),
-                conflictReason = reason
+                conflictReason = reason,
+                policyId = query.policyId
             )
         )
 
@@ -211,7 +222,8 @@ object DeterministicSemanticClaimResolver {
             inputCount = inputCount,
             visibleVersionCount = visibleCount,
             temporalCandidateCount = temporal.size,
-            selectedClaimIds = temporal.map { it.id }.distinct()
+            selectedClaimIds = temporal.map { it.id }.distinct(),
+            policyId = query.policyId
         )
 
     private val recordOrder =
