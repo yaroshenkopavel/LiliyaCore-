@@ -13,6 +13,7 @@ import pro.liliya.core.persistence.PersistentBackendPageRequest
 import pro.liliya.core.persistence.PersistentEntityId
 import pro.liliya.core.persistence.PersistentPayload
 import pro.liliya.core.persistence.PersistentRecord
+import pro.liliya.core.persistence.PersistentRecordLookupResult
 
 sealed interface SemanticClaimStoreResult {
     data class Stored(val record: SemanticClaimRecord) : SemanticClaimStoreResult
@@ -230,7 +231,16 @@ class EncryptedPersistentSemanticClaimRepository(
     }
 
     private fun loadExactRelation(id: PersistentEntityId): RelationLookupResult {
-        val snapshot = encryptedStore.inspect(id) ?: return RelationLookupResult.Missing
+        val snapshot = when (val inspected = encryptedStore.inspectResult(id)) {
+            PersistentRecordLookupResult.Missing -> return RelationLookupResult.Missing
+            is PersistentRecordLookupResult.Found -> inspected.snapshot
+            PersistentRecordLookupResult.Corrupt ->
+                return RelationLookupResult.Failed("semantic relation persistent entry is corrupt")
+            is PersistentRecordLookupResult.Incompatible ->
+                return RelationLookupResult.Failed(inspected.reason)
+            is PersistentRecordLookupResult.Failed ->
+                return RelationLookupResult.Failed(inspected.reason, inspected.throwable)
+        }
         if (snapshot.record.schemaId != SemanticClaimRelationPersistentCodec.schemaId) {
             return RelationLookupResult.Failed("semantic relation schema id mismatch")
         }
@@ -238,7 +248,10 @@ class EncryptedPersistentSemanticClaimRepository(
             is CognitiveEncryptionResult.Success -> opened.value
             is CognitiveEncryptionResult.Rejected -> return RelationLookupResult.Rejected(opened.category)
             is CognitiveEncryptionResult.Failed ->
-                return RelationLookupResult.Rejected(opened.category)
+                return RelationLookupResult.Failed(
+                    "semantic relation decryption failed",
+                    opened.throwable
+                )
         }
         val bytes = plaintext.copyBytes()
         val decoded = try {

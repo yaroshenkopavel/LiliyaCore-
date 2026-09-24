@@ -148,6 +148,38 @@ class EncryptedPersistentSemanticClaimRepositoryContractTest {
     }
 
     @Test
+    fun corrupt_exact_relation_lookup_fails_closed_instead_of_becoming_missing() {
+        val backend = IndexedBackend()
+        val repository = openRepository(backend, "semantic-relation-corrupt")
+        val old = claim("Russian", 1, "preferred_language", "episode-old-corrupt")
+        val current = claim("Ukrainian", 1, "preferred_language", "episode-new-corrupt")
+        assertIs<SemanticClaimStoreResult.Stored>(repository.storeClaim(old))
+        assertIs<SemanticClaimStoreResult.Stored>(repository.storeClaim(current))
+
+        val relation = SemanticClaimRelation(
+            type = SemanticClaimRelationType.SUPERSEDES,
+            source = SemanticClaimVersionReference(current.id, current.version),
+            target = SemanticClaimVersionReference(old.id, old.version),
+            recordedAt = Instant.parse("2026-09-24T21:15:00Z")
+        )
+        assertIs<SemanticRelationStoreResult.Stored>(
+            repository.storeRelation(relation)
+        )
+
+        backend.corruptEntryId = PersistentEntityId(
+            SemanticClaimRelationPersistentCodec.relationId(relation)
+        )
+
+        val failed = assertIs<SemanticRelationStoreResult.Failed>(
+            repository.storeRelation(relation)
+        )
+        assertEquals(
+            "semantic relation persistent entry is corrupt",
+            failed.reason
+        )
+    }
+
+    @Test
     fun same_claim_supersession_must_point_from_newer_version_to_older_version() {
         val repository = openRepository(IndexedBackend(), "semantic-version-relation")
         val v1 = claim("Russian", 1, "preferred_language", "episode-v1")
@@ -254,6 +286,7 @@ class EncryptedPersistentSemanticClaimRepositoryContractTest {
         private val entries = LinkedHashMap<PersistentEntityId, PersistentBackendEntry>()
         private var revision = 0L
         private var highWatermark = 0L
+        var corruptEntryId: PersistentEntityId? = null
 
         override fun load(storeId: PersistentStoreId): PersistentBackendLoadResult =
             PersistentBackendLoadResult.Failed("legacy load must not be used")
@@ -277,12 +310,16 @@ class EncryptedPersistentSemanticClaimRepositoryContractTest {
         override fun loadEntry(
             storeId: PersistentStoreId,
             entityId: PersistentEntityId
-        ): PersistentBackendEntryLoadResult =
-            entries[entityId]?.let {
+        ): PersistentBackendEntryLoadResult {
+            if (entityId == corruptEntryId) {
+                return PersistentBackendEntryLoadResult.Corrupt
+            }
+            return entries[entityId]?.let {
                 PersistentBackendEntryLoadResult.Loaded(
                     PersistentRecordSnapshot(it.record, it.generation)
                 )
             } ?: PersistentBackendEntryLoadResult.Missing
+        }
 
         override fun loadPage(
             storeId: PersistentStoreId,
