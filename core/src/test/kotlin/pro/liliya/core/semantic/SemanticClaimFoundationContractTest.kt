@@ -39,7 +39,7 @@ class SemanticClaimFoundationContractTest {
         version: Long = 1L,
         value: SemanticClaimObject = SemanticClaimObject.Text("Russian")
     ): SemanticClaimRecord = SemanticClaimRecord(
-        id = SemanticClaimIds.forIdentity(identity),
+        id = SemanticClaimIds.forClaim(identity, value),
         version = SemanticClaimVersion(version),
         identity = identity,
         objectValue = value,
@@ -53,24 +53,35 @@ class SemanticClaimFoundationContractTest {
     )
 
     @Test
-    fun deterministic_identity_depends_on_subject_and_predicate_not_object_value() {
-        val first = SemanticClaimIds.forIdentity(identity)
-        val sameIdentityDifferentObject = record(
-            version = 2,
-            value = SemanticClaimObject.Text("Ukrainian")
-        )
+    fun claim_identity_includes_object_while_conflict_group_is_subject_predicate_only() {
+        val russian = record(value = SemanticClaimObject.Text("Russian"))
+        val ukrainian = record(value = SemanticClaimObject.Text("Ukrainian"))
 
-        assertEquals(first, sameIdentityDifferentObject.id)
-        assertEquals(identity, sameIdentityDifferentObject.identity)
+        assertNotEquals(russian.id, ukrainian.id)
+        assertEquals(
+            SemanticClaimIds.forConflictGroup(russian.identity),
+            SemanticClaimIds.forConflictGroup(ukrainian.identity)
+        )
     }
 
     @Test
-    fun different_predicate_produces_different_claim_identity() {
-        val one = SemanticClaimIds.forIdentity(identity)
-        val two = SemanticClaimIds.forIdentity(
+    fun different_predicate_produces_different_conflict_group() {
+        val one = SemanticClaimIds.forConflictGroup(identity)
+        val two = SemanticClaimIds.forConflictGroup(
             identity.copy(predicate = "preferred_timezone")
         )
         assertNotEquals(one, two)
+    }
+
+    @Test
+    fun same_claim_object_keeps_identity_across_versions() {
+        val one = record(version = 1)
+        val two = record(version = 2)
+        assertEquals(one.id, two.id)
+        assertEquals(
+            SemanticClaimIds.forConflictGroup(one.identity),
+            SemanticClaimIds.forConflictGroup(two.identity)
+        )
     }
 
     @Test
@@ -84,14 +95,9 @@ class SemanticClaimFoundationContractTest {
     }
 
     @Test
-    fun separate_versions_have_separate_persistent_records_but_same_claim_id() {
+    fun separate_versions_have_separate_persistent_records_for_same_claim() {
         val one = SemanticClaimPersistentCodec.encode(record(version = 1))
-        val two = SemanticClaimPersistentCodec.encode(
-            record(
-                version = 2,
-                value = SemanticClaimObject.Text("Ukrainian")
-            )
-        )
+        val two = SemanticClaimPersistentCodec.encode(record(version = 2))
 
         assertNotEquals(one.id, two.id)
         val decodedOne = assertIs<SemanticClaimPersistentDecodeResult.Decoded>(
@@ -160,5 +166,12 @@ class SemanticClaimFoundationContractTest {
                 supersededAt = Instant.parse("2026-09-24T19:59:59Z")
             )
         }
+    }
+
+    @Test
+    fun numeric_object_requires_single_canonical_decimal_representation() {
+        assertEquals("1", SemanticClaimObject.Number("1").canonical)
+        assertFailsWith<IllegalArgumentException> { SemanticClaimObject.Number("1.0") }
+        assertFailsWith<IllegalArgumentException> { SemanticClaimObject.Number("01") }
     }
 }

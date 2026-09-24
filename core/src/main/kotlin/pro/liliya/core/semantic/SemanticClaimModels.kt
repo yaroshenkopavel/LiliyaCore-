@@ -35,7 +35,10 @@ sealed interface SemanticClaimObject {
     data class Number(val canonical: String) : SemanticClaimObject {
         init {
             require(canonical.isNotBlank()) { "semantic numeric value must not be blank" }
-            require(canonical.toBigDecimalOrNull() != null) {
+            val normalized = canonical.toBigDecimalOrNull()
+                ?.stripTrailingZeros()
+                ?.toPlainString()
+            require(normalized != null && canonical == normalized) {
                 "semantic numeric value must be canonical decimal text"
             }
         }

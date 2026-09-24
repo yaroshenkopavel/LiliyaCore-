@@ -32,7 +32,7 @@ internal object SemanticClaimPersistentCodec {
     private const val MAX_RAW_PROVENANCE = 256
 
     fun encode(record: SemanticClaimRecord): PersistentRecord {
-        require(record.id == SemanticClaimIds.forIdentity(record.identity)) {
+        require(record.id == SemanticClaimIds.forClaim(record.identity, record.objectValue)) {
             "semantic claim id must match deterministic identity"
         }
         val bytes = ByteArrayOutputStream().use { output ->
@@ -98,11 +98,10 @@ internal object SemanticClaimPersistentCodec {
                 ),
                 predicate = data.readString(input)
             )
-            if (id != SemanticClaimIds.forIdentity(identity)) {
+            val objectValue = data.readClaimObject(input)
+            if (id != SemanticClaimIds.forClaim(identity, objectValue)) {
                 return SemanticClaimPersistentDecodeResult.Corrupt
             }
-
-            val objectValue = data.readClaimObject(input)
             val temporal = SemanticClaimTemporalState(
                 observedAt = data.readInstant(),
                 validFrom = data.readOptionalInstant(),
