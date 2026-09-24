@@ -3,6 +3,7 @@ package pro.liliya.app
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.Network
+import android.net.NetworkCapabilities
 import java.net.Inet4Address
 import java.net.InetAddress
 import java.util.concurrent.ExecutorCompletionService
@@ -55,29 +56,52 @@ internal object ProductionAndroidLicensingDiscovery {
 
     data class Found(val network: Network, val address: Inet4Address)
 
-    /** Uses only the active Android network; no fixed gateway, interface name or IP range. */
+    /** Probes local Wi-Fi/Ethernet even when cellular remains the default network. */
     fun discover(context: Context, probe: LicensingReadyProbe): Found? {
         val connectivity = context.getSystemService(ConnectivityManager::class.java)
             ?: return null
-        val network = connectivity.activeNetwork ?: return null
-        val properties = connectivity.getLinkProperties(network) ?: return null
-        val candidates = LinkedHashSet<Inet4Address>()
-        properties.routes.forEach { route ->
-            (route.gateway as? Inet4Address)?.takeIf(::isPrivate)?.let { candidates.add(it) }
+        val active = connectivity.activeNetwork
+        val networks = connectivity.allNetworks.filter { network ->
+            val capabilities = connectivity.getNetworkCapabilities(network)
+            capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true ||
+                capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) == true
+        }.sortedBy { if (it == active) 0 else 1 }
+        val perNetwork = networks.map { network ->
+            val candidates = LinkedHashSet<Found>()
+            val properties = connectivity.getLinkProperties(network) ?: return@map emptyList()
+            properties.routes.forEach { route ->
+                (route.gateway as? Inet4Address)?.takeIf(::isPrivate)?.let {
+                    candidates.add(Found(network, it))
+                }
+            }
+            properties.linkAddresses.forEach linkLoop@{ link ->
+                val local = link.address as? Inet4Address ?: return@linkLoop
+                localCandidates(local, link.prefixLength).forEach { address ->
+                    candidates.add(Found(network, address))
+                }
+            }
+            candidates.toList()
         }
-        properties.linkAddresses.forEach { link ->
-            val local = link.address as? Inet4Address ?: return@forEach
-            candidates.addAll(localCandidates(local, link.prefixLength))
+        val ordered = ArrayList<Found>(MAX_CANDIDATES)
+        var offset = 0
+        while (ordered.size < MAX_CANDIDATES && perNetwork.any { offset < it.size }) {
+            perNetwork.forEach { networkCandidates ->
+                if (offset < networkCandidates.size && ordered.size < MAX_CANDIDATES) {
+                    ordered += networkCandidates[offset]
+                }
+            }
+            offset++
         }
-        if (candidates.isEmpty()) return null
+        if (ordered.isEmpty()) return null
         val executor = Executors.newFixedThreadPool(16)
         try {
             val completion = ExecutorCompletionService<Found?>(executor)
-            val ordered = candidates.take(MAX_CANDIDATES)
-            ordered.forEach { address ->
+            ordered.forEach { candidate ->
                 completion.submit(Callable<Found?> {
-                    if (runCatching { probe.isReady(network, address) }.getOrDefault(false)) {
-                        Found(network, address)
+                    if (runCatching {
+                            probe.isReady(candidate.network, candidate.address)
+                        }.getOrDefault(false)) {
+                        candidate
                     } else null
                 })
             }
