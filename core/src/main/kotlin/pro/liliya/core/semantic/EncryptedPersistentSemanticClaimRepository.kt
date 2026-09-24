@@ -5,11 +5,7 @@ import pro.liliya.core.encryption.CognitiveEncryptionFailureCategory
 import pro.liliya.core.encryption.CognitiveEncryptionResult
 import pro.liliya.core.encryption.CognitivePersistentRecordDraft
 import pro.liliya.core.encryption.CognitivePlaintext
-import pro.liliya.core.encryption.EncryptedPersistentRecordPageResult
 import pro.liliya.core.encryption.EncryptedPersistentRecordStore
-import pro.liliya.core.persistence.PersistentBackendPageCursor
-import pro.liliya.core.persistence.PersistentBackendPageOrder
-import pro.liliya.core.persistence.PersistentBackendPageRequest
 import pro.liliya.core.persistence.PersistentEntityId
 import pro.liliya.core.persistence.PersistentPayload
 import pro.liliya.core.persistence.PersistentRecord
@@ -19,16 +15,26 @@ sealed interface SemanticClaimStoreResult {
     data class Stored(val record: SemanticClaimRecord) : SemanticClaimStoreResult
     data class AlreadyPresent(val record: SemanticClaimRecord) : SemanticClaimStoreResult
     data class Rejected(val reason: String) : SemanticClaimStoreResult
-    data class EncryptionUnavailable(val category: CognitiveEncryptionFailureCategory) : SemanticClaimStoreResult
-    data class Failed(val reason: String, val throwable: Throwable? = null) : SemanticClaimStoreResult
+    data class EncryptionUnavailable(
+        val category: CognitiveEncryptionFailureCategory
+    ) : SemanticClaimStoreResult
+    data class Failed(
+        val reason: String,
+        val throwable: Throwable? = null
+    ) : SemanticClaimStoreResult
 }
 
 sealed interface SemanticRelationStoreResult {
     data class Stored(val relation: SemanticClaimRelation) : SemanticRelationStoreResult
     data class AlreadyPresent(val relation: SemanticClaimRelation) : SemanticRelationStoreResult
     data class Rejected(val reason: String) : SemanticRelationStoreResult
-    data class EncryptionUnavailable(val category: CognitiveEncryptionFailureCategory) : SemanticRelationStoreResult
-    data class Failed(val reason: String, val throwable: Throwable? = null) : SemanticRelationStoreResult
+    data class EncryptionUnavailable(
+        val category: CognitiveEncryptionFailureCategory
+    ) : SemanticRelationStoreResult
+    data class Failed(
+        val reason: String,
+        val throwable: Throwable? = null
+    ) : SemanticRelationStoreResult
 }
 
 class EncryptedPersistentSemanticClaimRepository(
@@ -39,32 +45,75 @@ class EncryptedPersistentSemanticClaimRepository(
         val encoded = try {
             SemanticClaimPersistentCodec.encode(record)
         } catch (error: IllegalArgumentException) {
-            return SemanticClaimStoreResult.Rejected(error.message ?: "invalid semantic claim")
+            return SemanticClaimStoreResult.Rejected(
+                error.message ?: "invalid semantic claim"
+            )
         }
 
-        val history = when (val loaded = loadAllClaims()) {
-            is ClaimHistoryResult.Loaded -> loaded.records.filter { it.id == record.id }
-            is ClaimHistoryResult.Rejected ->
-                return SemanticClaimStoreResult.EncryptionUnavailable(loaded.category)
-            is ClaimHistoryResult.Failed ->
-                return SemanticClaimStoreResult.Failed(loaded.reason, loaded.throwable)
+        when (
+            val existing = loadExactClaim(
+                SemanticClaimVersionReference(record.id, record.version)
+            )
+        ) {
+            ClaimLookupResult.Missing -> Unit
+            is ClaimLookupResult.Found -> {
+                return if (existing.record == record) {
+                    SemanticClaimStoreResult.AlreadyPresent(record)
+                } else {
+                    SemanticClaimStoreResult.Rejected(
+                        "semantic claim version already exists with different content"
+                    )
+                }
+            }
+            is ClaimLookupResult.Rejected ->
+                return SemanticClaimStoreResult.EncryptionUnavailable(existing.category)
+            is ClaimLookupResult.Failed ->
+                return SemanticClaimStoreResult.Failed(
+                    existing.reason,
+                    existing.throwable
+                )
         }
 
-        val exactVersion = history.filter { it.version == record.version }
-        if (exactVersion.isNotEmpty()) {
-            return if (exactVersion.size == 1 && exactVersion.single() == record) {
-                SemanticClaimStoreResult.AlreadyPresent(record)
-            } else {
-                SemanticClaimStoreResult.Rejected("semantic claim version already exists with different content")
+        if (record.version.value > 1L) {
+            val previous = SemanticClaimVersionReference(
+                claimId = record.id,
+                version = SemanticClaimVersion(record.version.value - 1L)
+            )
+            when (val loaded = loadExactClaim(previous)) {
+                is ClaimLookupResult.Found -> Unit
+                ClaimLookupResult.Missing ->
+                    return SemanticClaimStoreResult.Rejected(
+                        "previous semantic claim version is missing"
+                    )
+                is ClaimLookupResult.Rejected ->
+                    return SemanticClaimStoreResult.EncryptionUnavailable(loaded.category)
+                is ClaimLookupResult.Failed ->
+                    return SemanticClaimStoreResult.Failed(
+                        loaded.reason,
+                        loaded.throwable
+                    )
             }
         }
 
-        val maxVersion = history.maxOfOrNull { it.version.value }
-        val expected = (maxVersion ?: 0L) + 1L
-        if (record.version.value != expected) {
-            return SemanticClaimStoreResult.Rejected(
-                "semantic claim version must be exactly next monotonic version: expected $expected"
+        if (record.version.value < Long.MAX_VALUE) {
+            val successor = SemanticClaimVersionReference(
+                claimId = record.id,
+                version = SemanticClaimVersion(record.version.value + 1L)
             )
+            when (val loaded = loadExactClaim(successor)) {
+                ClaimLookupResult.Missing -> Unit
+                is ClaimLookupResult.Found ->
+                    return SemanticClaimStoreResult.Rejected(
+                        "later semantic claim version already exists"
+                    )
+                is ClaimLookupResult.Rejected ->
+                    return SemanticClaimStoreResult.EncryptionUnavailable(loaded.category)
+                is ClaimLookupResult.Failed ->
+                    return SemanticClaimStoreResult.Failed(
+                        loaded.reason,
+                        loaded.throwable
+                    )
+            }
         }
 
         val bytes = encoded.payload.copyBytes()
@@ -84,30 +133,69 @@ class EncryptedPersistentSemanticClaimRepository(
         }
 
         return when (installed) {
-            is CognitiveEncryptionResult.Success -> SemanticClaimStoreResult.Stored(record)
+            is CognitiveEncryptionResult.Success ->
+                SemanticClaimStoreResult.Stored(record)
+
             is CognitiveEncryptionResult.Rejected ->
-                SemanticClaimStoreResult.EncryptionUnavailable(installed.category)
+                if (
+                    installed.category ==
+                    CognitiveEncryptionFailureCategory.PERSISTENCE_CONFLICT
+                ) {
+                    classifyClaimInstallConflict(record)
+                } else {
+                    SemanticClaimStoreResult.EncryptionUnavailable(
+                        installed.category
+                    )
+                }
+
             is CognitiveEncryptionResult.Failed ->
-                SemanticClaimStoreResult.Failed("semantic claim persistence failed", installed.throwable)
+                SemanticClaimStoreResult.Failed(
+                    "semantic claim persistence failed",
+                    installed.throwable
+                )
         }
     }
 
-    fun storeRelation(relation: SemanticClaimRelation): SemanticRelationStoreResult {
-        val claims = when (val loaded = loadAllClaims()) {
-            is ClaimHistoryResult.Loaded -> loaded.records
-            is ClaimHistoryResult.Rejected ->
-                return SemanticRelationStoreResult.EncryptionUnavailable(loaded.category)
-            is ClaimHistoryResult.Failed ->
-                return SemanticRelationStoreResult.Failed(loaded.reason, loaded.throwable)
+    fun storeRelation(
+        relation: SemanticClaimRelation
+    ): SemanticRelationStoreResult {
+        val source = when (
+            val loaded = loadExactClaim(relation.source)
+        ) {
+            is ClaimLookupResult.Found -> loaded.record
+            ClaimLookupResult.Missing ->
+                return SemanticRelationStoreResult.Rejected(
+                    "relation source version is missing"
+                )
+            is ClaimLookupResult.Rejected ->
+                return SemanticRelationStoreResult.EncryptionUnavailable(
+                    loaded.category
+                )
+            is ClaimLookupResult.Failed ->
+                return SemanticRelationStoreResult.Failed(
+                    loaded.reason,
+                    loaded.throwable
+                )
         }
 
-        val source = claims.singleOrNull {
-            it.id == relation.source.claimId && it.version == relation.source.version
-        } ?: return SemanticRelationStoreResult.Rejected("relation source version is missing")
-
-        val target = claims.singleOrNull {
-            it.id == relation.target.claimId && it.version == relation.target.version
-        } ?: return SemanticRelationStoreResult.Rejected("relation target version is missing")
+        val target = when (
+            val loaded = loadExactClaim(relation.target)
+        ) {
+            is ClaimLookupResult.Found -> loaded.record
+            ClaimLookupResult.Missing ->
+                return SemanticRelationStoreResult.Rejected(
+                    "relation target version is missing"
+                )
+            is ClaimLookupResult.Rejected ->
+                return SemanticRelationStoreResult.EncryptionUnavailable(
+                    loaded.category
+                )
+            is ClaimLookupResult.Failed ->
+                return SemanticRelationStoreResult.Failed(
+                    loaded.reason,
+                    loaded.throwable
+                )
+        }
 
         val sourceGroup = SemanticClaimIds.forConflictGroup(source.identity)
         val targetGroup = SemanticClaimIds.forConflictGroup(target.identity)
@@ -116,7 +204,8 @@ class EncryptedPersistentSemanticClaimRepository(
                 "semantic claim relation must remain inside one conflict group"
             )
         }
-        if (relation.type == SemanticClaimRelationType.SUPERSEDES &&
+        if (
+            relation.type == SemanticClaimRelationType.SUPERSEDES &&
             source.id == target.id &&
             source.version.value <= target.version.value
         ) {
@@ -138,9 +227,14 @@ class EncryptedPersistentSemanticClaimRepository(
                 }
             }
             is RelationLookupResult.Rejected ->
-                return SemanticRelationStoreResult.EncryptionUnavailable(existing.category)
+                return SemanticRelationStoreResult.EncryptionUnavailable(
+                    existing.category
+                )
             is RelationLookupResult.Failed ->
-                return SemanticRelationStoreResult.Failed(existing.reason, existing.throwable)
+                return SemanticRelationStoreResult.Failed(
+                    existing.reason,
+                    existing.throwable
+                )
         }
 
         val bytes = encoded.payload.copyBytes()
@@ -160,99 +254,222 @@ class EncryptedPersistentSemanticClaimRepository(
         }
 
         return when (installed) {
-            is CognitiveEncryptionResult.Success -> SemanticRelationStoreResult.Stored(relation)
+            is CognitiveEncryptionResult.Success ->
+                SemanticRelationStoreResult.Stored(relation)
+
             is CognitiveEncryptionResult.Rejected ->
-                SemanticRelationStoreResult.EncryptionUnavailable(installed.category)
-            is CognitiveEncryptionResult.Failed ->
-                SemanticRelationStoreResult.Failed("semantic relation persistence failed", installed.throwable)
-        }
-    }
-
-    private sealed interface ClaimHistoryResult {
-        data class Loaded(val records: List<SemanticClaimRecord>) : ClaimHistoryResult
-        data class Rejected(val category: CognitiveEncryptionFailureCategory) : ClaimHistoryResult
-        data class Failed(val reason: String, val throwable: Throwable? = null) : ClaimHistoryResult
-    }
-
-    private fun loadAllClaims(): ClaimHistoryResult {
-        val records = ArrayList<SemanticClaimRecord>()
-        var cursor: PersistentBackendPageCursor? = null
-        while (true) {
-            when (
-                val page = encryptedStore.decryptedPageResult(
-                    PersistentBackendPageRequest(
-                        limit = PersistentBackendPageRequest.MAX_PAGE_SIZE,
-                        order = PersistentBackendPageOrder.OLDEST_FIRST,
-                        cursorExclusive = cursor,
-                        schemaId = SemanticClaimPersistentCodec.schemaId
+                if (
+                    installed.category ==
+                    CognitiveEncryptionFailureCategory.PERSISTENCE_CONFLICT
+                ) {
+                    classifyRelationInstallConflict(relation, encoded.id)
+                } else {
+                    SemanticRelationStoreResult.EncryptionUnavailable(
+                        installed.category
                     )
-                )
-            ) {
-                EncryptedPersistentRecordPageResult.Empty ->
-                    return ClaimHistoryResult.Loaded(records)
-
-                EncryptedPersistentRecordPageResult.Corrupt ->
-                    return ClaimHistoryResult.Failed("semantic claim page is corrupt")
-
-                is EncryptedPersistentRecordPageResult.Incompatible ->
-                    return ClaimHistoryResult.Failed(page.reason)
-
-                is EncryptedPersistentRecordPageResult.EncryptionUnavailable ->
-                    return ClaimHistoryResult.Rejected(page.category)
-
-                is EncryptedPersistentRecordPageResult.Failed ->
-                    return ClaimHistoryResult.Failed(page.reason, page.throwable)
-
-                is EncryptedPersistentRecordPageResult.Loaded -> {
-                    for (snapshot in page.entries) {
-                        when (val decoded = SemanticClaimPersistentCodec.decode(snapshot.record)) {
-                            is SemanticClaimPersistentDecodeResult.Decoded -> records += decoded.record
-                            SemanticClaimPersistentDecodeResult.Corrupt ->
-                                return ClaimHistoryResult.Failed("semantic claim record is corrupt")
-                            is SemanticClaimPersistentDecodeResult.Incompatible ->
-                                return ClaimHistoryResult.Failed(decoded.reason)
-                        }
-                    }
-                    val next = page.nextCursor ?: return ClaimHistoryResult.Loaded(records)
-                    if (page.entries.isEmpty() || next == cursor) {
-                        return ClaimHistoryResult.Failed("semantic claim page cursor is non-progressing")
-                    }
-                    cursor = next
                 }
-            }
+
+            is CognitiveEncryptionResult.Failed ->
+                SemanticRelationStoreResult.Failed(
+                    "semantic relation persistence failed",
+                    installed.throwable
+                )
         }
     }
+
+    private sealed interface ClaimLookupResult {
+        data object Missing : ClaimLookupResult
+        data class Found(
+            val record: SemanticClaimRecord
+        ) : ClaimLookupResult
+        data class Rejected(
+            val category: CognitiveEncryptionFailureCategory
+        ) : ClaimLookupResult
+        data class Failed(
+            val reason: String,
+            val throwable: Throwable? = null
+        ) : ClaimLookupResult
+    }
+
+    private fun loadExactClaim(
+        reference: SemanticClaimVersionReference
+    ): ClaimLookupResult {
+        val id = SemanticClaimPersistentCodec.persistentId(
+            reference.claimId,
+            reference.version
+        )
+        val snapshot = when (
+            val inspected = encryptedStore.inspectResult(id)
+        ) {
+            PersistentRecordLookupResult.Missing ->
+                return ClaimLookupResult.Missing
+            is PersistentRecordLookupResult.Found ->
+                inspected.snapshot
+            PersistentRecordLookupResult.Corrupt ->
+                return ClaimLookupResult.Failed(
+                    "semantic claim persistent entry is corrupt"
+                )
+            is PersistentRecordLookupResult.Incompatible ->
+                return ClaimLookupResult.Failed(inspected.reason)
+            is PersistentRecordLookupResult.Failed ->
+                return ClaimLookupResult.Failed(
+                    inspected.reason,
+                    inspected.throwable
+                )
+        }
+
+        if (
+            snapshot.record.schemaId !=
+            SemanticClaimPersistentCodec.schemaId
+        ) {
+            return ClaimLookupResult.Failed(
+                "semantic claim schema id mismatch"
+            )
+        }
+
+        val plaintext = when (val opened = encryptedStore.open(id)) {
+            is CognitiveEncryptionResult.Success -> opened.value
+            is CognitiveEncryptionResult.Rejected ->
+                return ClaimLookupResult.Rejected(opened.category)
+            is CognitiveEncryptionResult.Failed ->
+                return ClaimLookupResult.Failed(
+                    "semantic claim decryption failed",
+                    opened.throwable
+                )
+        }
+
+        val bytes = plaintext.copyBytes()
+        val decoded = try {
+            SemanticClaimPersistentCodec.decode(
+                PersistentRecord(
+                    id = snapshot.record.id,
+                    schemaId = snapshot.record.schemaId,
+                    schemaVersion = snapshot.record.schemaVersion,
+                    payload = PersistentPayload(bytes),
+                    createdAt = snapshot.record.createdAt
+                )
+            )
+        } finally {
+            bytes.fill(0)
+        }
+
+        return when (decoded) {
+            is SemanticClaimPersistentDecodeResult.Decoded ->
+                if (
+                    decoded.record.id == reference.claimId &&
+                    decoded.record.version == reference.version
+                ) {
+                    ClaimLookupResult.Found(decoded.record)
+                } else {
+                    ClaimLookupResult.Failed(
+                        "semantic claim exact lookup identity mismatch"
+                    )
+                }
+
+            SemanticClaimPersistentDecodeResult.Corrupt ->
+                ClaimLookupResult.Failed(
+                    "semantic claim record is corrupt"
+                )
+
+            is SemanticClaimPersistentDecodeResult.Incompatible ->
+                ClaimLookupResult.Failed(decoded.reason)
+        }
+    }
+
+    private fun classifyClaimInstallConflict(
+        record: SemanticClaimRecord
+    ): SemanticClaimStoreResult =
+        when (
+            val loaded = loadExactClaim(
+                SemanticClaimVersionReference(
+                    record.id,
+                    record.version
+                )
+            )
+        ) {
+            is ClaimLookupResult.Found ->
+                if (loaded.record == record) {
+                    SemanticClaimStoreResult.AlreadyPresent(record)
+                } else {
+                    SemanticClaimStoreResult.Rejected(
+                        "semantic claim version already exists with different content"
+                    )
+                }
+
+            ClaimLookupResult.Missing ->
+                SemanticClaimStoreResult.Rejected(
+                    "semantic claim persistence conflict"
+                )
+
+            is ClaimLookupResult.Rejected ->
+                SemanticClaimStoreResult.EncryptionUnavailable(
+                    loaded.category
+                )
+
+            is ClaimLookupResult.Failed ->
+                SemanticClaimStoreResult.Failed(
+                    loaded.reason,
+                    loaded.throwable
+                )
+        }
 
     private sealed interface RelationLookupResult {
         data object Missing : RelationLookupResult
-        data class Found(val relation: SemanticClaimRelation) : RelationLookupResult
-        data class Rejected(val category: CognitiveEncryptionFailureCategory) : RelationLookupResult
-        data class Failed(val reason: String, val throwable: Throwable? = null) : RelationLookupResult
+        data class Found(
+            val relation: SemanticClaimRelation
+        ) : RelationLookupResult
+        data class Rejected(
+            val category: CognitiveEncryptionFailureCategory
+        ) : RelationLookupResult
+        data class Failed(
+            val reason: String,
+            val throwable: Throwable? = null
+        ) : RelationLookupResult
     }
 
-    private fun loadExactRelation(id: PersistentEntityId): RelationLookupResult {
-        val snapshot = when (val inspected = encryptedStore.inspectResult(id)) {
-            PersistentRecordLookupResult.Missing -> return RelationLookupResult.Missing
-            is PersistentRecordLookupResult.Found -> inspected.snapshot
+    private fun loadExactRelation(
+        id: PersistentEntityId
+    ): RelationLookupResult {
+        val snapshot = when (
+            val inspected = encryptedStore.inspectResult(id)
+        ) {
+            PersistentRecordLookupResult.Missing ->
+                return RelationLookupResult.Missing
+            is PersistentRecordLookupResult.Found ->
+                inspected.snapshot
             PersistentRecordLookupResult.Corrupt ->
-                return RelationLookupResult.Failed("semantic relation persistent entry is corrupt")
+                return RelationLookupResult.Failed(
+                    "semantic relation persistent entry is corrupt"
+                )
             is PersistentRecordLookupResult.Incompatible ->
                 return RelationLookupResult.Failed(inspected.reason)
             is PersistentRecordLookupResult.Failed ->
-                return RelationLookupResult.Failed(inspected.reason, inspected.throwable)
+                return RelationLookupResult.Failed(
+                    inspected.reason,
+                    inspected.throwable
+                )
         }
-        if (snapshot.record.schemaId != SemanticClaimRelationPersistentCodec.schemaId) {
-            return RelationLookupResult.Failed("semantic relation schema id mismatch")
+
+        if (
+            snapshot.record.schemaId !=
+            SemanticClaimRelationPersistentCodec.schemaId
+        ) {
+            return RelationLookupResult.Failed(
+                "semantic relation schema id mismatch"
+            )
         }
+
         val plaintext = when (val opened = encryptedStore.open(id)) {
             is CognitiveEncryptionResult.Success -> opened.value
-            is CognitiveEncryptionResult.Rejected -> return RelationLookupResult.Rejected(opened.category)
+            is CognitiveEncryptionResult.Rejected ->
+                return RelationLookupResult.Rejected(opened.category)
             is CognitiveEncryptionResult.Failed ->
                 return RelationLookupResult.Failed(
                     "semantic relation decryption failed",
                     opened.throwable
                 )
         }
+
         val bytes = plaintext.copyBytes()
         val decoded = try {
             SemanticClaimRelationPersistentCodec.decode(
@@ -267,13 +484,49 @@ class EncryptedPersistentSemanticClaimRepository(
         } finally {
             bytes.fill(0)
         }
+
         return when (decoded) {
             is SemanticClaimRelationDecodeResult.Decoded ->
                 RelationLookupResult.Found(decoded.relation)
             SemanticClaimRelationDecodeResult.Corrupt ->
-                RelationLookupResult.Failed("semantic relation record is corrupt")
+                RelationLookupResult.Failed(
+                    "semantic relation record is corrupt"
+                )
             is SemanticClaimRelationDecodeResult.Incompatible ->
                 RelationLookupResult.Failed(decoded.reason)
         }
     }
+
+    private fun classifyRelationInstallConflict(
+        relation: SemanticClaimRelation,
+        id: PersistentEntityId
+    ): SemanticRelationStoreResult =
+        when (val loaded = loadExactRelation(id)) {
+            is RelationLookupResult.Found ->
+                if (loaded.relation == relation) {
+                    SemanticRelationStoreResult.AlreadyPresent(
+                        relation
+                    )
+                } else {
+                    SemanticRelationStoreResult.Rejected(
+                        "semantic relation id already exists with different content"
+                    )
+                }
+
+            RelationLookupResult.Missing ->
+                SemanticRelationStoreResult.Rejected(
+                    "semantic relation persistence conflict"
+                )
+
+            is RelationLookupResult.Rejected ->
+                SemanticRelationStoreResult.EncryptionUnavailable(
+                    loaded.category
+                )
+
+            is RelationLookupResult.Failed ->
+                SemanticRelationStoreResult.Failed(
+                    loaded.reason,
+                    loaded.throwable
+                )
+        }
 }

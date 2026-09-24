@@ -60,7 +60,8 @@ class EncryptedPersistentSemanticClaimRepositoryContractTest {
 
     @Test
     fun claim_versions_are_append_only_and_strictly_monotonic() {
-        val repository = openRepository(IndexedBackend(), "semantic-versions")
+        val backend = IndexedBackend()
+        val repository = openRepository(backend, "semantic-versions")
         val v1 = claim("Russian", 1, "preferred_language", "episode-r1")
         val v2 = claim("Russian", 2, "preferred_language", "episode-r2")
         val v3 = claim("Russian", 3, "preferred_language", "episode-r3")
@@ -72,12 +73,13 @@ class EncryptedPersistentSemanticClaimRepositoryContractTest {
             repository.storeClaim(v3)
         )
         assertEquals(
-            "semantic claim version must be exactly next monotonic version: expected 2",
+            "previous semantic claim version is missing",
             skipped.reason
         )
 
         assertIs<SemanticClaimStoreResult.Stored>(repository.storeClaim(v2))
         assertIs<SemanticClaimStoreResult.Stored>(repository.storeClaim(v3))
+        assertEquals(0, backend.pageLoadCalls)
     }
 
     @Test
@@ -287,6 +289,7 @@ class EncryptedPersistentSemanticClaimRepositoryContractTest {
         private var revision = 0L
         private var highWatermark = 0L
         var corruptEntryId: PersistentEntityId? = null
+        var pageLoadCalls: Int = 0
 
         override fun load(storeId: PersistentStoreId): PersistentBackendLoadResult =
             PersistentBackendLoadResult.Failed("legacy load must not be used")
@@ -325,6 +328,7 @@ class EncryptedPersistentSemanticClaimRepositoryContractTest {
             storeId: PersistentStoreId,
             request: PersistentBackendPageRequest
         ): PersistentBackendPageLoadResult {
+            pageLoadCalls += 1
             val ordered = entries.values
                 .filter {
                     request.schemaId == null ||
