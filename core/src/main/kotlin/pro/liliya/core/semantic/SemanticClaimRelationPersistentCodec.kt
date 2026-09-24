@@ -27,21 +27,22 @@ internal object SemanticClaimRelationPersistentCodec {
     private const val MAGIC = 0x53435231
 
     fun encode(relation: SemanticClaimRelation): PersistentRecord {
+        val canonical = canonical(relation)
         val output = ByteArrayOutputStream()
         DataOutputStream(output).use { data ->
             data.writeInt(MAGIC)
-            data.writeString(relation.type.name)
-            data.writeVersionReference(relation.source)
-            data.writeVersionReference(relation.target)
-            data.writeLong(relation.recordedAt.epochSecond)
-            data.writeInt(relation.recordedAt.nano)
+            data.writeString(canonical.type.name)
+            data.writeVersionReference(canonical.source)
+            data.writeVersionReference(canonical.target)
+            data.writeLong(canonical.recordedAt.epochSecond)
+            data.writeInt(canonical.recordedAt.nano)
         }
         return PersistentRecord(
-            id = PersistentEntityId(relationId(relation)),
+            id = PersistentEntityId(relationId(canonical)),
             schemaId = schemaId,
             schemaVersion = schemaVersion,
             payload = PersistentPayload(output.toByteArray()),
-            createdAt = relation.recordedAt
+            createdAt = canonical.recordedAt
         )
     }
 
@@ -78,14 +79,41 @@ internal object SemanticClaimRelationPersistentCodec {
         }
     }
 
+    fun canonical(relation: SemanticClaimRelation): SemanticClaimRelation {
+        if (relation.type != SemanticClaimRelationType.CONTRADICTS) {
+            return relation
+        }
+        return if (compareReferences(relation.source, relation.target) <= 0) {
+            relation
+        } else {
+            relation.copy(
+                source = relation.target,
+                target = relation.source
+            )
+        }
+    }
+
     fun relationId(relation: SemanticClaimRelation): String {
+        val canonical = canonical(relation)
         val digest = MessageDigest.getInstance("SHA-256")
-        put(digest, relation.type.name)
-        put(digest, relation.source.claimId.value)
-        put(digest, relation.source.version.value.toString())
-        put(digest, relation.target.claimId.value)
-        put(digest, relation.target.version.value.toString())
+        put(digest, canonical.type.name)
+        put(digest, canonical.source.claimId.value)
+        put(digest, canonical.source.version.value.toString())
+        put(digest, canonical.target.claimId.value)
+        put(digest, canonical.target.version.value.toString())
         return "claim-relation-" + digest.digest().joinToString("") { "%02x".format(it) }
+    }
+
+    private fun compareReferences(
+        left: SemanticClaimVersionReference,
+        right: SemanticClaimVersionReference
+    ): Int {
+        val claimComparison = left.claimId.value.compareTo(right.claimId.value)
+        return if (claimComparison != 0) {
+            claimComparison
+        } else {
+            left.version.value.compareTo(right.version.value)
+        }
     }
 
     private fun DataOutputStream.writeVersionReference(reference: SemanticClaimVersionReference) {
