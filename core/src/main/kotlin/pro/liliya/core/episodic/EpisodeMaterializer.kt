@@ -109,7 +109,8 @@ class EpisodeMaterializer(
             observedAt = candidate.observedAt,
             eventAt = candidate.eventAt,
             derivedAt = candidate.extraction.extractedAt,
-            extraction = candidate.extraction
+            extraction = candidate.extraction,
+            context = candidate.context
         )
         return when (val stored = repository.store(record)) {
             is EpisodeStoreResult.Stored -> EpisodeMaterializationResult.Materialized(stored.snapshot)
@@ -149,6 +150,40 @@ class EpisodeMaterializer(
         put(candidate.eventAt?.toString() ?: "")
         put(candidate.extraction.extractorId)
         put(candidate.extraction.extractorVersion)
+        candidate.context.entities
+            .sortedWith(compareBy({ it.namespace }, { it.id }, { it.role ?: "" }))
+            .forEach {
+                put(it.namespace)
+                put(it.id)
+                put(it.role ?: "")
+            }
+        candidate.context.task?.let {
+            put("task")
+            put(it.namespace)
+            put(it.id)
+        }
+        candidate.context.goal?.let {
+            put("goal")
+            put(it.namespace)
+            put(it.id)
+        }
+        candidate.context.tags.sorted().forEach {
+            put("tag")
+            put(it)
+        }
+        candidate.context.interval?.let {
+            put("interval")
+            put(it.startInclusive.toString())
+            put(it.endExclusive?.toString() ?: "")
+        }
+        put(candidate.context.significance?.name ?: "")
+        put(candidate.context.extractionConfidence?.name ?: "")
+        candidate.context.links
+            .sortedWith(compareBy({ it.type.name }, { it.target.value }))
+            .forEach {
+                put(it.type.name)
+                put(it.target.value)
+            }
         val hex = digest.digest().joinToString("") { "%02x".format(it) }
         return EpisodeId("episode-$hex")
     }
@@ -161,5 +196,6 @@ class EpisodeMaterializer(
         observedAt == candidate.observedAt &&
         eventAt == candidate.eventAt &&
         extraction?.extractorId == candidate.extraction.extractorId &&
-        extraction.extractorVersion == candidate.extraction.extractorVersion
+        extraction.extractorVersion == candidate.extraction.extractorVersion &&
+        context == candidate.context
 }
