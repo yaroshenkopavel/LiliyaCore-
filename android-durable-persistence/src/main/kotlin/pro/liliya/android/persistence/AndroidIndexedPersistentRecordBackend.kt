@@ -3,12 +3,14 @@ package pro.liliya.android.persistence
 import android.content.ContentValues
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
+import android.database.sqlite.SQLiteDatabaseCorruptException
 import android.database.sqlite.SQLiteException
 import java.io.File
 import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
+import java.time.DateTimeException
 import java.time.Instant
 import pro.liliya.core.persistence.IndexedPersistentRecordMutationBackend
 import pro.liliya.core.persistence.PersistentBackendCommitResult
@@ -132,8 +134,12 @@ class AndroidIndexedPersistentRecordBackend private constructor(
                 PersistentBackendLoadResult.Incompatible("unsupported indexed durable persistence format")
             } catch (_: IllegalArgumentException) {
                 PersistentBackendLoadResult.Corrupt
-            } catch (e: SQLiteException) {
+            } catch (_: IndexedDatabaseCorruptException) {
                 PersistentBackendLoadResult.Corrupt
+            } catch (_: SQLiteDatabaseCorruptException) {
+                PersistentBackendLoadResult.Corrupt
+            } catch (e: SQLiteException) {
+                PersistentBackendLoadResult.Failed("indexed durable persistence load failed", e)
             } catch (e: IOException) {
                 PersistentBackendLoadResult.Failed("indexed durable persistence load failed", e)
             } catch (e: RuntimeException) {
@@ -186,8 +192,15 @@ class AndroidIndexedPersistentRecordBackend private constructor(
             )
         } catch (_: IllegalArgumentException) {
             PersistentBackendMetadataLoadResult.Corrupt
-        } catch (_: SQLiteException) {
+        } catch (_: IndexedDatabaseCorruptException) {
             PersistentBackendMetadataLoadResult.Corrupt
+        } catch (_: SQLiteDatabaseCorruptException) {
+            PersistentBackendMetadataLoadResult.Corrupt
+        } catch (e: SQLiteException) {
+            PersistentBackendMetadataLoadResult.Failed(
+                "indexed durable persistence metadata load failed",
+                e
+            )
         } catch (e: IOException) {
             PersistentBackendMetadataLoadResult.Failed(
                 "indexed durable persistence metadata load failed",
@@ -243,8 +256,15 @@ class AndroidIndexedPersistentRecordBackend private constructor(
             )
         } catch (_: IllegalArgumentException) {
             PersistentBackendEntryLoadResult.Corrupt
-        } catch (_: SQLiteException) {
+        } catch (_: IndexedDatabaseCorruptException) {
             PersistentBackendEntryLoadResult.Corrupt
+        } catch (_: SQLiteDatabaseCorruptException) {
+            PersistentBackendEntryLoadResult.Corrupt
+        } catch (e: SQLiteException) {
+            PersistentBackendEntryLoadResult.Failed(
+                "indexed durable persistence entry load failed",
+                e
+            )
         } catch (e: IOException) {
             PersistentBackendEntryLoadResult.Failed(
                 "indexed durable persistence entry load failed",
@@ -334,8 +354,15 @@ class AndroidIndexedPersistentRecordBackend private constructor(
             )
         } catch (_: IllegalArgumentException) {
             PersistentBackendPageLoadResult.Corrupt
-        } catch (_: SQLiteException) {
+        } catch (_: IndexedDatabaseCorruptException) {
             PersistentBackendPageLoadResult.Corrupt
+        } catch (_: SQLiteDatabaseCorruptException) {
+            PersistentBackendPageLoadResult.Corrupt
+        } catch (e: SQLiteException) {
+            PersistentBackendPageLoadResult.Failed(
+                "indexed durable persistence page load failed",
+                e
+            )
         } catch (e: IOException) {
             PersistentBackendPageLoadResult.Failed(
                 "indexed durable persistence page load failed",
@@ -425,6 +452,8 @@ class AndroidIndexedPersistentRecordBackend private constructor(
             PersistentBackendMutationResult.Incompatible(
                 "unsupported indexed durable persistence format"
             )
+        } catch (_: IndexedDatabaseCorruptException) {
+            PersistentBackendMutationResult.Corrupt
         } catch (_: IllegalArgumentException) {
             PersistentBackendMutationResult.Corrupt
         } catch (e: SQLiteException) {
@@ -534,6 +563,8 @@ class AndroidIndexedPersistentRecordBackend private constructor(
             PersistentBackendMutationResult.Incompatible(
                 "unsupported indexed durable persistence format"
             )
+        } catch (_: IndexedDatabaseCorruptException) {
+            PersistentBackendMutationResult.Corrupt
         } catch (_: IllegalArgumentException) {
             PersistentBackendMutationResult.Corrupt
         } catch (e: SQLiteException) {
@@ -637,6 +668,8 @@ class AndroidIndexedPersistentRecordBackend private constructor(
             PersistentBackendMutationResult.Incompatible(
                 "unsupported indexed durable persistence format"
             )
+        } catch (_: IndexedDatabaseCorruptException) {
+            PersistentBackendMutationResult.Corrupt
         } catch (_: IllegalArgumentException) {
             PersistentBackendMutationResult.Corrupt
         } catch (e: SQLiteException) {
@@ -926,7 +959,9 @@ class AndroidIndexedPersistentRecordBackend private constructor(
                 if (revision <= 0L || highWatermark < 0L || entryCount < 0 ||
                     expectedHash != headerHash(storeId, revision, highWatermark, entryCount)
                 ) {
-                    throw SQLiteException("indexed durable persistence header integrity failed")
+                    throw IndexedDatabaseCorruptException(
+                        "indexed durable persistence header integrity failed"
+                    )
                 }
                 Header(revision, highWatermark, entryCount)
             }
@@ -1066,7 +1101,13 @@ class AndroidIndexedPersistentRecordBackend private constructor(
         }
         val schemaId = PersistentSchemaId(cursor.getString(2))
         val schemaVersion = PersistentSchemaVersion(cursor.getInt(3))
-        val createdAt = Instant.ofEpochSecond(cursor.getLong(4), cursor.getInt(5).toLong())
+        val createdAt = try {
+            Instant.ofEpochSecond(cursor.getLong(4), cursor.getInt(5).toLong())
+        } catch (_: DateTimeException) {
+            throw IndexedDatabaseCorruptException(
+                "indexed durable persistence record timestamp is corrupt"
+            )
+        }
         val payload = cursor.getBlob(6)
         try {
             val record = PersistentRecord(
@@ -1107,7 +1148,11 @@ class AndroidIndexedPersistentRecordBackend private constructor(
                     ) return false
                     val schemaId = PersistentSchemaId(cursor.getString(2))
                     val schemaVersion = PersistentSchemaVersion(cursor.getInt(3))
-                    val createdAt = Instant.ofEpochSecond(cursor.getLong(4), cursor.getInt(5).toLong())
+                    val createdAt = try {
+                        Instant.ofEpochSecond(cursor.getLong(4), cursor.getInt(5).toLong())
+                    } catch (_: DateTimeException) {
+                        return false
+                    }
                     val payload = cursor.getBlob(6)
                     try {
                         val entry = PersistentBackendEntry(
@@ -1129,8 +1174,6 @@ class AndroidIndexedPersistentRecordBackend private constructor(
             }
             count == header.entryCount
         } catch (_: IllegalArgumentException) {
-            false
-        } catch (_: RuntimeException) {
             false
         }
     }
@@ -1209,6 +1252,9 @@ class AndroidIndexedPersistentRecordBackend private constructor(
         MessageDigest.getInstance("SHA-256")
             .digest(value.toByteArray(StandardCharsets.UTF_8))
             .joinToString("") { "%02x".format(it) }
+
+    private class IndexedDatabaseCorruptException(message: String) :
+        IllegalStateException(message)
 
     private class IndexedDatabaseIncompatibleException(version: Int) :
         IllegalStateException("unsupported indexed durable persistence version: " + version)
