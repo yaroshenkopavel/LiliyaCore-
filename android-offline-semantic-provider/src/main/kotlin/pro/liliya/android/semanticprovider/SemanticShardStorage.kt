@@ -83,6 +83,14 @@ internal sealed interface SemanticShardManifestLoadResult {
         SemanticShardManifestLoadResult
 }
 
+internal sealed interface SemanticShardLoadResult {
+    data class Loaded(val checkpoint: SemanticShardCheckpoint) : SemanticShardLoadResult
+    data object Corrupt : SemanticShardLoadResult
+    data class Incompatible(val reason: String) : SemanticShardLoadResult
+    data class Failed(val reason: String, val throwable: Throwable? = null) :
+        SemanticShardLoadResult
+}
+
 internal sealed interface SemanticShardRankResult {
     data class Ranked(val candidates: List<SemanticRankedCandidate>) : SemanticShardRankResult
     data object Corrupt : SemanticShardRankResult
@@ -111,6 +119,40 @@ internal class SemanticShardStore(
                         SemanticShardManifestLoadResult.Incompatible(decoded.reason)
                 }
         }
+
+    fun readShard(
+        descriptor: SemanticShardDescriptor
+    ): SemanticShardLoadResult {
+        val key = AndroidOfflineSemanticShardStorageKey.forShard(
+            descriptor.shardId,
+            descriptor.blobSha256
+        )
+        val blob = when (val read = storage.read(key)) {
+            AndroidOfflineSemanticShardStorageReadResult.Missing ->
+                return SemanticShardLoadResult.Corrupt
+            is AndroidOfflineSemanticShardStorageReadResult.Failed ->
+                return SemanticShardLoadResult.Failed(read.reason, read.throwable)
+            is AndroidOfflineSemanticShardStorageReadResult.Loaded -> read.blob
+        }
+        if (SemanticShardCheckpointCodec.shardDigest(blob) != descriptor.blobSha256) {
+            return SemanticShardLoadResult.Corrupt
+        }
+        val checkpoint = when (val decoded = SemanticShardCheckpointCodec.decodeShard(blob)) {
+            SemanticShardDecodeResult.Corrupt ->
+                return SemanticShardLoadResult.Corrupt
+            is SemanticShardDecodeResult.Incompatible ->
+                return SemanticShardLoadResult.Incompatible(decoded.reason)
+            is SemanticShardDecodeResult.Decoded -> decoded.checkpoint
+        }
+        if (
+            checkpoint.shardId != descriptor.shardId ||
+            checkpoint.seeds.size != descriptor.entryCount
+        ) {
+            checkpoint.seeds.forEach { it.vector.clear() }
+            return SemanticShardLoadResult.Corrupt
+        }
+        return SemanticShardLoadResult.Loaded(checkpoint)
+    }
 
     fun rank(
         manifest: SemanticShardManifest,
