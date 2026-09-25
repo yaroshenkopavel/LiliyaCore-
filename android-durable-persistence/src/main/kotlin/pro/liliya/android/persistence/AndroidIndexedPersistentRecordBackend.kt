@@ -90,21 +90,24 @@ class AndroidIndexedPersistentRecordBackend private constructor(
                                 return@synchronized PersistentBackendLoadResult.Corrupt
                             }
                             val payload = cursor.getBlob(6)
-                            val record = PersistentRecord(
-                                id = entityId,
-                                schemaId = schemaId,
-                                schemaVersion = schemaVersion,
-                                payload = PersistentPayload(payload),
-                                createdAt = createdAt
-                            )
-                            val backendEntry = PersistentBackendEntry(generation, record)
-                            val expectedHash = cursor.getString(7)
-                            val actualHash = recordHash(entityId, backendEntry, payload)
-                            payload.fill(0)
-                            if (expectedHash != actualHash) {
-                                return@synchronized PersistentBackendLoadResult.Corrupt
+                            try {
+                                val record = PersistentRecord(
+                                    id = entityId,
+                                    schemaId = schemaId,
+                                    schemaVersion = schemaVersion,
+                                    payload = PersistentPayload(payload),
+                                    createdAt = createdAt
+                                )
+                                val backendEntry = PersistentBackendEntry(generation, record)
+                                val expectedHash = cursor.getString(7)
+                                val actualHash = recordHash(entityId, backendEntry, payload)
+                                if (expectedHash != actualHash) {
+                                    return@synchronized PersistentBackendLoadResult.Corrupt
+                                }
+                                entries[entityId] = backendEntry
+                            } finally {
+                                payload.fill(0)
                             }
-                            entries[entityId] = backendEntry
                         }
                     }
                     if (entries.size != header.entryCount) {
