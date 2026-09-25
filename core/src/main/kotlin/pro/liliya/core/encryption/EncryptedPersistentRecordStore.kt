@@ -388,12 +388,21 @@ class EncryptedPersistentRecordStore(
                     lookedUp.throwable
                 )
         }
-        val envelope = when (
-            val decoded = CognitivePersistentEnvelopeCodec.decode(snapshot.record.payload.copyBytes())
-        ) {
-            is CognitiveEncryptionResult.Success -> decoded.value
-            is CognitiveEncryptionResult.Rejected -> return decoded
-            is CognitiveEncryptionResult.Failed -> return decoded
+        return open(snapshot)
+    }
+
+    internal fun open(
+        snapshot: PersistentRecordSnapshot
+    ): CognitiveEncryptionResult<CognitivePlaintext> {
+        val encodedEnvelope = snapshot.record.payload.copyBytes()
+        val envelope = try {
+            when (val decoded = CognitivePersistentEnvelopeCodec.decode(encodedEnvelope)) {
+                is CognitiveEncryptionResult.Success -> decoded.value
+                is CognitiveEncryptionResult.Rejected -> return decoded
+                is CognitiveEncryptionResult.Failed -> return decoded
+            }
+        } finally {
+            encodedEnvelope.fill(0)
         }
 
         val expectedBinding = CognitivePayloadBinding(
@@ -435,7 +444,11 @@ class EncryptedPersistentRecordStore(
                 CognitiveEncryptionFailureCategory.MALFORMED_ENVELOPE
             )
         }
-        val aad = CognitiveAssociatedDataEncoder.encode(envelope.version, envelope.profile, envelope.binding)
+        val aad = CognitiveAssociatedDataEncoder.encode(
+            envelope.version,
+            envelope.profile,
+            envelope.binding
+        )
         return aead.open(envelope.profile, dek, nonce, aad, sealed)
     }
 }
