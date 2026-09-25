@@ -127,7 +127,6 @@ internal object KnowledgePersistentRecordCodec {
             KnowledgePersistentDecodeResult.Corrupt
         } catch (_: RuntimeException) {
             KnowledgePersistentDecodeResult.Corrupt
-        }
         } finally {
             payloadBytes.fill(0)
         }
