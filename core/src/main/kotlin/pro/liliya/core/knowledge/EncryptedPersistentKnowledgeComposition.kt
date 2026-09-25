@@ -55,7 +55,8 @@ class EncryptedPersistentKnowledgeComposition private constructor(
     private val foundation: FoundationComposition,
     private val encryptedStore: EncryptedPersistentRecordStore,
     private val knowledgeStore: KnowledgeStore,
-    private val activeDek: CognitiveDekReference
+    private val activeDek: CognitiveDekReference,
+    private val indexedLazyMode: Boolean
 ) {
     @Synchronized
     fun create(item: KnowledgeItem): PersistentKnowledgeCreateResult {
@@ -91,8 +92,26 @@ class EncryptedPersistentKnowledgeComposition private constructor(
         }
     }
 
-    fun find(id: KnowledgeItemId): KnowledgeItem? = knowledgeStore.find(id)
-    fun inspect(id: KnowledgeItemId): KnowledgeItemSnapshot? = knowledgeStore.inspect(id)
+    fun find(id: KnowledgeItemId): KnowledgeItem? = inspect(id)?.item
+
+    fun inspect(id: KnowledgeItemId): KnowledgeItemSnapshot? {
+        if (!indexedLazyMode) return knowledgeStore.inspect(id)
+        return when (val inspected = inspectResult(id)) {
+            EncryptedPersistentKnowledgeInspectResult.Missing -> null
+            is EncryptedPersistentKnowledgeInspectResult.Found -> inspected.snapshot
+            EncryptedPersistentKnowledgeInspectResult.Corrupt ->
+                throw IllegalStateException("encrypted persistent Knowledge exact read is corrupt")
+            is EncryptedPersistentKnowledgeInspectResult.Incompatible ->
+                throw IllegalStateException(inspected.reason)
+            is EncryptedPersistentKnowledgeInspectResult.EncryptionUnavailable ->
+                throw IllegalStateException(
+                    "encrypted persistent Knowledge exact read unavailable: ${inspected.category}",
+                    inspected.throwable
+                )
+            is EncryptedPersistentKnowledgeInspectResult.Failed ->
+                throw IllegalStateException(inspected.reason, inspected.throwable)
+        }
+    }
 
     fun inspectResult(id: KnowledgeItemId): EncryptedPersistentKnowledgeInspectResult {
         val entityId = PersistentEntityId(id.value)
@@ -153,9 +172,37 @@ class EncryptedPersistentKnowledgeComposition private constructor(
         }
     }
 
-    fun contains(id: KnowledgeItemId): Boolean = knowledgeStore.contains(id)
-    fun snapshot(): List<KnowledgeItem> = knowledgeStore.snapshot()
-    fun snapshotEntries(): List<KnowledgeItemSnapshot> = knowledgeStore.snapshotEntries()
+    fun contains(id: KnowledgeItemId): Boolean = inspect(id) != null
+    fun snapshot(): List<KnowledgeItem> = snapshotEntries().map { it.item }
+
+    fun snapshotEntries(): List<KnowledgeItemSnapshot> {
+        if (!indexedLazyMode) return knowledgeStore.snapshotEntries()
+        val snapshots = when (val result = encryptedStore.decryptedSnapshotEntries()) {
+            is CognitiveEncryptionResult.Success -> result.value
+            is CognitiveEncryptionResult.Rejected ->
+                throw IllegalStateException(
+                    "encrypted persistent Knowledge snapshot unavailable: ${result.category}"
+                )
+            is CognitiveEncryptionResult.Failed ->
+                throw IllegalStateException(
+                    "encrypted persistent Knowledge snapshot unavailable: ${result.category}",
+                    result.throwable
+                )
+        }
+        return snapshots.map { snapshot ->
+            when (val decoded = KnowledgePersistentRecordCodec.decode(snapshot.record)) {
+                is KnowledgePersistentDecodeResult.Decoded ->
+                    KnowledgeItemSnapshot(
+                        decoded.item,
+                        KnowledgeGeneration(snapshot.generation.value)
+                    )
+                KnowledgePersistentDecodeResult.Corrupt ->
+                    throw IllegalStateException("encrypted persistent Knowledge snapshot is corrupt")
+                is KnowledgePersistentDecodeResult.Incompatible ->
+                    throw IllegalStateException(decoded.reason)
+            }
+        }
+    }
 
     private fun installCommittedKnowledge(
         item: KnowledgeItem,
@@ -241,6 +288,29 @@ class EncryptedPersistentKnowledgeComposition private constructor(
             encryptedStore: EncryptedPersistentRecordStore,
             activeDek: CognitiveDekReference
         ): EncryptedPersistentKnowledgeOpenResult {
+            if (encryptedStore.supportsIndexedLazyMode()) {
+                return when (
+                    val restored = KnowledgeStore.restore(
+                        observability = foundation.observability,
+                        entries = emptyList(),
+                        highWatermark = encryptedStore.generationHighWatermark()
+                    )
+                ) {
+                    is KnowledgeRestorationResult.Restored ->
+                        EncryptedPersistentKnowledgeOpenResult.Opened(
+                            EncryptedPersistentKnowledgeComposition(
+                                foundation,
+                                encryptedStore,
+                                restored.store,
+                                activeDek,
+                                indexedLazyMode = true
+                            )
+                        )
+                    is KnowledgeRestorationResult.Rejected ->
+                        EncryptedPersistentKnowledgeOpenResult.RestorationFailed(restored.reason)
+                }
+            }
+
             val restoredEntries = mutableListOf<KnowledgeItemSnapshot>()
 
             for (snapshot in encryptedStore.snapshotEntries()) {
@@ -296,7 +366,8 @@ class EncryptedPersistentKnowledgeComposition private constructor(
                             foundation,
                             encryptedStore,
                             restored.store,
-                            activeDek
+                            activeDek,
+                            indexedLazyMode = false
                         )
                     )
                 is KnowledgeRestorationResult.Rejected ->
