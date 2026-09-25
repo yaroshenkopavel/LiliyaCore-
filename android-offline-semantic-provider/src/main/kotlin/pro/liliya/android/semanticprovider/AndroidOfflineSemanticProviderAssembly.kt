@@ -218,6 +218,57 @@ class AndroidOfflineSemanticProviderAssembly internal constructor(
         }
     }
 
+    internal fun embedShardPage(
+        observations: List<SemanticSourceObservation>
+    ): OfflineSemanticShardEmbedResult =
+        provider.embedShardPage(observations)
+
+    internal fun activateShardManifest(
+        store: SemanticShardStore,
+        manifest: SemanticShardManifest
+    ): AndroidOfflineSemanticProviderRebuildResult {
+        synchronized(this) {
+            if (publicState != AndroidOfflineSemanticProviderState.LOADED &&
+                publicState != AndroidOfflineSemanticProviderState.READY
+            ) {
+                return AndroidOfflineSemanticProviderRebuildResult.NotLoaded
+            }
+            publicState = AndroidOfflineSemanticProviderState.REBUILDING
+        }
+
+        val result = provider.activateShardIndex(store, manifest)
+        synchronized(this) {
+            return when (result) {
+                is OfflineSemanticRebuildResult.Published -> {
+                    publicState = AndroidOfflineSemanticProviderState.READY
+                    AndroidOfflineSemanticProviderRebuildResult.Ready(result.entryCount)
+                }
+                OfflineSemanticRebuildResult.Busy -> {
+                    publicState = AndroidOfflineSemanticProviderState.LOADED
+                    AndroidOfflineSemanticProviderRebuildResult.Busy
+                }
+                OfflineSemanticRebuildResult.NotReady,
+                OfflineSemanticRebuildResult.ResourceRejected,
+                OfflineSemanticRebuildResult.EmbeddingRejected,
+                OfflineSemanticRebuildResult.EmbeddingFailed,
+                OfflineSemanticRebuildResult.SessionFailed,
+                OfflineSemanticRebuildResult.IndexRejected -> {
+                    publicState = AndroidOfflineSemanticProviderState.LOADED
+                    AndroidOfflineSemanticProviderRebuildResult.Failed
+                }
+            }
+        }
+    }
+
+    internal fun persistShardManifest(
+        authoritative: SemanticAuthoritativeMetadataCheckpoint
+    ): Boolean? {
+        synchronized(this) {
+            if (publicState != AndroidOfflineSemanticProviderState.READY) return false
+        }
+        return provider.persistShardManifest(authoritative)
+    }
+
     internal fun checkpointSeeds(): List<SemanticIndexSeed>? {
         synchronized(this) {
             if (publicState != AndroidOfflineSemanticProviderState.READY) return null
@@ -244,6 +295,7 @@ class AndroidOfflineSemanticProviderAssembly internal constructor(
                 markProviderFailed()
                 AndroidOfflineSemanticMutationApplyResult.RebuildRequired
             }
+            OfflineSemanticAddResult.IndexFailed,
             OfflineSemanticAddResult.Busy,
             OfflineSemanticAddResult.NotReady,
             OfflineSemanticAddResult.ResourceRejected,
@@ -274,6 +326,7 @@ class AndroidOfflineSemanticProviderAssembly internal constructor(
                 markProviderFailed()
                 AndroidOfflineSemanticMutationApplyResult.RebuildRequired
             }
+            OfflineSemanticReplaceResult.IndexFailed,
             OfflineSemanticReplaceResult.Busy,
             OfflineSemanticReplaceResult.NotReady,
             OfflineSemanticReplaceResult.ResourceRejected,
@@ -299,6 +352,7 @@ class AndroidOfflineSemanticProviderAssembly internal constructor(
         return when (provider.remove(source)) {
             OfflineSemanticRemoveResult.Removed ->
                 AndroidOfflineSemanticMutationApplyResult.Applied
+            OfflineSemanticRemoveResult.IndexFailed,
             OfflineSemanticRemoveResult.Busy,
             OfflineSemanticRemoveResult.NotReady,
             OfflineSemanticRemoveResult.StaleOrMissing -> {
