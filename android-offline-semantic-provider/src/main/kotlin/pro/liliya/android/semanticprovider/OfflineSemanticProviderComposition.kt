@@ -267,6 +267,57 @@ internal class OfflineSemanticProviderComposition(
         }
     }
 
+    fun restoreCheckpoint(seeds: List<SemanticIndexSeed>): OfflineSemanticRebuildResult {
+        if (seeds.size > limits.maxTotalEntries) {
+            return OfflineSemanticRebuildResult.IndexRejected
+        }
+
+        synchronized(this) {
+            if (lifecycle != OfflineSemanticProviderLifecycle.READY) {
+                return OfflineSemanticRebuildResult.NotReady
+            }
+            if (rebuilding || operationInFlight) return OfflineSemanticRebuildResult.Busy
+            if (session == null) {
+                lifecycle = OfflineSemanticProviderLifecycle.FAILED
+                return OfflineSemanticRebuildResult.SessionFailed
+            }
+            rebuilding = true
+        }
+
+        return try {
+            when (val rebuilt = publication.rebuild(seeds)) {
+                is SemanticIndexRebuildResult.Published -> {
+                    synchronized(this) {
+                        if (lifecycle != OfflineSemanticProviderLifecycle.READY) {
+                            return OfflineSemanticRebuildResult.SessionFailed
+                        }
+                        indexPublished = true
+                    }
+                    OfflineSemanticRebuildResult.Published(rebuilt.entryCount)
+                }
+                SemanticIndexRebuildResult.DuplicateOrConflictingIdentity,
+                SemanticIndexRebuildResult.CapacityRejected ->
+                    OfflineSemanticRebuildResult.IndexRejected
+            }
+        } catch (_: Exception) {
+            OfflineSemanticRebuildResult.IndexRejected
+        } finally {
+            synchronized(this) { rebuilding = false }
+        }
+    }
+
+    @Synchronized
+    fun checkpointSeeds(): List<SemanticIndexSeed>? {
+        if (lifecycle != OfflineSemanticProviderLifecycle.READY ||
+            rebuilding ||
+            operationInFlight ||
+            !indexPublished
+        ) {
+            return null
+        }
+        return publication.snapshotSeeds()
+    }
+
     fun add(observation: SemanticSourceObservation): OfflineSemanticAddResult {
         val activeSession = synchronized(this) {
             if (lifecycle != OfflineSemanticProviderLifecycle.READY) {

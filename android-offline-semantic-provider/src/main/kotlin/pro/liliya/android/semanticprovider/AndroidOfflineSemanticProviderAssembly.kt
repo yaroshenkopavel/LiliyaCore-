@@ -182,6 +182,49 @@ class AndroidOfflineSemanticProviderAssembly internal constructor(
         }
     }
 
+    internal fun restoreCheckpoint(
+        seeds: List<SemanticIndexSeed>
+    ): AndroidOfflineSemanticProviderRebuildResult {
+        synchronized(this) {
+            if (publicState != AndroidOfflineSemanticProviderState.LOADED &&
+                publicState != AndroidOfflineSemanticProviderState.READY
+            ) {
+                return AndroidOfflineSemanticProviderRebuildResult.NotLoaded
+            }
+            publicState = AndroidOfflineSemanticProviderState.REBUILDING
+        }
+
+        val result = provider.restoreCheckpoint(seeds)
+        synchronized(this) {
+            return when (result) {
+                is OfflineSemanticRebuildResult.Published -> {
+                    publicState = AndroidOfflineSemanticProviderState.READY
+                    AndroidOfflineSemanticProviderRebuildResult.Ready(result.entryCount)
+                }
+                OfflineSemanticRebuildResult.Busy -> {
+                    publicState = AndroidOfflineSemanticProviderState.LOADED
+                    AndroidOfflineSemanticProviderRebuildResult.Busy
+                }
+                OfflineSemanticRebuildResult.NotReady,
+                OfflineSemanticRebuildResult.ResourceRejected,
+                OfflineSemanticRebuildResult.EmbeddingRejected,
+                OfflineSemanticRebuildResult.EmbeddingFailed,
+                OfflineSemanticRebuildResult.SessionFailed,
+                OfflineSemanticRebuildResult.IndexRejected -> {
+                    publicState = AndroidOfflineSemanticProviderState.LOADED
+                    AndroidOfflineSemanticProviderRebuildResult.Failed
+                }
+            }
+        }
+    }
+
+    internal fun checkpointSeeds(): List<SemanticIndexSeed>? {
+        synchronized(this) {
+            if (publicState != AndroidOfflineSemanticProviderState.READY) return null
+        }
+        return provider.checkpointSeeds()
+    }
+
     internal fun synchronizeAdd(
         observation: SemanticSourceObservation
     ): AndroidOfflineSemanticMutationApplyResult {
