@@ -253,7 +253,7 @@ class EncryptedPersistentRecordStore(
                     ArrayList<PersistentRecordSnapshot>(page.entries.size)
                 for (snapshot in page.entries) {
                     val plaintext = when (
-                        val opened = open(snapshot.record.id)
+                        val opened = open(snapshot)
                     ) {
                         is CognitiveEncryptionResult.Success -> opened.value
                         is CognitiveEncryptionResult.Rejected ->
@@ -329,7 +329,7 @@ class EncryptedPersistentRecordStore(
 
         val decrypted = ArrayList<PersistentRecordSnapshot>(snapshots.size)
         for (snapshot in snapshots) {
-            val plaintext = when (val opened = open(snapshot.record.id)) {
+            val plaintext = when (val opened = open(snapshot)) {
                 is CognitiveEncryptionResult.Success -> opened.value
                 is CognitiveEncryptionResult.Rejected -> return opened
                 is CognitiveEncryptionResult.Failed -> return opened
