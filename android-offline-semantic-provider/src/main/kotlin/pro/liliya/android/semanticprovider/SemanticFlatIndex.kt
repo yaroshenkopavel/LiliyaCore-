@@ -125,7 +125,8 @@ internal sealed interface SemanticIndexRemoveResult {
 }
 
 internal data class SemanticRankedCandidate(
-    val source: SemanticIndexSourceReference
+    val source: SemanticIndexSourceReference,
+    internal val similarity: Double = Double.NaN
 ) {
     override fun toString(): String = "SemanticRankedCandidate(source=$source)"
 }
@@ -264,7 +265,7 @@ internal class SemanticFlatIndex(
         return top
             .toList()
             .sortedWith(bestFirst)
-            .map { SemanticRankedCandidate(it.source) }
+            .map { SemanticRankedCandidate(it.source, it.similarity) }
     }
 
     @Synchronized
