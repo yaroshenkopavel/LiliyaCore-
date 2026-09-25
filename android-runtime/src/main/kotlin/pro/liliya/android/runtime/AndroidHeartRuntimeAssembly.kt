@@ -26,18 +26,22 @@ import pro.liliya.core.cognitive.CognitiveTimestampSource
 import pro.liliya.core.cognitive.KnowledgeAuthoritativeResolutionResult
 import pro.liliya.core.cognitive.KnowledgeAuthoritativeResolverPort
 import pro.liliya.core.cognitive.KnowledgeRetrievalPort
+import pro.liliya.core.cognitive.KnowledgeRelevanceCandidate
 import pro.liliya.core.cognitive.MemoryAuthoritativeResolutionResult
 import pro.liliya.core.cognitive.MemoryAuthoritativeResolverPort
 import pro.liliya.core.cognitive.MemoryRetrievalPort
+import pro.liliya.core.cognitive.MemoryRelevanceCandidate
 import pro.liliya.core.encryption.CognitiveDekReference
 import pro.liliya.core.foundation.FoundationComposition
 import pro.liliya.core.knowledge.EncryptedPersistentKnowledgeComposition
+import pro.liliya.core.knowledge.EncryptedPersistentKnowledgeInspectResult
 import pro.liliya.core.learning.EncryptedPersistentLearningApplicationMutationComposition
 import pro.liliya.core.learning.LearningApplicationMutationApplicationPort
 import pro.liliya.core.learning.LearningApplicationMutationAuthorizationGate
 import pro.liliya.core.learning.PersistentEncryptedLearningApplicationMutationApplier
 import pro.liliya.core.learning.PersistentLearningApplicationMutationComposition
 import pro.liliya.core.memory.EncryptedPersistentMemoryComposition
+import pro.liliya.core.memory.EncryptedPersistentMemoryInspectResult
 import pro.liliya.core.persistence.PersistentStoreId
 import pro.liliya.core.protectedmodel.LargeProtectedModelStagedSourceOwnership
 import pro.liliya.core.runtime.hardening.RuntimeModelSessionReference
@@ -389,28 +393,10 @@ class AndroidHeartRuntimeAssembly private constructor(
         activeKnowledge: EncryptedPersistentKnowledgeComposition
     ): Boolean {
         val memoryResolver = MemoryAuthoritativeResolverPort { candidate ->
-            val current = activeMemory.inspect(candidate.recordId)
-            if (
-                current != null &&
-                current.record.id == candidate.recordId &&
-                current.generation == candidate.generation
-            ) {
-                MemoryAuthoritativeResolutionResult.Resolved(current)
-            } else {
-                MemoryAuthoritativeResolutionResult.Stale
-            }
+            resolveEncryptedMemoryCandidate(activeMemory, candidate)
         }
         val knowledgeResolver = KnowledgeAuthoritativeResolverPort { candidate ->
-            val current = activeKnowledge.inspect(candidate.itemId)
-            if (
-                current != null &&
-                current.item.id == candidate.itemId &&
-                current.generation == candidate.generation
-            ) {
-                KnowledgeAuthoritativeResolutionResult.Resolved(current)
-            } else {
-                KnowledgeAuthoritativeResolutionResult.Stale
-            }
+            resolveEncryptedKnowledgeCandidate(activeKnowledge, candidate)
         }
 
         val replacementRetrieval = try {
@@ -495,33 +481,77 @@ class AndroidHeartRuntimeAssembly private constructor(
         }
     }
 
+    private fun resolveEncryptedMemoryCandidate(
+        activeMemory: EncryptedPersistentMemoryComposition,
+        candidate: MemoryRelevanceCandidate
+    ): MemoryAuthoritativeResolutionResult =
+        when (val inspected = activeMemory.inspectResult(candidate.recordId)) {
+            EncryptedPersistentMemoryInspectResult.Missing ->
+                MemoryAuthoritativeResolutionResult.Stale
+            is EncryptedPersistentMemoryInspectResult.Found -> {
+                val current = inspected.snapshot
+                if (
+                    current.record.id == candidate.recordId &&
+                    current.generation == candidate.generation
+                ) {
+                    MemoryAuthoritativeResolutionResult.Resolved(current)
+                } else {
+                    MemoryAuthoritativeResolutionResult.Stale
+                }
+            }
+            EncryptedPersistentMemoryInspectResult.Corrupt ->
+                throw IllegalStateException("encrypted persistent Memory exact read is corrupt")
+            is EncryptedPersistentMemoryInspectResult.Incompatible ->
+                throw IllegalStateException(inspected.reason)
+            is EncryptedPersistentMemoryInspectResult.EncryptionUnavailable ->
+                throw IllegalStateException(
+                    "encrypted persistent Memory exact read unavailable: ${inspected.category}",
+                    inspected.throwable
+                )
+            is EncryptedPersistentMemoryInspectResult.Failed ->
+                throw IllegalStateException(inspected.reason, inspected.throwable)
+        }
+
+    private fun resolveEncryptedKnowledgeCandidate(
+        activeKnowledge: EncryptedPersistentKnowledgeComposition,
+        candidate: KnowledgeRelevanceCandidate
+    ): KnowledgeAuthoritativeResolutionResult =
+        when (val inspected = activeKnowledge.inspectResult(candidate.itemId)) {
+            EncryptedPersistentKnowledgeInspectResult.Missing ->
+                KnowledgeAuthoritativeResolutionResult.Stale
+            is EncryptedPersistentKnowledgeInspectResult.Found -> {
+                val current = inspected.snapshot
+                if (
+                    current.item.id == candidate.itemId &&
+                    current.generation == candidate.generation
+                ) {
+                    KnowledgeAuthoritativeResolutionResult.Resolved(current)
+                } else {
+                    KnowledgeAuthoritativeResolutionResult.Stale
+                }
+            }
+            EncryptedPersistentKnowledgeInspectResult.Corrupt ->
+                throw IllegalStateException("encrypted persistent Knowledge exact read is corrupt")
+            is EncryptedPersistentKnowledgeInspectResult.Incompatible ->
+                throw IllegalStateException(inspected.reason)
+            is EncryptedPersistentKnowledgeInspectResult.EncryptionUnavailable ->
+                throw IllegalStateException(
+                    "encrypted persistent Knowledge exact read unavailable: ${inspected.category}",
+                    inspected.throwable
+                )
+            is EncryptedPersistentKnowledgeInspectResult.Failed ->
+                throw IllegalStateException(inspected.reason, inspected.throwable)
+        }
+
     private fun startGeneration(): HeartDependencyStartResult {
         val activeMemory = memory ?: return HeartDependencyStartResult.Failed
         val activeKnowledge = knowledge ?: return HeartDependencyStartResult.Failed
 
         val memoryResolver = MemoryAuthoritativeResolverPort { candidate ->
-            val current = activeMemory.inspect(candidate.recordId)
-            if (
-                current != null &&
-                current.record.id == candidate.recordId &&
-                current.generation == candidate.generation
-            ) {
-                MemoryAuthoritativeResolutionResult.Resolved(current)
-            } else {
-                MemoryAuthoritativeResolutionResult.Stale
-            }
+            resolveEncryptedMemoryCandidate(activeMemory, candidate)
         }
         val knowledgeResolver = KnowledgeAuthoritativeResolverPort { candidate ->
-            val current = activeKnowledge.inspect(candidate.itemId)
-            if (
-                current != null &&
-                current.item.id == candidate.itemId &&
-                current.generation == candidate.generation
-            ) {
-                KnowledgeAuthoritativeResolutionResult.Resolved(current)
-            } else {
-                KnowledgeAuthoritativeResolutionResult.Stale
-            }
+            resolveEncryptedKnowledgeCandidate(activeKnowledge, candidate)
         }
 
         val activeRetrieval = try {
