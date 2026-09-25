@@ -356,6 +356,107 @@ class AndroidOfflineSemanticStartupCoordinatorContractTest {
         )
     }
 
+    @Test
+    fun paged_shard_rebuild_starts_above_twenty_thousand_without_legacy_snapshot() {
+        val totalMemory = 20_001
+        val events = mutableListOf<String>()
+        val runtime = FakeRuntime(events).apply {
+            embedShardPages = true
+        }
+        val metadata = SemanticAuthoritativeMetadataCheckpoint(
+            memory = PersistentBackendMetadata(
+                revision = totalMemory.toLong() + 1L,
+                highWatermark = totalMemory.toLong(),
+                entryCount = totalMemory.toLong()
+            ),
+            knowledge = PersistentBackendMetadata(
+                revision = 1L,
+                highWatermark = 0L,
+                entryCount = 0L
+            )
+        )
+        val shardStorage = InMemoryShardStorage()
+        val pageSource = AndroidOfflineSemanticAuthoritativePageSource {
+            GeneratedMemoryPageReader(totalMemory)
+        }
+        val coordinator = AndroidOfflineSemanticStartupCoordinator(
+            runtime = runtime,
+            authoritativeSnapshots = AndroidOfflineSemanticAuthoritativeSnapshotSource {
+                error("legacy authoritative snapshot must not be called")
+            },
+            authoritativeMetadata = SemanticAuthoritativeMetadataSource { metadata },
+            authoritativePages = pageSource,
+            shardStorage = shardStorage
+        )
+
+        assertEquals(
+            AndroidOfflineSemanticStartupResult.Ready(totalMemory),
+            coordinator.start(File("/private"), File("/private/model.onnx"))
+        )
+        assertEquals(AndroidOfflineSemanticStartupState.READY, coordinator.state())
+        assertEquals(false, events.contains("rebuild"))
+        assertEquals(false, events.contains("restore"))
+        assertEquals(true, events.contains("activate-shards"))
+        assertEquals(10, shardStorage.shardBlobCount())
+    }
+
+    private class InMemoryShardStorage : AndroidOfflineSemanticShardStorage {
+        private val blobs = LinkedHashMap<String, AndroidOfflineSemanticCheckpointBlob>()
+
+        override fun read(
+            key: AndroidOfflineSemanticShardStorageKey
+        ): AndroidOfflineSemanticShardStorageReadResult =
+            blobs[key.value]?.let {
+                AndroidOfflineSemanticShardStorageReadResult.Loaded(
+                    AndroidOfflineSemanticCheckpointBlob(it.copyBytes())
+                )
+            } ?: AndroidOfflineSemanticShardStorageReadResult.Missing
+
+        override fun write(
+            key: AndroidOfflineSemanticShardStorageKey,
+            blob: AndroidOfflineSemanticCheckpointBlob
+        ): AndroidOfflineSemanticShardStorageWriteResult {
+            blobs[key.value] = AndroidOfflineSemanticCheckpointBlob(blob.copyBytes())
+            return AndroidOfflineSemanticShardStorageWriteResult.Written
+        }
+
+        fun shardBlobCount(): Int =
+            blobs.keys.count { it != AndroidOfflineSemanticShardStorageKey.MANIFEST.value }
+    }
+
+    private class GeneratedMemoryPageReader(
+        private val total: Int
+    ) : AndroidOfflineSemanticAuthoritativePageReader {
+        private var nextGeneration: Int = 1
+        private var knowledgeEnded: Boolean = false
+
+        override fun nextMemoryPage(): AndroidOfflineSemanticMemoryPageResult {
+            if (nextGeneration > total) return AndroidOfflineSemanticMemoryPageResult.End
+            val last = minOf(total, nextGeneration + MAX_PAGE_ENTRIES - 1)
+            val entries = ArrayList<MemoryRecordSnapshot>(last - nextGeneration + 1)
+            while (nextGeneration <= last) {
+                val generation = nextGeneration.toLong()
+                entries += MemoryRecordSnapshot(
+                    record = MemoryRecord(
+                        id = MemoryRecordId("paged-memory-" + generation),
+                        provenance = MemoryProvenance(MemorySourceId("paged-startup")),
+                        content = "memory " + generation,
+                        createdAt = BASE.plusSeconds(generation)
+                    ),
+                    generation = MemoryGeneration(generation)
+                )
+                nextGeneration += 1
+            }
+            return AndroidOfflineSemanticMemoryPageResult.Loaded(entries)
+        }
+
+        override fun nextKnowledgePage(): AndroidOfflineSemanticKnowledgePageResult {
+            if (knowledgeEnded) return AndroidOfflineSemanticKnowledgePageResult.End
+            knowledgeEnded = true
+            return AndroidOfflineSemanticKnowledgePageResult.End
+        }
+    }
+
     private class FakeCheckpointStore(
         private val events: MutableList<String>,
         private val readResult: SemanticCheckpointReadResult
@@ -386,6 +487,7 @@ class AndroidOfflineSemanticStartupCoordinatorContractTest {
         var rebuildResult: AndroidOfflineSemanticProviderRebuildResult =
             AndroidOfflineSemanticProviderRebuildResult.Ready(2)
         var checkpointSeedsResult: List<SemanticIndexSeed>? = null
+        var embedShardPages: Boolean = false
         var shardPersistResult: Boolean? = null
         var closeResult: AndroidOfflineSemanticProviderCloseResult =
             AndroidOfflineSemanticProviderCloseResult.Closed
@@ -421,7 +523,21 @@ class AndroidOfflineSemanticStartupCoordinatorContractTest {
             observations: List<SemanticSourceObservation>
         ): OfflineSemanticShardEmbedResult {
             events += "embed-shard-page"
-            return OfflineSemanticShardEmbedResult.Embedded(emptyList())
+            if (!embedShardPages) {
+                return OfflineSemanticShardEmbedResult.Embedded(emptyList())
+            }
+            return OfflineSemanticShardEmbedResult.Embedded(
+                observations.map { observation ->
+                    SemanticIndexSeed(
+                        source = observation.source,
+                        vector = SemanticEmbeddingVector(
+                            FloatArray(SemanticEmbeddingVector.DIMENSION).also {
+                                it[0] = 1.0f
+                            }
+                        )
+                    )
+                }
+            )
         }
 
         override fun persistShardManifest(
