@@ -365,17 +365,27 @@ class PersistentDomainLazyIndexedOpenContractTest {
     }
 
     private fun resolverAvailable(): CognitiveDekMaterialResolver =
-        CognitiveDekMaterialResolver { reference ->
-            if (reference == dekRef) {
-                CognitiveEncryptionResult.Success(material)
-            } else {
-                CognitiveEncryptionResult.Rejected(CognitiveEncryptionFailureCategory.DEK_MISSING)
-            }
+        object : CognitiveDekMaterialResolver {
+            override fun resolve(
+                reference: CognitiveDekReference
+            ): CognitiveEncryptionResult<CognitiveDekMaterial> =
+                if (reference == dekRef) {
+                    CognitiveEncryptionResult.Success(material)
+                } else {
+                    CognitiveEncryptionResult.Rejected(
+                        CognitiveEncryptionFailureCategory.DEK_MISSING
+                    )
+                }
         }
 
     private fun resolverMissing(): CognitiveDekMaterialResolver =
-        CognitiveDekMaterialResolver {
-            CognitiveEncryptionResult.Rejected(CognitiveEncryptionFailureCategory.DEK_MISSING)
+        object : CognitiveDekMaterialResolver {
+            override fun resolve(
+                reference: CognitiveDekReference
+            ): CognitiveEncryptionResult<CognitiveDekMaterial> =
+                CognitiveEncryptionResult.Rejected(
+                    CognitiveEncryptionFailureCategory.DEK_MISSING
+                )
         }
 
     private fun memoryRecord(id: String, content: String): MemoryRecord =
