@@ -29,13 +29,13 @@ dependencies {
     implementation(project(":android-durable-persistence"))
     implementation(project(":android-offline-semantic-provider"))
     implementation(project(":android-llama-cpp-engine"))
-    implementation("org.bouncycastle:bcprov-jdk18on:1.81")
+    implementation("org.bouncycastle:bcprov-jdk18on:1.86")
 
     testImplementation(kotlin("test"))
     testImplementation(project(":protected-model-packager"))
     testImplementation("junit:junit:4.13.2")
 
     androidTestImplementation(kotlin("test"))
-    androidTestImplementation("androidx.test.ext:junit:1.2.1")
-    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test.ext:junit:1.3.0")
+    androidTestImplementation("androidx.test:runner:1.7.0")
 }

@@ -74,6 +74,7 @@ object DeterministicSemanticClaimResolver {
             return conflict(
                 candidates = records.sortedWith(recordOrder),
                 query = query,
+                inputCount = records.size,
                 visibleCount = 0,
                 temporalCount = 0,
                 reason = SemanticConflictReason.MIXED_CONFLICT_GROUP
@@ -85,6 +86,7 @@ object DeterministicSemanticClaimResolver {
             return conflict(
                 candidates = visible.records,
                 query = query,
+                inputCount = records.size,
                 visibleCount = visible.records.size,
                 temporalCount = 0,
                 reason = SemanticConflictReason.AMBIGUOUS_SAME_VERSION
@@ -117,6 +119,7 @@ object DeterministicSemanticClaimResolver {
             return conflict(
                 candidates = temporal,
                 query = query,
+                inputCount = records.size,
                 visibleCount = canonical.size,
                 temporalCount = temporal.size,
                 reason = SemanticConflictReason.MULTIPLE_ACTIVE_VALUES
@@ -187,6 +190,7 @@ object DeterministicSemanticClaimResolver {
     private fun conflict(
         candidates: List<SemanticClaimRecord>,
         query: SemanticResolutionQuery,
+        inputCount: Int,
         visibleCount: Int,
         temporalCount: Int,
         reason: SemanticConflictReason
@@ -199,7 +203,7 @@ object DeterministicSemanticClaimResolver {
                 conflictGroupId = query.conflictGroupId,
                 worldTime = query.worldTime,
                 knowledgeTime = query.knowledgeTime,
-                inputCount = candidates.size,
+                inputCount = inputCount,
                 visibleVersionCount = visibleCount,
                 temporalCandidateCount = temporalCount,
                 selectedClaimIds = candidates.map { it.id }.distinct(),

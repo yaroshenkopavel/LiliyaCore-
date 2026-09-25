@@ -845,7 +845,6 @@ internal class ConversationV3NativeRuntime private constructor(
             expectedLast = chunk.snapshot.messages.first().sequence.value - 1L
             next = chunk.previousChunkId
             if (
-                read is ConversationV3SessionLoadChunk.Found &&
                 read.truncatedRoot &&
                 next == null
             ) {

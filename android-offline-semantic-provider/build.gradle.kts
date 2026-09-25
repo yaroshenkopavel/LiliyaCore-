@@ -45,8 +45,8 @@ dependencies {
         androidTestImplementation(project(":android-protected-model-staging"))
     }
     androidTestImplementation(kotlin("test"))
-    androidTestImplementation("androidx.test.ext:junit:1.2.1")
-    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test.ext:junit:1.3.0")
+    androidTestImplementation("androidx.test:runner:1.7.0")
 }
 
 
@@ -108,7 +108,7 @@ tasks.register("reportSemanticRuntimeFootprint") {
 }
 
 
-val firebaseI8AndroidTestClassesJar by tasks.registering(Jar::class) {
+val firebaseI8AndroidTestClassesJar = tasks.register<Jar>("firebaseI8AndroidTestClassesJar") {
     val androidTestCompile =
         tasks.withType<KotlinJvmCompile>()
             .matching { it.name == "compileDebugAndroidTestKotlin" }

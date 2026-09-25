@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Liliya</string>
+    <string name="provisioning_title">Liliya — подготовка доступа</string>
+    <string name="request_rejected_format">Запрос отклонён: %1$s</string>
+</resources>
