@@ -68,6 +68,78 @@ class SemanticShardStoreContractTest {
     }
 
     @Test
+    fun more_than_twenty_thousand_entries_remain_queryable_without_single_index_capacity_failure() {
+        val storage = InMemoryShardStorage()
+        val store = SemanticShardStore(
+            storage,
+            SemanticModelProfileV01.PROFILE_GENERATION
+        )
+        val descriptors = ArrayList<SemanticShardDescriptor>()
+        val totalEntries = 20_001
+        var generation = 1L
+
+        while (generation <= totalEntries.toLong()) {
+            val shardId = SemanticShardLayout.shardFor(
+                SemanticIndexDomain.MEMORY,
+                generation
+            )
+            val lastGeneration = minOf(
+                totalEntries.toLong(),
+                SemanticShardLayout.lastGeneration(shardId)
+            )
+            val sharedVector = axisVector(0)
+            val seeds = ArrayList<SemanticIndexSeed>(
+                (lastGeneration - generation + 1L).toInt()
+            )
+            var current = generation
+            while (current <= lastGeneration) {
+                seeds += seed("memory-" + current, current, sharedVector)
+                current += 1L
+            }
+            val checkpoint = SemanticShardCheckpoint(
+                SemanticShardCheckpoint.CURRENT_VERSION,
+                shardId,
+                seeds
+            )
+            descriptors += requireNotNull(store.writeShard(checkpoint))
+            sharedVector.clear()
+            generation = lastGeneration + 1L
+        }
+
+        val manifest = SemanticShardManifest(
+            SemanticShardManifest.CURRENT_VERSION,
+            SemanticCheckpointModelBinding.production(),
+            SemanticAuthoritativeMetadataCheckpoint(
+                memory = PersistentBackendMetadata(
+                    revision = 20_002L,
+                    highWatermark = totalEntries.toLong(),
+                    entryCount = totalEntries.toLong()
+                ),
+                knowledge = PersistentBackendMetadata(1L, 0L, 0L)
+            ),
+            SemanticShardLayout.ENTRIES_PER_SHARD,
+            descriptors
+        )
+        assertEquals(true, store.writeManifest(manifest))
+
+        val ranked = assertIs<SemanticShardRankResult.Ranked>(
+            store.rank(
+                manifest = manifest,
+                domain = SemanticIndexDomain.MEMORY,
+                query = axisVector(0),
+                maxCandidates = 5
+            )
+        ).candidates
+
+        assertEquals(
+            listOf("memory-1", "memory-2", "memory-3", "memory-4", "memory-5"),
+            ranked.map { (it.source as SemanticIndexSourceReference.Memory).id.value }
+        )
+        assertEquals(10, descriptors.size)
+        assertEquals(10, storage.shardReadCount)
+    }
+
+    @Test
     fun missing_or_swapped_shard_fails_closed_instead_of_returning_partial_candidates() {
         val storage = InMemoryShardStorage()
         val store = SemanticShardStore(
