@@ -81,8 +81,9 @@ internal object KnowledgePersistentRecordCodec {
             )
         }
 
+        val payloadBytes = persistent.payload.copyBytes()
         return try {
-            val input = ByteArrayInputStream(persistent.payload.copyBytes())
+            val input = ByteArrayInputStream(payloadBytes)
             val data = DataInputStream(input)
             if (data.readInt() != MAGIC) return KnowledgePersistentDecodeResult.Corrupt
 
@@ -126,6 +127,9 @@ internal object KnowledgePersistentRecordCodec {
             KnowledgePersistentDecodeResult.Corrupt
         } catch (_: RuntimeException) {
             KnowledgePersistentDecodeResult.Corrupt
+        }
+        } finally {
+            payloadBytes.fill(0)
         }
     }
 
