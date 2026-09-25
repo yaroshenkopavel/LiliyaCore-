@@ -8,6 +8,7 @@ import pro.liliya.core.persistence.PersistentMutationResult
 import pro.liliya.core.persistence.PersistentRecordBackend
 import pro.liliya.core.persistence.PersistentRecordLookupResult
 import pro.liliya.core.persistence.PersistentRecordOwnership
+import pro.liliya.core.persistence.PersistentRecordSnapshotEntriesResult
 import pro.liliya.core.persistence.PersistentRecordStore
 import pro.liliya.core.persistence.PersistentStoreId
 import pro.liliya.core.persistence.PersistentStoreOpenResult
@@ -64,7 +65,8 @@ sealed interface PersistentMemoryOpenResult {
 class PersistentMemoryComposition private constructor(
     private val foundation: FoundationComposition,
     private val persistentStore: PersistentRecordStore,
-    private val memoryStore: MemoryStore
+    private val memoryStore: MemoryStore,
+    private val indexedLazyMode: Boolean
 ) {
     @Synchronized
     fun remember(record: MemoryRecord): PersistentMemoryRememberResult {
@@ -79,9 +81,21 @@ class PersistentMemoryComposition private constructor(
         }
     }
 
-    fun find(id: MemoryRecordId): MemoryRecord? = memoryStore.find(id)
+    fun find(id: MemoryRecordId): MemoryRecord? = inspect(id)?.record
 
-    fun inspect(id: MemoryRecordId): MemoryRecordSnapshot? = memoryStore.inspect(id)
+    fun inspect(id: MemoryRecordId): MemoryRecordSnapshot? {
+        if (!indexedLazyMode) return memoryStore.inspect(id)
+        return when (val inspected = inspectResult(id)) {
+            PersistentMemoryInspectResult.Missing -> null
+            is PersistentMemoryInspectResult.Found -> inspected.snapshot
+            PersistentMemoryInspectResult.Corrupt ->
+                throw IllegalStateException("persistent indexed Memory exact read is corrupt")
+            is PersistentMemoryInspectResult.Incompatible ->
+                throw IllegalStateException(inspected.reason)
+            is PersistentMemoryInspectResult.Failed ->
+                throw IllegalStateException(inspected.reason, inspected.throwable)
+        }
+    }
 
     fun inspectResult(id: MemoryRecordId): PersistentMemoryInspectResult =
         when (
@@ -112,11 +126,36 @@ class PersistentMemoryComposition private constructor(
                 )
         }
 
-    fun contains(id: MemoryRecordId): Boolean = memoryStore.contains(id)
+    fun contains(id: MemoryRecordId): Boolean = inspect(id) != null
 
-    fun snapshot(): List<MemoryRecord> = memoryStore.snapshot()
+    fun snapshot(): List<MemoryRecord> = snapshotEntries().map { it.record }
 
-    fun snapshotEntries(): List<MemoryRecordSnapshot> = memoryStore.snapshotEntries()
+    fun snapshotEntries(): List<MemoryRecordSnapshot> {
+        if (!indexedLazyMode) return memoryStore.snapshotEntries()
+        val listed = when (val result = persistentStore.snapshotEntriesResult()) {
+            PersistentRecordSnapshotEntriesResult.Empty -> return emptyList()
+            is PersistentRecordSnapshotEntriesResult.Loaded -> result.entries
+            PersistentRecordSnapshotEntriesResult.Corrupt ->
+                throw IllegalStateException("persistent indexed Memory snapshot is corrupt")
+            is PersistentRecordSnapshotEntriesResult.Incompatible ->
+                throw IllegalStateException(result.reason)
+            is PersistentRecordSnapshotEntriesResult.Failed ->
+                throw IllegalStateException(result.reason, result.throwable)
+        }
+        return listed.map { snapshot ->
+            when (val decoded = MemoryPersistentRecordCodec.decode(snapshot.record)) {
+                is MemoryPersistentDecodeResult.Decoded ->
+                    MemoryRecordSnapshot(
+                        decoded.record,
+                        MemoryGeneration(snapshot.generation.value)
+                    )
+                MemoryPersistentDecodeResult.Corrupt ->
+                    throw IllegalStateException("persistent indexed Memory snapshot is corrupt")
+                is MemoryPersistentDecodeResult.Incompatible ->
+                    throw IllegalStateException(decoded.reason)
+            }
+        }
+    }
 
     @Synchronized
     internal fun removeExact(snapshot: MemoryRecordSnapshot): PersistentMemoryMutationResult {
@@ -135,15 +174,20 @@ class PersistentMemoryComposition private constructor(
             )
         ) {
             PersistentMutationResult.Committed -> {
-                val removedLocally = memoryStore.removeExact(
-                    id = snapshot.record.id,
-                    generation = snapshot.generation,
-                    context = context
-                )
-                if (removedLocally) PersistentMemoryMutationResult.Committed
-                else PersistentMemoryMutationResult.Failed(
-                    "durable exact memory removal committed but local exact removal failed"
-                )
+                val cached = memoryStore.inspect(snapshot.record.id)
+                if (indexedLazyMode && cached == null) {
+                    PersistentMemoryMutationResult.Committed
+                } else {
+                    val removedLocally = memoryStore.removeExact(
+                        id = snapshot.record.id,
+                        generation = snapshot.generation,
+                        context = context
+                    )
+                    if (removedLocally) PersistentMemoryMutationResult.Committed
+                    else PersistentMemoryMutationResult.Failed(
+                        "durable exact memory removal committed but local exact removal failed"
+                    )
+                }
             }
             is PersistentMutationResult.Rejected -> PersistentMemoryMutationResult.Rejected(durable.reason)
             is PersistentMutationResult.Failed -> PersistentMemoryMutationResult.Failed(
@@ -268,6 +312,27 @@ class PersistentMemoryComposition private constructor(
             foundation: FoundationComposition,
             persistentStore: PersistentRecordStore
         ): PersistentMemoryOpenResult {
+            if (persistentStore.supportsIndexedLazyMode()) {
+                return when (
+                    val restored = MemoryStore.restore(
+                        observability = foundation.observability,
+                        entries = emptyList(),
+                        highWatermark = persistentStore.generationHighWatermark()
+                    )
+                ) {
+                    is MemoryRestorationResult.Restored -> PersistentMemoryOpenResult.Opened(
+                        PersistentMemoryComposition(
+                            foundation = foundation,
+                            persistentStore = persistentStore,
+                            memoryStore = restored.store,
+                            indexedLazyMode = true
+                        )
+                    )
+                    is MemoryRestorationResult.Rejected ->
+                        PersistentMemoryOpenResult.RestorationFailed(restored.reason)
+                }
+            }
+
             val restoredEntries = mutableListOf<MemoryRecordSnapshot>()
             for (snapshot in persistentStore.snapshotEntries()) {
                 when (val decoded = MemoryPersistentRecordCodec.decode(snapshot.record)) {
@@ -293,7 +358,8 @@ class PersistentMemoryComposition private constructor(
                     PersistentMemoryComposition(
                         foundation = foundation,
                         persistentStore = persistentStore,
-                        memoryStore = restored.store
+                        memoryStore = restored.store,
+                        indexedLazyMode = false
                     )
                 )
 

@@ -59,7 +59,8 @@ class EncryptedPersistentMemoryComposition private constructor(
     private val foundation: FoundationComposition,
     private val encryptedStore: EncryptedPersistentRecordStore,
     private val memoryStore: MemoryStore,
-    private val activeDek: CognitiveDekReference
+    private val activeDek: CognitiveDekReference,
+    private val indexedLazyMode: Boolean
 ) {
     @Synchronized
     fun remember(record: MemoryRecord): PersistentMemoryRememberResult {
@@ -95,8 +96,26 @@ class EncryptedPersistentMemoryComposition private constructor(
         }
     }
 
-    fun find(id: MemoryRecordId): MemoryRecord? = memoryStore.find(id)
-    fun inspect(id: MemoryRecordId): MemoryRecordSnapshot? = memoryStore.inspect(id)
+    fun find(id: MemoryRecordId): MemoryRecord? = inspect(id)?.record
+
+    fun inspect(id: MemoryRecordId): MemoryRecordSnapshot? {
+        if (!indexedLazyMode) return memoryStore.inspect(id)
+        return when (val inspected = inspectResult(id)) {
+            EncryptedPersistentMemoryInspectResult.Missing -> null
+            is EncryptedPersistentMemoryInspectResult.Found -> inspected.snapshot
+            EncryptedPersistentMemoryInspectResult.Corrupt ->
+                throw IllegalStateException("encrypted persistent Memory exact read is corrupt")
+            is EncryptedPersistentMemoryInspectResult.Incompatible ->
+                throw IllegalStateException(inspected.reason)
+            is EncryptedPersistentMemoryInspectResult.EncryptionUnavailable ->
+                throw IllegalStateException(
+                    "encrypted persistent Memory exact read unavailable: ${inspected.category}",
+                    inspected.throwable
+                )
+            is EncryptedPersistentMemoryInspectResult.Failed ->
+                throw IllegalStateException(inspected.reason, inspected.throwable)
+        }
+    }
 
     fun inspectResult(id: MemoryRecordId): EncryptedPersistentMemoryInspectResult {
         val entityId = PersistentEntityId(id.value)
@@ -157,9 +176,37 @@ class EncryptedPersistentMemoryComposition private constructor(
         }
     }
 
-    fun contains(id: MemoryRecordId): Boolean = memoryStore.contains(id)
-    fun snapshot(): List<MemoryRecord> = memoryStore.snapshot()
-    fun snapshotEntries(): List<MemoryRecordSnapshot> = memoryStore.snapshotEntries()
+    fun contains(id: MemoryRecordId): Boolean = inspect(id) != null
+    fun snapshot(): List<MemoryRecord> = snapshotEntries().map { it.record }
+
+    fun snapshotEntries(): List<MemoryRecordSnapshot> {
+        if (!indexedLazyMode) return memoryStore.snapshotEntries()
+        val snapshots = when (val result = encryptedStore.decryptedSnapshotEntries()) {
+            is CognitiveEncryptionResult.Success -> result.value
+            is CognitiveEncryptionResult.Rejected ->
+                throw IllegalStateException(
+                    "encrypted persistent Memory snapshot unavailable: ${result.category}"
+                )
+            is CognitiveEncryptionResult.Failed ->
+                throw IllegalStateException(
+                    "encrypted persistent Memory snapshot unavailable: ${result.category}",
+                    result.throwable
+                )
+        }
+        return snapshots.map { snapshot ->
+            when (val decoded = MemoryPersistentRecordCodec.decode(snapshot.record)) {
+                is MemoryPersistentDecodeResult.Decoded ->
+                    MemoryRecordSnapshot(
+                        decoded.record,
+                        MemoryGeneration(snapshot.generation.value)
+                    )
+                MemoryPersistentDecodeResult.Corrupt ->
+                    throw IllegalStateException("encrypted persistent Memory snapshot is corrupt")
+                is MemoryPersistentDecodeResult.Incompatible ->
+                    throw IllegalStateException(decoded.reason)
+            }
+        }
+    }
 
     @Synchronized
     internal fun removeExact(snapshot: MemoryRecordSnapshot): PersistentMemoryMutationResult {
@@ -178,15 +225,20 @@ class EncryptedPersistentMemoryComposition private constructor(
             )
         ) {
             PersistentMutationResult.Committed -> {
-                val removedLocally = memoryStore.removeExact(
-                    id = snapshot.record.id,
-                    generation = snapshot.generation,
-                    context = context
-                )
-                if (removedLocally) PersistentMemoryMutationResult.Committed
-                else PersistentMemoryMutationResult.Failed(
-                    "durable encrypted exact memory removal committed but local exact removal failed"
-                )
+                val cached = memoryStore.inspect(snapshot.record.id)
+                if (indexedLazyMode && cached == null) {
+                    PersistentMemoryMutationResult.Committed
+                } else {
+                    val removedLocally = memoryStore.removeExact(
+                        id = snapshot.record.id,
+                        generation = snapshot.generation,
+                        context = context
+                    )
+                    if (removedLocally) PersistentMemoryMutationResult.Committed
+                    else PersistentMemoryMutationResult.Failed(
+                        "durable encrypted exact memory removal committed but local exact removal failed"
+                    )
+                }
             }
             is PersistentMutationResult.Rejected -> PersistentMemoryMutationResult.Rejected(durable.reason)
             is PersistentMutationResult.Failed -> PersistentMemoryMutationResult.Failed(
@@ -280,6 +332,29 @@ class EncryptedPersistentMemoryComposition private constructor(
             encryptedStore: EncryptedPersistentRecordStore,
             activeDek: CognitiveDekReference
         ): EncryptedPersistentMemoryOpenResult {
+            if (encryptedStore.supportsIndexedLazyMode()) {
+                return when (
+                    val restored = MemoryStore.restore(
+                        observability = foundation.observability,
+                        entries = emptyList(),
+                        highWatermark = encryptedStore.generationHighWatermark()
+                    )
+                ) {
+                    is MemoryRestorationResult.Restored ->
+                        EncryptedPersistentMemoryOpenResult.Opened(
+                            EncryptedPersistentMemoryComposition(
+                                foundation,
+                                encryptedStore,
+                                restored.store,
+                                activeDek,
+                                indexedLazyMode = true
+                            )
+                        )
+                    is MemoryRestorationResult.Rejected ->
+                        EncryptedPersistentMemoryOpenResult.RestorationFailed(restored.reason)
+                }
+            }
+
             val restoredEntries = mutableListOf<MemoryRecordSnapshot>()
 
             for (snapshot in encryptedStore.snapshotEntries()) {
@@ -335,7 +410,8 @@ class EncryptedPersistentMemoryComposition private constructor(
                             foundation,
                             encryptedStore,
                             restored.store,
-                            activeDek
+                            activeDek,
+                            indexedLazyMode = false
                         )
                     )
                 is MemoryRestorationResult.Rejected ->
