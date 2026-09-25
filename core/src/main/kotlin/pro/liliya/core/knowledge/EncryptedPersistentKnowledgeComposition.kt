@@ -7,10 +7,33 @@ import pro.liliya.core.encryption.CognitivePersistentRecordDraft
 import pro.liliya.core.encryption.CognitivePlaintext
 import pro.liliya.core.encryption.EncryptedPersistentRecordStore
 import pro.liliya.core.foundation.FoundationComposition
+import pro.liliya.core.persistence.PersistentEntityId
 import pro.liliya.core.persistence.PersistentMutationResult
 import pro.liliya.core.persistence.PersistentPayload
 import pro.liliya.core.persistence.PersistentRecord
+import pro.liliya.core.persistence.PersistentRecordLookupResult
 import pro.liliya.core.persistence.PersistentRecordOwnership
+
+sealed interface EncryptedPersistentKnowledgeInspectResult {
+    data object Missing : EncryptedPersistentKnowledgeInspectResult
+    data class Found(val snapshot: KnowledgeItemSnapshot) : EncryptedPersistentKnowledgeInspectResult
+    data object Corrupt : EncryptedPersistentKnowledgeInspectResult
+    data class Incompatible(val reason: String) : EncryptedPersistentKnowledgeInspectResult
+    data class EncryptionUnavailable(
+        val category: CognitiveEncryptionFailureCategory,
+        val throwable: Throwable? = null
+    ) : EncryptedPersistentKnowledgeInspectResult {
+        override fun toString(): String =
+            "EncryptionUnavailable(category=$category, throwable=${throwable?.javaClass?.name ?: "null"})"
+    }
+    data class Failed(
+        val reason: String,
+        val throwable: Throwable? = null
+    ) : EncryptedPersistentKnowledgeInspectResult {
+        override fun toString(): String =
+            "Failed(reason=$reason, throwable=${throwable?.javaClass?.name ?: "null"})"
+    }
+}
 
 sealed interface EncryptedPersistentKnowledgeOpenResult {
     data class Opened(
@@ -70,6 +93,66 @@ class EncryptedPersistentKnowledgeComposition private constructor(
 
     fun find(id: KnowledgeItemId): KnowledgeItem? = knowledgeStore.find(id)
     fun inspect(id: KnowledgeItemId): KnowledgeItemSnapshot? = knowledgeStore.inspect(id)
+
+    fun inspectResult(id: KnowledgeItemId): EncryptedPersistentKnowledgeInspectResult {
+        val entityId = PersistentEntityId(id.value)
+        val snapshot = when (val inspected = encryptedStore.inspectResult(entityId)) {
+            PersistentRecordLookupResult.Missing ->
+                return EncryptedPersistentKnowledgeInspectResult.Missing
+            is PersistentRecordLookupResult.Found -> inspected.snapshot
+            PersistentRecordLookupResult.Corrupt ->
+                return EncryptedPersistentKnowledgeInspectResult.Corrupt
+            is PersistentRecordLookupResult.Incompatible ->
+                return EncryptedPersistentKnowledgeInspectResult.Incompatible(inspected.reason)
+            is PersistentRecordLookupResult.Failed ->
+                return EncryptedPersistentKnowledgeInspectResult.Failed(
+                    inspected.reason,
+                    inspected.throwable
+                )
+        }
+
+        val plaintext = when (val opened = encryptedStore.open(snapshot)) {
+            is CognitiveEncryptionResult.Success -> opened.value
+            is CognitiveEncryptionResult.Rejected ->
+                return EncryptedPersistentKnowledgeInspectResult.EncryptionUnavailable(
+                    opened.category
+                )
+            is CognitiveEncryptionResult.Failed ->
+                return EncryptedPersistentKnowledgeInspectResult.EncryptionUnavailable(
+                    opened.category,
+                    opened.throwable
+                )
+        }
+        val bytes = plaintext.copyBytes()
+        return try {
+            when (
+                val decoded = KnowledgePersistentRecordCodec.decode(
+                    PersistentRecord(
+                        id = snapshot.record.id,
+                        schemaId = snapshot.record.schemaId,
+                        schemaVersion = snapshot.record.schemaVersion,
+                        payload = PersistentPayload(bytes),
+                        createdAt = snapshot.record.createdAt
+                    )
+                )
+            ) {
+                is KnowledgePersistentDecodeResult.Decoded ->
+                    EncryptedPersistentKnowledgeInspectResult.Found(
+                        KnowledgeItemSnapshot(
+                            decoded.item,
+                            KnowledgeGeneration(snapshot.generation.value)
+                        )
+                    )
+                KnowledgePersistentDecodeResult.Corrupt ->
+                    EncryptedPersistentKnowledgeInspectResult.Corrupt
+                is KnowledgePersistentDecodeResult.Incompatible ->
+                    EncryptedPersistentKnowledgeInspectResult.Incompatible(decoded.reason)
+            }
+        } finally {
+            bytes.fill(0)
+        }
+    }
+
     fun contains(id: KnowledgeItemId): Boolean = knowledgeStore.contains(id)
     fun snapshot(): List<KnowledgeItem> = knowledgeStore.snapshot()
     fun snapshotEntries(): List<KnowledgeItemSnapshot> = knowledgeStore.snapshotEntries()
