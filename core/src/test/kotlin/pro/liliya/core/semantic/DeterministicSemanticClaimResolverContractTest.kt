@@ -169,10 +169,16 @@ class DeterministicSemanticClaimResolverContractTest {
             observedAt = "2026-09-02T00:00:00Z",
             validFrom = "2026-09-01T00:00:00Z"
         )
+        val expired = claim(
+            objectText = "English",
+            observedAt = "2025-01-02T00:00:00Z",
+            validFrom = "2025-01-01T00:00:00Z",
+            validUntil = "2025-12-01T00:00:00Z"
+        )
 
         val result = assertIs<SemanticResolutionResult.Conflicted>(
             DeterministicSemanticClaimResolver.resolve(
-                listOf(one, two),
+                listOf(one, two, expired),
                 query(
                     SemanticResolutionOperator.CURRENT_VALUE,
                     world = "2026-09-24T00:00:00Z",
@@ -184,6 +190,7 @@ class DeterministicSemanticClaimResolverContractTest {
 
         assertEquals(SemanticConflictReason.MULTIPLE_ACTIVE_VALUES, result.reason)
         assertEquals(setOf(one.id, two.id), result.candidates.map { it.id }.toSet())
+        assertEquals(3, result.audit.inputCount)
     }
 
     @Test
@@ -255,10 +262,15 @@ class DeterministicSemanticClaimResolverContractTest {
                 episodes = listOf(EpisodeId("different-provenance"))
             )
         )
+        val independent = claim(
+            objectText = "Ukrainian",
+            observedAt = "2026-09-02T00:00:00Z",
+            validFrom = "2026-09-01T00:00:00Z"
+        )
 
         val result = assertIs<SemanticResolutionResult.Conflicted>(
             DeterministicSemanticClaimResolver.resolve(
-                listOf(base, divergent),
+                listOf(base, divergent, independent),
                 query(
                     SemanticResolutionOperator.CURRENT_VALUE,
                     world = "2026-09-24T00:00:00Z",
@@ -268,5 +280,6 @@ class DeterministicSemanticClaimResolverContractTest {
         )
 
         assertEquals(SemanticConflictReason.AMBIGUOUS_SAME_VERSION, result.reason)
+        assertEquals(3, result.audit.inputCount)
     }
 }
