@@ -116,6 +116,16 @@ internal sealed interface OfflineSemanticRemoveResult {
     data object StaleOrMissing : OfflineSemanticRemoveResult
 }
 
+internal sealed interface OfflineSemanticShardEmbedResult {
+    data class Embedded(val seeds: List<SemanticIndexSeed>) : OfflineSemanticShardEmbedResult
+    data object Busy : OfflineSemanticShardEmbedResult
+    data object NotReady : OfflineSemanticShardEmbedResult
+    data object ResourceRejected : OfflineSemanticShardEmbedResult
+    data object EmbeddingRejected : OfflineSemanticShardEmbedResult
+    data object EmbeddingFailed : OfflineSemanticShardEmbedResult
+    data object SessionFailed : OfflineSemanticShardEmbedResult
+}
+
 internal sealed interface OfflineSemanticProviderCloseResult {
     data object Closed : OfflineSemanticProviderCloseResult
     data object Busy : OfflineSemanticProviderCloseResult
@@ -310,6 +320,62 @@ internal class OfflineSemanticProviderComposition(
             OfflineSemanticRebuildResult.IndexRejected
         } finally {
             synchronized(this) { rebuilding = false }
+        }
+    }
+
+    fun embedShardPage(
+        observations: List<SemanticSourceObservation>
+    ): OfflineSemanticShardEmbedResult {
+        if (observations.size > SHARD_BUILD_PAGE_MAX) {
+            return OfflineSemanticShardEmbedResult.ResourceRejected
+        }
+        val activeSession = synchronized(this) {
+            if (lifecycle != OfflineSemanticProviderLifecycle.READY) {
+                return OfflineSemanticShardEmbedResult.NotReady
+            }
+            if (rebuilding || operationInFlight) return OfflineSemanticShardEmbedResult.Busy
+            val current = session ?: run {
+                lifecycle = OfflineSemanticProviderLifecycle.FAILED
+                return OfflineSemanticShardEmbedResult.SessionFailed
+            }
+            operationInFlight = true
+            current
+        }
+
+        val seeds = ArrayList<SemanticIndexSeed>(observations.size)
+        var retain = false
+        try {
+            for (observation in observations) {
+                val prepared = when (
+                    val preparation = SemanticTextProfile.preparePassage(observation.content)
+                ) {
+                    is SemanticPreparedTextResult.Prepared -> preparation.text
+                    SemanticPreparedTextResult.RequestRejected ->
+                        return OfflineSemanticShardEmbedResult.EmbeddingRejected
+                    SemanticPreparedTextResult.ResourceRejected ->
+                        return OfflineSemanticShardEmbedResult.ResourceRejected
+                }
+                when (val embedding = activeSession.embed(prepared)) {
+                    is SemanticEmbeddingResult.Embedded ->
+                        seeds += SemanticIndexSeed(observation.source, embedding.vector)
+                    SemanticEmbeddingResult.ResourceRejected ->
+                        return OfflineSemanticShardEmbedResult.ResourceRejected
+                    SemanticEmbeddingResult.RequestRejected ->
+                        return OfflineSemanticShardEmbedResult.EmbeddingRejected
+                    SemanticEmbeddingResult.StaleSession ->
+                        return poisonShardEmbed(OfflineSemanticShardEmbedResult.SessionFailed)
+                    SemanticEmbeddingResult.OperationFailed,
+                    SemanticEmbeddingResult.ProviderFailed ->
+                        return poisonShardEmbed(OfflineSemanticShardEmbedResult.EmbeddingFailed)
+                }
+            }
+            retain = true
+            return OfflineSemanticShardEmbedResult.Embedded(seeds)
+        } catch (_: Exception) {
+            return poisonShardEmbed(OfflineSemanticShardEmbedResult.EmbeddingFailed)
+        } finally {
+            if (!retain) seeds.forEach { it.vector.clear() }
+            synchronized(this) { operationInFlight = false }
         }
     }
 
@@ -748,5 +814,17 @@ internal class OfflineSemanticProviderComposition(
     private fun poisonReplace(result: OfflineSemanticReplaceResult): OfflineSemanticReplaceResult {
         lifecycle = OfflineSemanticProviderLifecycle.FAILED
         return result
+    }
+
+    @Synchronized
+    private fun poisonShardEmbed(
+        result: OfflineSemanticShardEmbedResult
+    ): OfflineSemanticShardEmbedResult {
+        lifecycle = OfflineSemanticProviderLifecycle.FAILED
+        return result
+    }
+
+    private companion object {
+        const val SHARD_BUILD_PAGE_MAX = 512
     }
 }

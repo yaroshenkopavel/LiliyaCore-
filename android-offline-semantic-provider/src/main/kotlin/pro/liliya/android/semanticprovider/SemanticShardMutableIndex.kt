@@ -157,6 +157,47 @@ internal class SemanticShardMutableIndex(
     }
 
     @Synchronized
+    fun appendRebuildBatch(
+        seeds: List<SemanticIndexSeed>
+    ): Boolean {
+        if (seeds.isEmpty()) return true
+
+        val grouped = LinkedHashMap<SemanticShardId, MutableList<SemanticIndexSeed>>()
+        seeds.forEach { seed ->
+            grouped.getOrPut(SemanticShardLayout.shardFor(seed.source)) {
+                ArrayList()
+            } += seed
+        }
+
+        val pendingDescriptors = ArrayList<SemanticShardDescriptor>(grouped.size)
+        for ((shardId, additions) in grouped) {
+            val loaded = loadSeeds(shardId) ?: return false
+            try {
+                val identities = loaded.seeds
+                    .mapTo(HashSet(loaded.seeds.size + additions.size)) {
+                        stableEntityKey(it.source)
+                    }
+                if (additions.any { !identities.add(stableEntityKey(it.source)) }) {
+                    return false
+                }
+                val combined = ArrayList<SemanticIndexSeed>(
+                    loaded.seeds.size + additions.size
+                )
+                combined += loaded.seeds
+                combined += additions
+                val descriptor = writeReplacementShard(shardId, combined)
+                    ?: return false
+                pendingDescriptors += descriptor
+            } finally {
+                loaded.clear()
+            }
+        }
+
+        pendingDescriptors.forEach(::updateDescriptor)
+        return true
+    }
+
+    @Synchronized
     fun persistManifest(
         authoritative: SemanticAuthoritativeMetadataCheckpoint
     ): Boolean {

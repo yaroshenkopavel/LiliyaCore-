@@ -372,6 +372,30 @@ class AndroidOfflineSemanticStartupCoordinatorContractTest {
             return restoreResult
         }
 
+        override fun activateShardManifest(
+            store: SemanticShardStore,
+            manifest: SemanticShardManifest
+        ): AndroidOfflineSemanticProviderRebuildResult {
+            events += "activate-shards"
+            return AndroidOfflineSemanticProviderRebuildResult.Ready(
+                manifest.shards.sumOf { it.entryCount }
+            )
+        }
+
+        override fun embedShardPage(
+            observations: List<SemanticSourceObservation>
+        ): OfflineSemanticShardEmbedResult {
+            events += "embed-shard-page"
+            return OfflineSemanticShardEmbedResult.Embedded(emptyList())
+        }
+
+        override fun persistShardManifest(
+            authoritative: SemanticAuthoritativeMetadataCheckpoint
+        ): Boolean? {
+            events += "persist-shard-manifest"
+            return true
+        }
+
         override fun rebuild(
             memory: List<MemoryRecordSnapshot>,
             knowledge: List<KnowledgeItemSnapshot>

@@ -218,6 +218,11 @@ class AndroidOfflineSemanticProviderAssembly internal constructor(
         }
     }
 
+    internal fun embedShardPage(
+        observations: List<SemanticSourceObservation>
+    ): OfflineSemanticShardEmbedResult =
+        provider.embedShardPage(observations)
+
     internal fun activateShardManifest(
         store: SemanticShardStore,
         manifest: SemanticShardManifest

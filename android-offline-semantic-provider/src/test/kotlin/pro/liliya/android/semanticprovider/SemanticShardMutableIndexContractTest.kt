@@ -90,6 +90,55 @@ class SemanticShardMutableIndexContractTest {
     }
 
     @Test
+    fun rebuild_batch_groups_unordered_generations_into_bounded_sorted_shards() {
+        val storage = InMemoryStorage()
+        val store = SemanticShardStore(
+            storage,
+            SemanticModelProfileV01.PROFILE_GENERATION
+        )
+        val mutable = SemanticShardMutableIndex(
+            store,
+            SemanticShardManifest(
+                SemanticShardManifest.CURRENT_VERSION,
+                SemanticCheckpointModelBinding.production(),
+                authoritative(0L),
+                SemanticShardLayout.ENTRIES_PER_SHARD,
+                emptyList()
+            )
+        )
+        val vector = axisVector(0)
+        val seeds = listOf(
+            SemanticIndexSeed(memorySource("g4097", 4_097L), vector),
+            SemanticIndexSeed(memorySource("g1", 1L), vector),
+            SemanticIndexSeed(memorySource("g2049", 2_049L), vector),
+            SemanticIndexSeed(memorySource("g2", 2L), vector)
+        )
+
+        assertEquals(true, mutable.appendRebuildBatch(seeds))
+        assertEquals(
+            listOf(
+                SemanticShardId(SemanticIndexDomain.MEMORY, 0L),
+                SemanticShardId(SemanticIndexDomain.MEMORY, 1L),
+                SemanticShardId(SemanticIndexDomain.MEMORY, 2L)
+            ),
+            mutable.currentManifest().shards.map { it.shardId }
+        )
+
+        assertEquals(
+            listOf("g1", "g2", "g2049", "g4097"),
+            assertIs<SemanticShardRankResult.Ranked>(
+                mutable.rank(
+                    SemanticIndexDomain.MEMORY,
+                    axisVector(0),
+                    8
+                )
+            ).candidates.map {
+                (it.source as SemanticIndexSourceReference.Memory).id.value
+            }
+        )
+    }
+
+    @Test
     fun stale_replace_and_duplicate_add_do_not_publish_new_descriptor_state() {
         val storage = InMemoryStorage()
         val store = SemanticShardStore(
