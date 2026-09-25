@@ -263,18 +263,21 @@ class EncryptedPersistentRecordStore(
                             return EncryptedPersistentRecordPageResult
                                 .EncryptionUnavailable(opened.category)
                     }
-                    decrypted += PersistentRecordSnapshot(
-                        record = PersistentRecord(
-                            id = snapshot.record.id,
-                            schemaId = snapshot.record.schemaId,
-                            schemaVersion = snapshot.record.schemaVersion,
-                            payload = PersistentPayload(
-                                plaintext.copyBytes()
+                    val plaintextBytes = plaintext.copyBytes()
+                    try {
+                        decrypted += PersistentRecordSnapshot(
+                            record = PersistentRecord(
+                                id = snapshot.record.id,
+                                schemaId = snapshot.record.schemaId,
+                                schemaVersion = snapshot.record.schemaVersion,
+                                payload = PersistentPayload(plaintextBytes),
+                                createdAt = snapshot.record.createdAt
                             ),
-                            createdAt = snapshot.record.createdAt
-                        ),
-                        generation = snapshot.generation
-                    )
+                            generation = snapshot.generation
+                        )
+                    } finally {
+                        plaintextBytes.fill(0)
+                    }
                 }
                 EncryptedPersistentRecordPageResult.Loaded(
                     entries = decrypted,
@@ -334,16 +337,21 @@ class EncryptedPersistentRecordStore(
                 is CognitiveEncryptionResult.Rejected -> return opened
                 is CognitiveEncryptionResult.Failed -> return opened
             }
-            decrypted += PersistentRecordSnapshot(
-                record = PersistentRecord(
-                    id = snapshot.record.id,
-                    schemaId = snapshot.record.schemaId,
-                    schemaVersion = snapshot.record.schemaVersion,
-                    payload = PersistentPayload(plaintext.copyBytes()),
-                    createdAt = snapshot.record.createdAt
-                ),
-                generation = snapshot.generation
-            )
+            val plaintextBytes = plaintext.copyBytes()
+            try {
+                decrypted += PersistentRecordSnapshot(
+                    record = PersistentRecord(
+                        id = snapshot.record.id,
+                        schemaId = snapshot.record.schemaId,
+                        schemaVersion = snapshot.record.schemaVersion,
+                        payload = PersistentPayload(plaintextBytes),
+                        createdAt = snapshot.record.createdAt
+                    ),
+                    generation = snapshot.generation
+                )
+            } finally {
+                plaintextBytes.fill(0)
+            }
         }
         return CognitiveEncryptionResult.Success(decrypted)
     }
