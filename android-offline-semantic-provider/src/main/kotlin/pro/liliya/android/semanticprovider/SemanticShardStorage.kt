@@ -11,17 +11,23 @@ value class AndroidOfflineSemanticShardStorageKey internal constructor(
     override fun toString(): String = "AndroidOfflineSemanticShardStorageKey(<redacted>)"
 
     internal companion object {
-        private val KEY = Regex("[a-z0-9-]{1,80}")
+        private val KEY = Regex("[a-z0-9-]{1,128}")
+        private val SHA256 = Regex("[0-9a-f]{64}")
 
         val MANIFEST = AndroidOfflineSemanticShardStorageKey("manifest-v2")
 
-        fun forShard(shardId: SemanticShardId): AndroidOfflineSemanticShardStorageKey =
-            AndroidOfflineSemanticShardStorageKey(
+        fun forShard(
+            shardId: SemanticShardId,
+            blobSha256: String
+        ): AndroidOfflineSemanticShardStorageKey {
+            require(SHA256.matches(blobSha256))
+            return AndroidOfflineSemanticShardStorageKey(
                 when (shardId.domain) {
                     SemanticIndexDomain.MEMORY -> "memory-"
                     SemanticIndexDomain.KNOWLEDGE -> "knowledge-"
-                } + shardId.ordinal.toString()
+                } + shardId.ordinal.toString() + "-" + blobSha256
             )
+        }
     }
 }
 
@@ -117,7 +123,10 @@ internal class SemanticShardStore(
 
         for (descriptor in manifest.shards) {
             if (descriptor.shardId.domain != domain) continue
-            val key = AndroidOfflineSemanticShardStorageKey.forShard(descriptor.shardId)
+            val key = AndroidOfflineSemanticShardStorageKey.forShard(
+                descriptor.shardId,
+                descriptor.blobSha256
+            )
             val blob = when (val read = storage.read(key)) {
                 AndroidOfflineSemanticShardStorageReadResult.Missing ->
                     return SemanticShardRankResult.Corrupt
@@ -185,7 +194,10 @@ internal class SemanticShardStore(
         )
         return when (
             storage.write(
-                AndroidOfflineSemanticShardStorageKey.forShard(checkpoint.shardId),
+                AndroidOfflineSemanticShardStorageKey.forShard(
+                    checkpoint.shardId,
+                    descriptor.blobSha256
+                ),
                 blob
             )
         ) {

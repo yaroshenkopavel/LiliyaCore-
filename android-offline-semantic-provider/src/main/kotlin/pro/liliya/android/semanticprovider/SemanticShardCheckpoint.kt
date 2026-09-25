@@ -236,10 +236,13 @@ internal object SemanticShardCheckpointCodec {
                 )
             }
             val shardCount = input.readInt()
-            if (shardCount < 0 || shardCount > MAX_MANIFEST_SHARDS) {
+            if (
+                shardCount < 0 ||
+                shardCount.toLong() * MIN_DESCRIPTOR_BYTES.toLong() > body.size.toLong()
+            ) {
                 return SemanticShardManifestDecodeResult.Corrupt
             }
-            val descriptors = ArrayList<SemanticShardDescriptor>(shardCount)
+            val descriptors = ArrayList<SemanticShardDescriptor>()
             repeat(shardCount) {
                 val descriptor = try {
                     SemanticShardDescriptor(
@@ -468,5 +471,7 @@ internal object SemanticShardCheckpointCodec {
         }
     }
 
-    private const val MAX_MANIFEST_SHARDS = 1_000_000
+    // domain byte + ordinal + entry count + digest string length + 64 SHA-256 chars.
+    // Serialized-record lower bound used only to reject impossible allocation counts.
+    private const val MIN_DESCRIPTOR_BYTES = 1 + 8 + 4 + 4 + 64
 }

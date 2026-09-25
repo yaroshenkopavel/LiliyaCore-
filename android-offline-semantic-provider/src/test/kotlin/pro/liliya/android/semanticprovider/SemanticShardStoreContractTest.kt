@@ -160,7 +160,12 @@ class SemanticShardStoreContractTest {
             listOf(descriptor)
         )
 
-        storage.remove(AndroidOfflineSemanticShardStorageKey.forShard(descriptor.shardId))
+        storage.remove(
+            AndroidOfflineSemanticShardStorageKey.forShard(
+                descriptor.shardId,
+                descriptor.blobSha256
+            )
+        )
 
         assertIs<SemanticShardRankResult.Corrupt>(
             store.rank(
