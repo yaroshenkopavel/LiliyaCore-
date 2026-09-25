@@ -48,6 +48,7 @@ import pro.liliya.core.memory.MemoryRecord
 import pro.liliya.core.memory.MemoryRecordId
 import pro.liliya.core.memory.MemorySourceId
 import pro.liliya.core.memory.PersistentMemoryComposition
+import pro.liliya.core.memory.PersistentMemoryMutationResult
 import pro.liliya.core.memory.PersistentMemoryOpenResult
 import pro.liliya.core.memory.PersistentMemoryRememberResult
 import pro.liliya.core.knowledge.PersistentKnowledgeCreateResult
@@ -185,8 +186,25 @@ class PersistentDomainLazyIndexedOpenContractTest {
             expectedHighWatermark: Long,
             id: PersistentEntityId,
             generation: PersistentGeneration
-        ): PersistentBackendMutationResult =
-            PersistentBackendMutationResult.Failed("unused")
+        ): PersistentBackendMutationResult {
+            if (expectedRevision != revision || expectedHighWatermark != highWatermark) {
+                return PersistentBackendMutationResult.Conflict
+            }
+            val current = entries[id]
+                ?: return PersistentBackendMutationResult.Rejected("missing indexed entry")
+            if (current.generation != generation) {
+                return PersistentBackendMutationResult.Conflict
+            }
+            entries.remove(id)
+            revision += 1L
+            return PersistentBackendMutationResult.Committed(
+                PersistentBackendMetadata(
+                    revision = revision,
+                    highWatermark = highWatermark,
+                    entryCount = entries.size.toLong()
+                )
+            )
+        }
 
         private fun metadataResult(): PersistentBackendMetadataLoadResult =
             if (revision == 0L && entries.isEmpty()) {
@@ -251,6 +269,88 @@ class PersistentDomainLazyIndexedOpenContractTest {
 
         assertEquals(listOf(knowledgeSnapshot), knowledgeComposition.snapshotEntries())
         assertTrue(knowledgeBackend.pageCalls > 0)
+    }
+
+    @Test
+    fun indexed_lazy_reopen_continues_generation_from_durable_high_watermark_without_scan() {
+        val memoryBackend = LazyDomainBackend()
+        memoryBackend.seed(
+            MemoryPersistentRecordCodec.encode(memoryRecord("historical-memory", "historical")),
+            7L
+        )
+        val memoryComposition = assertIs<PersistentMemoryOpenResult.Opened>(
+            PersistentMemoryComposition.open(
+                foundation(),
+                PersistentStoreId("generation-memory-store"),
+                memoryBackend
+            )
+        ).composition
+        memoryBackend.resetReadCounters()
+
+        val remembered = assertIs<PersistentMemoryRememberResult.Remembered>(
+            memoryComposition.remember(memoryRecord("new-memory", "new"))
+        )
+        assertEquals(8L, remembered.ownership.generation.value)
+        assertEquals(0, memoryBackend.legacyLoadCalls)
+        assertEquals(0, memoryBackend.pageCalls)
+        assertEquals(1, memoryBackend.exactCalls)
+
+        val knowledgeBackend = LazyDomainBackend()
+        knowledgeBackend.seed(
+            KnowledgePersistentRecordCodec.encode(
+                knowledgeItem("historical-knowledge", "historical")
+            ),
+            11L
+        )
+        val knowledgeComposition = assertIs<PersistentKnowledgeOpenResult.Opened>(
+            PersistentKnowledgeComposition.open(
+                foundation(),
+                PersistentStoreId("generation-knowledge-store"),
+                knowledgeBackend
+            )
+        ).composition
+        knowledgeBackend.resetReadCounters()
+
+        val created = assertIs<PersistentKnowledgeCreateResult.Created>(
+            knowledgeComposition.create(knowledgeItem("new-knowledge", "new"))
+        )
+        assertEquals(12L, created.ownership.generation.value)
+        assertEquals(0, knowledgeBackend.legacyLoadCalls)
+        assertEquals(0, knowledgeBackend.pageCalls)
+        assertEquals(1, knowledgeBackend.exactCalls)
+    }
+
+    @Test
+    fun indexed_lazy_memory_removes_uncached_historical_record_without_snapshot_scan() {
+        val backend = LazyDomainBackend()
+        val historical = memoryRecord("historical-remove", "historical")
+        backend.seed(MemoryPersistentRecordCodec.encode(historical), 7L)
+
+        val composition = assertIs<PersistentMemoryOpenResult.Opened>(
+            PersistentMemoryComposition.open(
+                foundation(),
+                PersistentStoreId("lazy-remove-memory-store"),
+                backend
+            )
+        ).composition
+        backend.resetReadCounters()
+
+        val exact = requireNotNull(composition.inspect(historical.id))
+        assertEquals(7L, exact.generation.value)
+        assertEquals(1, backend.exactCalls)
+        assertEquals(0, backend.pageCalls)
+
+        backend.resetReadCounters()
+        assertIs<PersistentMemoryMutationResult.Committed>(
+            composition.removeExact(exact)
+        )
+        assertEquals(0, backend.legacyLoadCalls)
+        assertEquals(0, backend.pageCalls)
+        assertEquals(1, backend.exactCalls)
+
+        assertEquals(null, composition.inspect(historical.id))
+        assertEquals(2, backend.exactCalls)
+        assertEquals(0, backend.pageCalls)
     }
 
     @Test
