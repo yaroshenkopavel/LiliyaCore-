@@ -98,7 +98,6 @@ internal object MemoryPersistentRecordCodec {
             MemoryPersistentDecodeResult.Corrupt
         } catch (_: RuntimeException) {
             MemoryPersistentDecodeResult.Corrupt
-        }
         } finally {
             payloadBytes.fill(0)
         }
