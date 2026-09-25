@@ -159,7 +159,7 @@ class LiliyaActivity : Activity() {
         }
 
         root.addView(TextView(this).apply {
-            text = "Liliya"
+            text = getString(R.string.app_name)
             textSize = 24f
             gravity = Gravity.CENTER_HORIZONTAL
         })
@@ -336,7 +336,7 @@ class LiliyaActivity : Activity() {
                     if (conversation.rollbackLastUser(completed.message)) {
                         renderConversationAndRevealLatest()
                     }
-                    status.text = "Запрос отклонён: ${result.reason.name}"
+                    status.text = getString(R.string.request_rejected_format, result.reason.name)
                 }
             }
             ProductionAndroidAppChatTaskOutcome.Failed -> {
