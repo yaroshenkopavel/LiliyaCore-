@@ -43,7 +43,10 @@ sealed interface PersistentKnowledgeInspectResult {
     data class Failed(
         val reason: String,
         val throwable: Throwable? = null
-    ) : PersistentKnowledgeInspectResult
+    ) : PersistentKnowledgeInspectResult {
+        override fun toString(): String =
+            "Failed(reason=$reason, throwable=${throwable?.javaClass?.name ?: "null"})"
+    }
 }
 
 sealed interface PersistentKnowledgeOpenResult {
