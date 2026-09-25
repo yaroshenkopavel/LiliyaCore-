@@ -76,6 +76,9 @@ internal class SemanticIndexPublication(
     fun size(domain: SemanticIndexDomain? = null): Int = published.size(domain)
 
     @Synchronized
+    fun snapshotSeeds(): List<SemanticIndexSeed> = published.snapshotSeeds()
+
+    @Synchronized
     fun release() {
         val previous = published
         published = newIndex()

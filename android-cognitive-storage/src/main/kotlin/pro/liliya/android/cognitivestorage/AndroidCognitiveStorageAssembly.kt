@@ -22,6 +22,7 @@ import pro.liliya.core.encryption.CognitiveEnvelopeVersion
 import pro.liliya.core.encryption.CognitiveNonce
 import pro.liliya.core.encryption.CognitiveNonceSource
 import pro.liliya.core.encryption.CognitivePlaintext
+import pro.liliya.core.encryption.EncryptedPersistentBlobSlot
 import pro.liliya.core.encryption.EncryptedPersistentRecordStore
 import pro.liliya.core.encryption.PersistentCognitiveDekOpenResult
 import pro.liliya.core.encryption.PersistentCognitiveDekStore
@@ -38,7 +39,10 @@ import pro.liliya.core.personality.PersonalityGeneration
 import pro.liliya.core.personality.PersonalityProfileId
 import pro.liliya.core.personality.PersonalitySchemaMigrationCoordinator
 import pro.liliya.core.personality.PersonalitySchemaMigrationStepResult
+import pro.liliya.core.persistence.PersistentEntityId
 import pro.liliya.core.persistence.PersistentRecordStore
+import pro.liliya.core.persistence.PersistentSchemaId
+import pro.liliya.core.persistence.PersistentSchemaVersion
 import pro.liliya.core.persistence.PersistentStoreId
 import pro.liliya.core.persistence.PersistentStoreOpenResult
 
@@ -144,6 +148,19 @@ sealed interface AndroidEncryptedRecordStoreOpenResult {
         val reason: String,
         val throwable: Throwable? = null
     ) : AndroidEncryptedRecordStoreOpenResult
+}
+
+sealed interface AndroidEncryptedBlobSlotOpenResult {
+    data class Opened(
+        val slot: EncryptedPersistentBlobSlot
+    ) : AndroidEncryptedBlobSlotOpenResult
+
+    data object Corrupt : AndroidEncryptedBlobSlotOpenResult
+    data class Incompatible(val reason: String) : AndroidEncryptedBlobSlotOpenResult
+    data class Failed(
+        val reason: String,
+        val throwable: Throwable? = null
+    ) : AndroidEncryptedBlobSlotOpenResult
 }
 
 /**
@@ -366,6 +383,37 @@ class AndroidCognitiveStorageAssembly private constructor(
                 AndroidPersonalitySchemaMigrationStepResult.Incompatible(encrypted.reason)
             is AndroidEncryptedRecordStoreOpenResult.Failed ->
                 AndroidPersonalitySchemaMigrationStepResult.Failed(encrypted.reason)
+        }
+
+    fun openEncryptedBlobSlot(
+        storeId: PersistentStoreId,
+        activeDek: pro.liliya.core.encryption.CognitiveDekReference,
+        entityId: PersistentEntityId,
+        schemaId: PersistentSchemaId,
+        schemaVersion: PersistentSchemaVersion,
+        maxBytes: Int
+    ): AndroidEncryptedBlobSlotOpenResult =
+        when (val encrypted = openEncryptedRecordStore(storeId)) {
+            is AndroidEncryptedRecordStoreOpenResult.Opened ->
+                AndroidEncryptedBlobSlotOpenResult.Opened(
+                    EncryptedPersistentBlobSlot(
+                        encryptedStore = encrypted.store,
+                        entityId = entityId,
+                        schemaId = schemaId,
+                        schemaVersion = schemaVersion,
+                        activeDek = activeDek,
+                        maxBytes = maxBytes
+                    )
+                )
+            AndroidEncryptedRecordStoreOpenResult.Corrupt ->
+                AndroidEncryptedBlobSlotOpenResult.Corrupt
+            is AndroidEncryptedRecordStoreOpenResult.Incompatible ->
+                AndroidEncryptedBlobSlotOpenResult.Incompatible(encrypted.reason)
+            is AndroidEncryptedRecordStoreOpenResult.Failed ->
+                AndroidEncryptedBlobSlotOpenResult.Failed(
+                    encrypted.reason,
+                    encrypted.throwable
+                )
         }
 
     fun openEncryptedRecordStore(

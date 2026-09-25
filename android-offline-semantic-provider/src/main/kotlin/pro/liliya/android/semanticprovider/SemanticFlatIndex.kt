@@ -268,6 +268,20 @@ internal class SemanticFlatIndex(
     }
 
     @Synchronized
+    fun snapshotSeeds(): List<SemanticIndexSeed> =
+        entries.values.map { entry ->
+            val values = entry.vector.copyValues()
+            try {
+                SemanticIndexSeed(
+                    source = entry.source,
+                    vector = SemanticEmbeddingVector(values)
+                )
+            } finally {
+                values.fill(0f)
+            }
+        }
+
+    @Synchronized
     fun clear() {
         entries.values.forEach { entry ->
             entry.vector.clear()

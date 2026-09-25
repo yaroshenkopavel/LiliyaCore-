@@ -7,6 +7,7 @@ import pro.liliya.core.encryption.CognitivePersistentRecordDraft
 import pro.liliya.core.encryption.CognitivePlaintext
 import pro.liliya.core.encryption.EncryptedPersistentRecordStore
 import pro.liliya.core.foundation.FoundationComposition
+import pro.liliya.core.persistence.PersistentBackendMetadata
 import pro.liliya.core.persistence.PersistentEntityId
 import pro.liliya.core.persistence.PersistentMutationResult
 import pro.liliya.core.persistence.PersistentPayload
@@ -173,6 +174,10 @@ class EncryptedPersistentKnowledgeComposition private constructor(
     }
 
     fun contains(id: KnowledgeItemId): Boolean = inspect(id) != null
+
+    fun durableMetadataSnapshot(): PersistentBackendMetadata? =
+        encryptedStore.indexedMetadataSnapshot()
+
     fun snapshot(): List<KnowledgeItem> = snapshotEntries().map { it.item }
 
     fun snapshotEntries(): List<KnowledgeItemSnapshot> {
