@@ -4,7 +4,9 @@ import java.time.Instant
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertTrue
 import pro.liliya.core.diagnostics.DiagnosticRecorder
 import pro.liliya.core.diagnostics.InMemoryDiagnosticSink
 import pro.liliya.core.foundation.FoundationComposition
@@ -133,6 +135,8 @@ class PersistentDomainExactReadContractTest {
         val failed = assertIs<PersistentMemoryInspectResult.Failed>(composition.inspectResult(id))
         assertEquals("memory exact read failed", failed.reason)
         assertEquals(failure, failed.throwable)
+        assertFalse(failed.toString().contains("private backend detail"))
+        assertTrue(failed.toString().contains("java.lang.IllegalStateException"))
         assertEquals(0, backend.legacyLoadCalls)
     }
 
@@ -183,6 +187,8 @@ class PersistentDomainExactReadContractTest {
         val failed = assertIs<PersistentKnowledgeInspectResult.Failed>(composition.inspectResult(id))
         assertEquals("knowledge exact read failed", failed.reason)
         assertEquals(failure, failed.throwable)
+        assertFalse(failed.toString().contains("private backend detail"))
+        assertTrue(failed.toString().contains("java.lang.IllegalStateException"))
         assertEquals(0, backend.legacyLoadCalls)
     }
 
