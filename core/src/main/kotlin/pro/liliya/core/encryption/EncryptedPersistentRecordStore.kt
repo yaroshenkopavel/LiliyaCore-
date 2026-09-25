@@ -253,7 +253,7 @@ class EncryptedPersistentRecordStore(
                     ArrayList<PersistentRecordSnapshot>(page.entries.size)
                 for (snapshot in page.entries) {
                     val plaintext = when (
-                        val opened = open(snapshot.record.id)
+                        val opened = open(snapshot)
                     ) {
                         is CognitiveEncryptionResult.Success -> opened.value
                         is CognitiveEncryptionResult.Rejected ->
@@ -263,18 +263,21 @@ class EncryptedPersistentRecordStore(
                             return EncryptedPersistentRecordPageResult
                                 .EncryptionUnavailable(opened.category)
                     }
-                    decrypted += PersistentRecordSnapshot(
-                        record = PersistentRecord(
-                            id = snapshot.record.id,
-                            schemaId = snapshot.record.schemaId,
-                            schemaVersion = snapshot.record.schemaVersion,
-                            payload = PersistentPayload(
-                                plaintext.copyBytes()
+                    val plaintextBytes = plaintext.copyBytes()
+                    try {
+                        decrypted += PersistentRecordSnapshot(
+                            record = PersistentRecord(
+                                id = snapshot.record.id,
+                                schemaId = snapshot.record.schemaId,
+                                schemaVersion = snapshot.record.schemaVersion,
+                                payload = PersistentPayload(plaintextBytes),
+                                createdAt = snapshot.record.createdAt
                             ),
-                            createdAt = snapshot.record.createdAt
-                        ),
-                        generation = snapshot.generation
-                    )
+                            generation = snapshot.generation
+                        )
+                    } finally {
+                        plaintextBytes.fill(0)
+                    }
                 }
                 EncryptedPersistentRecordPageResult.Loaded(
                     entries = decrypted,
@@ -329,21 +332,26 @@ class EncryptedPersistentRecordStore(
 
         val decrypted = ArrayList<PersistentRecordSnapshot>(snapshots.size)
         for (snapshot in snapshots) {
-            val plaintext = when (val opened = open(snapshot.record.id)) {
+            val plaintext = when (val opened = open(snapshot)) {
                 is CognitiveEncryptionResult.Success -> opened.value
                 is CognitiveEncryptionResult.Rejected -> return opened
                 is CognitiveEncryptionResult.Failed -> return opened
             }
-            decrypted += PersistentRecordSnapshot(
-                record = PersistentRecord(
-                    id = snapshot.record.id,
-                    schemaId = snapshot.record.schemaId,
-                    schemaVersion = snapshot.record.schemaVersion,
-                    payload = PersistentPayload(plaintext.copyBytes()),
-                    createdAt = snapshot.record.createdAt
-                ),
-                generation = snapshot.generation
-            )
+            val plaintextBytes = plaintext.copyBytes()
+            try {
+                decrypted += PersistentRecordSnapshot(
+                    record = PersistentRecord(
+                        id = snapshot.record.id,
+                        schemaId = snapshot.record.schemaId,
+                        schemaVersion = snapshot.record.schemaVersion,
+                        payload = PersistentPayload(plaintextBytes),
+                        createdAt = snapshot.record.createdAt
+                    ),
+                    generation = snapshot.generation
+                )
+            } finally {
+                plaintextBytes.fill(0)
+            }
         }
         return CognitiveEncryptionResult.Success(decrypted)
     }
@@ -388,12 +396,21 @@ class EncryptedPersistentRecordStore(
                     lookedUp.throwable
                 )
         }
-        val envelope = when (
-            val decoded = CognitivePersistentEnvelopeCodec.decode(snapshot.record.payload.copyBytes())
-        ) {
-            is CognitiveEncryptionResult.Success -> decoded.value
-            is CognitiveEncryptionResult.Rejected -> return decoded
-            is CognitiveEncryptionResult.Failed -> return decoded
+        return open(snapshot)
+    }
+
+    internal fun open(
+        snapshot: PersistentRecordSnapshot
+    ): CognitiveEncryptionResult<CognitivePlaintext> {
+        val encodedEnvelope = snapshot.record.payload.copyBytes()
+        val envelope = try {
+            when (val decoded = CognitivePersistentEnvelopeCodec.decode(encodedEnvelope)) {
+                is CognitiveEncryptionResult.Success -> decoded.value
+                is CognitiveEncryptionResult.Rejected -> return decoded
+                is CognitiveEncryptionResult.Failed -> return decoded
+            }
+        } finally {
+            encodedEnvelope.fill(0)
         }
 
         val expectedBinding = CognitivePayloadBinding(
@@ -435,7 +452,11 @@ class EncryptedPersistentRecordStore(
                 CognitiveEncryptionFailureCategory.MALFORMED_ENVELOPE
             )
         }
-        val aad = CognitiveAssociatedDataEncoder.encode(envelope.version, envelope.profile, envelope.binding)
+        val aad = CognitiveAssociatedDataEncoder.encode(
+            envelope.version,
+            envelope.profile,
+            envelope.binding
+        )
         return aead.open(envelope.profile, dek, nonce, aad, sealed)
     }
 }

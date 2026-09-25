@@ -4,6 +4,8 @@ import pro.liliya.core.foundation.FoundationComposition
 import pro.liliya.core.persistence.PersistentInstallResult
 import pro.liliya.core.persistence.PersistentMutationResult
 import pro.liliya.core.persistence.PersistentRecordBackend
+import pro.liliya.core.persistence.PersistentEntityId
+import pro.liliya.core.persistence.PersistentRecordLookupResult
 import pro.liliya.core.persistence.PersistentRecordOwnership
 import pro.liliya.core.persistence.PersistentRecordStore
 import pro.liliya.core.persistence.PersistentStoreId
@@ -28,6 +30,20 @@ sealed interface PersistentKnowledgeMutationResult {
     data object Committed : PersistentKnowledgeMutationResult
     data class Rejected(val reason: String) : PersistentKnowledgeMutationResult
     data class Failed(val reason: String, val throwable: Throwable? = null) : PersistentKnowledgeMutationResult {
+        override fun toString(): String =
+            "Failed(reason=$reason, throwable=${throwable?.javaClass?.name ?: "null"})"
+    }
+}
+
+sealed interface PersistentKnowledgeInspectResult {
+    data object Missing : PersistentKnowledgeInspectResult
+    data class Found(val snapshot: KnowledgeItemSnapshot) : PersistentKnowledgeInspectResult
+    data object Corrupt : PersistentKnowledgeInspectResult
+    data class Incompatible(val reason: String) : PersistentKnowledgeInspectResult
+    data class Failed(
+        val reason: String,
+        val throwable: Throwable? = null
+    ) : PersistentKnowledgeInspectResult {
         override fun toString(): String =
             "Failed(reason=$reason, throwable=${throwable?.javaClass?.name ?: "null"})"
     }
@@ -65,6 +81,35 @@ class PersistentKnowledgeComposition private constructor(
     fun find(id: KnowledgeItemId): KnowledgeItem? = knowledgeStore.find(id)
 
     fun inspect(id: KnowledgeItemId): KnowledgeItemSnapshot? = knowledgeStore.inspect(id)
+
+    fun inspectResult(id: KnowledgeItemId): PersistentKnowledgeInspectResult =
+        when (
+            val inspected = persistentStore.inspectResult(PersistentEntityId(id.value))
+        ) {
+            PersistentRecordLookupResult.Missing -> PersistentKnowledgeInspectResult.Missing
+            is PersistentRecordLookupResult.Found ->
+                when (val decoded = KnowledgePersistentRecordCodec.decode(inspected.snapshot.record)) {
+                    is KnowledgePersistentDecodeResult.Decoded ->
+                        PersistentKnowledgeInspectResult.Found(
+                            KnowledgeItemSnapshot(
+                                item = decoded.item,
+                                generation = KnowledgeGeneration(inspected.snapshot.generation.value)
+                            )
+                        )
+                    KnowledgePersistentDecodeResult.Corrupt ->
+                        PersistentKnowledgeInspectResult.Corrupt
+                    is KnowledgePersistentDecodeResult.Incompatible ->
+                        PersistentKnowledgeInspectResult.Incompatible(decoded.reason)
+                }
+            PersistentRecordLookupResult.Corrupt -> PersistentKnowledgeInspectResult.Corrupt
+            is PersistentRecordLookupResult.Incompatible ->
+                PersistentKnowledgeInspectResult.Incompatible(inspected.reason)
+            is PersistentRecordLookupResult.Failed ->
+                PersistentKnowledgeInspectResult.Failed(
+                    inspected.reason,
+                    inspected.throwable
+                )
+        }
 
     fun contains(id: KnowledgeItemId): Boolean = knowledgeStore.contains(id)
 

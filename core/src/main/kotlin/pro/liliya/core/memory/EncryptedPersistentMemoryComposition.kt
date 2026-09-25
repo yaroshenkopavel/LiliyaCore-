@@ -12,7 +12,29 @@ import pro.liliya.core.persistence.PersistentGeneration
 import pro.liliya.core.persistence.PersistentMutationResult
 import pro.liliya.core.persistence.PersistentPayload
 import pro.liliya.core.persistence.PersistentRecord
+import pro.liliya.core.persistence.PersistentRecordLookupResult
 import pro.liliya.core.persistence.PersistentRecordOwnership
+
+sealed interface EncryptedPersistentMemoryInspectResult {
+    data object Missing : EncryptedPersistentMemoryInspectResult
+    data class Found(val snapshot: MemoryRecordSnapshot) : EncryptedPersistentMemoryInspectResult
+    data object Corrupt : EncryptedPersistentMemoryInspectResult
+    data class Incompatible(val reason: String) : EncryptedPersistentMemoryInspectResult
+    data class EncryptionUnavailable(
+        val category: CognitiveEncryptionFailureCategory,
+        val throwable: Throwable? = null
+    ) : EncryptedPersistentMemoryInspectResult {
+        override fun toString(): String =
+            "EncryptionUnavailable(category=$category, throwable=${throwable?.javaClass?.name ?: "null"})"
+    }
+    data class Failed(
+        val reason: String,
+        val throwable: Throwable? = null
+    ) : EncryptedPersistentMemoryInspectResult {
+        override fun toString(): String =
+            "Failed(reason=$reason, throwable=${throwable?.javaClass?.name ?: "null"})"
+    }
+}
 
 sealed interface EncryptedPersistentMemoryOpenResult {
     data class Opened(
@@ -75,6 +97,66 @@ class EncryptedPersistentMemoryComposition private constructor(
 
     fun find(id: MemoryRecordId): MemoryRecord? = memoryStore.find(id)
     fun inspect(id: MemoryRecordId): MemoryRecordSnapshot? = memoryStore.inspect(id)
+
+    fun inspectResult(id: MemoryRecordId): EncryptedPersistentMemoryInspectResult {
+        val entityId = PersistentEntityId(id.value)
+        val snapshot = when (val inspected = encryptedStore.inspectResult(entityId)) {
+            PersistentRecordLookupResult.Missing ->
+                return EncryptedPersistentMemoryInspectResult.Missing
+            is PersistentRecordLookupResult.Found -> inspected.snapshot
+            PersistentRecordLookupResult.Corrupt ->
+                return EncryptedPersistentMemoryInspectResult.Corrupt
+            is PersistentRecordLookupResult.Incompatible ->
+                return EncryptedPersistentMemoryInspectResult.Incompatible(inspected.reason)
+            is PersistentRecordLookupResult.Failed ->
+                return EncryptedPersistentMemoryInspectResult.Failed(
+                    inspected.reason,
+                    inspected.throwable
+                )
+        }
+
+        val plaintext = when (val opened = encryptedStore.open(snapshot)) {
+            is CognitiveEncryptionResult.Success -> opened.value
+            is CognitiveEncryptionResult.Rejected ->
+                return EncryptedPersistentMemoryInspectResult.EncryptionUnavailable(
+                    opened.category
+                )
+            is CognitiveEncryptionResult.Failed ->
+                return EncryptedPersistentMemoryInspectResult.EncryptionUnavailable(
+                    opened.category,
+                    opened.throwable
+                )
+        }
+        val bytes = plaintext.copyBytes()
+        return try {
+            when (
+                val decoded = MemoryPersistentRecordCodec.decode(
+                    PersistentRecord(
+                        id = snapshot.record.id,
+                        schemaId = snapshot.record.schemaId,
+                        schemaVersion = snapshot.record.schemaVersion,
+                        payload = PersistentPayload(bytes),
+                        createdAt = snapshot.record.createdAt
+                    )
+                )
+            ) {
+                is MemoryPersistentDecodeResult.Decoded ->
+                    EncryptedPersistentMemoryInspectResult.Found(
+                        MemoryRecordSnapshot(
+                            decoded.record,
+                            MemoryGeneration(snapshot.generation.value)
+                        )
+                    )
+                MemoryPersistentDecodeResult.Corrupt ->
+                    EncryptedPersistentMemoryInspectResult.Corrupt
+                is MemoryPersistentDecodeResult.Incompatible ->
+                    EncryptedPersistentMemoryInspectResult.Incompatible(decoded.reason)
+            }
+        } finally {
+            bytes.fill(0)
+        }
+    }
+
     fun contains(id: MemoryRecordId): Boolean = memoryStore.contains(id)
     fun snapshot(): List<MemoryRecord> = memoryStore.snapshot()
     fun snapshotEntries(): List<MemoryRecordSnapshot> = memoryStore.snapshotEntries()
