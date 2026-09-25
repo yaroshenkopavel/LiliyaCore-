@@ -17,11 +17,11 @@ internal sealed interface SemanticShardMutationResult {
 internal class SemanticShardMutableIndex(
     private val store: SemanticShardStore,
     initialManifest: SemanticShardManifest
-) {
+) : SemanticShardActiveIndex {
     private var manifest: SemanticShardManifest = initialManifest
 
     @Synchronized
-    fun rank(
+    override fun rank(
         domain: SemanticIndexDomain,
         query: SemanticEmbeddingVector,
         maxCandidates: Int
@@ -29,7 +29,7 @@ internal class SemanticShardMutableIndex(
         store.rank(manifest, domain, query, maxCandidates)
 
     @Synchronized
-    fun add(
+    override fun add(
         source: SemanticIndexSourceReference,
         vector: SemanticEmbeddingVector
     ): SemanticShardMutationResult {
@@ -59,7 +59,7 @@ internal class SemanticShardMutableIndex(
     }
 
     @Synchronized
-    fun replace(
+    override fun replace(
         expected: SemanticIndexSourceReference,
         replacement: SemanticIndexSourceReference,
         replacementVector: SemanticEmbeddingVector
@@ -131,7 +131,7 @@ internal class SemanticShardMutableIndex(
     }
 
     @Synchronized
-    fun remove(
+    override fun remove(
         source: SemanticIndexSourceReference
     ): SemanticShardMutationResult {
         val shardId = SemanticShardLayout.shardFor(source)
@@ -198,7 +198,7 @@ internal class SemanticShardMutableIndex(
     }
 
     @Synchronized
-    fun persistManifest(
+    override fun persistManifest(
         authoritative: SemanticAuthoritativeMetadataCheckpoint
     ): Boolean {
         val next = SemanticShardManifest(
@@ -215,6 +215,9 @@ internal class SemanticShardMutableIndex(
 
     @Synchronized
     fun currentManifest(): SemanticShardManifest = manifest
+
+    @Synchronized
+    override fun entryCount(): Long = manifest.shards.sumOf { it.entryCount.toLong() }
 
     private fun loadSeeds(shardId: SemanticShardId): LoadedSeeds? {
         val descriptor = manifest.shards.firstOrNull { it.shardId == shardId }

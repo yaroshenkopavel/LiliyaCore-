@@ -15,6 +15,19 @@ value class AndroidOfflineSemanticShardStorageKey internal constructor(
         private val SHA256 = Regex("[0-9a-f]{64}")
 
         val MANIFEST = AndroidOfflineSemanticShardStorageKey("manifest-v2")
+        val MANIFEST_V3_ROOT = AndroidOfflineSemanticShardStorageKey("manifest-v3-root")
+        val MANIFEST_V3_GC = AndroidOfflineSemanticShardStorageKey("manifest-v3-gc")
+
+        fun forManifestSegment(
+            publicationId: String,
+            ordinal: Long
+        ): AndroidOfflineSemanticShardStorageKey {
+            require(SemanticShardManifestRootV3.PUBLICATION_ID.matches(publicationId))
+            require(ordinal >= 0L)
+            return AndroidOfflineSemanticShardStorageKey(
+                "manifest-v3-segment-" + publicationId + "-" + ordinal
+            )
+        }
 
         fun forShard(
             shardId: SemanticShardId,
@@ -58,6 +71,20 @@ sealed interface AndroidOfflineSemanticShardStorageWriteResult {
     }
 }
 
+sealed interface AndroidOfflineSemanticShardStorageDeleteResult {
+    data object Deleted : AndroidOfflineSemanticShardStorageDeleteResult
+    data object Missing : AndroidOfflineSemanticShardStorageDeleteResult
+    data object Unsupported : AndroidOfflineSemanticShardStorageDeleteResult
+    data class Failed(
+        val reason: String,
+        val throwable: Throwable? = null
+    ) : AndroidOfflineSemanticShardStorageDeleteResult {
+        override fun toString(): String =
+            "Failed(reason=$reason, throwable=" +
+                (throwable?.javaClass?.name ?: "null") + ")"
+    }
+}
+
 /**
  * Host-owned encrypted storage for v2 semantic manifest and bounded generation shards.
  *
@@ -72,6 +99,11 @@ interface AndroidOfflineSemanticShardStorage {
         key: AndroidOfflineSemanticShardStorageKey,
         blob: AndroidOfflineSemanticCheckpointBlob
     ): AndroidOfflineSemanticShardStorageWriteResult
+
+    fun delete(
+        key: AndroidOfflineSemanticShardStorageKey
+    ): AndroidOfflineSemanticShardStorageDeleteResult =
+        AndroidOfflineSemanticShardStorageDeleteResult.Unsupported
 }
 
 internal sealed interface SemanticShardManifestLoadResult {
@@ -159,11 +191,19 @@ internal class SemanticShardStore(
         domain: SemanticIndexDomain,
         query: SemanticEmbeddingVector,
         maxCandidates: Int
+    ): SemanticShardRankResult =
+        rankDescriptors(manifest.shards, domain, query, maxCandidates)
+
+    fun rankDescriptors(
+        descriptors: List<SemanticShardDescriptor>,
+        domain: SemanticIndexDomain,
+        query: SemanticEmbeddingVector,
+        maxCandidates: Int
     ): SemanticShardRankResult {
         require(maxCandidates > 0)
         var globalTopK: List<SemanticRankedCandidate> = emptyList()
 
-        for (descriptor in manifest.shards) {
+        for (descriptor in descriptors) {
             if (descriptor.shardId.domain != domain) continue
             val key = AndroidOfflineSemanticShardStorageKey.forShard(
                 descriptor.shardId,

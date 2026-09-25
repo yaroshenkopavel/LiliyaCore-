@@ -161,7 +161,7 @@ internal class OfflineSemanticProviderComposition(
 
     private var session: SemanticProviderEmbeddingSession? = null
 
-    private var shardIndex: SemanticShardMutableIndex? = null
+    private var shardIndex: SemanticShardActiveIndex? = null
 
     fun lifecycle(): OfflineSemanticProviderLifecycle = lifecycle
 
@@ -414,6 +414,57 @@ internal class OfflineSemanticProviderComposition(
             val total = manifest.shards.sumOf { it.entryCount.toLong() }
             OfflineSemanticRebuildResult.Published(
                 total.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+            )
+        } catch (_: Exception) {
+            OfflineSemanticRebuildResult.IndexRejected
+        } finally {
+            synchronized(this) { rebuilding = false }
+        }
+    }
+
+    fun activateShardIndexV3(
+        shardStore: SemanticShardStore,
+        manifestStore: SemanticShardManifestV3Store,
+        root: SemanticShardManifestRootV3
+    ): OfflineSemanticRebuildResult {
+        synchronized(this) {
+            if (lifecycle != OfflineSemanticProviderLifecycle.READY) {
+                return OfflineSemanticRebuildResult.NotReady
+            }
+            if (rebuilding || operationInFlight) return OfflineSemanticRebuildResult.Busy
+            if (session == null) {
+                lifecycle = OfflineSemanticProviderLifecycle.FAILED
+                return OfflineSemanticRebuildResult.SessionFailed
+            }
+            if (
+                root.model != SemanticCheckpointModelBinding.production() ||
+                root.entriesPerShard != SemanticShardLayout.ENTRIES_PER_SHARD ||
+                root.descriptorsPerSegment != SemanticShardManifestRootV3.DESCRIPTORS_PER_SEGMENT
+            ) {
+                return OfflineSemanticRebuildResult.IndexRejected
+            }
+            rebuilding = true
+        }
+
+        return try {
+            publication.release()
+            val activated = SemanticShardSegmentedIndexV3(
+                shardStore = shardStore,
+                manifestStore = manifestStore,
+                initialRoot = root
+            )
+            if (!activated.validate()) {
+                return OfflineSemanticRebuildResult.IndexRejected
+            }
+            synchronized(this) {
+                if (lifecycle != OfflineSemanticProviderLifecycle.READY) {
+                    return OfflineSemanticRebuildResult.SessionFailed
+                }
+                shardIndex = activated
+                indexPublished = true
+            }
+            OfflineSemanticRebuildResult.Published(
+                activated.entryCount().coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
             )
         } catch (_: Exception) {
             OfflineSemanticRebuildResult.IndexRejected

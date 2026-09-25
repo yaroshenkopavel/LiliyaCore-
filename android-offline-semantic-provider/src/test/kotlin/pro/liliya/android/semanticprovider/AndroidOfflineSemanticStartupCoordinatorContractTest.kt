@@ -396,7 +396,7 @@ class AndroidOfflineSemanticStartupCoordinatorContractTest {
         assertEquals(AndroidOfflineSemanticStartupState.READY, coordinator.state())
         assertEquals(false, events.contains("rebuild"))
         assertEquals(false, events.contains("restore"))
-        assertEquals(true, events.contains("activate-shards"))
+        assertEquals(true, events.contains("activate-shards-v3"))
         assertEquals(10, shardStorage.shardBlobCount())
     }
 
@@ -421,7 +421,7 @@ class AndroidOfflineSemanticStartupCoordinatorContractTest {
         }
 
         fun shardBlobCount(): Int =
-            blobs.keys.count { it != AndroidOfflineSemanticShardStorageKey.MANIFEST.value }
+            blobs.keys.count { it.startsWith("memory-") || it.startsWith("knowledge-") }
     }
 
     private class GeneratedMemoryPageReader(
@@ -516,6 +516,20 @@ class AndroidOfflineSemanticStartupCoordinatorContractTest {
             events += "activate-shards"
             return AndroidOfflineSemanticProviderRebuildResult.Ready(
                 manifest.shards.sumOf { it.entryCount }
+            )
+        }
+
+        override fun activateShardManifestV3(
+            shardStore: SemanticShardStore,
+            manifestStore: SemanticShardManifestV3Store,
+            root: SemanticShardManifestRootV3
+        ): AndroidOfflineSemanticProviderRebuildResult {
+            events += "activate-shards-v3"
+            return AndroidOfflineSemanticProviderRebuildResult.Ready(
+                (root.authoritative.memory.entryCount +
+                    root.authoritative.knowledge.entryCount)
+                    .coerceAtMost(Int.MAX_VALUE.toLong())
+                    .toInt()
             )
         }
 

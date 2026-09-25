@@ -21,6 +21,7 @@ import pro.liliya.android.semanticprovider.AndroidOfflineSemanticCheckpointStora
 import pro.liliya.android.semanticprovider.AndroidOfflineSemanticCheckpointStorageReadResult
 import pro.liliya.android.semanticprovider.AndroidOfflineSemanticCheckpointStorageWriteResult
 import pro.liliya.android.semanticprovider.AndroidOfflineSemanticShardStorage
+import pro.liliya.android.semanticprovider.AndroidOfflineSemanticShardStorageDeleteResult
 import pro.liliya.android.semanticprovider.AndroidOfflineSemanticShardStorageKey
 import pro.liliya.android.semanticprovider.AndroidOfflineSemanticShardStorageReadResult
 import pro.liliya.android.semanticprovider.AndroidOfflineSemanticShardStorageWriteResult
@@ -50,6 +51,7 @@ import pro.liliya.core.cognitive.MemoryRetrievalPort
 import pro.liliya.core.cognitive.MemoryRelevanceCandidate
 import pro.liliya.core.encryption.CognitiveDekReference
 import pro.liliya.core.encryption.EncryptedPersistentBlob
+import pro.liliya.core.encryption.EncryptedPersistentBlobDeleteResult
 import pro.liliya.core.encryption.EncryptedPersistentBlobReadResult
 import pro.liliya.core.encryption.EncryptedPersistentBlobSlot
 import pro.liliya.core.encryption.EncryptedPersistentBlobWriteResult
@@ -243,6 +245,39 @@ private class AndroidHeartEncryptedSemanticShardStorage(
                 AndroidOfflineSemanticShardStorageWriteResult.Failed(
                     written.reason,
                     written.throwable
+                )
+        }
+    }
+
+    override fun delete(
+        key: AndroidOfflineSemanticShardStorageKey
+    ): AndroidOfflineSemanticShardStorageDeleteResult {
+        val slot = when (val opened = openSlot(key)) {
+            is AndroidEncryptedBlobSlotOpenResult.Opened -> opened.slot
+            AndroidEncryptedBlobSlotOpenResult.Corrupt ->
+                return AndroidOfflineSemanticShardStorageDeleteResult.Failed(
+                    "encrypted semantic shard store is corrupt"
+                )
+            is AndroidEncryptedBlobSlotOpenResult.Incompatible ->
+                return AndroidOfflineSemanticShardStorageDeleteResult.Failed(opened.reason)
+            is AndroidEncryptedBlobSlotOpenResult.Failed ->
+                return AndroidOfflineSemanticShardStorageDeleteResult.Failed(
+                    opened.reason,
+                    opened.throwable
+                )
+        }
+
+        return when (val deleted = slot.delete()) {
+            EncryptedPersistentBlobDeleteResult.Deleted ->
+                AndroidOfflineSemanticShardStorageDeleteResult.Deleted
+            EncryptedPersistentBlobDeleteResult.Missing ->
+                AndroidOfflineSemanticShardStorageDeleteResult.Missing
+            is EncryptedPersistentBlobDeleteResult.Rejected ->
+                AndroidOfflineSemanticShardStorageDeleteResult.Failed(deleted.reason)
+            is EncryptedPersistentBlobDeleteResult.Failed ->
+                AndroidOfflineSemanticShardStorageDeleteResult.Failed(
+                    deleted.reason,
+                    deleted.throwable
                 )
         }
     }

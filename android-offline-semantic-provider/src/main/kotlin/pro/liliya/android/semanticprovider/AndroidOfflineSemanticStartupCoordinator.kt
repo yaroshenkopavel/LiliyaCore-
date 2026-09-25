@@ -71,6 +71,11 @@ internal interface SemanticProductionRuntime {
         store: SemanticShardStore,
         manifest: SemanticShardManifest
     ): AndroidOfflineSemanticProviderRebuildResult
+    fun activateShardManifestV3(
+        shardStore: SemanticShardStore,
+        manifestStore: SemanticShardManifestV3Store,
+        root: SemanticShardManifestRootV3
+    ): AndroidOfflineSemanticProviderRebuildResult
     fun embedShardPage(
         observations: List<SemanticSourceObservation>
     ): OfflineSemanticShardEmbedResult
@@ -104,6 +109,13 @@ internal class AssemblySemanticProductionRuntime(
         manifest: SemanticShardManifest
     ): AndroidOfflineSemanticProviderRebuildResult =
         assembly.activateShardManifest(store, manifest)
+
+    override fun activateShardManifestV3(
+        shardStore: SemanticShardStore,
+        manifestStore: SemanticShardManifestV3Store,
+        root: SemanticShardManifestRootV3
+    ): AndroidOfflineSemanticProviderRebuildResult =
+        assembly.activateShardManifestV3(shardStore, manifestStore, root)
 
     override fun embedShardPage(
         observations: List<SemanticSourceObservation>
@@ -181,38 +193,89 @@ class AndroidOfflineSemanticStartupCoordinator internal constructor(
 
         val restoreMetadata = authoritativeMetadataSnapshot()
         if (restoreMetadata != null && shardStorage != null) {
-            val store = SemanticShardStore(
+            val shardStore = SemanticShardStore(
                 storage = shardStorage,
                 profileGeneration = SemanticModelProfileV01.PROFILE_GENERATION
             )
-            val manifest = when (val loadedManifest = store.loadManifest()) {
-                is SemanticShardManifestLoadResult.Loaded -> loadedManifest.manifest
-                SemanticShardManifestLoadResult.Missing,
-                SemanticShardManifestLoadResult.Corrupt,
-                is SemanticShardManifestLoadResult.Incompatible,
-                is SemanticShardManifestLoadResult.Failed -> null
-            }
-            if (
-                manifest != null &&
-                manifest.matches(
-                    expectedModel = SemanticCheckpointModelBinding.production(),
-                    expectedAuthoritative = restoreMetadata
-                )
-            ) {
-                when (val restored = runtime.activateShardManifest(store, manifest)) {
-                    is AndroidOfflineSemanticProviderRebuildResult.Ready -> {
-                        startupState = AndroidOfflineSemanticStartupState.READY
-                        return AndroidOfflineSemanticStartupResult.Ready(restored.entryCount)
-                    }
-                    AndroidOfflineSemanticProviderRebuildResult.Busy,
-                    AndroidOfflineSemanticProviderRebuildResult.NotLoaded,
-                    AndroidOfflineSemanticProviderRebuildResult.Failed -> Unit
-                }
-            }
+            val manifestStoreV3 = SemanticShardManifestV3Store(shardStorage)
+            val garbageCollectorV3 = SemanticShardManifestV3GarbageCollector(
+                storage = shardStorage,
+                manifestStore = manifestStoreV3
+            )
+            // Cleanup is derived-state hygiene only. A deferred/unsupported GC never blocks
+            // semantic startup; safety is enforced by the committed-root checks inside the GC.
+            garbageCollectorV3.resumeIfSafe()
+            val loadedRootV3 = manifestStoreV3.loadRoot()
 
-            if (authoritativePages != null) {
-                return rebuildShardedFromPages(
-                    store = store,
+            if (loadedRootV3 is SemanticShardManifestRootV3LoadResult.Loaded) {
+                val root = loadedRootV3.root
+                if (
+                    root.matches(
+                        expectedModel = SemanticCheckpointModelBinding.production(),
+                        expectedAuthoritative = restoreMetadata
+                    )
+                ) {
+                    when (
+                        val restored = runtime.activateShardManifestV3(
+                            shardStore,
+                            manifestStoreV3,
+                            root
+                        )
+                    ) {
+                        is AndroidOfflineSemanticProviderRebuildResult.Ready -> {
+                            startupState = AndroidOfflineSemanticStartupState.READY
+                            return AndroidOfflineSemanticStartupResult.Ready(restored.entryCount)
+                        }
+                        AndroidOfflineSemanticProviderRebuildResult.Busy,
+                        AndroidOfflineSemanticProviderRebuildResult.NotLoaded,
+                        AndroidOfflineSemanticProviderRebuildResult.Failed -> Unit
+                    }
+                }
+
+                if (authoritativePages != null) {
+                    return rebuildShardedFromPagesV3(
+                        shardStore = shardStore,
+                        manifestStore = manifestStoreV3,
+                        metadataBefore = restoreMetadata
+                    )
+                }
+            } else if (loadedRootV3 == SemanticShardManifestRootV3LoadResult.Missing) {
+                val manifestV2 = when (val loadedManifest = shardStore.loadManifest()) {
+                    is SemanticShardManifestLoadResult.Loaded -> loadedManifest.manifest
+                    SemanticShardManifestLoadResult.Missing,
+                    SemanticShardManifestLoadResult.Corrupt,
+                    is SemanticShardManifestLoadResult.Incompatible,
+                    is SemanticShardManifestLoadResult.Failed -> null
+                }
+                if (
+                    manifestV2 != null &&
+                    manifestV2.matches(
+                        expectedModel = SemanticCheckpointModelBinding.production(),
+                        expectedAuthoritative = restoreMetadata
+                    )
+                ) {
+                    when (val restored = runtime.activateShardManifest(shardStore, manifestV2)) {
+                        is AndroidOfflineSemanticProviderRebuildResult.Ready -> {
+                            startupState = AndroidOfflineSemanticStartupState.READY
+                            return AndroidOfflineSemanticStartupResult.Ready(restored.entryCount)
+                        }
+                        AndroidOfflineSemanticProviderRebuildResult.Busy,
+                        AndroidOfflineSemanticProviderRebuildResult.NotLoaded,
+                        AndroidOfflineSemanticProviderRebuildResult.Failed -> Unit
+                    }
+                }
+
+                if (authoritativePages != null) {
+                    return rebuildShardedFromPagesV3(
+                        shardStore = shardStore,
+                        manifestStore = manifestStoreV3,
+                        metadataBefore = restoreMetadata
+                    )
+                }
+            } else if (authoritativePages != null) {
+                return rebuildShardedFromPagesV3(
+                    shardStore = shardStore,
+                    manifestStore = manifestStoreV3,
                     metadataBefore = restoreMetadata
                 )
             }
@@ -291,8 +354,9 @@ class AndroidOfflineSemanticStartupCoordinator internal constructor(
         }
     }
 
-    private fun rebuildShardedFromPages(
-        store: SemanticShardStore,
+    private fun rebuildShardedFromPagesV3(
+        shardStore: SemanticShardStore,
+        manifestStore: SemanticShardManifestV3Store,
         metadataBefore: SemanticAuthoritativeMetadataCheckpoint
     ): AndroidOfflineSemanticStartupResult {
         val pageSource = authoritativePages
@@ -303,7 +367,21 @@ class AndroidOfflineSemanticStartupCoordinator internal constructor(
             return fail(AndroidOfflineSemanticStartupResult.AuthoritativeSnapshotFailed)
         }
 
-        val writer = SemanticShardRebuildWriter(store)
+        val previousRoot = when (val loaded = manifestStore.loadRoot()) {
+            is SemanticShardManifestRootV3LoadResult.Loaded -> loaded.root
+            SemanticShardManifestRootV3LoadResult.Missing,
+            SemanticShardManifestRootV3LoadResult.Corrupt,
+            is SemanticShardManifestRootV3LoadResult.Incompatible,
+            is SemanticShardManifestRootV3LoadResult.Failed -> null
+        }
+        val garbageCollector = SemanticShardManifestV3GarbageCollector(
+            storage = manifestStore.storage,
+            manifestStore = manifestStore
+        )
+        val writer = SemanticShardRebuildWriterV3(
+            shardStore = shardStore,
+            manifestStore = manifestStore
+        )
         var memoryCount = 0L
         var knowledgeCount = 0L
 
@@ -429,9 +507,29 @@ class AndroidOfflineSemanticStartupCoordinator internal constructor(
                 return fail(AndroidOfflineSemanticStartupResult.RebuildFailed)
             }
 
-            val manifest = writer.finish(metadataBefore)
-                ?: return fail(AndroidOfflineSemanticStartupResult.RebuildFailed)
-            return when (val activated = runtime.activateShardManifest(store, manifest)) {
+            val root = writer.finish(
+                authoritative = metadataBefore,
+                beforeCommit = { candidate ->
+                    previousRoot?.let {
+                        garbageCollector.prepare(
+                            previousRoot = it,
+                            targetRoot = candidate
+                        )
+                    } ?: true
+                }
+            ) ?: return fail(AndroidOfflineSemanticStartupResult.RebuildFailed)
+
+            previousRoot?.let {
+                garbageCollector.reclaimCommitted(it, root)
+            }
+
+            return when (
+                val activated = runtime.activateShardManifestV3(
+                    shardStore,
+                    manifestStore,
+                    root
+                )
+            ) {
                 is AndroidOfflineSemanticProviderRebuildResult.Ready -> {
                     startupState = AndroidOfflineSemanticStartupState.READY
                     AndroidOfflineSemanticStartupResult.Ready(activated.entryCount)
