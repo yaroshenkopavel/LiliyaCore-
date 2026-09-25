@@ -4,9 +4,14 @@ import java.time.Instant
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
+import pro.liliya.core.cognitive.KnowledgeRelevanceCandidate
+import pro.liliya.core.cognitive.MemoryRelevanceCandidate
+import pro.liliya.core.cognitive.PersistentKnowledgeCompositionAuthoritativeResolver
+import pro.liliya.core.cognitive.PersistentMemoryCompositionAuthoritativeResolver
 import pro.liliya.core.diagnostics.DiagnosticRecorder
 import pro.liliya.core.diagnostics.InMemoryDiagnosticSink
 import pro.liliya.core.foundation.FoundationComposition
@@ -190,6 +195,57 @@ class PersistentDomainExactReadContractTest {
         assertFalse(failed.toString().contains("private backend detail"))
         assertTrue(failed.toString().contains("java.lang.IllegalStateException"))
         assertEquals(0, backend.legacyLoadCalls)
+    }
+
+    @Test
+    fun persistent_authoritative_resolvers_fail_closed_on_exact_backend_failure() {
+        val memoryBackend = ExactReadFixtureBackend()
+        val memoryComposition = assertIs<PersistentMemoryOpenResult.Opened>(
+            PersistentMemoryComposition.open(
+                foundation(),
+                PersistentStoreId("memory-resolver-failure"),
+                memoryBackend
+            )
+        ).composition
+        val memoryFailure = IllegalStateException("private memory backend detail")
+        memoryBackend.exactResult = PersistentBackendEntryLoadResult.Failed(
+            "memory exact read failed",
+            memoryFailure
+        )
+        val memoryException = assertFailsWith<IllegalStateException> {
+            PersistentMemoryCompositionAuthoritativeResolver(memoryComposition).resolveExact(
+                MemoryRelevanceCandidate(
+                    MemoryRecordId("memory-resolver-failure"),
+                    MemoryGeneration(1)
+                )
+            )
+        }
+        assertEquals("memory exact read failed", memoryException.message)
+        assertEquals(memoryFailure, memoryException.cause)
+
+        val knowledgeBackend = ExactReadFixtureBackend()
+        val knowledgeComposition = assertIs<PersistentKnowledgeOpenResult.Opened>(
+            PersistentKnowledgeComposition.open(
+                foundation(),
+                PersistentStoreId("knowledge-resolver-failure"),
+                knowledgeBackend
+            )
+        ).composition
+        val knowledgeFailure = IllegalStateException("private knowledge backend detail")
+        knowledgeBackend.exactResult = PersistentBackendEntryLoadResult.Failed(
+            "knowledge exact read failed",
+            knowledgeFailure
+        )
+        val knowledgeException = assertFailsWith<IllegalStateException> {
+            PersistentKnowledgeCompositionAuthoritativeResolver(knowledgeComposition).resolveExact(
+                KnowledgeRelevanceCandidate(
+                    KnowledgeItemId("knowledge-resolver-failure"),
+                    KnowledgeGeneration(1)
+                )
+            )
+        }
+        assertEquals("knowledge exact read failed", knowledgeException.message)
+        assertEquals(knowledgeFailure, knowledgeException.cause)
     }
 
     private fun foundation(): FoundationComposition {
