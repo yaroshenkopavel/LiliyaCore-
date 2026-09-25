@@ -1,5 +1,9 @@
 package pro.liliya.core.licensetransport
 
+import java.nio.ByteBuffer
+import java.nio.charset.CharacterCodingException
+import java.nio.charset.CodingErrorAction
+
 /**
  * Caller-owned bearer credential for authenticating one licensing HTTP request.
  *
@@ -20,13 +24,28 @@ class LicenseHttpBearerCredential private constructor(
 
     init {
         require(bytes.isNotEmpty()) { "license bearer credential must not be empty" }
-        val decoded = bytes.toString(Charsets.UTF_8)
-        require(decoded.isNotBlank()) { "license bearer credential must not be blank" }
-        require(decoded.encodeToByteArray().contentEquals(bytes)) {
-            "license bearer credential must be valid UTF-8"
+        val decoded = try {
+            Charsets.UTF_8.newDecoder()
+                .onMalformedInput(CodingErrorAction.REPORT)
+                .onUnmappableCharacter(CodingErrorAction.REPORT)
+                .decode(ByteBuffer.wrap(bytes))
+        } catch (_: CharacterCodingException) {
+            throw IllegalArgumentException("license bearer credential must be valid UTF-8")
         }
-        require('\r' !in decoded && '\n' !in decoded) {
-            "license bearer credential must not contain HTTP line breaks"
+        try {
+            var hasNonWhitespace = false
+            for (index in 0 until decoded.limit()) {
+                val char = decoded.get(index)
+                require(char != '\r' && char != '\n') {
+                    "license bearer credential must not contain HTTP line breaks"
+                }
+                if (!char.isWhitespace()) hasNonWhitespace = true
+            }
+            require(hasNonWhitespace) { "license bearer credential must not be blank" }
+        } finally {
+            for (index in 0 until decoded.limit()) {
+                decoded.put(index, '\u0000')
+            }
         }
     }
 
