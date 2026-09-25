@@ -2,6 +2,7 @@ package pro.liliya.app
 
 import android.app.Application
 import android.net.Uri
+import android.os.storage.StorageManager
 import java.io.File
 import pro.liliya.android.runtime.AndroidProductRuntimeFirstRunProductInput
 import pro.liliya.android.runtime.AndroidProductRuntimeStartupCompositionRequest
@@ -143,13 +144,31 @@ class LiliyaApplication : Application() {
     ): ProductionAndroidLocalModelImportTaskRequestResult =
         localModelImportTask.request(
             importModel = {
-                ProductionAndroidLocalModelSelection.importSelected(
-                    directory = File(filesDir, "models"),
-                    openInput = { contentResolver.openInputStream(uri) }
-                )
+                val maxImportBytes = localModelImportBudgetBytes()
+                if (maxImportBytes == null) {
+                    ProductionAndroidLocalModelSelectionResult.ResourceLimitRejected
+                } else {
+                    ProductionAndroidLocalModelSelection.importSelected(
+                        directory = File(filesDir, "models"),
+                        maxImportBytes = maxImportBytes,
+                        openInput = { contentResolver.openInputStream(uri) }
+                    )
+                }
             },
             listener = listener
         )
+
+    private fun localModelImportBudgetBytes(): Long? {
+        return try {
+            val storageManager = getSystemService(StorageManager::class.java) ?: return null
+            val storageUuid = storageManager.getUuidForPath(filesDir)
+            ProductionAndroidLocalModelSelection.importBudgetForAllocatableBytes(
+                storageManager.getAllocatableBytes(storageUuid)
+            )
+        } catch (_: Exception) {
+            null
+        }
+    }
 
     internal fun observeLocalModelImport(
         listener: (ProductionAndroidLocalModelImportTaskSnapshot.Completed) -> Unit
