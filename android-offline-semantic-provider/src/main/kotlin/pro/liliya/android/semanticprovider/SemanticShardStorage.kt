@@ -161,7 +161,7 @@ internal class SemanticShardStore(
         maxCandidates: Int
     ): SemanticShardRankResult {
         require(maxCandidates > 0)
-        val shardTopK = ArrayList<List<SemanticRankedCandidate>>()
+        var globalTopK: List<SemanticRankedCandidate> = emptyList()
 
         for (descriptor in manifest.shards) {
             if (descriptor.shardId.domain != domain) continue
@@ -207,18 +207,18 @@ internal class SemanticShardStore(
                     }
                 }
                 if (!accepted) return SemanticShardRankResult.Corrupt
-                shardTopK += index.rank(domain, query, maxCandidates)
+                val localTopK = index.rank(domain, query, maxCandidates)
+                globalTopK = SemanticShardRankMerger.merge(
+                    shardCandidates = listOf(globalTopK, localTopK),
+                    maxCandidates = maxCandidates
+                )
             } finally {
                 index.clear()
-                if (!accepted) {
-                    checkpoint.seeds.forEach { it.vector.clear() }
-                }
+                checkpoint.seeds.forEach { it.vector.clear() }
             }
         }
 
-        return SemanticShardRankResult.Ranked(
-            SemanticShardRankMerger.merge(shardTopK, maxCandidates)
-        )
+        return SemanticShardRankResult.Ranked(globalTopK)
     }
 
     fun writeShard(

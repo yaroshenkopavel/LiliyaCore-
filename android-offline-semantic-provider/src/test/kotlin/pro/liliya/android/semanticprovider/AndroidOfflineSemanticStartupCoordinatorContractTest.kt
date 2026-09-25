@@ -271,6 +271,40 @@ class AndroidOfflineSemanticStartupCoordinatorContractTest {
     }
 
     @Test
+    fun ready_shard_runtime_persists_manifest_against_current_authoritative_metadata() {
+        val events = mutableListOf<String>()
+        val runtime = FakeRuntime(events)
+        val metadata = authoritativeMetadata()
+        val coordinator = AndroidOfflineSemanticStartupCoordinator(
+            runtime = runtime,
+            authoritativeSnapshots = AndroidOfflineSemanticAuthoritativeSnapshotSource {
+                events += "snapshot"
+                snapshot()
+            },
+            authoritativeMetadata = SemanticAuthoritativeMetadataSource {
+                events += "metadata"
+                metadata
+            }
+        )
+
+        assertEquals(
+            AndroidOfflineSemanticStartupResult.Ready(2),
+            coordinator.start(File("/private"), File("/private/model.onnx"))
+        )
+        runtime.shardPersistResult = true
+        events.clear()
+
+        assertEquals(
+            AndroidOfflineSemanticCheckpointPersistResult.Written,
+            coordinator.persistCheckpointIfCurrent()
+        )
+        assertEquals(
+            listOf("metadata", "persist-shard-manifest", "metadata"),
+            events
+        )
+    }
+
+    @Test
     fun metadata_change_during_rebuild_never_publishes_a_durable_checkpoint() {
         val events = mutableListOf<String>()
         val runtime = FakeRuntime(events).apply {
@@ -352,6 +386,7 @@ class AndroidOfflineSemanticStartupCoordinatorContractTest {
         var rebuildResult: AndroidOfflineSemanticProviderRebuildResult =
             AndroidOfflineSemanticProviderRebuildResult.Ready(2)
         var checkpointSeedsResult: List<SemanticIndexSeed>? = null
+        var shardPersistResult: Boolean? = null
         var closeResult: AndroidOfflineSemanticProviderCloseResult =
             AndroidOfflineSemanticProviderCloseResult.Closed
         var rebuiltMemory: List<MemoryRecordSnapshot>? = null
@@ -392,8 +427,9 @@ class AndroidOfflineSemanticStartupCoordinatorContractTest {
         override fun persistShardManifest(
             authoritative: SemanticAuthoritativeMetadataCheckpoint
         ): Boolean? {
-            events += "persist-shard-manifest"
-            return true
+            val result = shardPersistResult
+            if (result != null) events += "persist-shard-manifest"
+            return result
         }
 
         override fun rebuild(

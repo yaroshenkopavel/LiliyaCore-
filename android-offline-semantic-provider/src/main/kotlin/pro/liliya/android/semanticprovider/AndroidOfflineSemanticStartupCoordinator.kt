@@ -451,9 +451,33 @@ class AndroidOfflineSemanticStartupCoordinator internal constructor(
         if (startupState != AndroidOfflineSemanticStartupState.READY) {
             return AndroidOfflineSemanticCheckpointPersistResult.Skipped
         }
-        val store = checkpointStore
-            ?: return AndroidOfflineSemanticCheckpointPersistResult.Skipped
         val before = authoritativeMetadataSnapshot()
+            ?: return AndroidOfflineSemanticCheckpointPersistResult.Skipped
+
+        when (val shardPersisted = runtime.persistShardManifest(before)) {
+            true -> {
+                val after = authoritativeMetadataSnapshot()
+                    ?: return AndroidOfflineSemanticCheckpointPersistResult.Failed(
+                        "authoritative metadata unavailable after semantic shard manifest write"
+                    )
+                return if (after == before) {
+                    AndroidOfflineSemanticCheckpointPersistResult.Written
+                } else {
+                    // The written manifest is safely bound to the older metadata, but the live
+                    // semantic projection is no longer proven current against authoritative state.
+                    AndroidOfflineSemanticCheckpointPersistResult.Failed(
+                        "authoritative metadata changed during semantic shard manifest write"
+                    )
+                }
+            }
+            false ->
+                return AndroidOfflineSemanticCheckpointPersistResult.Failed(
+                    "semantic shard manifest persistence failed"
+                )
+            null -> Unit
+        }
+
+        val store = checkpointStore
             ?: return AndroidOfflineSemanticCheckpointPersistResult.Skipped
         val seeds = runtime.checkpointSeeds()
             ?: return AndroidOfflineSemanticCheckpointPersistResult.Skipped
@@ -568,6 +592,25 @@ class AndroidOfflineSemanticStartupCoordinator internal constructor(
                     authoritativeMetadata.snapshot()?.toInternal()
                 },
                 checkpointStore = OpaqueSemanticCheckpointStore(checkpointStorage)
+            )
+
+        fun create(
+            assembly: AndroidOfflineSemanticProviderAssembly,
+            authoritativeSnapshots: AndroidOfflineSemanticAuthoritativeSnapshotSource,
+            authoritativeMetadata: AndroidOfflineSemanticAuthoritativeMetadataSource,
+            checkpointStorage: AndroidOfflineSemanticCheckpointStorage?,
+            authoritativePages: AndroidOfflineSemanticAuthoritativePageSource,
+            shardStorage: AndroidOfflineSemanticShardStorage
+        ): AndroidOfflineSemanticStartupCoordinator =
+            AndroidOfflineSemanticStartupCoordinator(
+                runtime = AssemblySemanticProductionRuntime(assembly),
+                authoritativeSnapshots = authoritativeSnapshots,
+                authoritativeMetadata = SemanticAuthoritativeMetadataSource {
+                    authoritativeMetadata.snapshot()?.toInternal()
+                },
+                checkpointStore = checkpointStorage?.let(::OpaqueSemanticCheckpointStore),
+                authoritativePages = authoritativePages,
+                shardStorage = shardStorage
             )
     }
 }
