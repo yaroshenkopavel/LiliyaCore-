@@ -6,6 +6,7 @@ import pro.liliya.core.persistence.PersistentGeneration
 import pro.liliya.core.persistence.PersistentInstallResult
 import pro.liliya.core.persistence.PersistentMutationResult
 import pro.liliya.core.persistence.PersistentRecordBackend
+import pro.liliya.core.persistence.PersistentRecordLookupResult
 import pro.liliya.core.persistence.PersistentRecordOwnership
 import pro.liliya.core.persistence.PersistentRecordStore
 import pro.liliya.core.persistence.PersistentStoreId
@@ -33,6 +34,17 @@ sealed interface PersistentMemoryMutationResult {
         override fun toString(): String =
             "Failed(reason=$reason, throwable=${throwable?.javaClass?.name ?: "null"})"
     }
+}
+
+sealed interface PersistentMemoryInspectResult {
+    data object Missing : PersistentMemoryInspectResult
+    data class Found(val snapshot: MemoryRecordSnapshot) : PersistentMemoryInspectResult
+    data object Corrupt : PersistentMemoryInspectResult
+    data class Incompatible(val reason: String) : PersistentMemoryInspectResult
+    data class Failed(
+        val reason: String,
+        val throwable: Throwable? = null
+    ) : PersistentMemoryInspectResult
 }
 
 sealed interface PersistentMemoryOpenResult {
@@ -67,6 +79,35 @@ class PersistentMemoryComposition private constructor(
     fun find(id: MemoryRecordId): MemoryRecord? = memoryStore.find(id)
 
     fun inspect(id: MemoryRecordId): MemoryRecordSnapshot? = memoryStore.inspect(id)
+
+    fun inspectResult(id: MemoryRecordId): PersistentMemoryInspectResult =
+        when (
+            val inspected = persistentStore.inspectResult(PersistentEntityId(id.value))
+        ) {
+            PersistentRecordLookupResult.Missing -> PersistentMemoryInspectResult.Missing
+            is PersistentRecordLookupResult.Found ->
+                when (val decoded = MemoryPersistentRecordCodec.decode(inspected.snapshot.record)) {
+                    is MemoryPersistentDecodeResult.Decoded ->
+                        PersistentMemoryInspectResult.Found(
+                            MemoryRecordSnapshot(
+                                record = decoded.record,
+                                generation = MemoryGeneration(inspected.snapshot.generation.value)
+                            )
+                        )
+                    MemoryPersistentDecodeResult.Corrupt ->
+                        PersistentMemoryInspectResult.Corrupt
+                    is MemoryPersistentDecodeResult.Incompatible ->
+                        PersistentMemoryInspectResult.Incompatible(decoded.reason)
+                }
+            PersistentRecordLookupResult.Corrupt -> PersistentMemoryInspectResult.Corrupt
+            is PersistentRecordLookupResult.Incompatible ->
+                PersistentMemoryInspectResult.Incompatible(inspected.reason)
+            is PersistentRecordLookupResult.Failed ->
+                PersistentMemoryInspectResult.Failed(
+                    inspected.reason,
+                    inspected.throwable
+                )
+        }
 
     fun contains(id: MemoryRecordId): Boolean = memoryStore.contains(id)
 
