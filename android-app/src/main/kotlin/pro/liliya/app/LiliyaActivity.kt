@@ -390,6 +390,10 @@ class LiliyaActivity : Activity() {
                     renderState(ProductionAndroidAppRuntimeState.CONFIGURATION_REQUIRED)
                     status.text = "Выбранный файл модели пуст"
                 }
+                ProductionAndroidLocalModelSelectionResult.ResourceLimitRejected -> {
+                    renderState(ProductionAndroidAppRuntimeState.CONFIGURATION_REQUIRED)
+                    status.text = getString(R.string.model_import_storage_limit)
+                }
                 ProductionAndroidLocalModelSelectionResult.Failed -> {
                     renderState(ProductionAndroidAppRuntimeState.CONFIGURATION_REQUIRED)
                     status.text = "Не удалось импортировать выбранную модель"
