@@ -10,6 +10,7 @@ import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
+import java.time.DateTimeException
 import java.time.Instant
 import pro.liliya.core.persistence.IndexedPersistentRecordMutationBackend
 import pro.liliya.core.persistence.PersistentBackendCommitResult
@@ -1100,7 +1101,13 @@ class AndroidIndexedPersistentRecordBackend private constructor(
         }
         val schemaId = PersistentSchemaId(cursor.getString(2))
         val schemaVersion = PersistentSchemaVersion(cursor.getInt(3))
-        val createdAt = Instant.ofEpochSecond(cursor.getLong(4), cursor.getInt(5).toLong())
+        val createdAt = try {
+            Instant.ofEpochSecond(cursor.getLong(4), cursor.getInt(5).toLong())
+        } catch (_: DateTimeException) {
+            throw IndexedDatabaseCorruptException(
+                "indexed durable persistence record timestamp is corrupt"
+            )
+        }
         val payload = cursor.getBlob(6)
         try {
             val record = PersistentRecord(
@@ -1141,7 +1148,11 @@ class AndroidIndexedPersistentRecordBackend private constructor(
                     ) return false
                     val schemaId = PersistentSchemaId(cursor.getString(2))
                     val schemaVersion = PersistentSchemaVersion(cursor.getInt(3))
-                    val createdAt = Instant.ofEpochSecond(cursor.getLong(4), cursor.getInt(5).toLong())
+                    val createdAt = try {
+                        Instant.ofEpochSecond(cursor.getLong(4), cursor.getInt(5).toLong())
+                    } catch (_: DateTimeException) {
+                        return false
+                    }
                     val payload = cursor.getBlob(6)
                     try {
                         val entry = PersistentBackendEntry(
@@ -1163,8 +1174,6 @@ class AndroidIndexedPersistentRecordBackend private constructor(
             }
             count == header.entryCount
         } catch (_: IllegalArgumentException) {
-            false
-        } catch (_: RuntimeException) {
             false
         }
     }
