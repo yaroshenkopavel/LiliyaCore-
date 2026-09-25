@@ -181,6 +181,43 @@ class AndroidIndexedPersistentRecordBackendInstrumentedTest {
         }
 
     @Test
+    fun invalid_persisted_timestamp_is_corrupt_not_operational_failure() =
+        withCleanRoot { context, root ->
+            val storeId = PersistentStoreId("timestamp-integrity")
+            val backend = AndroidIndexedPersistentRecordBackend.create(context, TEST_DIRECTORY)
+            assertEquals(
+                PersistentBackendCommitResult.Committed(1),
+                backend.commit(storeId, 0, state(storeId, 1, mapOf("a" to "one")))
+            )
+
+            val db = SQLiteDatabase.openDatabase(
+                File(root, "liliya-indexed-v2.sqlite3").absolutePath,
+                null,
+                SQLiteDatabase.OPEN_READWRITE
+            )
+            db.use {
+                val values = android.content.ContentValues().apply {
+                    put("created_epoch", Long.MAX_VALUE)
+                }
+                assertEquals(
+                    1,
+                    it.update(
+                        "records",
+                        values,
+                        "store_id=? AND entity_id=?",
+                        arrayOf(storeId.value, "a")
+                    )
+                )
+            }
+
+            assertEquals(
+                pro.liliya.core.persistence.PersistentBackendEntryLoadResult.Corrupt,
+                AndroidIndexedPersistentRecordBackend.create(context, TEST_DIRECTORY)
+                    .loadEntry(storeId, PersistentEntityId("a"))
+            )
+        }
+
+    @Test
     fun missing_indexed_row_is_detected_as_corrupt_instead_of_silent_data_loss() =
         withCleanRoot { context, root ->
             val storeId = PersistentStoreId("row-loss")
