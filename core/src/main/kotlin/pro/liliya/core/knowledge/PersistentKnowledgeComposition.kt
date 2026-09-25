@@ -7,6 +7,7 @@ import pro.liliya.core.persistence.PersistentRecordBackend
 import pro.liliya.core.persistence.PersistentEntityId
 import pro.liliya.core.persistence.PersistentRecordLookupResult
 import pro.liliya.core.persistence.PersistentRecordOwnership
+import pro.liliya.core.persistence.PersistentRecordSnapshotEntriesResult
 import pro.liliya.core.persistence.PersistentRecordStore
 import pro.liliya.core.persistence.PersistentStoreId
 import pro.liliya.core.persistence.PersistentStoreOpenResult
@@ -63,7 +64,8 @@ sealed interface PersistentKnowledgeOpenResult {
 class PersistentKnowledgeComposition private constructor(
     private val foundation: FoundationComposition,
     private val persistentStore: PersistentRecordStore,
-    private val knowledgeStore: KnowledgeStore
+    private val knowledgeStore: KnowledgeStore,
+    private val indexedLazyMode: Boolean
 ) {
     @Synchronized
     fun create(item: KnowledgeItem): PersistentKnowledgeCreateResult {
@@ -78,9 +80,21 @@ class PersistentKnowledgeComposition private constructor(
         }
     }
 
-    fun find(id: KnowledgeItemId): KnowledgeItem? = knowledgeStore.find(id)
+    fun find(id: KnowledgeItemId): KnowledgeItem? = inspect(id)?.item
 
-    fun inspect(id: KnowledgeItemId): KnowledgeItemSnapshot? = knowledgeStore.inspect(id)
+    fun inspect(id: KnowledgeItemId): KnowledgeItemSnapshot? {
+        if (!indexedLazyMode) return knowledgeStore.inspect(id)
+        return when (val inspected = inspectResult(id)) {
+            PersistentKnowledgeInspectResult.Missing -> null
+            is PersistentKnowledgeInspectResult.Found -> inspected.snapshot
+            PersistentKnowledgeInspectResult.Corrupt ->
+                throw IllegalStateException("persistent indexed Knowledge exact read is corrupt")
+            is PersistentKnowledgeInspectResult.Incompatible ->
+                throw IllegalStateException(inspected.reason)
+            is PersistentKnowledgeInspectResult.Failed ->
+                throw IllegalStateException(inspected.reason, inspected.throwable)
+        }
+    }
 
     fun inspectResult(id: KnowledgeItemId): PersistentKnowledgeInspectResult =
         when (
@@ -111,11 +125,36 @@ class PersistentKnowledgeComposition private constructor(
                 )
         }
 
-    fun contains(id: KnowledgeItemId): Boolean = knowledgeStore.contains(id)
+    fun contains(id: KnowledgeItemId): Boolean = inspect(id) != null
 
-    fun snapshot(): List<KnowledgeItem> = knowledgeStore.snapshot()
+    fun snapshot(): List<KnowledgeItem> = snapshotEntries().map { it.item }
 
-    fun snapshotEntries(): List<KnowledgeItemSnapshot> = knowledgeStore.snapshotEntries()
+    fun snapshotEntries(): List<KnowledgeItemSnapshot> {
+        if (!indexedLazyMode) return knowledgeStore.snapshotEntries()
+        val listed = when (val result = persistentStore.snapshotEntriesResult()) {
+            PersistentRecordSnapshotEntriesResult.Empty -> return emptyList()
+            is PersistentRecordSnapshotEntriesResult.Loaded -> result.entries
+            PersistentRecordSnapshotEntriesResult.Corrupt ->
+                throw IllegalStateException("persistent indexed Knowledge snapshot is corrupt")
+            is PersistentRecordSnapshotEntriesResult.Incompatible ->
+                throw IllegalStateException(result.reason)
+            is PersistentRecordSnapshotEntriesResult.Failed ->
+                throw IllegalStateException(result.reason, result.throwable)
+        }
+        return listed.map { snapshot ->
+            when (val decoded = KnowledgePersistentRecordCodec.decode(snapshot.record)) {
+                is KnowledgePersistentDecodeResult.Decoded ->
+                    KnowledgeItemSnapshot(
+                        decoded.item,
+                        KnowledgeGeneration(snapshot.generation.value)
+                    )
+                KnowledgePersistentDecodeResult.Corrupt ->
+                    throw IllegalStateException("persistent indexed Knowledge snapshot is corrupt")
+                is KnowledgePersistentDecodeResult.Incompatible ->
+                    throw IllegalStateException(decoded.reason)
+            }
+        }
+    }
 
     private fun installCommittedKnowledge(
         item: KnowledgeItem,
@@ -245,6 +284,27 @@ class PersistentKnowledgeComposition private constructor(
             foundation: FoundationComposition,
             persistentStore: PersistentRecordStore
         ): PersistentKnowledgeOpenResult {
+            if (persistentStore.supportsIndexedLazyMode()) {
+                return when (
+                    val restored = KnowledgeStore.restore(
+                        observability = foundation.observability,
+                        entries = emptyList(),
+                        highWatermark = persistentStore.generationHighWatermark()
+                    )
+                ) {
+                    is KnowledgeRestorationResult.Restored -> PersistentKnowledgeOpenResult.Opened(
+                        PersistentKnowledgeComposition(
+                            foundation = foundation,
+                            persistentStore = persistentStore,
+                            knowledgeStore = restored.store,
+                            indexedLazyMode = true
+                        )
+                    )
+                    is KnowledgeRestorationResult.Rejected ->
+                        PersistentKnowledgeOpenResult.RestorationFailed(restored.reason)
+                }
+            }
+
             val restoredEntries = mutableListOf<KnowledgeItemSnapshot>()
             for (snapshot in persistentStore.snapshotEntries()) {
                 when (val decoded = KnowledgePersistentRecordCodec.decode(snapshot.record)) {
@@ -270,7 +330,8 @@ class PersistentKnowledgeComposition private constructor(
                     PersistentKnowledgeComposition(
                         foundation = foundation,
                         persistentStore = persistentStore,
-                        knowledgeStore = restored.store
+                        knowledgeStore = restored.store,
+                        indexedLazyMode = false
                     )
                 )
 
