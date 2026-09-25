@@ -833,10 +833,15 @@ class AndroidIndexedPersistentRecordBackend private constructor(
         }
         if (!legacy.isFile || legacy.length() <= 0L) return LegacyImportResult.Corrupt
 
-        val decoded = try {
-            AndroidPersistentStateCodec.decode(legacy.readBytes())
+        val legacyBytes = try {
+            legacy.readBytes()
         } catch (e: IOException) {
             return LegacyImportResult.Failed(e)
+        }
+        val decoded = try {
+            AndroidPersistentStateCodec.decode(legacyBytes)
+        } finally {
+            legacyBytes.fill(0)
         }
         val ready = when (decoded) {
             is AndroidPersistentStateCodec.DecodeResult.Decoded -> decoded
