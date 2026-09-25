@@ -44,7 +44,10 @@ sealed interface PersistentMemoryInspectResult {
     data class Failed(
         val reason: String,
         val throwable: Throwable? = null
-    ) : PersistentMemoryInspectResult
+    ) : PersistentMemoryInspectResult {
+        override fun toString(): String =
+            "Failed(reason=$reason, throwable=${throwable?.javaClass?.name ?: "null"})"
+    }
 }
 
 sealed interface PersistentMemoryOpenResult {
