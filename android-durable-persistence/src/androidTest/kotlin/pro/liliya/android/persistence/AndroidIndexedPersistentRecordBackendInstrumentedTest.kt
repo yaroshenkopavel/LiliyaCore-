@@ -117,6 +117,70 @@ class AndroidIndexedPersistentRecordBackendInstrumentedTest {
         }
 
     @Test
+    fun transient_database_lock_is_failed_not_reported_as_corrupt() =
+        withCleanRoot { context, root ->
+            val storeId = PersistentStoreId("transient-lock")
+            val backend = AndroidIndexedPersistentRecordBackend.create(context, TEST_DIRECTORY)
+            assertEquals(
+                PersistentBackendCommitResult.Committed(1),
+                backend.commit(storeId, 0, state(storeId, 1, mapOf("a" to "one")))
+            )
+
+            val locker = SQLiteDatabase.openDatabase(
+                File(root, "liliya-indexed-v2.sqlite3").absolutePath,
+                null,
+                SQLiteDatabase.OPEN_READWRITE
+            )
+            locker.beginTransaction()
+            try {
+                assertIs<PersistentBackendLoadResult.Failed>(
+                    AndroidIndexedPersistentRecordBackend.create(context, TEST_DIRECTORY)
+                        .load(storeId)
+                )
+            } finally {
+                locker.endTransaction()
+                locker.close()
+            }
+
+            assertIs<PersistentBackendLoadResult.Loaded>(
+                AndroidIndexedPersistentRecordBackend.create(context, TEST_DIRECTORY)
+                    .load(storeId)
+            )
+        }
+
+    @Test
+    fun tampered_header_hash_remains_corrupt_after_failure_classification() =
+        withCleanRoot { context, root ->
+            val storeId = PersistentStoreId("header-integrity")
+            val backend = AndroidIndexedPersistentRecordBackend.create(context, TEST_DIRECTORY)
+            assertEquals(
+                PersistentBackendCommitResult.Committed(1),
+                backend.commit(storeId, 0, state(storeId, 1, mapOf("a" to "one")))
+            )
+
+            val db = SQLiteDatabase.openDatabase(
+                File(root, "liliya-indexed-v2.sqlite3").absolutePath,
+                null,
+                SQLiteDatabase.OPEN_READWRITE
+            )
+            db.use {
+                val values = android.content.ContentValues().apply {
+                    put("header_hash", "tampered")
+                }
+                assertEquals(
+                    1,
+                    it.update("stores", values, "store_id=?", arrayOf(storeId.value))
+                )
+            }
+
+            assertEquals(
+                PersistentBackendLoadResult.Corrupt,
+                AndroidIndexedPersistentRecordBackend.create(context, TEST_DIRECTORY)
+                    .load(storeId)
+            )
+        }
+
+    @Test
     fun missing_indexed_row_is_detected_as_corrupt_instead_of_silent_data_loss() =
         withCleanRoot { context, root ->
             val storeId = PersistentStoreId("row-loss")
