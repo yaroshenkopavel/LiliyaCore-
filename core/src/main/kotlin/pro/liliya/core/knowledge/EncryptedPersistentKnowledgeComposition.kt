@@ -5,9 +5,13 @@ import pro.liliya.core.encryption.CognitiveEncryptionFailureCategory
 import pro.liliya.core.encryption.CognitiveEncryptionResult
 import pro.liliya.core.encryption.CognitivePersistentRecordDraft
 import pro.liliya.core.encryption.CognitivePlaintext
+import pro.liliya.core.encryption.EncryptedPersistentRecordPageResult
 import pro.liliya.core.encryption.EncryptedPersistentRecordStore
 import pro.liliya.core.foundation.FoundationComposition
 import pro.liliya.core.persistence.PersistentBackendMetadata
+import pro.liliya.core.persistence.PersistentBackendPageCursor
+import pro.liliya.core.persistence.PersistentBackendPageOrder
+import pro.liliya.core.persistence.PersistentBackendPageRequest
 import pro.liliya.core.persistence.PersistentEntityId
 import pro.liliya.core.persistence.PersistentMutationResult
 import pro.liliya.core.persistence.PersistentPayload
@@ -34,6 +38,23 @@ sealed interface EncryptedPersistentKnowledgeInspectResult {
         override fun toString(): String =
             "Failed(reason=$reason, throwable=${throwable?.javaClass?.name ?: "null"})"
     }
+}
+
+sealed interface EncryptedPersistentKnowledgePageResult {
+    data object Empty : EncryptedPersistentKnowledgePageResult
+    data class Loaded(
+        val entries: List<KnowledgeItemSnapshot>,
+        val nextCursor: PersistentBackendPageCursor?
+    ) : EncryptedPersistentKnowledgePageResult
+    data object Corrupt : EncryptedPersistentKnowledgePageResult
+    data class Incompatible(val reason: String) : EncryptedPersistentKnowledgePageResult
+    data class EncryptionUnavailable(
+        val category: CognitiveEncryptionFailureCategory
+    ) : EncryptedPersistentKnowledgePageResult
+    data class Failed(
+        val reason: String,
+        val throwable: Throwable? = null
+    ) : EncryptedPersistentKnowledgePageResult
 }
 
 sealed interface EncryptedPersistentKnowledgeOpenResult {
@@ -177,6 +198,59 @@ class EncryptedPersistentKnowledgeComposition private constructor(
 
     fun durableMetadataSnapshot(): PersistentBackendMetadata? =
         encryptedStore.indexedMetadataSnapshot()
+
+    fun page(
+        limit: Int,
+        order: PersistentBackendPageOrder = PersistentBackendPageOrder.NEWEST_FIRST,
+        cursorExclusive: PersistentBackendPageCursor? = null
+    ): EncryptedPersistentKnowledgePageResult {
+        if (!indexedLazyMode) {
+            return EncryptedPersistentKnowledgePageResult.Incompatible(
+                "encrypted persistent Knowledge paging requires indexed lazy mode"
+            )
+        }
+        return when (
+            val page = encryptedStore.decryptedPageResult(
+                PersistentBackendPageRequest(
+                    limit = limit,
+                    order = order,
+                    cursorExclusive = cursorExclusive,
+                    schemaId = KnowledgePersistentRecordCodec.schemaId
+                )
+            )
+        ) {
+            EncryptedPersistentRecordPageResult.Empty ->
+                EncryptedPersistentKnowledgePageResult.Empty
+            EncryptedPersistentRecordPageResult.Corrupt ->
+                EncryptedPersistentKnowledgePageResult.Corrupt
+            is EncryptedPersistentRecordPageResult.Incompatible ->
+                EncryptedPersistentKnowledgePageResult.Incompatible(page.reason)
+            is EncryptedPersistentRecordPageResult.EncryptionUnavailable ->
+                EncryptedPersistentKnowledgePageResult.EncryptionUnavailable(page.category)
+            is EncryptedPersistentRecordPageResult.Failed ->
+                EncryptedPersistentKnowledgePageResult.Failed(page.reason, page.throwable)
+            is EncryptedPersistentRecordPageResult.Loaded -> {
+                val decoded = ArrayList<KnowledgeItemSnapshot>(page.entries.size)
+                for (snapshot in page.entries) {
+                    when (val knowledge = KnowledgePersistentRecordCodec.decode(snapshot.record)) {
+                        is KnowledgePersistentDecodeResult.Decoded ->
+                            decoded += KnowledgeItemSnapshot(
+                                knowledge.item,
+                                KnowledgeGeneration(snapshot.generation.value)
+                            )
+                        KnowledgePersistentDecodeResult.Corrupt ->
+                            return EncryptedPersistentKnowledgePageResult.Corrupt
+                        is KnowledgePersistentDecodeResult.Incompatible ->
+                            return EncryptedPersistentKnowledgePageResult.Incompatible(knowledge.reason)
+                    }
+                }
+                EncryptedPersistentKnowledgePageResult.Loaded(
+                    entries = decoded,
+                    nextCursor = page.nextCursor
+                )
+            }
+        }
+    }
 
     fun snapshot(): List<KnowledgeItem> = snapshotEntries().map { it.item }
 

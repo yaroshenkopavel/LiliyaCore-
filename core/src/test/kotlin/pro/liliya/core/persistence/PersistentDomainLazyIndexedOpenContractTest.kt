@@ -29,6 +29,7 @@ import pro.liliya.core.foundation.FoundationComposition
 import pro.liliya.core.knowledge.EncryptedPersistentKnowledgeComposition
 import pro.liliya.core.knowledge.EncryptedPersistentKnowledgeInspectResult
 import pro.liliya.core.knowledge.EncryptedPersistentKnowledgeOpenResult
+import pro.liliya.core.knowledge.EncryptedPersistentKnowledgePageResult
 import pro.liliya.core.knowledge.KnowledgeItem
 import pro.liliya.core.knowledge.KnowledgeItemId
 import pro.liliya.core.knowledge.KnowledgeOrigin
@@ -42,6 +43,7 @@ import pro.liliya.core.logging.StructuredLogger
 import pro.liliya.core.memory.EncryptedPersistentMemoryComposition
 import pro.liliya.core.memory.EncryptedPersistentMemoryInspectResult
 import pro.liliya.core.memory.EncryptedPersistentMemoryOpenResult
+import pro.liliya.core.memory.EncryptedPersistentMemoryPageResult
 import pro.liliya.core.memory.MemoryPersistentRecordCodec
 import pro.liliya.core.memory.MemoryProvenance
 import pro.liliya.core.memory.MemoryRecord
@@ -351,6 +353,148 @@ class PersistentDomainLazyIndexedOpenContractTest {
         assertEquals(null, composition.inspect(historical.id))
         assertEquals(2, backend.exactCalls)
         assertEquals(0, backend.pageCalls)
+    }
+
+    @Test
+    fun encrypted_indexed_memory_pages_are_bounded_cursor_ordered_and_fail_closed_on_missing_dek() {
+        val backend = LazyDomainBackend()
+        val storeId = PersistentStoreId("encrypted-paged-memory")
+        val first = assertIs<EncryptedPersistentMemoryOpenResult.Opened>(
+            EncryptedPersistentMemoryComposition.open(
+                foundation(),
+                encryptedStore(backend, storeId, resolverAvailable()),
+                dekRef
+            )
+        ).composition
+
+        assertIs<PersistentMemoryRememberResult.Remembered>(
+            first.remember(memoryRecord("memory-a", "a"))
+        )
+        assertIs<PersistentMemoryRememberResult.Remembered>(
+            first.remember(memoryRecord("memory-b", "b"))
+        )
+        assertIs<PersistentMemoryRememberResult.Remembered>(
+            first.remember(memoryRecord("memory-c", "c"))
+        )
+
+        backend.resetReadCounters()
+        val reopened = assertIs<EncryptedPersistentMemoryOpenResult.Opened>(
+            EncryptedPersistentMemoryComposition.open(
+                foundation(),
+                encryptedStore(backend, storeId, resolverAvailable()),
+                dekRef
+            )
+        ).composition
+
+        val firstPage = assertIs<EncryptedPersistentMemoryPageResult.Loaded>(
+            reopened.page(
+                limit = 2,
+                order = PersistentBackendPageOrder.NEWEST_FIRST
+            )
+        )
+        assertEquals(
+            listOf("memory-c", "memory-b"),
+            firstPage.entries.map { it.record.id.value }
+        )
+        val cursor = requireNotNull(firstPage.nextCursor)
+        assertEquals(1, backend.pageCalls)
+        assertEquals(0, backend.legacyLoadCalls)
+        assertEquals(0, backend.exactCalls)
+
+        val secondPage = assertIs<EncryptedPersistentMemoryPageResult.Loaded>(
+            reopened.page(
+                limit = 2,
+                order = PersistentBackendPageOrder.NEWEST_FIRST,
+                cursorExclusive = cursor
+            )
+        )
+        assertEquals(listOf("memory-a"), secondPage.entries.map { it.record.id.value })
+        assertEquals(null, secondPage.nextCursor)
+        assertEquals(2, backend.pageCalls)
+        assertEquals(0, backend.legacyLoadCalls)
+
+        val missingDek = assertIs<EncryptedPersistentMemoryOpenResult.Opened>(
+            EncryptedPersistentMemoryComposition.open(
+                foundation(),
+                encryptedStore(backend, storeId, resolverMissing()),
+                dekRef
+            )
+        ).composition
+        val unavailable = assertIs<EncryptedPersistentMemoryPageResult.EncryptionUnavailable>(
+            missingDek.page(limit = 1)
+        )
+        assertEquals(CognitiveEncryptionFailureCategory.DEK_MISSING, unavailable.category)
+    }
+
+    @Test
+    fun encrypted_indexed_knowledge_pages_are_bounded_cursor_ordered_and_fail_closed_on_missing_dek() {
+        val backend = LazyDomainBackend()
+        val storeId = PersistentStoreId("encrypted-paged-knowledge")
+        val first = assertIs<EncryptedPersistentKnowledgeOpenResult.Opened>(
+            EncryptedPersistentKnowledgeComposition.open(
+                foundation(),
+                encryptedStore(backend, storeId, resolverAvailable()),
+                dekRef
+            )
+        ).composition
+
+        assertIs<PersistentKnowledgeCreateResult.Created>(
+            first.create(knowledgeItem("knowledge-a", "a"))
+        )
+        assertIs<PersistentKnowledgeCreateResult.Created>(
+            first.create(knowledgeItem("knowledge-b", "b"))
+        )
+        assertIs<PersistentKnowledgeCreateResult.Created>(
+            first.create(knowledgeItem("knowledge-c", "c"))
+        )
+
+        backend.resetReadCounters()
+        val reopened = assertIs<EncryptedPersistentKnowledgeOpenResult.Opened>(
+            EncryptedPersistentKnowledgeComposition.open(
+                foundation(),
+                encryptedStore(backend, storeId, resolverAvailable()),
+                dekRef
+            )
+        ).composition
+
+        val firstPage = assertIs<EncryptedPersistentKnowledgePageResult.Loaded>(
+            reopened.page(
+                limit = 2,
+                order = PersistentBackendPageOrder.NEWEST_FIRST
+            )
+        )
+        assertEquals(
+            listOf("knowledge-c", "knowledge-b"),
+            firstPage.entries.map { it.item.id.value }
+        )
+        val cursor = requireNotNull(firstPage.nextCursor)
+        assertEquals(1, backend.pageCalls)
+        assertEquals(0, backend.legacyLoadCalls)
+        assertEquals(0, backend.exactCalls)
+
+        val secondPage = assertIs<EncryptedPersistentKnowledgePageResult.Loaded>(
+            reopened.page(
+                limit = 2,
+                order = PersistentBackendPageOrder.NEWEST_FIRST,
+                cursorExclusive = cursor
+            )
+        )
+        assertEquals(listOf("knowledge-a"), secondPage.entries.map { it.item.id.value })
+        assertEquals(null, secondPage.nextCursor)
+        assertEquals(2, backend.pageCalls)
+        assertEquals(0, backend.legacyLoadCalls)
+
+        val missingDek = assertIs<EncryptedPersistentKnowledgeOpenResult.Opened>(
+            EncryptedPersistentKnowledgeComposition.open(
+                foundation(),
+                encryptedStore(backend, storeId, resolverMissing()),
+                dekRef
+            )
+        ).composition
+        val unavailable = assertIs<EncryptedPersistentKnowledgePageResult.EncryptionUnavailable>(
+            missingDek.page(limit = 1)
+        )
+        assertEquals(CognitiveEncryptionFailureCategory.DEK_MISSING, unavailable.category)
     }
 
     @Test

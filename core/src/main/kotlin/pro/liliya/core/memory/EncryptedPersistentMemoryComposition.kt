@@ -5,9 +5,13 @@ import pro.liliya.core.encryption.CognitiveEncryptionFailureCategory
 import pro.liliya.core.encryption.CognitiveEncryptionResult
 import pro.liliya.core.encryption.CognitivePersistentRecordDraft
 import pro.liliya.core.encryption.CognitivePlaintext
+import pro.liliya.core.encryption.EncryptedPersistentRecordPageResult
 import pro.liliya.core.encryption.EncryptedPersistentRecordStore
 import pro.liliya.core.foundation.FoundationComposition
 import pro.liliya.core.persistence.PersistentBackendMetadata
+import pro.liliya.core.persistence.PersistentBackendPageCursor
+import pro.liliya.core.persistence.PersistentBackendPageOrder
+import pro.liliya.core.persistence.PersistentBackendPageRequest
 import pro.liliya.core.persistence.PersistentEntityId
 import pro.liliya.core.persistence.PersistentGeneration
 import pro.liliya.core.persistence.PersistentMutationResult
@@ -35,6 +39,23 @@ sealed interface EncryptedPersistentMemoryInspectResult {
         override fun toString(): String =
             "Failed(reason=$reason, throwable=${throwable?.javaClass?.name ?: "null"})"
     }
+}
+
+sealed interface EncryptedPersistentMemoryPageResult {
+    data object Empty : EncryptedPersistentMemoryPageResult
+    data class Loaded(
+        val entries: List<MemoryRecordSnapshot>,
+        val nextCursor: PersistentBackendPageCursor?
+    ) : EncryptedPersistentMemoryPageResult
+    data object Corrupt : EncryptedPersistentMemoryPageResult
+    data class Incompatible(val reason: String) : EncryptedPersistentMemoryPageResult
+    data class EncryptionUnavailable(
+        val category: CognitiveEncryptionFailureCategory
+    ) : EncryptedPersistentMemoryPageResult
+    data class Failed(
+        val reason: String,
+        val throwable: Throwable? = null
+    ) : EncryptedPersistentMemoryPageResult
 }
 
 sealed interface EncryptedPersistentMemoryOpenResult {
@@ -181,6 +202,59 @@ class EncryptedPersistentMemoryComposition private constructor(
 
     fun durableMetadataSnapshot(): PersistentBackendMetadata? =
         encryptedStore.indexedMetadataSnapshot()
+
+    fun page(
+        limit: Int,
+        order: PersistentBackendPageOrder = PersistentBackendPageOrder.NEWEST_FIRST,
+        cursorExclusive: PersistentBackendPageCursor? = null
+    ): EncryptedPersistentMemoryPageResult {
+        if (!indexedLazyMode) {
+            return EncryptedPersistentMemoryPageResult.Incompatible(
+                "encrypted persistent Memory paging requires indexed lazy mode"
+            )
+        }
+        return when (
+            val page = encryptedStore.decryptedPageResult(
+                PersistentBackendPageRequest(
+                    limit = limit,
+                    order = order,
+                    cursorExclusive = cursorExclusive,
+                    schemaId = MemoryPersistentRecordCodec.schemaId
+                )
+            )
+        ) {
+            EncryptedPersistentRecordPageResult.Empty ->
+                EncryptedPersistentMemoryPageResult.Empty
+            EncryptedPersistentRecordPageResult.Corrupt ->
+                EncryptedPersistentMemoryPageResult.Corrupt
+            is EncryptedPersistentRecordPageResult.Incompatible ->
+                EncryptedPersistentMemoryPageResult.Incompatible(page.reason)
+            is EncryptedPersistentRecordPageResult.EncryptionUnavailable ->
+                EncryptedPersistentMemoryPageResult.EncryptionUnavailable(page.category)
+            is EncryptedPersistentRecordPageResult.Failed ->
+                EncryptedPersistentMemoryPageResult.Failed(page.reason, page.throwable)
+            is EncryptedPersistentRecordPageResult.Loaded -> {
+                val decoded = ArrayList<MemoryRecordSnapshot>(page.entries.size)
+                for (snapshot in page.entries) {
+                    when (val memory = MemoryPersistentRecordCodec.decode(snapshot.record)) {
+                        is MemoryPersistentDecodeResult.Decoded ->
+                            decoded += MemoryRecordSnapshot(
+                                memory.record,
+                                MemoryGeneration(snapshot.generation.value)
+                            )
+                        MemoryPersistentDecodeResult.Corrupt ->
+                            return EncryptedPersistentMemoryPageResult.Corrupt
+                        is MemoryPersistentDecodeResult.Incompatible ->
+                            return EncryptedPersistentMemoryPageResult.Incompatible(memory.reason)
+                    }
+                }
+                EncryptedPersistentMemoryPageResult.Loaded(
+                    entries = decoded,
+                    nextCursor = page.nextCursor
+                )
+            }
+        }
+    }
 
     fun snapshot(): List<MemoryRecord> = snapshotEntries().map { it.record }
 
