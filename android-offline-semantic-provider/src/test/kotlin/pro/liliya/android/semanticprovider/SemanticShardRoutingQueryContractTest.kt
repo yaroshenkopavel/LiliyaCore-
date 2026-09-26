@@ -49,7 +49,8 @@ class SemanticShardRoutingQueryContractTest {
                 routed.candidates.map { it.similarity }
             )
             // Equal-score candidates must remain eligible for generation/UTF-8 tie-breaks.
-            // Sublinear work is asserted separately only for a mathematically selective query.
+            // All zero-bound shards are therefore intentionally visited for K=5.
+            assertEquals(descriptors.size, routed.shardReads)
         } finally {
             query.clear()
         }
@@ -214,6 +215,36 @@ class SemanticShardRoutingQueryContractTest {
     }
 
     @Test
+    fun corrupt_routing_root_on_active_index_falls_back_without_partial_success() {
+        val fixture = Fixture()
+        val descriptors = fixture.publishShards(count = 16, targetOrdinal = 15)
+        val manifest = fixture.publishManifest(descriptors)
+        val index = SemanticShardSegmentedIndexV3(
+            shardStore = fixture.shardStore,
+            manifestStore = fixture.manifestStore,
+            initialRoot = manifest
+        )
+        assertTrue(index.ensureRouting())
+        fixture.storage.corruptRoutingRoot()
+        fixture.storage.resetShardReads()
+
+        val query = axisVector(0)
+        try {
+            val ranked = assertIs<SemanticShardRankResult.Ranked>(
+                index.rank(SemanticIndexDomain.MEMORY, query, 1)
+            )
+            val top = ranked.candidates.single().source as SemanticIndexSourceReference.Memory
+            assertEquals(
+                15L * SemanticShardLayout.ENTRIES_PER_SHARD + 1L,
+                top.generationValue
+            )
+            assertEquals(16, fixture.storage.shardReadCount)
+        } finally {
+            query.clear()
+        }
+    }
+
+    @Test
     fun stale_routing_root_is_not_trusted() {
         val fixture = Fixture()
         val descriptors = fixture.publishShards(count = 2, targetOrdinal = 1)
@@ -340,6 +371,18 @@ class SemanticShardRoutingQueryContractTest {
 
         fun resetShardReads() {
             shardReadCount = 0
+        }
+
+        fun corruptRoutingRoot() {
+            val key = AndroidOfflineSemanticShardStorageKey.ROUTING_V1_ROOT.value
+            val current = requireNotNull(blobs[key])
+            val bytes = current.copyBytes()
+            try {
+                bytes[bytes.size / 2] = (bytes[bytes.size / 2].toInt() xor 1).toByte()
+                blobs[key] = AndroidOfflineSemanticCheckpointBlob(bytes)
+            } finally {
+                bytes.fill(0)
+            }
         }
 
         override fun read(
