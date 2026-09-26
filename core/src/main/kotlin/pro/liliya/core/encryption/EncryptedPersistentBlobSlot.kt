@@ -2,6 +2,7 @@ package pro.liliya.core.encryption
 
 import java.time.Instant
 import pro.liliya.core.persistence.PersistentEntityId
+import pro.liliya.core.persistence.PersistentMutationResult
 import pro.liliya.core.persistence.PersistentRecordLookupResult
 import pro.liliya.core.persistence.PersistentSchemaId
 import pro.liliya.core.persistence.PersistentSchemaVersion
@@ -46,6 +47,20 @@ sealed interface EncryptedPersistentBlobWriteResult {
         val reason: String,
         val throwable: Throwable? = null
     ) : EncryptedPersistentBlobWriteResult {
+        override fun toString(): String =
+            "Failed(reason=$reason, throwable=" +
+                (throwable?.javaClass?.name ?: "null") + ")"
+    }
+}
+
+sealed interface EncryptedPersistentBlobDeleteResult {
+    data object Deleted : EncryptedPersistentBlobDeleteResult
+    data object Missing : EncryptedPersistentBlobDeleteResult
+    data class Rejected(val reason: String) : EncryptedPersistentBlobDeleteResult
+    data class Failed(
+        val reason: String,
+        val throwable: Throwable? = null
+    ) : EncryptedPersistentBlobDeleteResult {
         override fun toString(): String =
             "Failed(reason=$reason, throwable=" +
                 (throwable?.javaClass?.name ?: "null") + ")"
@@ -176,6 +191,48 @@ class EncryptedPersistentBlobSlot(
                 EncryptedPersistentBlobWriteResult.Failed(
                     inspected.reason,
                     inspected.throwable
+                )
+        }
+    }
+
+    @Synchronized
+    fun delete(): EncryptedPersistentBlobDeleteResult {
+        val snapshot = when (val inspected = encryptedStore.inspectResult(entityId)) {
+            PersistentRecordLookupResult.Missing ->
+                return EncryptedPersistentBlobDeleteResult.Missing
+            is PersistentRecordLookupResult.Found -> inspected.snapshot
+            PersistentRecordLookupResult.Corrupt ->
+                return EncryptedPersistentBlobDeleteResult.Failed(
+                    "encrypted blob slot current record is corrupt"
+                )
+            is PersistentRecordLookupResult.Incompatible ->
+                return EncryptedPersistentBlobDeleteResult.Rejected(inspected.reason)
+            is PersistentRecordLookupResult.Failed ->
+                return EncryptedPersistentBlobDeleteResult.Failed(
+                    inspected.reason,
+                    inspected.throwable
+                )
+        }
+
+        if (
+            snapshot.record.id != entityId ||
+            snapshot.record.schemaId != schemaId ||
+            snapshot.record.schemaVersion != schemaVersion
+        ) {
+            return EncryptedPersistentBlobDeleteResult.Rejected(
+                "encrypted blob slot schema identity mismatch"
+            )
+        }
+
+        return when (val removed = encryptedStore.removeExact(entityId, snapshot.generation)) {
+            PersistentMutationResult.Committed ->
+                EncryptedPersistentBlobDeleteResult.Deleted
+            is PersistentMutationResult.Rejected ->
+                EncryptedPersistentBlobDeleteResult.Rejected(removed.reason)
+            is PersistentMutationResult.Failed ->
+                EncryptedPersistentBlobDeleteResult.Failed(
+                    removed.reason,
+                    removed.throwable
                 )
         }
     }

@@ -260,6 +260,44 @@ class AndroidOfflineSemanticProviderAssembly internal constructor(
         }
     }
 
+    internal fun activateShardManifestV3(
+        shardStore: SemanticShardStore,
+        manifestStore: SemanticShardManifestV3Store,
+        root: SemanticShardManifestRootV3
+    ): AndroidOfflineSemanticProviderRebuildResult {
+        synchronized(this) {
+            if (publicState != AndroidOfflineSemanticProviderState.LOADED &&
+                publicState != AndroidOfflineSemanticProviderState.READY
+            ) {
+                return AndroidOfflineSemanticProviderRebuildResult.NotLoaded
+            }
+            publicState = AndroidOfflineSemanticProviderState.REBUILDING
+        }
+
+        val result = provider.activateShardIndexV3(shardStore, manifestStore, root)
+        synchronized(this) {
+            return when (result) {
+                is OfflineSemanticRebuildResult.Published -> {
+                    publicState = AndroidOfflineSemanticProviderState.READY
+                    AndroidOfflineSemanticProviderRebuildResult.Ready(result.entryCount)
+                }
+                OfflineSemanticRebuildResult.Busy -> {
+                    publicState = AndroidOfflineSemanticProviderState.LOADED
+                    AndroidOfflineSemanticProviderRebuildResult.Busy
+                }
+                OfflineSemanticRebuildResult.NotReady,
+                OfflineSemanticRebuildResult.ResourceRejected,
+                OfflineSemanticRebuildResult.EmbeddingRejected,
+                OfflineSemanticRebuildResult.EmbeddingFailed,
+                OfflineSemanticRebuildResult.SessionFailed,
+                OfflineSemanticRebuildResult.IndexRejected -> {
+                    publicState = AndroidOfflineSemanticProviderState.LOADED
+                    AndroidOfflineSemanticProviderRebuildResult.Failed
+                }
+            }
+        }
+    }
+
     internal fun persistShardManifest(
         authoritative: SemanticAuthoritativeMetadataCheckpoint
     ): Boolean? {

@@ -176,6 +176,31 @@ class EncryptedPersistentRecordStoreContractTest {
     }
 
     @Test
+    fun encrypted_blob_slot_delete_is_exact_and_idempotent_for_derived_state() {
+        val backend = InMemoryPersistentRecordBackend()
+        val slot = EncryptedPersistentBlobSlot(
+            encryptedStore = adapter(openStore(backend), dek),
+            entityId = PersistentEntityId("deletable-semantic-checkpoint"),
+            schemaId = PersistentSchemaId("semantic-checkpoint"),
+            schemaVersion = PersistentSchemaVersion(1),
+            activeDek = dekRef,
+            maxBytes = 1024
+        )
+
+        assertIs<EncryptedPersistentBlobDeleteResult.Missing>(slot.delete())
+        assertIs<EncryptedPersistentBlobWriteResult.Written>(
+            slot.write(
+                EncryptedPersistentBlob("derived-semantic-state".encodeToByteArray()),
+                Instant.EPOCH
+            )
+        )
+        assertIs<EncryptedPersistentBlobReadResult.Found>(slot.read())
+        assertIs<EncryptedPersistentBlobDeleteResult.Deleted>(slot.delete())
+        assertIs<EncryptedPersistentBlobReadResult.Missing>(slot.read())
+        assertIs<EncryptedPersistentBlobDeleteResult.Missing>(slot.delete())
+    }
+
+    @Test
     fun encrypted_blob_slot_rejects_oversized_derived_state_without_mutation() {
         val backend = InMemoryPersistentRecordBackend()
         val slot = EncryptedPersistentBlobSlot(

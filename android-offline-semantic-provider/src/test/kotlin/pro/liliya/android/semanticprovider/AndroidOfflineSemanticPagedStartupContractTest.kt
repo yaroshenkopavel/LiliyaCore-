@@ -54,15 +54,18 @@ class AndroidOfflineSemanticPagedStartupContractTest {
         assertEquals(0, runtime.legacyRebuildCalls)
         assertEquals(AndroidOfflineSemanticStartupState.READY, coordinator.state())
 
-        val manifestBlob = assertIs<AndroidOfflineSemanticShardStorageReadResult.Loaded>(
-            storage.read(AndroidOfflineSemanticShardStorageKey.MANIFEST)
-        ).blob
-        val manifest = assertIs<SemanticShardManifestDecodeResult.Decoded>(
-            SemanticShardCheckpointCodec.decodeManifest(manifestBlob)
-        ).manifest
-        assertEquals(10, manifest.shards.size)
-        assertEquals(totalEntries, manifest.shards.sumOf { it.entryCount.toLong() })
-        assertEquals(metadata, manifest.authoritative)
+        val manifestStore = SemanticShardManifestV3Store(storage)
+        val root = assertIs<SemanticShardManifestRootV3LoadResult.Loaded>(
+            manifestStore.loadRoot()
+        ).root
+        assertEquals(10L, root.shardDescriptorCount)
+        assertEquals(1L, root.segmentCount)
+        val segment = assertIs<SemanticShardManifestSegmentLoadResult.Loaded>(
+            manifestStore.readSegment(root, 0L)
+        ).segment
+        assertEquals(10, segment.shards.size)
+        assertEquals(totalEntries, segment.shards.sumOf { it.entryCount.toLong() })
+        assertEquals(metadata, root.authoritative)
     }
 
     private class PagedRuntime : SemanticProductionRuntime {
@@ -86,6 +89,18 @@ class AndroidOfflineSemanticPagedStartupContractTest {
         ): AndroidOfflineSemanticProviderRebuildResult =
             AndroidOfflineSemanticProviderRebuildResult.Ready(
                 manifest.shards.sumOf { it.entryCount }
+            )
+
+        override fun activateShardManifestV3(
+            shardStore: SemanticShardStore,
+            manifestStore: SemanticShardManifestV3Store,
+            root: SemanticShardManifestRootV3
+        ): AndroidOfflineSemanticProviderRebuildResult =
+            AndroidOfflineSemanticProviderRebuildResult.Ready(
+                (root.authoritative.memory.entryCount +
+                    root.authoritative.knowledge.entryCount)
+                    .coerceAtMost(Int.MAX_VALUE.toLong())
+                    .toInt()
             )
 
         override fun embedShardPage(
