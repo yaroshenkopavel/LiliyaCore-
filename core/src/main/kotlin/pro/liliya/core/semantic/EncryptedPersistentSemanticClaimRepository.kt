@@ -5,7 +5,12 @@ import pro.liliya.core.encryption.CognitiveEncryptionFailureCategory
 import pro.liliya.core.encryption.CognitiveEncryptionResult
 import pro.liliya.core.encryption.CognitivePersistentRecordDraft
 import pro.liliya.core.encryption.CognitivePlaintext
+import pro.liliya.core.encryption.EncryptedPersistentRecordPageResult
 import pro.liliya.core.encryption.EncryptedPersistentRecordStore
+import pro.liliya.core.persistence.PersistentBackendMetadata
+import pro.liliya.core.persistence.PersistentBackendPageCursor
+import pro.liliya.core.persistence.PersistentBackendPageOrder
+import pro.liliya.core.persistence.PersistentBackendPageRequest
 import pro.liliya.core.persistence.PersistentEntityId
 import pro.liliya.core.persistence.PersistentPayload
 import pro.liliya.core.persistence.PersistentRecord
@@ -22,6 +27,49 @@ sealed interface SemanticClaimStoreResult {
         val reason: String,
         val throwable: Throwable? = null
     ) : SemanticClaimStoreResult
+}
+
+sealed interface SemanticClaimReadResult {
+    data object Missing : SemanticClaimReadResult
+    data class Found(val record: SemanticClaimRecord) : SemanticClaimReadResult
+    data object Corrupt : SemanticClaimReadResult
+    data class Incompatible(val reason: String) : SemanticClaimReadResult
+    data class EncryptionUnavailable(
+        val category: CognitiveEncryptionFailureCategory
+    ) : SemanticClaimReadResult
+    data class Failed(
+        val reason: String,
+        val throwable: Throwable? = null
+    ) : SemanticClaimReadResult
+}
+
+sealed interface SemanticClaimPageResult {
+    data object Empty : SemanticClaimPageResult
+    data class Loaded(
+        val records: List<SemanticClaimRecord>,
+        val nextCursor: PersistentBackendPageCursor?
+    ) : SemanticClaimPageResult
+    data object Corrupt : SemanticClaimPageResult
+    data class Incompatible(val reason: String) : SemanticClaimPageResult
+    data class EncryptionUnavailable(
+        val category: CognitiveEncryptionFailureCategory
+    ) : SemanticClaimPageResult
+    data class Failed(
+        val reason: String,
+        val throwable: Throwable? = null
+    ) : SemanticClaimPageResult
+}
+
+data class SemanticClaimSourceCheckpoint(
+    val revision: Long,
+    val highWatermark: Long,
+    val entryCount: Long
+) {
+    init {
+        require(revision >= 0L)
+        require(highWatermark >= 0L)
+        require(entryCount >= 0L)
+    }
 }
 
 sealed interface SemanticRelationStoreResult {
@@ -41,6 +89,67 @@ class EncryptedPersistentSemanticClaimRepository(
     private val encryptedStore: EncryptedPersistentRecordStore,
     private val activeDek: CognitiveDekReference
 ) {
+    fun sourceCheckpoint(): SemanticClaimSourceCheckpoint {
+        val metadata = encryptedStore.indexedMetadataSnapshot()
+            ?: return SemanticClaimSourceCheckpoint(0L, 0L, 0L)
+        return SemanticClaimSourceCheckpoint(
+            revision = metadata.revision,
+            highWatermark = metadata.highWatermark,
+            entryCount = metadata.entryCount
+        )
+    }
+
+    fun readExact(
+        reference: SemanticClaimVersionReference
+    ): SemanticClaimReadResult =
+        when (val loaded = loadExactClaim(reference)) {
+            ClaimLookupResult.Missing -> SemanticClaimReadResult.Missing
+            is ClaimLookupResult.Found -> SemanticClaimReadResult.Found(loaded.record)
+            is ClaimLookupResult.Rejected ->
+                SemanticClaimReadResult.EncryptionUnavailable(loaded.category)
+            is ClaimLookupResult.Failed ->
+                SemanticClaimReadResult.Failed(loaded.reason, loaded.throwable)
+        }
+
+    fun claimPage(
+        limit: Int,
+        cursorExclusive: PersistentBackendPageCursor? = null,
+        order: PersistentBackendPageOrder = PersistentBackendPageOrder.OLDEST_FIRST
+    ): SemanticClaimPageResult =
+        when (
+            val loaded = encryptedStore.decryptedPageResult(
+                PersistentBackendPageRequest(
+                    limit = limit,
+                    order = order,
+                    cursorExclusive = cursorExclusive,
+                    schemaId = SemanticClaimPersistentCodec.schemaId
+                )
+            )
+        ) {
+            EncryptedPersistentRecordPageResult.Empty -> SemanticClaimPageResult.Empty
+            EncryptedPersistentRecordPageResult.Corrupt -> SemanticClaimPageResult.Corrupt
+            is EncryptedPersistentRecordPageResult.Incompatible ->
+                SemanticClaimPageResult.Incompatible(loaded.reason)
+            is EncryptedPersistentRecordPageResult.EncryptionUnavailable ->
+                SemanticClaimPageResult.EncryptionUnavailable(loaded.category)
+            is EncryptedPersistentRecordPageResult.Failed ->
+                SemanticClaimPageResult.Failed(loaded.reason, loaded.throwable)
+            is EncryptedPersistentRecordPageResult.Loaded -> {
+                val records = ArrayList<SemanticClaimRecord>(loaded.entries.size)
+                for (snapshot in loaded.entries) {
+                    when (val decoded = SemanticClaimPersistentCodec.decode(snapshot.record)) {
+                        is SemanticClaimPersistentDecodeResult.Decoded ->
+                            records += decoded.record
+                        SemanticClaimPersistentDecodeResult.Corrupt ->
+                            return SemanticClaimPageResult.Corrupt
+                        is SemanticClaimPersistentDecodeResult.Incompatible ->
+                            return SemanticClaimPageResult.Incompatible(decoded.reason)
+                    }
+                }
+                SemanticClaimPageResult.Loaded(records, loaded.nextCursor)
+            }
+        }
+
     fun storeClaim(record: SemanticClaimRecord): SemanticClaimStoreResult {
         val encoded = try {
             SemanticClaimPersistentCodec.encode(record)
