@@ -5,6 +5,7 @@ import java.time.Instant
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
@@ -125,6 +126,99 @@ class EncryptedPersistentRecordStoreContractTest {
         assertTrue(failed.category == CognitiveEncryptionFailureCategory.PERSISTENCE_FAILED)
         assertIs<PersistentBackendLoadResult.Missing>(backend.load(storeId))
         assertFalse(failed.toString().contains("private-backend-message"))
+    }
+
+    @Test
+    fun encrypted_blob_slot_round_trips_replaces_and_never_persists_plaintext() {
+        val backend = InMemoryPersistentRecordBackend()
+        val encrypted = adapter(openStore(backend), dek)
+        val slot = EncryptedPersistentBlobSlot(
+            encryptedStore = encrypted,
+            entityId = PersistentEntityId("semantic-checkpoint"),
+            schemaId = PersistentSchemaId("semantic-checkpoint"),
+            schemaVersion = PersistentSchemaVersion(1),
+            activeDek = dekRef,
+            maxBytes = 1024
+        )
+
+        val firstBytes = "first-private-semantic-checkpoint".encodeToByteArray()
+        val firstBlob = EncryptedPersistentBlob(firstBytes)
+        assertIs<EncryptedPersistentBlobWriteResult.Written>(
+            slot.write(firstBlob, Instant.EPOCH)
+        )
+        val durableFirst = assertIs<PersistentBackendLoadResult.Loaded>(
+            backend.load(storeId)
+        ).state.entries.getValue(PersistentEntityId("semantic-checkpoint"))
+            .record.payload.copyBytes()
+        assertFalse(containsSubsequence(durableFirst, firstBytes))
+
+        val firstRead = assertIs<EncryptedPersistentBlobReadResult.Found>(slot.read())
+        assertContentEquals(firstBytes, firstRead.blob.copyBytes())
+
+        val secondBytes = "second-private-semantic-checkpoint".encodeToByteArray()
+        assertIs<EncryptedPersistentBlobWriteResult.Written>(
+            slot.write(EncryptedPersistentBlob(secondBytes), Instant.EPOCH)
+        )
+        val secondRead = assertIs<EncryptedPersistentBlobReadResult.Found>(slot.read())
+        assertContentEquals(secondBytes, secondRead.blob.copyBytes())
+
+        val durableSecond = assertIs<PersistentBackendLoadResult.Loaded>(
+            backend.load(storeId)
+        )
+        assertEquals(1, durableSecond.state.entries.size)
+        assertFalse(
+            containsSubsequence(
+                durableSecond.state.entries.getValue(PersistentEntityId("semantic-checkpoint"))
+                    .record.payload.copyBytes(),
+                secondBytes
+            )
+        )
+    }
+
+    @Test
+    fun encrypted_blob_slot_delete_is_exact_and_idempotent_for_derived_state() {
+        val backend = InMemoryPersistentRecordBackend()
+        val slot = EncryptedPersistentBlobSlot(
+            encryptedStore = adapter(openStore(backend), dek),
+            entityId = PersistentEntityId("deletable-semantic-checkpoint"),
+            schemaId = PersistentSchemaId("semantic-checkpoint"),
+            schemaVersion = PersistentSchemaVersion(1),
+            activeDek = dekRef,
+            maxBytes = 1024
+        )
+
+        assertIs<EncryptedPersistentBlobDeleteResult.Missing>(slot.delete())
+        assertIs<EncryptedPersistentBlobWriteResult.Written>(
+            slot.write(
+                EncryptedPersistentBlob("derived-semantic-state".encodeToByteArray()),
+                Instant.EPOCH
+            )
+        )
+        assertIs<EncryptedPersistentBlobReadResult.Found>(slot.read())
+        assertIs<EncryptedPersistentBlobDeleteResult.Deleted>(slot.delete())
+        assertIs<EncryptedPersistentBlobReadResult.Missing>(slot.read())
+        assertIs<EncryptedPersistentBlobDeleteResult.Missing>(slot.delete())
+    }
+
+    @Test
+    fun encrypted_blob_slot_rejects_oversized_derived_state_without_mutation() {
+        val backend = InMemoryPersistentRecordBackend()
+        val slot = EncryptedPersistentBlobSlot(
+            encryptedStore = adapter(openStore(backend), dek),
+            entityId = PersistentEntityId("bounded-checkpoint"),
+            schemaId = PersistentSchemaId("semantic-checkpoint"),
+            schemaVersion = PersistentSchemaVersion(1),
+            activeDek = dekRef,
+            maxBytes = 4
+        )
+
+        assertIs<EncryptedPersistentBlobWriteResult.Rejected>(
+            slot.write(
+                EncryptedPersistentBlob(ByteArray(5) { 7 }),
+                Instant.EPOCH
+            )
+        )
+        assertIs<EncryptedPersistentBlobReadResult.Missing>(slot.read())
     }
 
     private fun draft(id: String, plaintext: ByteArray) = CognitivePersistentRecordDraft(

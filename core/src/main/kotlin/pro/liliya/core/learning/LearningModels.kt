@@ -35,6 +35,7 @@ sealed interface LearningOrigin {
     ) : LearningOrigin
 
     /** Exact consolidation provenance. Construction is controlled by the learning module. */
+    @ConsistentCopyVisibility
     data class Consolidation internal constructor(
         val consolidationId: LearningConsolidationId,
         val generation: LearningConsolidationGeneration

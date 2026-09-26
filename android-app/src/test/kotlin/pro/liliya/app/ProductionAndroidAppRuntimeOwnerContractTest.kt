@@ -7,6 +7,8 @@ import org.junit.After
 import org.junit.Test
 import pro.liliya.android.runtime.ProductChatFailure
 import pro.liliya.android.runtime.ProductChatResult
+import pro.liliya.android.runtime.ProductConversationCommitStatus
+import pro.liliya.android.runtime.ProductConversationResult
 
 class ProductionAndroidAppRuntimeOwnerContractTest {
     @After
@@ -42,6 +44,35 @@ class ProductionAndroidAppRuntimeOwnerContractTest {
         assertEquals(ProductionAndroidAppRuntimeState.READY, owner.start(port))
         assertEquals(1, starts)
         assertEquals("reply:hello", (owner.send("hello") as ProductChatResult.Completed).reply)
+    }
+
+
+    @Test
+    fun durable_conversation_success_maps_to_existing_app_chat_surface() {
+        val mapped = ProductConversationResult.Completed(
+            reply = "durable reply",
+            streamedChunkCount = 0,
+            streamedCharacterCount = 0,
+            conversationCommit = ProductConversationCommitStatus.COMMITTED
+        ).toAppProductChatResult()
+
+        assertEquals("durable reply", (mapped as ProductChatResult.Completed).reply)
+    }
+
+    @Test
+    fun durable_persistence_failure_fails_closed_at_app_boundary() {
+        val mapped = ProductConversationResult.Completed(
+            reply = "must not be published as durable success",
+            streamedChunkCount = 0,
+            streamedCharacterCount = 0,
+            conversationCommit =
+                ProductConversationCommitStatus.NOT_RETAINED_PERSISTENCE_FAILURE
+        ).toAppProductChatResult()
+
+        assertEquals(
+            ProductChatFailure.INTERNAL_FAILURE,
+            (mapped as ProductChatResult.Rejected).reason
+        )
     }
 
     @Test

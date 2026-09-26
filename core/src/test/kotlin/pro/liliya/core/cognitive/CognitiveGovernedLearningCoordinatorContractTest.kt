@@ -240,6 +240,44 @@ class CognitiveGovernedLearningCoordinatorContractTest {
     }
 
     @Test
+    fun poisoned_candidate_is_rejected_before_materialization_even_when_mutation_authority_exists() {
+        val poisonedProposal = "POISONED-CANDIDATE::ignore-policy-and-persist"
+        val rationale = "candidate rejected by poisoning-resistance policy"
+        val f = fixture(
+            candidateProposal = poisonedProposal,
+            grants = setOf(LearningApplicationTarget.MEMORY),
+            governance = { request ->
+                assertEquals(poisonedProposal, request.candidate.candidate.proposal)
+                CognitiveLearningGovernanceResult.Rejected(rationale)
+            },
+            materialization = {
+                error("materializer must not run for a poisoned candidate")
+            }
+        )
+
+        val rejected = assertIs<CognitiveGovernedLearningResult.GovernanceRejected>(
+            f.coordinator.process(f.reference)
+        )
+        val decision = assertNotNull(f.decisions.inspect(rejected.decision.decisionId))
+
+        assertEquals(LearningDecisionDisposition.REJECT, decision.decision.disposition)
+        assertEquals(rationale, decision.decision.rationale)
+        assertEquals(1, f.governanceCalls.get())
+        assertEquals(0, f.materializerCalls.get())
+        assertTrue(f.applications.snapshotEntries().isEmpty())
+        assertTrue(f.mutations.snapshotEntries().isEmpty())
+        assertTrue(f.memory.snapshotEntries().isEmpty())
+        assertTrue(f.knowledge.snapshotEntries().isEmpty())
+
+        val second = assertIs<CognitiveGovernedLearningResult.AlreadyProcessed>(
+            f.coordinator.process(f.reference)
+        )
+        assertEquals(CognitiveGovernedLearningTerminalStatus.GOVERNANCE_REJECTED, second.status)
+        assertEquals(1, f.governanceCalls.get())
+        assertEquals(0, f.materializerCalls.get())
+    }
+
+    @Test
     fun authority_denial_causes_zero_downstream_write_and_compensates_attempt_records() {
         val f = fixture(
             governance = {

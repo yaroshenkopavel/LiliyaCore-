@@ -82,6 +82,7 @@ internal sealed interface OfflineSemanticRebuildResult {
 
 internal sealed interface OfflineSemanticAddResult {
     data object Indexed : OfflineSemanticAddResult
+    data object IndexFailed : OfflineSemanticAddResult
     data object Busy : OfflineSemanticAddResult
     data object NotReady : OfflineSemanticAddResult
     data object ResourceRejected : OfflineSemanticAddResult
@@ -95,6 +96,7 @@ internal sealed interface OfflineSemanticAddResult {
 
 internal sealed interface OfflineSemanticReplaceResult {
     data object Replaced : OfflineSemanticReplaceResult
+    data object IndexFailed : OfflineSemanticReplaceResult
     data object Busy : OfflineSemanticReplaceResult
     data object NotReady : OfflineSemanticReplaceResult
     data object ResourceRejected : OfflineSemanticReplaceResult
@@ -108,9 +110,20 @@ internal sealed interface OfflineSemanticReplaceResult {
 
 internal sealed interface OfflineSemanticRemoveResult {
     data object Removed : OfflineSemanticRemoveResult
+    data object IndexFailed : OfflineSemanticRemoveResult
     data object Busy : OfflineSemanticRemoveResult
     data object NotReady : OfflineSemanticRemoveResult
     data object StaleOrMissing : OfflineSemanticRemoveResult
+}
+
+internal sealed interface OfflineSemanticShardEmbedResult {
+    data class Embedded(val seeds: List<SemanticIndexSeed>) : OfflineSemanticShardEmbedResult
+    data object Busy : OfflineSemanticShardEmbedResult
+    data object NotReady : OfflineSemanticShardEmbedResult
+    data object ResourceRejected : OfflineSemanticShardEmbedResult
+    data object EmbeddingRejected : OfflineSemanticShardEmbedResult
+    data object EmbeddingFailed : OfflineSemanticShardEmbedResult
+    data object SessionFailed : OfflineSemanticShardEmbedResult
 }
 
 internal sealed interface OfflineSemanticProviderCloseResult {
@@ -147,6 +160,8 @@ internal class OfflineSemanticProviderComposition(
     private var indexPublished: Boolean = false
 
     private var session: SemanticProviderEmbeddingSession? = null
+
+    private var shardIndex: SemanticShardActiveIndex? = null
 
     fun lifecycle(): OfflineSemanticProviderLifecycle = lifecycle
 
@@ -253,6 +268,7 @@ internal class OfflineSemanticProviderComposition(
                         if (lifecycle != OfflineSemanticProviderLifecycle.READY) {
                             return OfflineSemanticRebuildResult.SessionFailed
                         }
+                        shardIndex = null
                         indexPublished = true
                     }
                     OfflineSemanticRebuildResult.Published(rebuilt.entryCount)
@@ -265,6 +281,228 @@ internal class OfflineSemanticProviderComposition(
         } finally {
             synchronized(this) { rebuilding = false }
         }
+    }
+
+    fun restoreCheckpoint(seeds: List<SemanticIndexSeed>): OfflineSemanticRebuildResult {
+        if (seeds.size > limits.maxTotalEntries) {
+            return OfflineSemanticRebuildResult.IndexRejected
+        }
+
+        synchronized(this) {
+            if (lifecycle != OfflineSemanticProviderLifecycle.READY) {
+                return OfflineSemanticRebuildResult.NotReady
+            }
+            if (rebuilding || operationInFlight) return OfflineSemanticRebuildResult.Busy
+            if (session == null) {
+                lifecycle = OfflineSemanticProviderLifecycle.FAILED
+                return OfflineSemanticRebuildResult.SessionFailed
+            }
+            rebuilding = true
+        }
+
+        return try {
+            when (val rebuilt = publication.rebuild(seeds)) {
+                is SemanticIndexRebuildResult.Published -> {
+                    synchronized(this) {
+                        if (lifecycle != OfflineSemanticProviderLifecycle.READY) {
+                            return OfflineSemanticRebuildResult.SessionFailed
+                        }
+                        shardIndex = null
+                        indexPublished = true
+                    }
+                    OfflineSemanticRebuildResult.Published(rebuilt.entryCount)
+                }
+                SemanticIndexRebuildResult.DuplicateOrConflictingIdentity,
+                SemanticIndexRebuildResult.CapacityRejected ->
+                    OfflineSemanticRebuildResult.IndexRejected
+            }
+        } catch (_: Exception) {
+            OfflineSemanticRebuildResult.IndexRejected
+        } finally {
+            synchronized(this) { rebuilding = false }
+        }
+    }
+
+    fun embedShardPage(
+        observations: List<SemanticSourceObservation>
+    ): OfflineSemanticShardEmbedResult {
+        if (observations.size > SHARD_BUILD_PAGE_MAX) {
+            return OfflineSemanticShardEmbedResult.ResourceRejected
+        }
+        val activeSession = synchronized(this) {
+            if (lifecycle != OfflineSemanticProviderLifecycle.READY) {
+                return OfflineSemanticShardEmbedResult.NotReady
+            }
+            if (rebuilding || operationInFlight) return OfflineSemanticShardEmbedResult.Busy
+            val current = session ?: run {
+                lifecycle = OfflineSemanticProviderLifecycle.FAILED
+                return OfflineSemanticShardEmbedResult.SessionFailed
+            }
+            operationInFlight = true
+            current
+        }
+
+        val seeds = ArrayList<SemanticIndexSeed>(observations.size)
+        var retain = false
+        try {
+            for (observation in observations) {
+                val prepared = when (
+                    val preparation = SemanticTextProfile.preparePassage(observation.content)
+                ) {
+                    is SemanticPreparedTextResult.Prepared -> preparation.text
+                    SemanticPreparedTextResult.RequestRejected ->
+                        return OfflineSemanticShardEmbedResult.EmbeddingRejected
+                    SemanticPreparedTextResult.ResourceRejected ->
+                        return OfflineSemanticShardEmbedResult.ResourceRejected
+                }
+                when (val embedding = activeSession.embed(prepared)) {
+                    is SemanticEmbeddingResult.Embedded ->
+                        seeds += SemanticIndexSeed(observation.source, embedding.vector)
+                    SemanticEmbeddingResult.ResourceRejected ->
+                        return OfflineSemanticShardEmbedResult.ResourceRejected
+                    SemanticEmbeddingResult.RequestRejected ->
+                        return OfflineSemanticShardEmbedResult.EmbeddingRejected
+                    SemanticEmbeddingResult.StaleSession ->
+                        return poisonShardEmbed(OfflineSemanticShardEmbedResult.SessionFailed)
+                    SemanticEmbeddingResult.OperationFailed,
+                    SemanticEmbeddingResult.ProviderFailed ->
+                        return poisonShardEmbed(OfflineSemanticShardEmbedResult.EmbeddingFailed)
+                }
+            }
+            retain = true
+            return OfflineSemanticShardEmbedResult.Embedded(seeds)
+        } catch (_: Exception) {
+            return poisonShardEmbed(OfflineSemanticShardEmbedResult.EmbeddingFailed)
+        } finally {
+            if (!retain) seeds.forEach { it.vector.clear() }
+            synchronized(this) { operationInFlight = false }
+        }
+    }
+
+    fun activateShardIndex(
+        store: SemanticShardStore,
+        manifest: SemanticShardManifest
+    ): OfflineSemanticRebuildResult {
+        synchronized(this) {
+            if (lifecycle != OfflineSemanticProviderLifecycle.READY) {
+                return OfflineSemanticRebuildResult.NotReady
+            }
+            if (rebuilding || operationInFlight) return OfflineSemanticRebuildResult.Busy
+            if (session == null) {
+                lifecycle = OfflineSemanticProviderLifecycle.FAILED
+                return OfflineSemanticRebuildResult.SessionFailed
+            }
+            if (
+                manifest.model != SemanticCheckpointModelBinding.production() ||
+                manifest.entriesPerShard != SemanticShardLayout.ENTRIES_PER_SHARD
+            ) {
+                return OfflineSemanticRebuildResult.IndexRejected
+            }
+            rebuilding = true
+        }
+
+        return try {
+            publication.release()
+            val activated = SemanticShardMutableIndex(store, manifest)
+            synchronized(this) {
+                if (lifecycle != OfflineSemanticProviderLifecycle.READY) {
+                    return OfflineSemanticRebuildResult.SessionFailed
+                }
+                shardIndex = activated
+                indexPublished = true
+            }
+            val total = manifest.shards.sumOf { it.entryCount.toLong() }
+            OfflineSemanticRebuildResult.Published(
+                total.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+            )
+        } catch (_: Exception) {
+            OfflineSemanticRebuildResult.IndexRejected
+        } finally {
+            synchronized(this) { rebuilding = false }
+        }
+    }
+
+    fun activateShardIndexV3(
+        shardStore: SemanticShardStore,
+        manifestStore: SemanticShardManifestV3Store,
+        root: SemanticShardManifestRootV3
+    ): OfflineSemanticRebuildResult {
+        synchronized(this) {
+            if (lifecycle != OfflineSemanticProviderLifecycle.READY) {
+                return OfflineSemanticRebuildResult.NotReady
+            }
+            if (rebuilding || operationInFlight) return OfflineSemanticRebuildResult.Busy
+            if (session == null) {
+                lifecycle = OfflineSemanticProviderLifecycle.FAILED
+                return OfflineSemanticRebuildResult.SessionFailed
+            }
+            if (
+                root.model != SemanticCheckpointModelBinding.production() ||
+                root.entriesPerShard != SemanticShardLayout.ENTRIES_PER_SHARD ||
+                root.descriptorsPerSegment != SemanticShardManifestRootV3.DESCRIPTORS_PER_SEGMENT
+            ) {
+                return OfflineSemanticRebuildResult.IndexRejected
+            }
+            rebuilding = true
+        }
+
+        return try {
+            publication.release()
+            val activated = SemanticShardSegmentedIndexV3(
+                shardStore = shardStore,
+                manifestStore = manifestStore,
+                initialRoot = root
+            )
+            if (!activated.validate()) {
+                return OfflineSemanticRebuildResult.IndexRejected
+            }
+            // Routing is derived acceleration only. Build/reuse it best-effort; a failure keeps
+            // the exact exhaustive v3 path available and must not make a valid manifest unavailable.
+            activated.ensureRouting()
+            synchronized(this) {
+                if (lifecycle != OfflineSemanticProviderLifecycle.READY) {
+                    return OfflineSemanticRebuildResult.SessionFailed
+                }
+                shardIndex = activated
+                indexPublished = true
+            }
+            OfflineSemanticRebuildResult.Published(
+                activated.entryCount().coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+            )
+        } catch (_: Exception) {
+            OfflineSemanticRebuildResult.IndexRejected
+        } finally {
+            synchronized(this) { rebuilding = false }
+        }
+    }
+
+    @Synchronized
+    fun persistShardManifest(
+        authoritative: SemanticAuthoritativeMetadataCheckpoint
+    ): Boolean? {
+        if (
+            lifecycle != OfflineSemanticProviderLifecycle.READY ||
+            rebuilding ||
+            operationInFlight ||
+            !indexPublished
+        ) {
+            return false
+        }
+        val active = shardIndex ?: return null
+        return active.persistManifest(authoritative)
+    }
+
+    @Synchronized
+    fun checkpointSeeds(): List<SemanticIndexSeed>? {
+        if (lifecycle != OfflineSemanticProviderLifecycle.READY ||
+            rebuilding ||
+            operationInFlight ||
+            !indexPublished ||
+            shardIndex != null
+        ) {
+            return null
+        }
+        return publication.snapshotSeeds()
     }
 
     fun add(observation: SemanticSourceObservation): OfflineSemanticAddResult {
@@ -290,18 +528,37 @@ internal class OfflineSemanticProviderComposition(
                     return OfflineSemanticAddResult.ResourceRejected
             }
             return when (val embedding = activeSession.embed(prepared)) {
-                is SemanticEmbeddingResult.Embedded -> when (
-                    publication.addExact(observation.source, embedding.vector)
-                ) {
-                    SemanticIndexAddResult.Indexed -> {
-                        synchronized(this) { indexPublished = true }
-                        OfflineSemanticAddResult.Indexed
+                is SemanticEmbeddingResult.Embedded -> {
+                    val activeShard = synchronized(this) { shardIndex }
+                    if (activeShard != null) {
+                        try {
+                            when (activeShard.add(observation.source, embedding.vector)) {
+                                SemanticShardMutationResult.Applied ->
+                                    OfflineSemanticAddResult.Indexed
+                                SemanticShardMutationResult.AlreadyApplied ->
+                                    OfflineSemanticAddResult.DuplicateExact
+                                SemanticShardMutationResult.StaleOrConflicting ->
+                                    OfflineSemanticAddResult.EntityAlreadyIndexed
+                                SemanticShardMutationResult.StorageFailed ->
+                                    OfflineSemanticAddResult.IndexFailed
+                            }
+                        } finally {
+                            embedding.vector.clear()
+                        }
+                    } else {
+                        when (publication.addExact(observation.source, embedding.vector)) {
+                            SemanticIndexAddResult.Indexed -> {
+                                synchronized(this) { indexPublished = true }
+                                OfflineSemanticAddResult.Indexed
+                            }
+                            SemanticIndexAddResult.DuplicateExact ->
+                                OfflineSemanticAddResult.DuplicateExact
+                            SemanticIndexAddResult.EntityAlreadyIndexed ->
+                                OfflineSemanticAddResult.EntityAlreadyIndexed
+                            SemanticIndexAddResult.CapacityRejected ->
+                                OfflineSemanticAddResult.CapacityRejected
+                        }
                     }
-                    SemanticIndexAddResult.DuplicateExact -> OfflineSemanticAddResult.DuplicateExact
-                    SemanticIndexAddResult.EntityAlreadyIndexed ->
-                        OfflineSemanticAddResult.EntityAlreadyIndexed
-                    SemanticIndexAddResult.CapacityRejected ->
-                        OfflineSemanticAddResult.CapacityRejected
                 }
                 SemanticEmbeddingResult.ResourceRejected -> OfflineSemanticAddResult.ResourceRejected
                 SemanticEmbeddingResult.RequestRejected -> OfflineSemanticAddResult.EmbeddingRejected
@@ -343,16 +600,46 @@ internal class OfflineSemanticProviderComposition(
                     return OfflineSemanticReplaceResult.ResourceRejected
             }
             return when (val embedding = activeSession.embed(prepared)) {
-                is SemanticEmbeddingResult.Embedded -> when (
-                    publication.replaceExact(expected, replacement.source, embedding.vector)
-                ) {
-                    SemanticIndexReplaceResult.Replaced -> OfflineSemanticReplaceResult.Replaced
-                    SemanticIndexReplaceResult.StaleExpected ->
-                        OfflineSemanticReplaceResult.StaleExpected
-                    SemanticIndexReplaceResult.IdentityMismatch ->
-                        OfflineSemanticReplaceResult.IdentityMismatch
-                    SemanticIndexReplaceResult.NonForwardGeneration ->
-                        OfflineSemanticReplaceResult.NonForwardGeneration
+                is SemanticEmbeddingResult.Embedded -> {
+                    val activeShard = synchronized(this) { shardIndex }
+                    if (activeShard != null) {
+                        try {
+                            when (
+                                activeShard.replace(
+                                    expected = expected,
+                                    replacement = replacement.source,
+                                    replacementVector = embedding.vector
+                                )
+                            ) {
+                                SemanticShardMutationResult.Applied ->
+                                    OfflineSemanticReplaceResult.Replaced
+                                SemanticShardMutationResult.AlreadyApplied,
+                                SemanticShardMutationResult.StaleOrConflicting ->
+                                    OfflineSemanticReplaceResult.StaleExpected
+                                SemanticShardMutationResult.StorageFailed ->
+                                    OfflineSemanticReplaceResult.IndexFailed
+                            }
+                        } finally {
+                            embedding.vector.clear()
+                        }
+                    } else {
+                        when (
+                            publication.replaceExact(
+                                expected,
+                                replacement.source,
+                                embedding.vector
+                            )
+                        ) {
+                            SemanticIndexReplaceResult.Replaced ->
+                                OfflineSemanticReplaceResult.Replaced
+                            SemanticIndexReplaceResult.StaleExpected ->
+                                OfflineSemanticReplaceResult.StaleExpected
+                            SemanticIndexReplaceResult.IdentityMismatch ->
+                                OfflineSemanticReplaceResult.IdentityMismatch
+                            SemanticIndexReplaceResult.NonForwardGeneration ->
+                                OfflineSemanticReplaceResult.NonForwardGeneration
+                        }
+                    }
                 }
                 SemanticEmbeddingResult.ResourceRejected -> OfflineSemanticReplaceResult.ResourceRejected
                 SemanticEmbeddingResult.RequestRejected -> OfflineSemanticReplaceResult.EmbeddingRejected
@@ -382,9 +669,23 @@ internal class OfflineSemanticProviderComposition(
             operationInFlight = true
         }
         return try {
-            when (publication.removeExact(source)) {
-                SemanticIndexRemoveResult.Removed -> OfflineSemanticRemoveResult.Removed
-                SemanticIndexRemoveResult.StaleOrMissing -> OfflineSemanticRemoveResult.StaleOrMissing
+            val activeShard = synchronized(this) { shardIndex }
+            if (activeShard != null) {
+                when (activeShard.remove(source)) {
+                    SemanticShardMutationResult.Applied ->
+                        OfflineSemanticRemoveResult.Removed
+                    SemanticShardMutationResult.AlreadyApplied,
+                    SemanticShardMutationResult.StaleOrConflicting ->
+                        OfflineSemanticRemoveResult.StaleOrMissing
+                    SemanticShardMutationResult.StorageFailed ->
+                        OfflineSemanticRemoveResult.IndexFailed
+                }
+            } else {
+                when (publication.removeExact(source)) {
+                    SemanticIndexRemoveResult.Removed -> OfflineSemanticRemoveResult.Removed
+                    SemanticIndexRemoveResult.StaleOrMissing ->
+                        OfflineSemanticRemoveResult.StaleOrMissing
+                }
             }
         } finally {
             synchronized(this) { operationInFlight = false }
@@ -399,7 +700,7 @@ internal class OfflineSemanticProviderComposition(
         if (maxCandidates <= 0) {
             return SemanticProviderFailure(SemanticProviderFailureKind.REQUEST_REJECTED)
         }
-        val activeSession = synchronized(this) {
+        val operation = synchronized(this) {
             when {
                 lifecycle == OfflineSemanticProviderLifecycle.CLOSED ||
                     lifecycle == OfflineSemanticProviderLifecycle.CLOSING ->
@@ -419,10 +720,12 @@ internal class OfflineSemanticProviderComposition(
                         SemanticProviderFailureKind.SESSION_FAILED
                     )
                     operationInFlight = true
-                    current
+                    current to shardIndex
                 }
             }
         }
+        val activeSession = operation.first
+        val activeShard = operation.second
 
         try {
             val prepared = when (val preparation = SemanticTextProfile.prepareQuery(input)) {
@@ -435,9 +738,40 @@ internal class OfflineSemanticProviderComposition(
 
             return try {
                 when (val embedding = activeSession.embed(prepared)) {
-                    is SemanticEmbeddingResult.Embedded -> SemanticCandidates(
-                        publication.rank(domain, embedding.vector, maxCandidates).map { it.source }
-                    )
+                    is SemanticEmbeddingResult.Embedded -> {
+                        try {
+                            if (activeShard == null) {
+                                SemanticCandidates(
+                                    publication.rank(
+                                        domain,
+                                        embedding.vector,
+                                        maxCandidates
+                                    ).map { it.source }
+                                )
+                            } else {
+                                when (
+                                    val ranked = activeShard.rank(
+                                        domain,
+                                        embedding.vector,
+                                        maxCandidates
+                                    )
+                                ) {
+                                    is SemanticShardRankResult.Ranked ->
+                                        SemanticCandidates(ranked.candidates.map { it.source })
+                                    SemanticShardRankResult.Corrupt,
+                                    is SemanticShardRankResult.Incompatible,
+                                    is SemanticShardRankResult.Failed -> {
+                                        synchronized(this) { indexPublished = false }
+                                        SemanticProviderFailure(
+                                            SemanticProviderFailureKind.INDEX_UNAVAILABLE
+                                        )
+                                    }
+                                }
+                            }
+                        } finally {
+                            embedding.vector.clear()
+                        }
+                    }
                     SemanticEmbeddingResult.ResourceRejected ->
                         SemanticProviderFailure(SemanticProviderFailureKind.RESOURCE_REJECTED)
                     SemanticEmbeddingResult.RequestRejected ->
@@ -485,6 +819,7 @@ internal class OfflineSemanticProviderComposition(
             }
         }
         publication.release()
+        shardIndex = null
         indexPublished = false
 
         return when (closeResult) {
@@ -533,5 +868,17 @@ internal class OfflineSemanticProviderComposition(
     private fun poisonReplace(result: OfflineSemanticReplaceResult): OfflineSemanticReplaceResult {
         lifecycle = OfflineSemanticProviderLifecycle.FAILED
         return result
+    }
+
+    @Synchronized
+    private fun poisonShardEmbed(
+        result: OfflineSemanticShardEmbedResult
+    ): OfflineSemanticShardEmbedResult {
+        lifecycle = OfflineSemanticProviderLifecycle.FAILED
+        return result
+    }
+
+    private companion object {
+        const val SHARD_BUILD_PAGE_MAX = 512
     }
 }
