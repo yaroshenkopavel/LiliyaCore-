@@ -21,6 +21,13 @@ value class AndroidOfflineSemanticShardStorageKey internal constructor(
             AndroidOfflineSemanticShardStorageKey("manifest-v3-orphan-intent-root")
         val MANIFEST_V3_PUBLICATION_INTENT =
             AndroidOfflineSemanticShardStorageKey("manifest-v3-publication-intent")
+        val ROUTING_V1_ROOT =
+            AndroidOfflineSemanticShardStorageKey("routing-v1-root")
+
+        fun forRoutingNode(sha256: String): AndroidOfflineSemanticShardStorageKey {
+            require(SHA256.matches(sha256))
+            return AndroidOfflineSemanticShardStorageKey("routing-v1-node-" + sha256)
+        }
 
         fun forOrphanIntentSegment(
             publicationId: String,
