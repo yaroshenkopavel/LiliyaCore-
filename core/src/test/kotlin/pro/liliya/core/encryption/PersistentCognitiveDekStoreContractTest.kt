@@ -15,9 +15,75 @@ import pro.liliya.core.logging.InMemoryLogWriter
 import pro.liliya.core.logging.StructuredLogger
 import pro.liliya.core.observability.LoggerProvider
 import pro.liliya.core.persistence.InMemoryPersistentRecordBackend
+import pro.liliya.core.persistence.IndexedPersistentRecordMutationBackend
+import pro.liliya.core.persistence.PersistentBackendCommitResult
+import pro.liliya.core.persistence.PersistentBackendEntry
+import pro.liliya.core.persistence.PersistentBackendEntryLoadResult
 import pro.liliya.core.persistence.PersistentBackendLoadResult
+import pro.liliya.core.persistence.PersistentBackendMetadataLoadResult
+import pro.liliya.core.persistence.PersistentBackendMutationResult
+import pro.liliya.core.persistence.PersistentBackendPageLoadResult
+import pro.liliya.core.persistence.PersistentBackendPageRequest
+import pro.liliya.core.persistence.PersistentBackendState
+import pro.liliya.core.persistence.PersistentEntityId
+import pro.liliya.core.persistence.PersistentGeneration
+import pro.liliya.core.persistence.PersistentStoreId
 
 class PersistentCognitiveDekStoreContractTest {
+    private class CorruptExactIndexedBackend : IndexedPersistentRecordMutationBackend {
+        override fun load(storeId: PersistentStoreId): PersistentBackendLoadResult =
+            PersistentBackendLoadResult.Failed("legacy load must not be used")
+
+        override fun commit(
+            storeId: PersistentStoreId,
+            expectedRevision: Long,
+            state: PersistentBackendState
+        ): PersistentBackendCommitResult =
+            PersistentBackendCommitResult.Failed("legacy commit must not be used")
+
+        override fun loadMetadata(storeId: PersistentStoreId): PersistentBackendMetadataLoadResult =
+            PersistentBackendMetadataLoadResult.Missing
+
+        override fun loadEntry(
+            storeId: PersistentStoreId,
+            entityId: PersistentEntityId
+        ): PersistentBackendEntryLoadResult =
+            PersistentBackendEntryLoadResult.Corrupt
+
+        override fun loadPage(
+            storeId: PersistentStoreId,
+            request: PersistentBackendPageRequest
+        ): PersistentBackendPageLoadResult =
+            PersistentBackendPageLoadResult.Missing
+
+        override fun installEntry(
+            storeId: PersistentStoreId,
+            expectedRevision: Long,
+            expectedHighWatermark: Long,
+            entry: PersistentBackendEntry
+        ): PersistentBackendMutationResult =
+            PersistentBackendMutationResult.Failed("unexpected install")
+
+        override fun transitionEntry(
+            storeId: PersistentStoreId,
+            expectedRevision: Long,
+            expectedHighWatermark: Long,
+            sourceId: PersistentEntityId,
+            sourceGeneration: PersistentGeneration,
+            replacement: PersistentBackendEntry
+        ): PersistentBackendMutationResult =
+            PersistentBackendMutationResult.Failed("unexpected transition")
+
+        override fun removeEntry(
+            storeId: PersistentStoreId,
+            expectedRevision: Long,
+            expectedHighWatermark: Long,
+            id: PersistentEntityId,
+            generation: PersistentGeneration
+        ): PersistentBackendMutationResult =
+            PersistentBackendMutationResult.Failed("unexpected remove")
+    }
+
 
     @Test
     fun register_persists_wrapped_only_and_reopen_resolves_exact_material() {
@@ -138,6 +204,41 @@ class PersistentCognitiveDekStoreContractTest {
         assertTrue(store.snapshotReferences().isEmpty())
         assertIs<PersistentBackendLoadResult.Missing>(
             backend.load(PersistentCognitiveDekStore.STORE_ID)
+        )
+    }
+
+    @Test
+    fun indexed_exact_corruption_is_not_treated_as_missing_or_available_for_registration() {
+        val backend = CorruptExactIndexedBackend()
+        val material = CognitiveDekMaterial(ByteArray(32) { (it + 6).toByte() })
+        val protector = FakeProtector()
+        val store = assertIs<PersistentCognitiveDekOpenResult.Opened>(
+            PersistentCognitiveDekStore.open(
+                foundation = foundation(),
+                backend = backend,
+                protector = protector,
+                materialSource = FixedMaterialSource(material)
+            )
+        ).store
+
+        val reference = CognitiveDekReference(
+            CognitiveDekId("corrupt"),
+            CognitiveDekGeneration(1L)
+        )
+        val resolved = assertIs<CognitiveEncryptionResult.Failed>(
+            store.resolve(reference)
+        )
+        assertEquals(
+            CognitiveEncryptionFailureCategory.PERSISTENCE_FAILED,
+            resolved.category
+        )
+
+        val registered = assertIs<PersistentCognitiveDekRegistrationResult.Failed>(
+            store.register(CognitiveDekId("corrupt"), protector.descriptor())
+        )
+        assertEquals(
+            CognitiveEncryptionFailureCategory.PERSISTENCE_FAILED,
+            registered.category
         )
     }
 

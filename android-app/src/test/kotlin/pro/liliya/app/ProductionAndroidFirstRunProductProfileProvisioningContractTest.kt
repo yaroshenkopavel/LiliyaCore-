@@ -60,10 +60,11 @@ class ProductionAndroidFirstRunProductProfileProvisioningContractTest {
         )
         assertEquals(1, sourceLoads)
         assertEquals(0, secretOpens)
-        assertSame(request, captured!!.licenseRequest)
-        assertSame(template, captured!!.productInputTemplate)
+        val capturedInput = checkNotNull(captured)
+        assertSame(request, capturedInput.licenseRequest)
+        assertSame(template, capturedInput.productInputTemplate)
 
-        captured!!.bearerCredentialFactory.create().use { credential ->
+        capturedInput.bearerCredentialFactory.create().use { credential ->
             assertEquals("LicenseHttpBearerCredential(<redacted>)", credential.toString())
         }
         assertEquals(1, secretOpens)

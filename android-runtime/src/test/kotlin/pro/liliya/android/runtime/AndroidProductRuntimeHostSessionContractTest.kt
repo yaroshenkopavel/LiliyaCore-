@@ -5,8 +5,38 @@ import kotlin.test.assertIs
 import kotlin.test.assertNull
 import org.junit.Test
 import pro.liliya.core.license.LicenseDenialReason
+import pro.liliya.core.cognitive.CognitiveConversationSessionId
 
 class AndroidProductRuntimeHostSessionContractTest {
+
+    @Test
+    fun caller_owned_conversation_session_id_is_forwarded_exactly_and_blank_is_rejected() {
+        val bridge = FakeSessionBridge()
+        val session = AndroidProductRuntimeHostSession(bridge)
+
+        assertNull(
+            session.conversation(
+                sessionId = "",
+                maxRetainedMessages = 8,
+                maxRetainedCharacters = 1024,
+                maxMessageCharacters = 256
+            )
+        )
+        assertEquals(null, bridge.lastConversationSessionId)
+
+        assertNull(
+            session.conversation(
+                sessionId = "caller-owned-session",
+                maxRetainedMessages = 8,
+                maxRetainedCharacters = 1024,
+                maxMessageCharacters = 256
+            )
+        )
+        assertEquals(
+            CognitiveConversationSessionId("caller-owned-session"),
+            bridge.lastConversationSessionId
+        )
+    }
 
     @Test
     fun admitted_revalidation_retains_the_exact_live_runtime() {
@@ -123,6 +153,9 @@ class AndroidProductRuntimeHostSessionContractTest {
         var closeCalls: Int = 0
             private set
 
+        var lastConversationSessionId: CognitiveConversationSessionId? = null
+            private set
+
         override fun state(): HeartRuntimeState = HeartRuntimeState.READY
 
         override fun chat(): ProductChatHost? = null
@@ -132,6 +165,16 @@ class AndroidProductRuntimeHostSessionContractTest {
             maxRetainedCharacters: Int,
             maxMessageCharacters: Int
         ): ProductConversationHost? = null
+
+        override fun conversation(
+            sessionId: CognitiveConversationSessionId,
+            maxRetainedMessages: Int,
+            maxRetainedCharacters: Int,
+            maxMessageCharacters: Int
+        ): ProductConversationHost? {
+            lastConversationSessionId = sessionId
+            return null
+        }
 
         override fun learningFollowUp(): ProductLearningFollowUpHost? = null
 

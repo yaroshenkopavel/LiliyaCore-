@@ -36,6 +36,7 @@ value class ProtectedModelOpenAttemptId(val value: Long) {
     init { require(value > 0L) { "protected model open attempt id must be positive" } }
 }
 
+@ConsistentCopyVisibility
 data class ProtectedModelOpenTicket internal constructor(
     val attemptId: ProtectedModelOpenAttemptId,
     val reference: ProtectedModelReference

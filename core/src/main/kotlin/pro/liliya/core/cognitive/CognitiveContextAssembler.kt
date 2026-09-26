@@ -15,6 +15,7 @@ enum class CognitiveContextAssemblyFailure {
     KNOWLEDGE_PROVIDER_FAILED,
     MEMORY_RESULT_LIMIT_REJECTED,
     KNOWLEDGE_RESULT_LIMIT_REJECTED,
+    CONVERSATION_RECONSTRUCTION_LIMIT_REJECTED,
     CONTEXT_LIMIT_REJECTED,
     PUBLICATION_FAILED
 }
@@ -107,17 +108,21 @@ internal class CognitiveContextAssembler(
 
         val items = mutableListOf<CognitiveContextItem>()
 
-        conversation?.messages?.forEach { message ->
-            if (!items.addBounded(
-                    source = CognitiveContextSourceReference.Conversation(
-                        sessionId = conversation.sessionId,
-                        sequence = message.sequence,
-                        role = message.role
-                    ),
-                    content = message.content
-                )
-            ) {
-                return contextLimitRejected()
+        if (conversation != null) {
+            val reconstructed = reconstructConversation(conversation)
+                ?: return conversationReconstructionLimitRejected()
+            reconstructed.forEach { message ->
+                if (!items.addBounded(
+                        source = CognitiveContextSourceReference.Conversation(
+                            sessionId = conversation.sessionId,
+                            sequence = message.sequence,
+                            role = message.role
+                        ),
+                        content = message.content
+                    )
+                ) {
+                    return contextLimitRejected()
+                }
             }
         }
 
@@ -196,6 +201,26 @@ internal class CognitiveContextAssembler(
         }
     }
 
+    private fun reconstructConversation(
+        snapshot: CognitiveConversationContextSnapshot
+    ): List<CognitiveConversationContextMessage>? {
+        if (snapshot.messages.isEmpty()) return emptyList()
+
+        val selectedNewestFirst = mutableListOf<CognitiveConversationContextMessage>()
+        var selectedChars = 0
+        for (message in snapshot.messages.asReversed()) {
+            if (selectedNewestFirst.size >= limits.maxConversationReconstructionItems) break
+            if (message.content.length > limits.maxConversationReconstructionChars) {
+                if (selectedNewestFirst.isEmpty()) return null
+                break
+            }
+            if (selectedChars + message.content.length > limits.maxConversationReconstructionChars) break
+            selectedNewestFirst += message
+            selectedChars += message.content.length
+        }
+        return selectedNewestFirst.asReversed()
+    }
+
     private fun MutableList<CognitiveContextItem>.addBounded(
         source: CognitiveContextSourceReference,
         content: String
@@ -206,6 +231,11 @@ internal class CognitiveContextAssembler(
         add(CognitiveContextItem(source = source, content = content))
         return true
     }
+
+    private fun conversationReconstructionLimitRejected(): CognitiveContextAssemblyResult.Rejected =
+        CognitiveContextAssemblyResult.Rejected(
+            CognitiveContextAssemblyFailure.CONVERSATION_RECONSTRUCTION_LIMIT_REJECTED
+        )
 
     private fun contextLimitRejected(): CognitiveContextAssemblyResult.Rejected =
         CognitiveContextAssemblyResult.Rejected(
