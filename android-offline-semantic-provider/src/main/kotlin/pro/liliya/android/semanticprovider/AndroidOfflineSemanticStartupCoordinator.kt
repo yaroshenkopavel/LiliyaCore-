@@ -202,9 +202,22 @@ class AndroidOfflineSemanticStartupCoordinator internal constructor(
                 storage = shardStorage,
                 manifestStore = manifestStoreV3
             )
-            // Cleanup is derived-state hygiene only. A deferred/unsupported GC never blocks
-            // semantic startup; safety is enforced by the committed-root checks inside the GC.
+            val orphanIntentGarbageCollector = SemanticShardOrphanIntentGarbageCollector(
+                storage = shardStorage,
+                manifestStore = manifestStoreV3,
+                shardStore = shardStore
+            )
+            val publicationIntentGarbageCollector =
+                SemanticShardManifestV3PublicationIntentGarbageCollector(
+                    storage = shardStorage,
+                    manifestStore = manifestStoreV3
+                )
+            // Cleanup is derived-state hygiene only. Deferred cleanup never blocks semantic
+            // startup. Shard intents are resolved first, then any root-transition journal, and
+            // finally abandoned segmented-manifest publication metadata.
+            orphanIntentGarbageCollector.resumeIfSafe()
             garbageCollectorV3.resumeIfSafe()
+            publicationIntentGarbageCollector.resumeIfSafe()
             val loadedRootV3 = manifestStoreV3.loadRoot()
 
             if (loadedRootV3 is SemanticShardManifestRootV3LoadResult.Loaded) {

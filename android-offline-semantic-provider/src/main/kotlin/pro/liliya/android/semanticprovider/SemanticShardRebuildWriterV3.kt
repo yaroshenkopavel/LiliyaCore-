@@ -15,6 +15,10 @@ internal class SemanticShardRebuildWriterV3(
         store = manifestStore,
         model = model
     )
+    private val orphanIntentTracker = SemanticShardOrphanIntentTracker(
+        store = SemanticShardOrphanIntentStore(manifestStore.storage),
+        mode = SemanticShardOrphanIntentMode.ORDERED_REBUILD
+    )
     private val pending = ArrayList<SemanticIndexSeed>(
         SemanticShardLayout.ENTRIES_PER_SHARD.toInt()
     )
@@ -67,7 +71,11 @@ internal class SemanticShardRebuildWriterV3(
             clear()
             return null
         }
-        return manifestWriter.finish(authoritative, beforeCommit)
+        val root = manifestWriter.finish(authoritative, beforeCommit) ?: return null
+        // Every tracked rebuild shard is part of this committed root. Clearing the intent metadata
+        // does not delete shard blobs. If cleanup is interrupted, startup GC resumes from the root.
+        orphanIntentTracker.clearCommittedIntents()
+        return root
     }
 
     fun clear() {
@@ -87,7 +95,8 @@ internal class SemanticShardRebuildWriterV3(
                     version = SemanticShardCheckpoint.CURRENT_VERSION,
                     shardId = shardId,
                     seeds = pending.toList()
-                )
+                ),
+                beforeWrite = orphanIntentTracker::record
             )
         } catch (_: IllegalArgumentException) {
             null

@@ -12,6 +12,9 @@ internal class SemanticShardManifestV3PublicationWriter(
     private val model: SemanticCheckpointModelBinding = SemanticCheckpointModelBinding.production(),
     internal val publicationId: String = UUID.randomUUID().toString().replace("-", "")
 ) {
+    private val publicationIntentStore = SemanticShardManifestV3PublicationIntentStore(
+        store.storage
+    )
     private val pending = ArrayList<SemanticShardDescriptor>(
         SemanticShardManifestRootV3.DESCRIPTORS_PER_SEGMENT
     )
@@ -77,6 +80,9 @@ internal class SemanticShardManifestV3PublicationWriter(
             failed = true
             return null
         }
+        // The committed root is now authoritative for this derived publication. Publication-intent
+        // cleanup is best-effort; startup GC can finish it if power is lost here.
+        publicationIntentStore.clear()
         finished = true
         return root
     }
@@ -92,6 +98,9 @@ internal class SemanticShardManifestV3PublicationWriter(
                 shards = pending.toList()
             )
         } catch (_: IllegalArgumentException) {
+            return false
+        }
+        if (!publicationIntentStore.recordSegmentBeforeWrite(publicationId, nextSegmentOrdinal)) {
             return false
         }
         if (!store.writeSegment(segment)) return false

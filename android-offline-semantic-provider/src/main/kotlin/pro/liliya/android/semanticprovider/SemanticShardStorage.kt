@@ -17,6 +17,21 @@ value class AndroidOfflineSemanticShardStorageKey internal constructor(
         val MANIFEST = AndroidOfflineSemanticShardStorageKey("manifest-v2")
         val MANIFEST_V3_ROOT = AndroidOfflineSemanticShardStorageKey("manifest-v3-root")
         val MANIFEST_V3_GC = AndroidOfflineSemanticShardStorageKey("manifest-v3-gc")
+        val MANIFEST_V3_ORPHAN_INTENT_ROOT =
+            AndroidOfflineSemanticShardStorageKey("manifest-v3-orphan-intent-root")
+        val MANIFEST_V3_PUBLICATION_INTENT =
+            AndroidOfflineSemanticShardStorageKey("manifest-v3-publication-intent")
+
+        fun forOrphanIntentSegment(
+            publicationId: String,
+            ordinal: Long
+        ): AndroidOfflineSemanticShardStorageKey {
+            require(SemanticShardManifestRootV3.PUBLICATION_ID.matches(publicationId))
+            require(ordinal >= 0L)
+            return AndroidOfflineSemanticShardStorageKey(
+                "manifest-v3-orphan-intent-" + publicationId + "-" + ordinal
+            )
+        }
 
         fun forManifestSegment(
             publicationId: String,
@@ -262,7 +277,8 @@ internal class SemanticShardStore(
     }
 
     fun writeShard(
-        checkpoint: SemanticShardCheckpoint
+        checkpoint: SemanticShardCheckpoint,
+        beforeWrite: (SemanticShardDescriptor) -> Boolean = { true }
     ): SemanticShardDescriptor? {
         val blob = try {
             SemanticShardCheckpointCodec.encodeShard(checkpoint)
@@ -274,6 +290,7 @@ internal class SemanticShardStore(
             entryCount = checkpoint.seeds.size,
             blobSha256 = SemanticShardCheckpointCodec.shardDigest(blob)
         )
+        if (!beforeWrite(descriptor)) return null
         return when (
             storage.write(
                 AndroidOfflineSemanticShardStorageKey.forShard(

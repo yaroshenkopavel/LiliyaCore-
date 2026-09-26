@@ -16,6 +16,16 @@ internal class SemanticShardSegmentedIndexV3(
     private var root: SemanticShardManifestRootV3 = initialRoot
     private val pending = TreeMap<SemanticShardId, SemanticShardDescriptor?>(SHARD_ID_COMPARATOR)
     private val basePresence = HashMap<SemanticShardId, Boolean>()
+    private var orphanIntentTracker = SemanticShardOrphanIntentTracker(
+        store = SemanticShardOrphanIntentStore(manifestStore.storage),
+        mode = SemanticShardOrphanIntentMode.BOUNDED_MUTATIONS
+    )
+    private var orphanIntentCleanupBlocked: Boolean = false
+    private val orphanIntentGarbageCollector = SemanticShardOrphanIntentGarbageCollector(
+        storage = manifestStore.storage,
+        manifestStore = manifestStore,
+        shardStore = shardStore
+    )
     private var liveEntryCount: Long = authoritativeEntryCount(initialRoot.authoritative)
 
     @Synchronized
@@ -350,8 +360,22 @@ internal class SemanticShardSegmentedIndexV3(
         pending.clear()
         basePresence.clear()
 
-        // Publication is already committed. GC is best-effort and resumable through the journal;
+        // Publication is already committed. Both cleanup passes are best-effort and resumable;
         // a cleanup failure must not invalidate the new derived semantic state.
+        when (orphanIntentGarbageCollector.resumeIfSafe()) {
+            SemanticShardOrphanIntentGcResult.Completed,
+            SemanticShardOrphanIntentGcResult.NothingToDo -> {
+                orphanIntentTracker = SemanticShardOrphanIntentTracker(
+                    store = SemanticShardOrphanIntentStore(manifestStore.storage),
+                    mode = SemanticShardOrphanIntentMode.BOUNDED_MUTATIONS
+                )
+                orphanIntentCleanupBlocked = false
+            }
+            SemanticShardOrphanIntentGcResult.Deferred,
+            SemanticShardOrphanIntentGcResult.CorruptIntent,
+            SemanticShardOrphanIntentGcResult.CorruptCurrentManifest ->
+                orphanIntentCleanupBlocked = true
+        }
         garbageCollector.reclaimCommitted(previousRoot, nextRoot)
         return true
     }
@@ -433,6 +457,7 @@ internal class SemanticShardSegmentedIndexV3(
         shardId: SemanticShardId,
         seeds: List<SemanticIndexSeed>
     ): SemanticShardDescriptor? {
+        if (orphanIntentCleanupBlocked) return null
         val ordered = seeds.sortedWith(
             compareBy<SemanticIndexSeed> { it.source.generationValue }
                 .thenBy { stableEntityKey(it.source) }
@@ -443,7 +468,8 @@ internal class SemanticShardSegmentedIndexV3(
                     version = SemanticShardCheckpoint.CURRENT_VERSION,
                     shardId = shardId,
                     seeds = ordered
-                )
+                ),
+                beforeWrite = orphanIntentTracker::record
             )
         } catch (_: IllegalArgumentException) {
             null
