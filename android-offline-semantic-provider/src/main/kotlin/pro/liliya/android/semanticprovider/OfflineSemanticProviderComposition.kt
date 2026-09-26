@@ -456,6 +456,9 @@ internal class OfflineSemanticProviderComposition(
             if (!activated.validate()) {
                 return OfflineSemanticRebuildResult.IndexRejected
             }
+            // Routing is derived acceleration only. Build/reuse it best-effort; a failure keeps
+            // the exact exhaustive v3 path available and must not make a valid manifest unavailable.
+            activated.ensureRouting()
             synchronized(this) {
                 if (lifecycle != OfflineSemanticProviderLifecycle.READY) {
                     return OfflineSemanticRebuildResult.SessionFailed

@@ -16,6 +16,9 @@ internal class SemanticShardSegmentedIndexV3(
     private var root: SemanticShardManifestRootV3 = initialRoot
     private val pending = TreeMap<SemanticShardId, SemanticShardDescriptor?>(SHARD_ID_COMPARATOR)
     private val basePresence = HashMap<SemanticShardId, Boolean>()
+    private val routingStore = SemanticShardRoutingStore(manifestStore.storage)
+    private val routingQuery = SemanticShardRoutingQuery(shardStore, routingStore)
+    private val routingBuilder = SemanticShardRoutingBuilder(shardStore, manifestStore, routingStore)
     private var orphanIntentTracker = SemanticShardOrphanIntentTracker(
         store = SemanticShardOrphanIntentStore(manifestStore.storage),
         mode = SemanticShardOrphanIntentMode.BOUNDED_MUTATIONS
@@ -72,6 +75,21 @@ internal class SemanticShardSegmentedIndexV3(
         maxCandidates: Int
     ): SemanticShardRankResult {
         require(maxCandidates > 0)
+
+        // Routing is valid only for the exact committed manifest. Pending live mutations are
+        // intentionally ranked through the exhaustive v3 path so stale bounds can never hide them.
+        if (pending.isEmpty()) {
+            when (val routed = routingQuery.rank(root, domain, query, maxCandidates)) {
+                is SemanticShardRoutingQueryResult.Routed ->
+                    return SemanticShardRankResult.Ranked(routed.candidates)
+                SemanticShardRoutingQueryResult.Missing,
+                SemanticShardRoutingQueryResult.Stale,
+                SemanticShardRoutingQueryResult.Corrupt,
+                is SemanticShardRoutingQueryResult.Incompatible,
+                is SemanticShardRoutingQueryResult.Failed -> Unit
+            }
+        }
+
         var globalTopK: List<SemanticRankedCandidate> = emptyList()
         var descriptorCount = 0L
         var previous: SemanticShardId? = null
@@ -377,11 +395,27 @@ internal class SemanticShardSegmentedIndexV3(
                 orphanIntentCleanupBlocked = true
         }
         garbageCollector.reclaimCommitted(previousRoot, nextRoot)
+        // Routing is derived acceleration only. A rebuild failure leaves the new manifest valid;
+        // subsequent queries fall back to exhaustive v3 ranking until routing is available again.
+        routingBuilder.rebuild(nextRoot)
         return true
     }
 
     @Synchronized
     override fun entryCount(): Long = liveEntryCount
+
+    @Synchronized
+    internal fun ensureRouting(): Boolean {
+        val current = when (val loaded = routingStore.loadRoot()) {
+            is SemanticShardRoutingRootLoadResult.Loaded -> loaded.root
+            SemanticShardRoutingRootLoadResult.Missing,
+            SemanticShardRoutingRootLoadResult.Corrupt,
+            is SemanticShardRoutingRootLoadResult.Incompatible,
+            is SemanticShardRoutingRootLoadResult.Failed -> null
+        }
+        if (current != null && current.matches(root)) return true
+        return routingBuilder.rebuild(root) != null
+    }
 
     @Synchronized
     internal fun currentRoot(): SemanticShardManifestRootV3 = root
