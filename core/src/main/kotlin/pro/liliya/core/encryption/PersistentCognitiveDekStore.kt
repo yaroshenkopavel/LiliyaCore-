@@ -19,6 +19,8 @@ import pro.liliya.core.persistence.PersistentPayload
 import pro.liliya.core.persistence.PersistentRecord
 import pro.liliya.core.persistence.PersistentRecordBackend
 import pro.liliya.core.persistence.PersistentRecordOwnership
+import pro.liliya.core.persistence.PersistentRecordLookupResult
+import pro.liliya.core.persistence.PersistentRecordSnapshotEntriesResult
 import pro.liliya.core.persistence.PersistentRecordStore
 import pro.liliya.core.persistence.PersistentSchemaId
 import pro.liliya.core.persistence.PersistentSchemaVersion
@@ -99,10 +101,26 @@ class PersistentCognitiveDekStore private constructor(
         }
 
         val entityId = entityIdFor(id)
-        if (persistentStore.contains(entityId)) {
-            return@synchronized PersistentCognitiveDekRegistrationResult.Rejected(
-                CognitiveEncryptionFailureCategory.STALE_DEK_OWNERSHIP
-            )
+        when (val existing = persistentStore.inspectResult(entityId)) {
+            PersistentRecordLookupResult.Missing -> Unit
+            is PersistentRecordLookupResult.Found ->
+                return@synchronized PersistentCognitiveDekRegistrationResult.Rejected(
+                    CognitiveEncryptionFailureCategory.STALE_DEK_OWNERSHIP
+                )
+            PersistentRecordLookupResult.Corrupt ->
+                return@synchronized PersistentCognitiveDekRegistrationResult.Failed(
+                    CognitiveEncryptionFailureCategory.PERSISTENCE_FAILED
+                )
+            is PersistentRecordLookupResult.Incompatible ->
+                return@synchronized PersistentCognitiveDekRegistrationResult.Failed(
+                    CognitiveEncryptionFailureCategory.PERSISTENCE_FAILED,
+                    IllegalStateException(existing.reason)
+                )
+            is PersistentRecordLookupResult.Failed ->
+                return@synchronized PersistentCognitiveDekRegistrationResult.Failed(
+                    CognitiveEncryptionFailureCategory.PERSISTENCE_FAILED,
+                    existing.throwable
+                )
         }
 
         val nextGenerationValue = persistentStore.generationHighWatermark() + 1L
@@ -190,7 +208,16 @@ class PersistentCognitiveDekStore private constructor(
     }
 
     fun inspect(reference: CognitiveDekReference): WrappedCognitiveDekEnvelope? {
-        val snapshot = persistentStore.inspect(entityIdFor(reference.id)) ?: return null
+        val snapshot = when (val lookedUp = persistentStore.inspectResult(entityIdFor(reference.id))) {
+            PersistentRecordLookupResult.Missing -> return null
+            is PersistentRecordLookupResult.Found -> lookedUp.snapshot
+            PersistentRecordLookupResult.Corrupt ->
+                throw IllegalStateException("cognitive DEK persistent store is corrupt")
+            is PersistentRecordLookupResult.Incompatible ->
+                throw IllegalStateException(lookedUp.reason)
+            is PersistentRecordLookupResult.Failed ->
+                throw IllegalStateException(lookedUp.reason, lookedUp.throwable)
+        }
         if (snapshot.generation.value != reference.generation.value) return null
         val envelope = decodeRecord(snapshot.record) ?: return null
         return envelope.takeIf { it.dek == reference }
@@ -199,8 +226,27 @@ class PersistentCognitiveDekStore private constructor(
     override fun resolve(
         reference: CognitiveDekReference
     ): CognitiveEncryptionResult<CognitiveDekMaterial> {
-        val snapshot = persistentStore.inspect(entityIdFor(reference.id))
-            ?: return CognitiveEncryptionResult.Rejected(CognitiveEncryptionFailureCategory.DEK_MISSING)
+        val snapshot = when (val lookedUp = persistentStore.inspectResult(entityIdFor(reference.id))) {
+            PersistentRecordLookupResult.Missing ->
+                return CognitiveEncryptionResult.Rejected(
+                    CognitiveEncryptionFailureCategory.DEK_MISSING
+                )
+            is PersistentRecordLookupResult.Found -> lookedUp.snapshot
+            PersistentRecordLookupResult.Corrupt ->
+                return CognitiveEncryptionResult.Failed(
+                    CognitiveEncryptionFailureCategory.PERSISTENCE_FAILED
+                )
+            is PersistentRecordLookupResult.Incompatible ->
+                return CognitiveEncryptionResult.Failed(
+                    CognitiveEncryptionFailureCategory.PERSISTENCE_FAILED,
+                    IllegalStateException(lookedUp.reason)
+                )
+            is PersistentRecordLookupResult.Failed ->
+                return CognitiveEncryptionResult.Failed(
+                    CognitiveEncryptionFailureCategory.PERSISTENCE_FAILED,
+                    lookedUp.throwable
+                )
+        }
         if (snapshot.generation.value != reference.generation.value) {
             return CognitiveEncryptionResult.Rejected(
                 CognitiveEncryptionFailureCategory.STALE_DEK_OWNERSHIP
@@ -298,12 +344,17 @@ class PersistentCognitiveDekStore private constructor(
                     protector = protector,
                     materialSource = materialSource
                 )
-                when (candidate.validateRestoredState()) {
-                    RestoreValidation.VALID -> PersistentCognitiveDekOpenResult.Opened(candidate)
-                    RestoreValidation.CORRUPT -> PersistentCognitiveDekOpenResult.Corrupt
-                    RestoreValidation.INCOMPATIBLE ->
+                when (val validation = candidate.validateRestoredState()) {
+                    RestoreValidation.Valid -> PersistentCognitiveDekOpenResult.Opened(candidate)
+                    RestoreValidation.Corrupt -> PersistentCognitiveDekOpenResult.Corrupt
+                    RestoreValidation.Incompatible ->
                         PersistentCognitiveDekOpenResult.Incompatible(
                             "unsupported cognitive wrapped DEK schema"
+                        )
+                    is RestoreValidation.Failed ->
+                        PersistentCognitiveDekOpenResult.Failed(
+                            validation.reason,
+                            validation.throwable
                         )
                 }
             }
@@ -324,21 +375,35 @@ class PersistentCognitiveDekStore private constructor(
     }
 
     private fun validateRestoredState(): RestoreValidation {
-        for (snapshot in persistentStore.snapshotEntries()) {
-            if (snapshot.record.schemaId != SCHEMA_ID) return RestoreValidation.INCOMPATIBLE
-            if (snapshot.record.schemaVersion != SCHEMA_VERSION) return RestoreValidation.INCOMPATIBLE
-            val envelope = decodeRecord(snapshot.record) ?: return RestoreValidation.CORRUPT
+        val snapshots = when (val listed = persistentStore.snapshotEntriesResult()) {
+            PersistentRecordSnapshotEntriesResult.Empty -> emptyList()
+            is PersistentRecordSnapshotEntriesResult.Loaded -> listed.entries
+            PersistentRecordSnapshotEntriesResult.Corrupt -> return RestoreValidation.Corrupt
+            is PersistentRecordSnapshotEntriesResult.Incompatible ->
+                return RestoreValidation.Incompatible
+            is PersistentRecordSnapshotEntriesResult.Failed ->
+                return RestoreValidation.Failed(listed.reason, listed.throwable)
+        }
+
+        for (snapshot in snapshots) {
+            if (snapshot.record.schemaId != SCHEMA_ID) return RestoreValidation.Incompatible
+            if (snapshot.record.schemaVersion != SCHEMA_VERSION) return RestoreValidation.Incompatible
+            val envelope = decodeRecord(snapshot.record) ?: return RestoreValidation.Corrupt
             if (envelope.dek.generation.value != snapshot.generation.value) {
-                return RestoreValidation.CORRUPT
+                return RestoreValidation.Corrupt
             }
         }
-        return RestoreValidation.VALID
+        return RestoreValidation.Valid
     }
 
-    private enum class RestoreValidation {
-        VALID,
-        CORRUPT,
-        INCOMPATIBLE
+    private sealed interface RestoreValidation {
+        data object Valid : RestoreValidation
+        data object Corrupt : RestoreValidation
+        data object Incompatible : RestoreValidation
+        data class Failed(
+            val reason: String,
+            val throwable: Throwable? = null
+        ) : RestoreValidation
     }
 }
 

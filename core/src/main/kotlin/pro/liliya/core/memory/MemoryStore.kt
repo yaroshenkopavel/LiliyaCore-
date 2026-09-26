@@ -137,6 +137,28 @@ internal class MemoryStore private constructor(
         override fun remove(context: LogContext): Boolean = removeExact(entry, context)
     }
 
+    internal fun removeExact(
+        id: MemoryRecordId,
+        generation: MemoryGeneration,
+        context: LogContext
+    ): Boolean {
+        val current = records[id]
+        if (current == null || current.generation != generation) {
+            observability.record(
+                severity = DiagnosticSeverity.WARNING,
+                code = "MEMORY_REMOVAL_REJECTED",
+                message = "memory registration is no longer current",
+                context = context,
+                metadata = mapOf(
+                    "memoryRecordId" to id.value,
+                    "memoryGeneration" to generation.value.toString()
+                )
+            )
+            return false
+        }
+        return removeExact(current, context)
+    }
+
     private fun removeExact(entry: Entry, context: LogContext): Boolean {
         val removed = records.remove(entry.record.id, entry)
         observability.record(
