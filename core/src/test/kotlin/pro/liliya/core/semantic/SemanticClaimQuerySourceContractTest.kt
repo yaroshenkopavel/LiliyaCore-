@@ -486,6 +486,98 @@ class SemanticClaimQuerySourceContractTest {
         assertTrue(stale.reason.contains("source checkpoint"))
     }
 
+    @Test
+    fun lexical_query_rejects_empty_and_audits_token_truncation() {
+        val fixture = lexicalFixture("lexical-query-limits")
+        assertIs<SemanticClaimLexicalQueryResult.Rejected>(
+            fixture.source.query("   ---   ")
+        )
+        assertIs<SemanticClaimStoreResult.Stored>(
+            fixture.repository.storeClaim(
+                claim(identity("limits"), "token1 token2", 41)
+            )
+        )
+        assertIs<SemanticClaimLexicalRebuildResult.Complete>(
+            fixture.rebuilder.rebuild()
+        )
+        val oversized = (1..20).joinToString(" ") { "token" + it }
+        val ranked = assertIs<SemanticClaimLexicalQueryResult.Ranked>(
+            fixture.source.query(oversized)
+        )
+        assertEquals(
+            SemanticClaimLexicalTokenizer.MAX_QUERY_TOKENS,
+            ranked.audit.queryTokenCount
+        )
+        assertTrue(ranked.audit.queryTokenTruncated)
+    }
+
+    @Test
+    fun lexical_bm25_formula_is_exact_for_known_corpus() {
+        val fixture = lexicalFixture("lexical-bm25-formula")
+        val dense = claim(identity("bm25_dense"), "alpha alpha beta", 61)
+        val sparse = claim(identity("bm25_sparse"), "alpha beta", 62)
+        listOf(dense, sparse).forEach {
+            assertIs<SemanticClaimStoreResult.Stored>(
+                fixture.repository.storeClaim(it)
+            )
+        }
+        assertIs<SemanticClaimLexicalRebuildResult.Complete>(
+            fixture.rebuilder.rebuild()
+        )
+
+        val result = assertIs<SemanticClaimLexicalQueryResult.Ranked>(
+            fixture.source.query("alpha")
+        )
+        assertEquals(2, result.candidates.size)
+
+        val n = 2.0
+        val df = 2.0
+        val idf = kotlin.math.ln(1.0 + (n - df + 0.5) / (df + 0.5))
+        val avg = 2.5
+        fun expected(tf: Double, length: Double): Double {
+            val k1 = SemanticClaimLexicalPolicy.DEFAULT_BM25_K1
+            val b = SemanticClaimLexicalPolicy.DEFAULT_BM25_B
+            val normalization = 1.0 - b + b * length / avg
+            return idf * ((tf * (k1 + 1.0)) / (tf + k1 * normalization))
+        }
+
+        val byReference = result.candidates.associateBy { it.reference }
+        val denseScore = byReference[
+            SemanticClaimVersionReference(dense.id, dense.version)
+        ]!!.score
+        val sparseScore = byReference[
+            SemanticClaimVersionReference(sparse.id, sparse.version)
+        ]!!.score
+        assertEquals(expected(2.0, 3.0), denseScore, 1e-12)
+        assertEquals(expected(1.0, 2.0), sparseScore, 1e-12)
+        assertTrue(denseScore > sparseScore)
+    }
+
+    @Test
+    fun lexical_active_build_mismatch_fails_safe_without_partial_result() {
+        val fixture = lexicalFixture("lexical-active-build")
+        val record = claim(identity("active_build"), "alpha beta", 71)
+        assertIs<SemanticClaimStoreResult.Stored>(
+            fixture.repository.storeClaim(record)
+        )
+        assertIs<SemanticClaimLexicalRebuildResult.Complete>(
+            fixture.rebuilder.rebuild()
+        )
+        val currentRoot = assertIs<SemanticClaimLexicalRootLoadResult.Loaded>(
+            fixture.indexStore.readRoot("alpha")
+        ).root
+        assertIs<SemanticClaimLexicalWriteResult.Written>(
+            fixture.indexStore.writeRoot(
+                currentRoot.copy(buildEpoch = "stale-build-epoch")
+            )
+        )
+
+        val result = assertIs<SemanticClaimLexicalQueryResult.FallbackRequired>(
+            fixture.source.query("alpha")
+        )
+        assertTrue(result.reason.contains("active build"))
+    }
+
     private fun lexicalFixture(
         suffix: String,
         policy: SemanticClaimLexicalPolicy = SemanticClaimLexicalPolicy()
