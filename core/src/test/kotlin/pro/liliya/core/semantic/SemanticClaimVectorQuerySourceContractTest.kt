@@ -18,7 +18,8 @@ class SemanticClaimVectorQuerySourceContractTest {
     private val providerIdentity = SemanticClaimVectorProviderIdentity(
         profileId = "semantic-e5-small-v1",
         profileGeneration = 3,
-        indexGeneration = 7
+        indexGeneration = 7,
+        source = SemanticClaimSourceCheckpoint(1, 1, 2)
     )
 
     @Test
@@ -107,6 +108,30 @@ class SemanticClaimVectorQuerySourceContractTest {
             source.query("query")
         )
         assertTrue(result.reason.contains("id/version"))
+    }
+
+    @Test
+    fun stale_provider_source_checkpoint_is_rejected_before_canonical_reads() {
+        val one = claim("one", 1)
+        val reader = FakeReader(listOf(one))
+        val staleIdentity = providerIdentity.copy(
+            source = SemanticClaimSourceCheckpoint(0, 1, 2)
+        )
+        val source = SemanticClaimVectorQuerySource(
+            reader,
+            SemanticClaimVectorDiscoveryPort { _, _ ->
+                SemanticClaimVectorProviderResult.Ranked(
+                    staleIdentity,
+                    listOf(candidate(one, 0.9))
+                )
+            }
+        )
+
+        val result = assertIs<SemanticClaimVectorQueryResult.FallbackRequired>(
+            source.query("query")
+        )
+        assertTrue(result.reason.contains("source checkpoint"))
+        assertEquals(0, reader.readCalls)
     }
 
     @Test
@@ -269,7 +294,7 @@ class SemanticClaimVectorQuerySourceContractTest {
             return SemanticClaimSourceCheckpoint(
                 revision = if (driftOnSecondCheckpoint && checkpointCalls > 1) 2 else 1,
                 highWatermark = 1,
-                entryCount = records.size.toLong()
+                entryCount = 2
             )
         }
 

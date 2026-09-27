@@ -4,12 +4,14 @@ import pro.liliya.core.semantic.SemanticClaimVectorDiscoveryPort
 import pro.liliya.core.semantic.SemanticClaimVectorProviderCandidate
 import pro.liliya.core.semantic.SemanticClaimVectorProviderIdentity
 import pro.liliya.core.semantic.SemanticClaimVectorProviderResult
+import pro.liliya.core.semantic.SemanticClaimSourceCheckpoint
 import pro.liliya.core.semantic.SemanticClaimVersionReference
 
 internal data class OfflineSemanticClaimVectorIdentity(
     val profileId: String,
     val profileGeneration: Long,
-    val indexGeneration: Long
+    val indexGeneration: Long,
+    val source: SemanticClaimSourceCheckpoint
 ) {
     init {
         require(profileId.isNotBlank())
@@ -110,7 +112,8 @@ internal class OfflineSemanticClaimVectorDiscoveryAdapter(
             identity = SemanticClaimVectorProviderIdentity(
                 profileId = ranked.identity.profileId,
                 profileGeneration = ranked.identity.profileGeneration,
-                indexGeneration = ranked.identity.indexGeneration
+                indexGeneration = ranked.identity.indexGeneration,
+                source = ranked.identity.source
             ),
             candidates = ranked.candidates.map {
                 SemanticClaimVectorProviderCandidate(

@@ -65,6 +65,9 @@ class SemanticClaimVectorQuerySource private constructor(
             is SemanticClaimVectorProviderResult.Ranked -> discovered
         }
 
+        if (ranked.identity.source != sourceBefore) {
+            return fallback("semantic vector provider source checkpoint is stale")
+        }
         if (ranked.candidates.size > policy.maxCandidates) {
             return fallback("semantic vector provider candidate budget exceeded")
         }

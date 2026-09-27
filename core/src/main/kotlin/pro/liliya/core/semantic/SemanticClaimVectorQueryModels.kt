@@ -15,7 +15,8 @@ data class SemanticClaimVectorPolicy(
 data class SemanticClaimVectorProviderIdentity(
     val profileId: String,
     val profileGeneration: Long,
-    val indexGeneration: Long
+    val indexGeneration: Long,
+    val source: SemanticClaimSourceCheckpoint
 ) {
     init {
         require(profileId.isNotBlank() && profileId.length <= 128)

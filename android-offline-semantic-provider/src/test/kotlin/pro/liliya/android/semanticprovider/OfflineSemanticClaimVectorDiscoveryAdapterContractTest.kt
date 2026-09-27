@@ -5,6 +5,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import pro.liliya.core.semantic.SemanticClaimId
+import pro.liliya.core.semantic.SemanticClaimSourceCheckpoint
 import pro.liliya.core.semantic.SemanticClaimVectorProviderResult
 import pro.liliya.core.semantic.SemanticClaimVersion
 import pro.liliya.core.semantic.SemanticClaimVersionReference
@@ -13,7 +14,8 @@ class OfflineSemanticClaimVectorDiscoveryAdapterContractTest {
     private val identity = OfflineSemanticClaimVectorIdentity(
         profileId = "semantic-e5-small-v1",
         profileGeneration = 2,
-        indexGeneration = 9
+        indexGeneration = 9,
+        source = SemanticClaimSourceCheckpoint(4, 7, 11)
     )
 
     @Test
@@ -42,6 +44,7 @@ class OfflineSemanticClaimVectorDiscoveryAdapterContractTest {
         assertEquals("semantic-e5-small-v1", result.identity.profileId)
         assertEquals(2L, result.identity.profileGeneration)
         assertEquals(9L, result.identity.indexGeneration)
+        assertEquals(identity.source, result.identity.source)
         assertEquals(listOf(a, b), result.candidates.map { it.reference })
         assertEquals(listOf(0.8, -0.1), result.candidates.map { it.similarity })
         assertTrue(result.truncated)
