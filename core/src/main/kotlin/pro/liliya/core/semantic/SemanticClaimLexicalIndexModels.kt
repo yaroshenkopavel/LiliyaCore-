@@ -153,10 +153,13 @@ data class SemanticClaimLexicalCandidate(
 }
 
 data class SemanticClaimLexicalAudit(
+    val indexVersion: Int,
+    val buildEpoch: String,
     val policyVersion: Int,
     val tokenizerVersion: Int,
     val source: SemanticClaimSourceCheckpoint,
     val queryTokenCount: Int,
+    val queryTokenTruncated: Boolean,
     val postingEntriesScanned: Int,
     val candidateWorkingSetSize: Int,
     val postingBudgetTruncated: Boolean,
@@ -165,6 +168,8 @@ data class SemanticClaimLexicalAudit(
     val advisoryOnly: Boolean = true
 ) {
     init {
+        require(indexVersion == SemanticClaimLexicalManifest.CURRENT_VERSION)
+        require(buildEpoch.isNotBlank())
         require(policyVersion == SemanticClaimLexicalPolicy.CURRENT_VERSION)
         require(tokenizerVersion == SemanticClaimLexicalTokenizer.VERSION)
         require(queryTokenCount in 1..SemanticClaimLexicalTokenizer.MAX_QUERY_TOKENS)
