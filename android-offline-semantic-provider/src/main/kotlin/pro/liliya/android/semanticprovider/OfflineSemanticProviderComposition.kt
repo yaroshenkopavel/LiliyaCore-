@@ -133,6 +133,16 @@ internal sealed interface OfflineSemanticProviderCloseResult {
     data object ProviderFailed : OfflineSemanticProviderCloseResult
 }
 
+internal sealed interface OfflineSemanticSharedEmbeddingResult {
+    data class Embedded(val vector: SemanticEmbeddingVector) : OfflineSemanticSharedEmbeddingResult
+    data object Busy : OfflineSemanticSharedEmbeddingResult
+    data object NotReady : OfflineSemanticSharedEmbeddingResult
+    data object ResourceRejected : OfflineSemanticSharedEmbeddingResult
+    data object RequestRejected : OfflineSemanticSharedEmbeddingResult
+    data object SessionFailed : OfflineSemanticSharedEmbeddingResult
+    data object OperationFailed : OfflineSemanticSharedEmbeddingResult
+}
+
 /**
  * Owns one embedding session and one published advisory semantic index generation.
  *
@@ -687,6 +697,75 @@ internal class OfflineSemanticProviderComposition(
                         OfflineSemanticRemoveResult.StaleOrMissing
                 }
             }
+        } finally {
+            synchronized(this) { operationInFlight = false }
+        }
+    }
+
+    fun embedSharedClaimQuery(input: String): OfflineSemanticSharedEmbeddingResult =
+        embedSharedClaimText(input, query = true)
+
+    fun embedSharedClaimPassage(input: String): OfflineSemanticSharedEmbeddingResult =
+        embedSharedClaimText(input, query = false)
+
+    private fun embedSharedClaimText(
+        input: String,
+        query: Boolean
+    ): OfflineSemanticSharedEmbeddingResult {
+        val activeSession = synchronized(this) {
+            when {
+                lifecycle == OfflineSemanticProviderLifecycle.CLOSED ||
+                    lifecycle == OfflineSemanticProviderLifecycle.CLOSING ||
+                    lifecycle == OfflineSemanticProviderLifecycle.FAILED ->
+                    return OfflineSemanticSharedEmbeddingResult.SessionFailed
+                lifecycle != OfflineSemanticProviderLifecycle.READY ->
+                    return OfflineSemanticSharedEmbeddingResult.NotReady
+                rebuilding || operationInFlight ->
+                    return OfflineSemanticSharedEmbeddingResult.Busy
+                else -> {
+                    val current = session
+                        ?: return OfflineSemanticSharedEmbeddingResult.SessionFailed
+                    operationInFlight = true
+                    current
+                }
+            }
+        }
+
+        try {
+            val prepared = when (
+                val preparation = if (query) {
+                    SemanticTextProfile.prepareQuery(input)
+                } else {
+                    SemanticTextProfile.preparePassage(input)
+                }
+            ) {
+                is SemanticPreparedTextResult.Prepared -> preparation.text
+                SemanticPreparedTextResult.RequestRejected ->
+                    return OfflineSemanticSharedEmbeddingResult.RequestRejected
+                SemanticPreparedTextResult.ResourceRejected ->
+                    return OfflineSemanticSharedEmbeddingResult.ResourceRejected
+            }
+
+            return when (val embedding = activeSession.embed(prepared)) {
+                is SemanticEmbeddingResult.Embedded ->
+                    OfflineSemanticSharedEmbeddingResult.Embedded(embedding.vector)
+                SemanticEmbeddingResult.ResourceRejected ->
+                    OfflineSemanticSharedEmbeddingResult.ResourceRejected
+                SemanticEmbeddingResult.RequestRejected ->
+                    OfflineSemanticSharedEmbeddingResult.RequestRejected
+                SemanticEmbeddingResult.StaleSession -> {
+                    synchronized(this) { lifecycle = OfflineSemanticProviderLifecycle.FAILED }
+                    OfflineSemanticSharedEmbeddingResult.SessionFailed
+                }
+                SemanticEmbeddingResult.OperationFailed,
+                SemanticEmbeddingResult.ProviderFailed -> {
+                    synchronized(this) { lifecycle = OfflineSemanticProviderLifecycle.FAILED }
+                    OfflineSemanticSharedEmbeddingResult.OperationFailed
+                }
+            }
+        } catch (_: Exception) {
+            synchronized(this) { lifecycle = OfflineSemanticProviderLifecycle.FAILED }
+            return OfflineSemanticSharedEmbeddingResult.OperationFailed
         } finally {
             synchronized(this) { operationInFlight = false }
         }
