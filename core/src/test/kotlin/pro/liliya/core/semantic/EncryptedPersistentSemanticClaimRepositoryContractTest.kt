@@ -316,14 +316,17 @@ class EncryptedPersistentSemanticClaimRepositoryContractTest {
 
     @Test
     fun relation_page_returns_empty_when_only_claim_records_exist() {
-        val repository = openRepository(IndexedBackend(), "semantic-relation-page-empty")
+        val backend = IndexedBackend()
+        val repository = openRepository(backend, "semantic-relation-page-empty")
         assertIs<SemanticClaimStoreResult.Stored>(
             repository.storeClaim(
                 claim("Russian", 1, "preferred_language", "episode-page-empty")
             )
         )
 
-        assertIs<SemanticRelationPageResult.Empty>(repository.relationPage(limit = 8))
+        val result = repository.relationPage(limit = 8)
+        assertEquals(SemanticClaimRelationPersistentCodec.schemaId, backend.lastPageSchemaId)
+        assertIs<SemanticRelationPageResult.Empty>(result)
     }
 
     private fun claim(
@@ -411,6 +414,7 @@ class EncryptedPersistentSemanticClaimRepositoryContractTest {
         private var highWatermark = 0L
         var corruptEntryId: PersistentEntityId? = null
         var pageLoadCalls: Int = 0
+        var lastPageSchemaId: pro.liliya.core.persistence.PersistentSchemaId? = null
 
         override fun load(storeId: PersistentStoreId): PersistentBackendLoadResult =
             PersistentBackendLoadResult.Failed("legacy load must not be used")
@@ -450,6 +454,7 @@ class EncryptedPersistentSemanticClaimRepositoryContractTest {
             request: PersistentBackendPageRequest
         ): PersistentBackendPageLoadResult {
             pageLoadCalls += 1
+            lastPageSchemaId = request.schemaId
             val ordered = entries.values
                 .filter {
                     request.schemaId == null ||
