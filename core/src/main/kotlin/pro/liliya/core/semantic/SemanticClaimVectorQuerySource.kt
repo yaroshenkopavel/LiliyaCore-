@@ -135,12 +135,7 @@ class SemanticClaimVectorQuerySource private constructor(
     }
 
     private fun candidateId(reference: SemanticClaimVersionReference): RetrievalCandidateId =
-        RetrievalCandidateId(
-            "semantic-claim:" +
-                reference.claimId.value +
-                ":v" +
-                reference.version.value
-        )
+        SemanticClaimRetrievalCandidateIdentity.encode(reference)
 
     private fun fallback(reason: String): SemanticClaimVectorQueryResult =
         SemanticClaimVectorQueryResult.FallbackRequired(reason)
