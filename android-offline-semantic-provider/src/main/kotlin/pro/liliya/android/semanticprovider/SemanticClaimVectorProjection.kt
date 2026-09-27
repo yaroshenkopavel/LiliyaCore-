@@ -24,7 +24,8 @@ internal data class SemanticClaimVectorProjectionManifest(
     val state: SemanticClaimVectorProjectionState,
     val shardEntryLimit: Int,
     val shardCount: Long,
-    val indexedEntryCount: Long
+    val indexedEntryCount: Long,
+    val routingRootSha256: String? = null
 ) {
     init {
         require(version == CURRENT_VERSION)
@@ -35,12 +36,17 @@ internal data class SemanticClaimVectorProjectionManifest(
         require(shardCount >= 0L)
         require(indexedEntryCount >= 0L)
         require((indexedEntryCount == 0L) == (shardCount == 0L))
+        require(routingRootSha256 == null || SHA256.matches(routingRootSha256))
+        if (state == SemanticClaimVectorProjectionState.COMPLETE && indexedEntryCount > 0L) {
+            require(routingRootSha256 != null)
+        }
     }
 
     companion object {
         const val CURRENT_VERSION = 1
         const val MAX_PROFILE_ID_LENGTH = 128
         const val MAX_SHARD_ENTRIES = 128
+        private val SHA256 = Regex("[0-9a-f]{64}")
     }
 }
 
@@ -109,6 +115,8 @@ internal object SemanticClaimVectorProjectionCodec {
                     out.writeInt(manifest.shardEntryLimit)
                     out.writeLong(manifest.shardCount)
                     out.writeLong(manifest.indexedEntryCount)
+                    out.writeBoolean(manifest.routingRootSha256 != null)
+                    manifest.routingRootSha256?.let { writeString(out, it) }
                 }
                 buffer.toByteArray()
             }
@@ -147,7 +155,8 @@ internal object SemanticClaimVectorProjectionCodec {
                     ) ?: return SemanticClaimVectorProjectionManifestDecodeResult.Corrupt,
                     shardEntryLimit = input.readInt(),
                     shardCount = input.readLong(),
-                    indexedEntryCount = input.readLong()
+                    indexedEntryCount = input.readLong(),
+                    routingRootSha256 = if (input.readBoolean()) readString(input) else null
                 )
                 if (input.available() != 0) {
                     SemanticClaimVectorProjectionManifestDecodeResult.Corrupt

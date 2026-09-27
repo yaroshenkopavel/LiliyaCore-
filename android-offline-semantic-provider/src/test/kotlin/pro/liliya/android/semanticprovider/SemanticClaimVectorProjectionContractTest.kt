@@ -25,7 +25,8 @@ class SemanticClaimVectorProjectionContractTest {
             state = SemanticClaimVectorProjectionState.COMPLETE,
             shardEntryLimit = 128,
             shardCount = 23_437_500L,
-            indexedEntryCount = 3_000_000_000L
+            indexedEntryCount = 3_000_000_000L,
+            routingRootSha256 = "a".repeat(64)
         )
 
         val decoded = assertIs<SemanticClaimVectorProjectionManifestDecodeResult.Decoded>(
