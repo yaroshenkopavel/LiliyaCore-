@@ -85,6 +85,23 @@ sealed interface SemanticRelationStoreResult {
     ) : SemanticRelationStoreResult
 }
 
+sealed interface SemanticRelationPageResult {
+    data object Empty : SemanticRelationPageResult
+    data class Loaded(
+        val relations: List<SemanticClaimRelation>,
+        val nextCursor: PersistentBackendPageCursor?
+    ) : SemanticRelationPageResult
+    data object Corrupt : SemanticRelationPageResult
+    data class Incompatible(val reason: String) : SemanticRelationPageResult
+    data class EncryptionUnavailable(
+        val category: CognitiveEncryptionFailureCategory
+    ) : SemanticRelationPageResult
+    data class Failed(
+        val reason: String,
+        val throwable: Throwable? = null
+    ) : SemanticRelationPageResult
+}
+
 class EncryptedPersistentSemanticClaimRepository(
     private val encryptedStore: EncryptedPersistentRecordStore,
     private val activeDek: CognitiveDekReference
@@ -147,6 +164,45 @@ class EncryptedPersistentSemanticClaimRepository(
                     }
                 }
                 SemanticClaimPageResult.Loaded(records, loaded.nextCursor)
+            }
+        }
+
+    fun relationPage(
+        limit: Int,
+        cursorExclusive: PersistentBackendPageCursor? = null,
+        order: PersistentBackendPageOrder = PersistentBackendPageOrder.OLDEST_FIRST
+    ): SemanticRelationPageResult =
+        when (
+            val loaded = encryptedStore.decryptedPageResult(
+                PersistentBackendPageRequest(
+                    limit = limit,
+                    order = order,
+                    cursorExclusive = cursorExclusive,
+                    schemaId = SemanticClaimRelationPersistentCodec.schemaId
+                )
+            )
+        ) {
+            EncryptedPersistentRecordPageResult.Empty -> SemanticRelationPageResult.Empty
+            EncryptedPersistentRecordPageResult.Corrupt -> SemanticRelationPageResult.Corrupt
+            is EncryptedPersistentRecordPageResult.Incompatible ->
+                SemanticRelationPageResult.Incompatible(loaded.reason)
+            is EncryptedPersistentRecordPageResult.EncryptionUnavailable ->
+                SemanticRelationPageResult.EncryptionUnavailable(loaded.category)
+            is EncryptedPersistentRecordPageResult.Failed ->
+                SemanticRelationPageResult.Failed(loaded.reason, loaded.throwable)
+            is EncryptedPersistentRecordPageResult.Loaded -> {
+                val relations = ArrayList<SemanticClaimRelation>(loaded.entries.size)
+                for (snapshot in loaded.entries) {
+                    when (val decoded = SemanticClaimRelationPersistentCodec.decode(snapshot.record)) {
+                        is SemanticClaimRelationDecodeResult.Decoded ->
+                            relations += decoded.relation
+                        SemanticClaimRelationDecodeResult.Corrupt ->
+                            return SemanticRelationPageResult.Corrupt
+                        is SemanticClaimRelationDecodeResult.Incompatible ->
+                            return SemanticRelationPageResult.Incompatible(decoded.reason)
+                    }
+                }
+                SemanticRelationPageResult.Loaded(relations, loaded.nextCursor)
             }
         }
 
