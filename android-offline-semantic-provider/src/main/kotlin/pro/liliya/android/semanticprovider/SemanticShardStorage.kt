@@ -23,6 +23,23 @@ value class AndroidOfflineSemanticShardStorageKey internal constructor(
             AndroidOfflineSemanticShardStorageKey("manifest-v3-publication-intent")
         val ROUTING_V1_ROOT =
             AndroidOfflineSemanticShardStorageKey("routing-v1-root")
+        val CLAIM_VECTOR_V1_MANIFEST =
+            AndroidOfflineSemanticShardStorageKey("claim-vector-v1-manifest")
+        val CLAIM_VECTOR_V1_ROUTING_ROOT =
+            AndroidOfflineSemanticShardStorageKey("claim-vector-v1-routing-root")
+
+        fun forClaimVectorShard(
+            indexGeneration: Long,
+            ordinal: Long,
+            blobSha256: String
+        ): AndroidOfflineSemanticShardStorageKey {
+            require(indexGeneration > 0L)
+            require(ordinal >= 0L)
+            require(SHA256.matches(blobSha256))
+            return AndroidOfflineSemanticShardStorageKey(
+                "claim-vector-v1-shard-" + indexGeneration + "-" + ordinal + "-" + blobSha256
+            )
+        }
 
         fun forRoutingNode(sha256: String): AndroidOfflineSemanticShardStorageKey {
             require(SHA256.matches(sha256))
