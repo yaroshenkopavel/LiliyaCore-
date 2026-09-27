@@ -6,6 +6,11 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import pro.liliya.core.episodic.EpisodeId
+import pro.liliya.core.retrieval.DeterministicReciprocalRankFusion
+import pro.liliya.core.retrieval.HybridRankFusionPolicy
+import pro.liliya.core.retrieval.HybridRankFusionResult
+import pro.liliya.core.retrieval.RankedRetrievalCandidate
+import pro.liliya.core.retrieval.RetrievalChannelId
 import pro.liliya.core.retrieval.RetrievalChannelRequirement
 import pro.liliya.core.retrieval.RetrievalChannelResult
 
@@ -174,6 +179,37 @@ class SemanticClaimVectorQuerySourceContractTest {
         assertIs<SemanticClaimVectorQueryResult.Rejected>(source.query("   "))
         assertEquals(0, providerCalls)
         assertEquals(0, reader.checkpointCalls)
+    }
+
+    @Test
+    fun vector_and_lexical_channels_fuse_by_stable_id_without_raw_score_semantics() {
+        val record = claim("shared", 4)
+        val vectorResult = assertIs<SemanticClaimVectorQueryResult.Ranked>(
+            SemanticClaimVectorQuerySource(
+                FakeReader(listOf(record)),
+                rankedProvider(candidate(record, -0.25))
+            ).query("query")
+        )
+        val vectorChannel = vectorResult.toRetrievalChannelResult(
+            RetrievalChannelRequirement.OPTIONAL
+        )
+        val stableId = vectorResult.candidates.single().candidateId
+        val lexicalChannel = RetrievalChannelResult.Ranked(
+            channelId = RetrievalChannelId("semantic-lexical-v1"),
+            requirement = RetrievalChannelRequirement.OPTIONAL,
+            candidates = listOf(RankedRetrievalCandidate(stableId))
+        )
+
+        val fused = assertIs<HybridRankFusionResult.Fused>(
+            DeterministicReciprocalRankFusion.fuse(
+                listOf(vectorChannel, lexicalChannel),
+                HybridRankFusionPolicy(maxOutputCandidates = 8)
+            )
+        )
+        assertEquals(1, fused.candidates.size)
+        assertEquals(stableId, fused.candidates.single().id)
+        assertEquals(2, fused.candidates.single().contributions.size)
+        assertTrue(fused.candidates.single().requiresCanonicalRevalidation)
     }
 
     private fun rankedProvider(
