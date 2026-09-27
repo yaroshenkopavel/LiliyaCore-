@@ -270,6 +270,269 @@ class SemanticClaimQuerySourceContractTest {
         assertIs<SemanticResolutionResult.Conflicted>(result)
     }
 
+    @Test
+    fun lexical_rebuild_and_query_are_exact_bounded_and_bm25_deterministic() {
+        val fixture = lexicalFixture("lexical-bounded")
+        val first = claim(identity("lexical_a"), "alpha beta", 1)
+        val second = claim(identity("lexical_b"), "alpha beta", 2)
+        listOf(first, second).forEach {
+            assertIs<SemanticClaimStoreResult.Stored>(
+                fixture.repository.storeClaim(it)
+            )
+        }
+        repeat(40) { ordinal ->
+            assertIs<SemanticClaimStoreResult.Stored>(
+                fixture.repository.storeClaim(
+                    claim(
+                        identity("noise_" + ordinal),
+                        "unrelated value " + ordinal,
+                        100 + ordinal
+                    )
+                )
+            )
+        }
+
+        assertIs<SemanticClaimLexicalRebuildResult.Complete>(
+            fixture.rebuilder.rebuild()
+        )
+        val canonicalPages = fixture.canonicalBackend.pageLoadCalls
+        fixture.canonicalBackend.entryLoadCalls = 0
+        fixture.indexBackend.pageLoadCalls = 0
+        fixture.indexBackend.entryLoadCalls = 0
+
+        val result = assertIs<SemanticClaimLexicalQueryResult.Ranked>(
+            fixture.source.query("ＡＬＰＨＡ")
+        )
+        assertEquals(2, result.candidates.size)
+        assertEquals(
+            result.candidates.first().score,
+            result.candidates.last().score
+        )
+        val ids = result.candidates.map { it.candidateId.value }
+        assertEquals(
+            ids.sortedWith { left, right ->
+                pro.liliya.core.retrieval.compareUtf8(left, right)
+            },
+            ids
+        )
+        assertEquals(2, result.audit.postingEntriesScanned)
+        assertEquals(2, result.audit.candidateWorkingSetSize)
+        assertEquals(2, result.audit.returnedCandidates)
+        assertEquals(canonicalPages, fixture.canonicalBackend.pageLoadCalls)
+        assertEquals(0, fixture.indexBackend.pageLoadCalls)
+        assertTrue(fixture.indexBackend.entryLoadCalls < 10)
+        assertTrue(fixture.canonicalBackend.entryLoadCalls >= 2)
+    }
+
+    @Test
+    fun lexical_posting_and_candidate_budgets_are_explicitly_audited() {
+        val policy = SemanticClaimLexicalPolicy(
+            postingPageEntries = 2,
+            maxPostingEntriesPerToken = 2,
+            maxCandidateWorkingSet = 2,
+            maxReturnedCandidates = 2
+        )
+        val fixture = lexicalFixture("lexical-budget", policy)
+        repeat(5) { ordinal ->
+            assertIs<SemanticClaimStoreResult.Stored>(
+                fixture.repository.storeClaim(
+                    claim(
+                        identity("budget_" + ordinal),
+                        "alpha value " + ordinal,
+                        10 + ordinal
+                    )
+                )
+            )
+        }
+        assertIs<SemanticClaimLexicalRebuildResult.Complete>(
+            fixture.rebuilder.rebuild()
+        )
+
+        val result = assertIs<SemanticClaimLexicalQueryResult.Ranked>(
+            fixture.source.query("alpha")
+        )
+        assertEquals(2, result.candidates.size)
+        assertEquals(2, result.audit.postingEntriesScanned)
+        assertEquals(2, result.audit.candidateWorkingSetSize)
+        assertTrue(result.audit.postingBudgetTruncated)
+        assertEquals(false, result.audit.candidateBudgetTruncated)
+
+        val candidatePolicy = SemanticClaimLexicalPolicy(
+            postingPageEntries = 2,
+            maxPostingEntriesPerToken = 4,
+            maxCandidateWorkingSet = 2,
+            maxReturnedCandidates = 2
+        )
+        val candidateFixture =
+            lexicalFixture("lexical-candidate-budget", candidatePolicy)
+        listOf(
+            claim(identity("candidate_a"), "alpha", 21),
+            claim(identity("candidate_b"), "alpha", 22),
+            claim(identity("candidate_c"), "beta", 23),
+            claim(identity("candidate_d"), "beta", 24)
+        ).forEach {
+            assertIs<SemanticClaimStoreResult.Stored>(
+                candidateFixture.repository.storeClaim(it)
+            )
+        }
+        assertIs<SemanticClaimLexicalRebuildResult.Complete>(
+            candidateFixture.rebuilder.rebuild()
+        )
+        val candidateResult = assertIs<SemanticClaimLexicalQueryResult.Ranked>(
+            candidateFixture.source.query("alpha beta")
+        )
+        assertEquals(2, candidateResult.candidates.size)
+        assertEquals(4, candidateResult.audit.postingEntriesScanned)
+        assertTrue(candidateResult.audit.candidateBudgetTruncated)
+    }
+
+    @Test
+    fun lexical_source_drift_and_missing_canonical_hit_fail_safe() {
+        val fixture = lexicalFixture("lexical-revalidation")
+        val first = claim(identity("revalidation"), "alpha", 31)
+        assertIs<SemanticClaimStoreResult.Stored>(
+            fixture.repository.storeClaim(first)
+        )
+
+        var injected = false
+        val drifting = SemanticClaimLexicalIndexRebuilder(
+            fixture.repository,
+            fixture.indexStore,
+            SemanticClaimLexicalPolicy()
+        ) {
+            if (!injected) {
+                injected = true
+                assertIs<SemanticClaimStoreResult.Stored>(
+                    fixture.repository.storeClaim(
+                        claim(identity("drift-extra"), "beta", 32)
+                    )
+                )
+            }
+            "lexical-drift-epoch"
+        }
+        assertIs<SemanticClaimLexicalRebuildResult.SourceDrift>(
+            drifting.rebuild()
+        )
+        val incomplete = assertIs<SemanticClaimLexicalManifestLoadResult.Loaded>(
+            fixture.indexStore.readManifest()
+        ).manifest
+        assertEquals(SemanticClaimLexicalIndexState.INCOMPLETE, incomplete.state)
+        assertIs<SemanticClaimLexicalQueryResult.FallbackRequired>(
+            fixture.source.query("alpha")
+        )
+
+        assertIs<SemanticClaimLexicalRebuildResult.Complete>(
+            fixture.rebuilder.rebuild()
+        )
+        fixture.canonicalBackend.hideEntryWithoutMetadata(
+            SemanticClaimPersistentCodec.persistentId(first.id, first.version)
+        )
+        val missing = assertIs<SemanticClaimLexicalQueryResult.FallbackRequired>(
+            fixture.source.query("alpha")
+        )
+        assertTrue(missing.reason.contains("missing"))
+    }
+
+    @Test
+    fun lexical_output_limit_query_truncation_and_stale_source_are_explicit() {
+        val policy = SemanticClaimLexicalPolicy(
+            postingPageEntries = 2,
+            maxPostingEntriesPerToken = 4,
+            maxCandidateWorkingSet = 4,
+            maxReturnedCandidates = 2
+        )
+        val fixture = lexicalFixture("lexical-output-limit", policy)
+        repeat(4) { ordinal ->
+            assertIs<SemanticClaimStoreResult.Stored>(
+                fixture.repository.storeClaim(
+                    claim(
+                        identity("output_" + ordinal),
+                        "alpha token " + ordinal,
+                        40 + ordinal
+                    )
+                )
+            )
+        }
+        assertIs<SemanticClaimLexicalRebuildResult.Complete>(
+            fixture.rebuilder.rebuild()
+        )
+
+        val bounded = assertIs<SemanticClaimLexicalQueryResult.Ranked>(
+            fixture.source.query("alpha")
+        )
+        assertEquals(4, bounded.audit.candidateWorkingSetSize)
+        assertEquals(2, bounded.audit.returnedCandidates)
+        assertEquals(2, bounded.candidates.size)
+
+        val oversized =
+            "alpha " + (1..16).joinToString(" ") { "querytoken" + it }
+        val truncated = assertIs<SemanticClaimLexicalQueryResult.Ranked>(
+            fixture.source.query(oversized)
+        )
+        assertEquals(
+            SemanticClaimLexicalTokenizer.MAX_QUERY_TOKENS,
+            truncated.audit.queryTokenCount
+        )
+        assertTrue(truncated.audit.queryTokenTruncated)
+
+        assertIs<SemanticClaimStoreResult.Stored>(
+            fixture.repository.storeClaim(
+                claim(identity("stale_after_build"), "alpha new", 50)
+            )
+        )
+        val stale = assertIs<SemanticClaimLexicalQueryResult.FallbackRequired>(
+            fixture.source.query("alpha")
+        )
+        assertTrue(stale.reason.contains("source checkpoint"))
+    }
+
+    private fun lexicalFixture(
+        suffix: String,
+        policy: SemanticClaimLexicalPolicy = SemanticClaimLexicalPolicy()
+    ): LexicalFixture {
+        val canonicalBackend = IndexedBackend()
+        val indexBackend = IndexedBackend()
+        val repository = EncryptedPersistentSemanticClaimRepository(
+            encrypted(canonicalBackend, "semantic-lexical-source-" + suffix),
+            dekRef
+        )
+        val indexStore = assertIs<SemanticClaimLexicalIndexOpenResult.Opened>(
+            EncryptedPersistentSemanticClaimLexicalIndexStore.open(
+                encrypted(indexBackend, "semantic-lexical-index-" + suffix),
+                dekRef
+            )
+        ).store
+        val sequence = AtomicInteger()
+        val rebuilder = SemanticClaimLexicalIndexRebuilder(
+            repository,
+            indexStore,
+            policy
+        ) {
+            "lexical-epoch-" + suffix + "-" + sequence.incrementAndGet()
+        }
+        return LexicalFixture(
+            repository = repository,
+            indexStore = indexStore,
+            rebuilder = rebuilder,
+            source = SemanticClaimLexicalQuerySource(
+                repository,
+                indexStore,
+                policy
+            ),
+            canonicalBackend = canonicalBackend,
+            indexBackend = indexBackend
+        )
+    }
+
+    private data class LexicalFixture(
+        val repository: EncryptedPersistentSemanticClaimRepository,
+        val indexStore: EncryptedPersistentSemanticClaimLexicalIndexStore,
+        val rebuilder: SemanticClaimLexicalIndexRebuilder,
+        val source: SemanticClaimLexicalQuerySource,
+        val canonicalBackend: IndexedBackend,
+        val indexBackend: IndexedBackend
+    )
+
     private fun fixture(suffix: String): Fixture {
         val canonicalBackend = IndexedBackend()
         val indexBackend = IndexedBackend()
@@ -394,10 +657,15 @@ class SemanticClaimQuerySourceContractTest {
     private class IndexedBackend : IndexedPersistentRecordMutationBackend {
         private val entries =
             LinkedHashMap<PersistentEntityId, PersistentBackendEntry>()
+        private val hiddenEntryIds = HashSet<PersistentEntityId>()
         private var revision = 0L
         private var highWatermark = 0L
         var pageLoadCalls: Int = 0
         var entryLoadCalls: Int = 0
+
+        fun hideEntryWithoutMetadata(id: PersistentEntityId) {
+            hiddenEntryIds += id
+        }
 
         override fun load(
             storeId: PersistentStoreId
@@ -427,6 +695,9 @@ class SemanticClaimQuerySourceContractTest {
             entityId: PersistentEntityId
         ): PersistentBackendEntryLoadResult {
             entryLoadCalls += 1
+            if (entityId in hiddenEntryIds) {
+                return PersistentBackendEntryLoadResult.Missing
+            }
             return entries[entityId]?.let {
                 PersistentBackendEntryLoadResult.Loaded(
                     PersistentRecordSnapshot(it.record, it.generation)
