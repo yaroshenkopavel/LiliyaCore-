@@ -49,12 +49,44 @@ sealed interface AndroidOfflineSemanticStartupResult {
     data object RebuildFailed : AndroidOfflineSemanticStartupResult
 }
 
+sealed interface AndroidOfflineSemanticCheckpointPersistResult {
+    data object Written : AndroidOfflineSemanticCheckpointPersistResult
+    data object Skipped : AndroidOfflineSemanticCheckpointPersistResult
+    data class Failed(
+        val reason: String,
+        val throwable: Throwable? = null
+    ) : AndroidOfflineSemanticCheckpointPersistResult {
+        override fun toString(): String =
+            "Failed(reason=$reason, throwable=" +
+                (throwable?.javaClass?.name ?: "null") + ")"
+    }
+}
+
 internal interface SemanticProductionRuntime {
     fun load(appPrivateRoot: File, encoderFile: File): AndroidOfflineSemanticProviderLoadResult
+    fun restoreCheckpoint(
+        checkpoint: SemanticIndexCheckpoint
+    ): AndroidOfflineSemanticProviderRebuildResult
+    fun activateShardManifest(
+        store: SemanticShardStore,
+        manifest: SemanticShardManifest
+    ): AndroidOfflineSemanticProviderRebuildResult
+    fun activateShardManifestV3(
+        shardStore: SemanticShardStore,
+        manifestStore: SemanticShardManifestV3Store,
+        root: SemanticShardManifestRootV3
+    ): AndroidOfflineSemanticProviderRebuildResult
+    fun embedShardPage(
+        observations: List<SemanticSourceObservation>
+    ): OfflineSemanticShardEmbedResult
+    fun persistShardManifest(
+        authoritative: SemanticAuthoritativeMetadataCheckpoint
+    ): Boolean?
     fun rebuild(
         memory: List<MemoryRecordSnapshot>,
         knowledge: List<KnowledgeItemSnapshot>
     ): AndroidOfflineSemanticProviderRebuildResult
+    fun checkpointSeeds(): List<SemanticIndexSeed>?
     fun close(): AndroidOfflineSemanticProviderCloseResult
 }
 
@@ -67,11 +99,42 @@ internal class AssemblySemanticProductionRuntime(
     ): AndroidOfflineSemanticProviderLoadResult =
         assembly.load(appPrivateRoot, encoderFile)
 
+    override fun restoreCheckpoint(
+        checkpoint: SemanticIndexCheckpoint
+    ): AndroidOfflineSemanticProviderRebuildResult =
+        assembly.restoreCheckpoint(checkpoint.seeds)
+
+    override fun activateShardManifest(
+        store: SemanticShardStore,
+        manifest: SemanticShardManifest
+    ): AndroidOfflineSemanticProviderRebuildResult =
+        assembly.activateShardManifest(store, manifest)
+
+    override fun activateShardManifestV3(
+        shardStore: SemanticShardStore,
+        manifestStore: SemanticShardManifestV3Store,
+        root: SemanticShardManifestRootV3
+    ): AndroidOfflineSemanticProviderRebuildResult =
+        assembly.activateShardManifestV3(shardStore, manifestStore, root)
+
+    override fun embedShardPage(
+        observations: List<SemanticSourceObservation>
+    ): OfflineSemanticShardEmbedResult =
+        assembly.embedShardPage(observations)
+
+    override fun persistShardManifest(
+        authoritative: SemanticAuthoritativeMetadataCheckpoint
+    ): Boolean? =
+        assembly.persistShardManifest(authoritative)
+
     override fun rebuild(
         memory: List<MemoryRecordSnapshot>,
         knowledge: List<KnowledgeItemSnapshot>
     ): AndroidOfflineSemanticProviderRebuildResult =
         assembly.rebuild(memory, knowledge)
+
+    override fun checkpointSeeds(): List<SemanticIndexSeed>? =
+        assembly.checkpointSeeds()
 
     override fun close(): AndroidOfflineSemanticProviderCloseResult =
         assembly.close()
@@ -80,17 +143,21 @@ internal class AssemblySemanticProductionRuntime(
 /**
  * Explicit startup owner for local offline semantic readiness.
  *
- * Sequence is fixed:
- * 1. validate + load pinned ONNX artifacts;
- * 2. obtain one host-owned authoritative Memory/Knowledge snapshot;
- * 3. rebuild the complete derived semantic index;
- * 4. publish READY only after complete rebuild success.
+ * Startup validates + loads the pinned ONNX artifacts first. If an exact model-bound,
+ * authoritative-metadata-bound durable checkpoint is available, it restores the derived index
+ * without enumerating Memory/Knowledge or re-embedding entries. Otherwise startup falls back to
+ * one host-owned authoritative snapshot and a complete rebuild. A rebuilt checkpoint is published
+ * only when authoritative metadata is unchanged across the rebuild.
  *
- * There is no hidden retry, remote fallback or partial-ready state.
+ * There is no hidden retry, remote fallback, truth authority or partial-ready state.
  */
 class AndroidOfflineSemanticStartupCoordinator internal constructor(
     private val runtime: SemanticProductionRuntime,
-    private val authoritativeSnapshots: AndroidOfflineSemanticAuthoritativeSnapshotSource
+    private val authoritativeSnapshots: AndroidOfflineSemanticAuthoritativeSnapshotSource,
+    private val authoritativeMetadata: SemanticAuthoritativeMetadataSource? = null,
+    private val checkpointStore: SemanticCheckpointStore? = null,
+    private val authoritativePages: AndroidOfflineSemanticAuthoritativePageSource? = null,
+    private val shardStorage: AndroidOfflineSemanticShardStorage? = null
 ) {
     @Volatile
     private var startupState: AndroidOfflineSemanticStartupState =
@@ -124,6 +191,137 @@ class AndroidOfflineSemanticStartupCoordinator internal constructor(
                 return fail(AndroidOfflineSemanticStartupResult.ProviderFailed)
         }
 
+        val restoreMetadata = authoritativeMetadataSnapshot()
+        if (restoreMetadata != null && shardStorage != null) {
+            val shardStore = SemanticShardStore(
+                storage = shardStorage,
+                profileGeneration = SemanticModelProfileV01.PROFILE_GENERATION
+            )
+            val manifestStoreV3 = SemanticShardManifestV3Store(shardStorage)
+            val garbageCollectorV3 = SemanticShardManifestV3GarbageCollector(
+                storage = shardStorage,
+                manifestStore = manifestStoreV3
+            )
+            val orphanIntentGarbageCollector = SemanticShardOrphanIntentGarbageCollector(
+                storage = shardStorage,
+                manifestStore = manifestStoreV3,
+                shardStore = shardStore
+            )
+            val publicationIntentGarbageCollector =
+                SemanticShardManifestV3PublicationIntentGarbageCollector(
+                    storage = shardStorage,
+                    manifestStore = manifestStoreV3
+                )
+            // Cleanup is derived-state hygiene only. Deferred cleanup never blocks semantic
+            // startup. Shard intents are resolved first, then any root-transition journal, and
+            // finally abandoned segmented-manifest publication metadata.
+            orphanIntentGarbageCollector.resumeIfSafe()
+            garbageCollectorV3.resumeIfSafe()
+            publicationIntentGarbageCollector.resumeIfSafe()
+            val loadedRootV3 = manifestStoreV3.loadRoot()
+
+            if (loadedRootV3 is SemanticShardManifestRootV3LoadResult.Loaded) {
+                val root = loadedRootV3.root
+                if (
+                    root.matches(
+                        expectedModel = SemanticCheckpointModelBinding.production(),
+                        expectedAuthoritative = restoreMetadata
+                    )
+                ) {
+                    when (
+                        val restored = runtime.activateShardManifestV3(
+                            shardStore,
+                            manifestStoreV3,
+                            root
+                        )
+                    ) {
+                        is AndroidOfflineSemanticProviderRebuildResult.Ready -> {
+                            startupState = AndroidOfflineSemanticStartupState.READY
+                            return AndroidOfflineSemanticStartupResult.Ready(restored.entryCount)
+                        }
+                        AndroidOfflineSemanticProviderRebuildResult.Busy,
+                        AndroidOfflineSemanticProviderRebuildResult.NotLoaded,
+                        AndroidOfflineSemanticProviderRebuildResult.Failed -> Unit
+                    }
+                }
+
+                if (authoritativePages != null) {
+                    return rebuildShardedFromPagesV3(
+                        shardStore = shardStore,
+                        manifestStore = manifestStoreV3,
+                        metadataBefore = restoreMetadata
+                    )
+                }
+            } else if (loadedRootV3 == SemanticShardManifestRootV3LoadResult.Missing) {
+                val manifestV2 = when (val loadedManifest = shardStore.loadManifest()) {
+                    is SemanticShardManifestLoadResult.Loaded -> loadedManifest.manifest
+                    SemanticShardManifestLoadResult.Missing,
+                    SemanticShardManifestLoadResult.Corrupt,
+                    is SemanticShardManifestLoadResult.Incompatible,
+                    is SemanticShardManifestLoadResult.Failed -> null
+                }
+                if (
+                    manifestV2 != null &&
+                    manifestV2.matches(
+                        expectedModel = SemanticCheckpointModelBinding.production(),
+                        expectedAuthoritative = restoreMetadata
+                    )
+                ) {
+                    when (val restored = runtime.activateShardManifest(shardStore, manifestV2)) {
+                        is AndroidOfflineSemanticProviderRebuildResult.Ready -> {
+                            startupState = AndroidOfflineSemanticStartupState.READY
+                            return AndroidOfflineSemanticStartupResult.Ready(restored.entryCount)
+                        }
+                        AndroidOfflineSemanticProviderRebuildResult.Busy,
+                        AndroidOfflineSemanticProviderRebuildResult.NotLoaded,
+                        AndroidOfflineSemanticProviderRebuildResult.Failed -> Unit
+                    }
+                }
+
+                if (authoritativePages != null) {
+                    return rebuildShardedFromPagesV3(
+                        shardStore = shardStore,
+                        manifestStore = manifestStoreV3,
+                        metadataBefore = restoreMetadata
+                    )
+                }
+            } else if (authoritativePages != null) {
+                return rebuildShardedFromPagesV3(
+                    shardStore = shardStore,
+                    manifestStore = manifestStoreV3,
+                    metadataBefore = restoreMetadata
+                )
+            }
+        }
+
+        if (restoreMetadata != null && checkpointStore != null) {
+            val checkpoint = when (val read = safeReadCheckpoint(checkpointStore)) {
+                is SemanticCheckpointReadResult.Loaded -> read.checkpoint
+                SemanticCheckpointReadResult.Missing,
+                SemanticCheckpointReadResult.Corrupt,
+                is SemanticCheckpointReadResult.Incompatible,
+                is SemanticCheckpointReadResult.Failed -> null
+            }
+            if (
+                checkpoint != null &&
+                checkpoint.matches(
+                    expectedModel = SemanticCheckpointModelBinding.production(),
+                    expectedAuthoritative = restoreMetadata
+                )
+            ) {
+                when (val restored = runtime.restoreCheckpoint(checkpoint)) {
+                    is AndroidOfflineSemanticProviderRebuildResult.Ready -> {
+                        startupState = AndroidOfflineSemanticStartupState.READY
+                        return AndroidOfflineSemanticStartupResult.Ready(restored.entryCount)
+                    }
+                    AndroidOfflineSemanticProviderRebuildResult.Busy,
+                    AndroidOfflineSemanticProviderRebuildResult.NotLoaded,
+                    AndroidOfflineSemanticProviderRebuildResult.Failed -> Unit
+                }
+            }
+        }
+
+        val rebuildMetadataBefore = authoritativeMetadataSnapshot()
         val snapshot = try {
             authoritativeSnapshots.snapshot()
         } catch (_: Exception) {
@@ -133,6 +331,30 @@ class AndroidOfflineSemanticStartupCoordinator internal constructor(
 
         return when (val rebuilt = runtime.rebuild(snapshot.memory, snapshot.knowledge)) {
             is AndroidOfflineSemanticProviderRebuildResult.Ready -> {
+                val checkpointMetadataAfter = authoritativeMetadataSnapshot()
+                val store = checkpointStore
+                if (
+                    rebuildMetadataBefore != null &&
+                    checkpointMetadataAfter == rebuildMetadataBefore &&
+                    store != null
+                ) {
+                    val seeds = runtime.checkpointSeeds()
+                    if (seeds != null) {
+                        try {
+                            safeWriteCheckpoint(
+                                store,
+                                SemanticIndexCheckpoint(
+                                    version = SemanticIndexCheckpoint.CURRENT_VERSION,
+                                    model = SemanticCheckpointModelBinding.production(),
+                                    authoritative = rebuildMetadataBefore,
+                                    seeds = seeds
+                                )
+                            )
+                        } finally {
+                            clearCheckpointSeeds(seeds)
+                        }
+                    }
+                }
                 startupState = AndroidOfflineSemanticStartupState.READY
                 AndroidOfflineSemanticStartupResult.Ready(rebuilt.entryCount)
             }
@@ -142,6 +364,262 @@ class AndroidOfflineSemanticStartupCoordinator internal constructor(
                 startupState = AndroidOfflineSemanticStartupState.FAILED
                 AndroidOfflineSemanticStartupResult.RebuildFailed
             }
+        }
+    }
+
+    private fun rebuildShardedFromPagesV3(
+        shardStore: SemanticShardStore,
+        manifestStore: SemanticShardManifestV3Store,
+        metadataBefore: SemanticAuthoritativeMetadataCheckpoint
+    ): AndroidOfflineSemanticStartupResult {
+        val pageSource = authoritativePages
+            ?: return fail(AndroidOfflineSemanticStartupResult.RebuildFailed)
+        val reader = try {
+            pageSource.openReader()
+        } catch (_: Exception) {
+            return fail(AndroidOfflineSemanticStartupResult.AuthoritativeSnapshotFailed)
+        }
+
+        val previousRoot = when (val loaded = manifestStore.loadRoot()) {
+            is SemanticShardManifestRootV3LoadResult.Loaded -> loaded.root
+            SemanticShardManifestRootV3LoadResult.Missing,
+            SemanticShardManifestRootV3LoadResult.Corrupt,
+            is SemanticShardManifestRootV3LoadResult.Incompatible,
+            is SemanticShardManifestRootV3LoadResult.Failed -> null
+        }
+        val garbageCollector = SemanticShardManifestV3GarbageCollector(
+            storage = manifestStore.storage,
+            manifestStore = manifestStore
+        )
+        val writer = SemanticShardRebuildWriterV3(
+            shardStore = shardStore,
+            manifestStore = manifestStore
+        )
+        var memoryCount = 0L
+        var knowledgeCount = 0L
+
+        try {
+            while (true) {
+                when (val page = try {
+                    reader.nextMemoryPage()
+                } catch (_: Exception) {
+                    return fail(AndroidOfflineSemanticStartupResult.AuthoritativeSnapshotFailed)
+                }) {
+                    AndroidOfflineSemanticMemoryPageResult.End -> break
+                    is AndroidOfflineSemanticMemoryPageResult.Failed ->
+                        return fail(AndroidOfflineSemanticStartupResult.AuthoritativeSnapshotFailed)
+                    is AndroidOfflineSemanticMemoryPageResult.Loaded -> {
+                        memoryCount = try {
+                            Math.addExact(memoryCount, page.entries.size.toLong())
+                        } catch (_: ArithmeticException) {
+                            return fail(AndroidOfflineSemanticStartupResult.RebuildFailed)
+                        }
+                        val observations = page.entries.map { snapshot ->
+                            SemanticSourceObservation(
+                                source = SemanticIndexSourceReference.Memory(
+                                    id = snapshot.record.id,
+                                    generation = snapshot.generation
+                                ),
+                                content = snapshot.record.content
+                            )
+                        }
+                        val embedded = when (val result = runtime.embedShardPage(observations)) {
+                            is OfflineSemanticShardEmbedResult.Embedded -> result.seeds
+                            OfflineSemanticShardEmbedResult.Busy,
+                            OfflineSemanticShardEmbedResult.NotReady,
+                            OfflineSemanticShardEmbedResult.ResourceRejected,
+                            OfflineSemanticShardEmbedResult.EmbeddingRejected,
+                            OfflineSemanticShardEmbedResult.EmbeddingFailed,
+                            OfflineSemanticShardEmbedResult.SessionFailed ->
+                                return fail(AndroidOfflineSemanticStartupResult.RebuildFailed)
+                        }
+                        if (
+                            embedded.size != observations.size ||
+                            !embedded.indices.all { index ->
+                                embedded[index].source == observations[index].source
+                            }
+                        ) {
+                            clearCheckpointSeeds(embedded)
+                            return fail(AndroidOfflineSemanticStartupResult.RebuildFailed)
+                        }
+                        try {
+                            if (!writer.append(embedded)) {
+                                return fail(AndroidOfflineSemanticStartupResult.RebuildFailed)
+                            }
+                        } finally {
+                            clearCheckpointSeeds(embedded)
+                        }
+                    }
+                }
+            }
+
+            while (true) {
+                when (val page = try {
+                    reader.nextKnowledgePage()
+                } catch (_: Exception) {
+                    return fail(AndroidOfflineSemanticStartupResult.AuthoritativeSnapshotFailed)
+                }) {
+                    AndroidOfflineSemanticKnowledgePageResult.End -> break
+                    is AndroidOfflineSemanticKnowledgePageResult.Failed ->
+                        return fail(AndroidOfflineSemanticStartupResult.AuthoritativeSnapshotFailed)
+                    is AndroidOfflineSemanticKnowledgePageResult.Loaded -> {
+                        knowledgeCount = try {
+                            Math.addExact(knowledgeCount, page.entries.size.toLong())
+                        } catch (_: ArithmeticException) {
+                            return fail(AndroidOfflineSemanticStartupResult.RebuildFailed)
+                        }
+                        val observations = page.entries.map { snapshot ->
+                            SemanticSourceObservation(
+                                source = SemanticIndexSourceReference.Knowledge(
+                                    id = snapshot.item.id,
+                                    generation = snapshot.generation
+                                ),
+                                content = snapshot.item.content
+                            )
+                        }
+                        val embedded = when (val result = runtime.embedShardPage(observations)) {
+                            is OfflineSemanticShardEmbedResult.Embedded -> result.seeds
+                            OfflineSemanticShardEmbedResult.Busy,
+                            OfflineSemanticShardEmbedResult.NotReady,
+                            OfflineSemanticShardEmbedResult.ResourceRejected,
+                            OfflineSemanticShardEmbedResult.EmbeddingRejected,
+                            OfflineSemanticShardEmbedResult.EmbeddingFailed,
+                            OfflineSemanticShardEmbedResult.SessionFailed ->
+                                return fail(AndroidOfflineSemanticStartupResult.RebuildFailed)
+                        }
+                        if (
+                            embedded.size != observations.size ||
+                            !embedded.indices.all { index ->
+                                embedded[index].source == observations[index].source
+                            }
+                        ) {
+                            clearCheckpointSeeds(embedded)
+                            return fail(AndroidOfflineSemanticStartupResult.RebuildFailed)
+                        }
+                        try {
+                            if (!writer.append(embedded)) {
+                                return fail(AndroidOfflineSemanticStartupResult.RebuildFailed)
+                            }
+                        } finally {
+                            clearCheckpointSeeds(embedded)
+                        }
+                    }
+                }
+            }
+
+            if (
+                memoryCount != metadataBefore.memory.entryCount ||
+                knowledgeCount != metadataBefore.knowledge.entryCount
+            ) {
+                return fail(AndroidOfflineSemanticStartupResult.RebuildFailed)
+            }
+
+            val metadataAfter = authoritativeMetadataSnapshot()
+                ?: return fail(AndroidOfflineSemanticStartupResult.RebuildFailed)
+            if (metadataAfter != metadataBefore) {
+                return fail(AndroidOfflineSemanticStartupResult.RebuildFailed)
+            }
+
+            val root = writer.finish(
+                authoritative = metadataBefore,
+                beforeCommit = { candidate ->
+                    previousRoot?.let {
+                        garbageCollector.prepare(
+                            previousRoot = it,
+                            targetRoot = candidate
+                        )
+                    } ?: true
+                }
+            ) ?: return fail(AndroidOfflineSemanticStartupResult.RebuildFailed)
+
+            previousRoot?.let {
+                garbageCollector.reclaimCommitted(it, root)
+            }
+
+            return when (
+                val activated = runtime.activateShardManifestV3(
+                    shardStore,
+                    manifestStore,
+                    root
+                )
+            ) {
+                is AndroidOfflineSemanticProviderRebuildResult.Ready -> {
+                    startupState = AndroidOfflineSemanticStartupState.READY
+                    AndroidOfflineSemanticStartupResult.Ready(activated.entryCount)
+                }
+                AndroidOfflineSemanticProviderRebuildResult.Busy,
+                AndroidOfflineSemanticProviderRebuildResult.NotLoaded,
+                AndroidOfflineSemanticProviderRebuildResult.Failed ->
+                    fail(AndroidOfflineSemanticStartupResult.RebuildFailed)
+            }
+        } finally {
+            writer.clear()
+        }
+    }
+
+    @Synchronized
+    fun persistCheckpointIfCurrent(): AndroidOfflineSemanticCheckpointPersistResult {
+        if (startupState != AndroidOfflineSemanticStartupState.READY) {
+            return AndroidOfflineSemanticCheckpointPersistResult.Skipped
+        }
+        val before = authoritativeMetadataSnapshot()
+            ?: return AndroidOfflineSemanticCheckpointPersistResult.Skipped
+
+        when (val shardPersisted = runtime.persistShardManifest(before)) {
+            true -> {
+                val after = authoritativeMetadataSnapshot()
+                    ?: return AndroidOfflineSemanticCheckpointPersistResult.Failed(
+                        "authoritative metadata unavailable after semantic shard manifest write"
+                    )
+                return if (after == before) {
+                    AndroidOfflineSemanticCheckpointPersistResult.Written
+                } else {
+                    // The written manifest is safely bound to the older metadata, but the live
+                    // semantic projection is no longer proven current against authoritative state.
+                    AndroidOfflineSemanticCheckpointPersistResult.Failed(
+                        "authoritative metadata changed during semantic shard manifest write"
+                    )
+                }
+            }
+            false ->
+                return AndroidOfflineSemanticCheckpointPersistResult.Failed(
+                    "semantic shard manifest persistence failed"
+                )
+            null -> Unit
+        }
+
+        val store = checkpointStore
+            ?: return AndroidOfflineSemanticCheckpointPersistResult.Skipped
+        val seeds = runtime.checkpointSeeds()
+            ?: return AndroidOfflineSemanticCheckpointPersistResult.Skipped
+        return try {
+            val after = authoritativeMetadataSnapshot()
+                ?: return AndroidOfflineSemanticCheckpointPersistResult.Skipped
+            if (before != after) {
+                return AndroidOfflineSemanticCheckpointPersistResult.Skipped
+            }
+
+            when (
+                val written = safeWriteCheckpoint(
+                    store,
+                    SemanticIndexCheckpoint(
+                        version = SemanticIndexCheckpoint.CURRENT_VERSION,
+                        model = SemanticCheckpointModelBinding.production(),
+                        authoritative = before,
+                        seeds = seeds
+                    )
+                )
+            ) {
+                SemanticCheckpointWriteResult.Written ->
+                    AndroidOfflineSemanticCheckpointPersistResult.Written
+                is SemanticCheckpointWriteResult.Failed ->
+                    AndroidOfflineSemanticCheckpointPersistResult.Failed(
+                        written.reason,
+                        written.throwable
+                    )
+            }
+        } finally {
+            clearCheckpointSeeds(seeds)
         }
     }
 
@@ -159,6 +637,42 @@ class AndroidOfflineSemanticStartupCoordinator internal constructor(
         return result
     }
 
+    private fun clearCheckpointSeeds(seeds: List<SemanticIndexSeed>) {
+        seeds.forEach { it.vector.clear() }
+    }
+
+    private fun authoritativeMetadataSnapshot(): SemanticAuthoritativeMetadataCheckpoint? =
+        try {
+            authoritativeMetadata?.snapshot()
+        } catch (_: Exception) {
+            null
+        }
+
+    private fun safeReadCheckpoint(
+        store: SemanticCheckpointStore
+    ): SemanticCheckpointReadResult =
+        try {
+            store.read()
+        } catch (failure: Exception) {
+            SemanticCheckpointReadResult.Failed(
+                reason = "semantic checkpoint read failed",
+                throwable = failure
+            )
+        }
+
+    private fun safeWriteCheckpoint(
+        store: SemanticCheckpointStore,
+        checkpoint: SemanticIndexCheckpoint
+    ): SemanticCheckpointWriteResult =
+        try {
+            store.write(checkpoint)
+        } catch (failure: Exception) {
+            SemanticCheckpointWriteResult.Failed(
+                reason = "semantic checkpoint write failed",
+                throwable = failure
+            )
+        }
+
     private fun fail(
         result: AndroidOfflineSemanticStartupResult
     ): AndroidOfflineSemanticStartupResult {
@@ -174,6 +688,40 @@ class AndroidOfflineSemanticStartupCoordinator internal constructor(
             AndroidOfflineSemanticStartupCoordinator(
                 runtime = AssemblySemanticProductionRuntime(assembly),
                 authoritativeSnapshots = authoritativeSnapshots
+            )
+
+        fun create(
+            assembly: AndroidOfflineSemanticProviderAssembly,
+            authoritativeSnapshots: AndroidOfflineSemanticAuthoritativeSnapshotSource,
+            authoritativeMetadata: AndroidOfflineSemanticAuthoritativeMetadataSource,
+            checkpointStorage: AndroidOfflineSemanticCheckpointStorage
+        ): AndroidOfflineSemanticStartupCoordinator =
+            AndroidOfflineSemanticStartupCoordinator(
+                runtime = AssemblySemanticProductionRuntime(assembly),
+                authoritativeSnapshots = authoritativeSnapshots,
+                authoritativeMetadata = SemanticAuthoritativeMetadataSource {
+                    authoritativeMetadata.snapshot()?.toInternal()
+                },
+                checkpointStore = OpaqueSemanticCheckpointStore(checkpointStorage)
+            )
+
+        fun create(
+            assembly: AndroidOfflineSemanticProviderAssembly,
+            authoritativeSnapshots: AndroidOfflineSemanticAuthoritativeSnapshotSource,
+            authoritativeMetadata: AndroidOfflineSemanticAuthoritativeMetadataSource,
+            checkpointStorage: AndroidOfflineSemanticCheckpointStorage?,
+            authoritativePages: AndroidOfflineSemanticAuthoritativePageSource,
+            shardStorage: AndroidOfflineSemanticShardStorage
+        ): AndroidOfflineSemanticStartupCoordinator =
+            AndroidOfflineSemanticStartupCoordinator(
+                runtime = AssemblySemanticProductionRuntime(assembly),
+                authoritativeSnapshots = authoritativeSnapshots,
+                authoritativeMetadata = SemanticAuthoritativeMetadataSource {
+                    authoritativeMetadata.snapshot()?.toInternal()
+                },
+                checkpointStore = checkpointStorage?.let(::OpaqueSemanticCheckpointStore),
+                authoritativePages = authoritativePages,
+                shardStorage = shardStorage
             )
     }
 }

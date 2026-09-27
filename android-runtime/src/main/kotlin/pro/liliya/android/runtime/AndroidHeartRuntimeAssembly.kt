@@ -1,11 +1,30 @@
 package pro.liliya.android.runtime
 
 import java.io.File
+import java.time.Instant
 import pro.liliya.android.cognitivestorage.AndroidCognitiveStorageAssembly
+import pro.liliya.android.cognitivestorage.AndroidEncryptedBlobSlotOpenResult
+import pro.liliya.android.cognitivestorage.AndroidEncryptedConversationOpenResult
 import pro.liliya.android.cognitivestorage.AndroidEncryptedKnowledgeOpenResult
 import pro.liliya.android.cognitivestorage.AndroidEncryptedMemoryOpenResult
 import pro.liliya.android.llamacppengine.AndroidLlamaCppCognitiveModelAssembly
+import pro.liliya.android.semanticprovider.AndroidOfflineSemanticAuthoritativeMetadata
+import pro.liliya.android.semanticprovider.AndroidOfflineSemanticAuthoritativeMetadataSource
+import pro.liliya.android.semanticprovider.AndroidOfflineSemanticAuthoritativePageReader
+import pro.liliya.android.semanticprovider.AndroidOfflineSemanticAuthoritativePageSource
 import pro.liliya.android.semanticprovider.AndroidOfflineSemanticAuthoritativeSnapshot
+import pro.liliya.android.semanticprovider.AndroidOfflineSemanticKnowledgePageResult
+import pro.liliya.android.semanticprovider.AndroidOfflineSemanticMemoryPageResult
+import pro.liliya.android.semanticprovider.AndroidOfflineSemanticCheckpointBlob
+import pro.liliya.android.semanticprovider.AndroidOfflineSemanticCheckpointPersistResult
+import pro.liliya.android.semanticprovider.AndroidOfflineSemanticCheckpointStorage
+import pro.liliya.android.semanticprovider.AndroidOfflineSemanticCheckpointStorageReadResult
+import pro.liliya.android.semanticprovider.AndroidOfflineSemanticCheckpointStorageWriteResult
+import pro.liliya.android.semanticprovider.AndroidOfflineSemanticShardStorage
+import pro.liliya.android.semanticprovider.AndroidOfflineSemanticShardStorageDeleteResult
+import pro.liliya.android.semanticprovider.AndroidOfflineSemanticShardStorageKey
+import pro.liliya.android.semanticprovider.AndroidOfflineSemanticShardStorageReadResult
+import pro.liliya.android.semanticprovider.AndroidOfflineSemanticShardStorageWriteResult
 import pro.liliya.android.semanticprovider.AndroidOfflineSemanticCognitiveRetrievalAssembly
 import pro.liliya.android.semanticprovider.AndroidOfflineSemanticProviderAssembly
 import pro.liliya.android.semanticprovider.AndroidOfflineSemanticProviderCloseResult
@@ -13,6 +32,7 @@ import pro.liliya.android.semanticprovider.AndroidOfflineSemanticProviderRebuild
 import pro.liliya.android.semanticprovider.AndroidOfflineSemanticMutationSynchronizer
 import pro.liliya.android.semanticprovider.AndroidOfflineSemanticStartupCoordinator
 import pro.liliya.android.semanticprovider.AndroidOfflineSemanticStartupResult
+import pro.liliya.core.cognitive.CognitiveConversationSessionId
 import pro.liliya.core.cognitive.CognitiveGovernedLearningComposition
 import pro.liliya.core.cognitive.CognitiveInferencePort
 import pro.liliya.core.cognitive.CognitiveModelActivationResult
@@ -20,21 +40,38 @@ import pro.liliya.core.cognitive.CognitiveModelQuiesceResult
 import pro.liliya.core.cognitive.CognitiveModelRetirementResult
 import pro.liliya.core.cognitive.CognitiveRuntimeComposition
 import pro.liliya.core.cognitive.CognitiveStreamingInferencePort
+import pro.liliya.core.cognitive.CognitiveTimestampSource
 import pro.liliya.core.cognitive.KnowledgeAuthoritativeResolutionResult
 import pro.liliya.core.cognitive.KnowledgeAuthoritativeResolverPort
 import pro.liliya.core.cognitive.KnowledgeRetrievalPort
+import pro.liliya.core.cognitive.KnowledgeRelevanceCandidate
 import pro.liliya.core.cognitive.MemoryAuthoritativeResolutionResult
 import pro.liliya.core.cognitive.MemoryAuthoritativeResolverPort
 import pro.liliya.core.cognitive.MemoryRetrievalPort
+import pro.liliya.core.cognitive.MemoryRelevanceCandidate
 import pro.liliya.core.encryption.CognitiveDekReference
+import pro.liliya.core.encryption.EncryptedPersistentBlob
+import pro.liliya.core.encryption.EncryptedPersistentBlobDeleteResult
+import pro.liliya.core.encryption.EncryptedPersistentBlobReadResult
+import pro.liliya.core.encryption.EncryptedPersistentBlobSlot
+import pro.liliya.core.encryption.EncryptedPersistentBlobWriteResult
 import pro.liliya.core.foundation.FoundationComposition
 import pro.liliya.core.knowledge.EncryptedPersistentKnowledgeComposition
+import pro.liliya.core.knowledge.EncryptedPersistentKnowledgeInspectResult
+import pro.liliya.core.knowledge.EncryptedPersistentKnowledgePageResult
 import pro.liliya.core.learning.EncryptedPersistentLearningApplicationMutationComposition
 import pro.liliya.core.learning.LearningApplicationMutationApplicationPort
 import pro.liliya.core.learning.LearningApplicationMutationAuthorizationGate
 import pro.liliya.core.learning.PersistentEncryptedLearningApplicationMutationApplier
 import pro.liliya.core.learning.PersistentLearningApplicationMutationComposition
 import pro.liliya.core.memory.EncryptedPersistentMemoryComposition
+import pro.liliya.core.memory.EncryptedPersistentMemoryInspectResult
+import pro.liliya.core.memory.EncryptedPersistentMemoryPageResult
+import pro.liliya.core.persistence.PersistentBackendPageCursor
+import pro.liliya.core.persistence.PersistentBackendPageOrder
+import pro.liliya.core.persistence.PersistentEntityId
+import pro.liliya.core.persistence.PersistentSchemaId
+import pro.liliya.core.persistence.PersistentSchemaVersion
 import pro.liliya.core.persistence.PersistentStoreId
 import pro.liliya.core.protectedmodel.LargeProtectedModelStagedSourceOwnership
 import pro.liliya.core.runtime.hardening.RuntimeModelSessionReference
@@ -59,6 +96,297 @@ sealed interface AndroidHeartSemanticRecoveryResult {
     data object NotRequired : AndroidHeartSemanticRecoveryResult
     data object Busy : AndroidHeartSemanticRecoveryResult
     data object Failed : AndroidHeartSemanticRecoveryResult
+}
+
+private class AndroidHeartEncryptedSemanticCheckpointStorage(
+    private val slot: EncryptedPersistentBlobSlot
+) : AndroidOfflineSemanticCheckpointStorage {
+    override fun read(): AndroidOfflineSemanticCheckpointStorageReadResult =
+        when (val read = slot.read()) {
+            EncryptedPersistentBlobReadResult.Missing ->
+                AndroidOfflineSemanticCheckpointStorageReadResult.Missing
+            is EncryptedPersistentBlobReadResult.Found -> {
+                val bytes = read.blob.copyBytes()
+                try {
+                    AndroidOfflineSemanticCheckpointStorageReadResult.Loaded(
+                        AndroidOfflineSemanticCheckpointBlob(bytes)
+                    )
+                } finally {
+                    bytes.fill(0)
+                }
+            }
+            EncryptedPersistentBlobReadResult.Corrupt ->
+                AndroidOfflineSemanticCheckpointStorageReadResult.Failed(
+                    "encrypted semantic checkpoint is corrupt"
+                )
+            is EncryptedPersistentBlobReadResult.Incompatible ->
+                AndroidOfflineSemanticCheckpointStorageReadResult.Failed(read.reason)
+            is EncryptedPersistentBlobReadResult.EncryptionUnavailable ->
+                AndroidOfflineSemanticCheckpointStorageReadResult.Failed(
+                    "encrypted semantic checkpoint unavailable: " + read.category,
+                    read.throwable
+                )
+            is EncryptedPersistentBlobReadResult.Failed ->
+                AndroidOfflineSemanticCheckpointStorageReadResult.Failed(
+                    read.reason,
+                    read.throwable
+                )
+        }
+
+    override fun write(
+        blob: AndroidOfflineSemanticCheckpointBlob
+    ): AndroidOfflineSemanticCheckpointStorageWriteResult {
+        val bytes = blob.copyBytes()
+        val encryptedBlob = try {
+            EncryptedPersistentBlob(bytes)
+        } finally {
+            bytes.fill(0)
+        }
+        return when (val written = slot.write(encryptedBlob, Instant.EPOCH)) {
+            EncryptedPersistentBlobWriteResult.Written ->
+                AndroidOfflineSemanticCheckpointStorageWriteResult.Written
+            is EncryptedPersistentBlobWriteResult.Rejected ->
+                AndroidOfflineSemanticCheckpointStorageWriteResult.Failed(written.reason)
+            is EncryptedPersistentBlobWriteResult.Failed ->
+                AndroidOfflineSemanticCheckpointStorageWriteResult.Failed(
+                    written.reason,
+                    written.throwable
+                )
+        }
+    }
+}
+
+private class AndroidHeartEncryptedSemanticShardStorage(
+    private val cognitiveStorage: AndroidCognitiveStorageAssembly,
+    private val storeId: PersistentStoreId,
+    private val activeDek: CognitiveDekReference,
+    private val schemaId: PersistentSchemaId,
+    private val schemaVersion: PersistentSchemaVersion
+) : AndroidOfflineSemanticShardStorage {
+    override fun read(
+        key: AndroidOfflineSemanticShardStorageKey
+    ): AndroidOfflineSemanticShardStorageReadResult {
+        val slot = when (val opened = openSlot(key)) {
+            is AndroidEncryptedBlobSlotOpenResult.Opened -> opened.slot
+            AndroidEncryptedBlobSlotOpenResult.Corrupt ->
+                return AndroidOfflineSemanticShardStorageReadResult.Failed(
+                    "encrypted semantic shard store is corrupt"
+                )
+            is AndroidEncryptedBlobSlotOpenResult.Incompatible ->
+                return AndroidOfflineSemanticShardStorageReadResult.Failed(opened.reason)
+            is AndroidEncryptedBlobSlotOpenResult.Failed ->
+                return AndroidOfflineSemanticShardStorageReadResult.Failed(
+                    opened.reason,
+                    opened.throwable
+                )
+        }
+        return when (val read = slot.read()) {
+            EncryptedPersistentBlobReadResult.Missing ->
+                AndroidOfflineSemanticShardStorageReadResult.Missing
+            is EncryptedPersistentBlobReadResult.Found -> {
+                val bytes = read.blob.copyBytes()
+                try {
+                    AndroidOfflineSemanticShardStorageReadResult.Loaded(
+                        AndroidOfflineSemanticCheckpointBlob(bytes)
+                    )
+                } finally {
+                    bytes.fill(0)
+                }
+            }
+            EncryptedPersistentBlobReadResult.Corrupt ->
+                AndroidOfflineSemanticShardStorageReadResult.Failed(
+                    "encrypted semantic shard blob is corrupt"
+                )
+            is EncryptedPersistentBlobReadResult.Incompatible ->
+                AndroidOfflineSemanticShardStorageReadResult.Failed(read.reason)
+            is EncryptedPersistentBlobReadResult.EncryptionUnavailable ->
+                AndroidOfflineSemanticShardStorageReadResult.Failed(
+                    "encrypted semantic shard unavailable: " + read.category,
+                    read.throwable
+                )
+            is EncryptedPersistentBlobReadResult.Failed ->
+                AndroidOfflineSemanticShardStorageReadResult.Failed(
+                    read.reason,
+                    read.throwable
+                )
+        }
+    }
+
+    override fun write(
+        key: AndroidOfflineSemanticShardStorageKey,
+        blob: AndroidOfflineSemanticCheckpointBlob
+    ): AndroidOfflineSemanticShardStorageWriteResult {
+        val slot = when (val opened = openSlot(key)) {
+            is AndroidEncryptedBlobSlotOpenResult.Opened -> opened.slot
+            AndroidEncryptedBlobSlotOpenResult.Corrupt ->
+                return AndroidOfflineSemanticShardStorageWriteResult.Failed(
+                    "encrypted semantic shard store is corrupt"
+                )
+            is AndroidEncryptedBlobSlotOpenResult.Incompatible ->
+                return AndroidOfflineSemanticShardStorageWriteResult.Failed(opened.reason)
+            is AndroidEncryptedBlobSlotOpenResult.Failed ->
+                return AndroidOfflineSemanticShardStorageWriteResult.Failed(
+                    opened.reason,
+                    opened.throwable
+                )
+        }
+        val bytes = blob.copyBytes()
+        val encryptedBlob = try {
+            EncryptedPersistentBlob(bytes)
+        } finally {
+            bytes.fill(0)
+        }
+        return when (val written = slot.write(encryptedBlob, Instant.EPOCH)) {
+            EncryptedPersistentBlobWriteResult.Written ->
+                AndroidOfflineSemanticShardStorageWriteResult.Written
+            is EncryptedPersistentBlobWriteResult.Rejected ->
+                AndroidOfflineSemanticShardStorageWriteResult.Failed(written.reason)
+            is EncryptedPersistentBlobWriteResult.Failed ->
+                AndroidOfflineSemanticShardStorageWriteResult.Failed(
+                    written.reason,
+                    written.throwable
+                )
+        }
+    }
+
+    override fun delete(
+        key: AndroidOfflineSemanticShardStorageKey
+    ): AndroidOfflineSemanticShardStorageDeleteResult {
+        val slot = when (val opened = openSlot(key)) {
+            is AndroidEncryptedBlobSlotOpenResult.Opened -> opened.slot
+            AndroidEncryptedBlobSlotOpenResult.Corrupt ->
+                return AndroidOfflineSemanticShardStorageDeleteResult.Failed(
+                    "encrypted semantic shard store is corrupt"
+                )
+            is AndroidEncryptedBlobSlotOpenResult.Incompatible ->
+                return AndroidOfflineSemanticShardStorageDeleteResult.Failed(opened.reason)
+            is AndroidEncryptedBlobSlotOpenResult.Failed ->
+                return AndroidOfflineSemanticShardStorageDeleteResult.Failed(
+                    opened.reason,
+                    opened.throwable
+                )
+        }
+
+        return when (val deleted = slot.delete()) {
+            EncryptedPersistentBlobDeleteResult.Deleted ->
+                AndroidOfflineSemanticShardStorageDeleteResult.Deleted
+            EncryptedPersistentBlobDeleteResult.Missing ->
+                AndroidOfflineSemanticShardStorageDeleteResult.Missing
+            is EncryptedPersistentBlobDeleteResult.Rejected ->
+                AndroidOfflineSemanticShardStorageDeleteResult.Failed(deleted.reason)
+            is EncryptedPersistentBlobDeleteResult.Failed ->
+                AndroidOfflineSemanticShardStorageDeleteResult.Failed(
+                    deleted.reason,
+                    deleted.throwable
+                )
+        }
+    }
+
+    private fun openSlot(
+        key: AndroidOfflineSemanticShardStorageKey
+    ): AndroidEncryptedBlobSlotOpenResult =
+        cognitiveStorage.openEncryptedBlobSlot(
+            storeId = storeId,
+            activeDek = activeDek,
+            entityId = PersistentEntityId("semantic-shard-v2-" + key.value),
+            schemaId = schemaId,
+            schemaVersion = schemaVersion,
+            maxBytes = AndroidOfflineSemanticCheckpointBlob.MAX_BYTES
+        )
+}
+
+private class AndroidHeartSemanticAuthoritativePageSource(
+    private val memory: EncryptedPersistentMemoryComposition,
+    private val knowledge: EncryptedPersistentKnowledgeComposition
+) : AndroidOfflineSemanticAuthoritativePageSource {
+    override fun openReader(): AndroidOfflineSemanticAuthoritativePageReader =
+        Reader(memory, knowledge)
+
+    private class Reader(
+        private val memory: EncryptedPersistentMemoryComposition,
+        private val knowledge: EncryptedPersistentKnowledgeComposition
+    ) : AndroidOfflineSemanticAuthoritativePageReader {
+        private var memoryCursor: PersistentBackendPageCursor? = null
+        private var knowledgeCursor: PersistentBackendPageCursor? = null
+        private var memoryEnded: Boolean = false
+        private var knowledgeEnded: Boolean = false
+
+        override fun nextMemoryPage(): AndroidOfflineSemanticMemoryPageResult {
+            if (memoryEnded) return AndroidOfflineSemanticMemoryPageResult.End
+            return when (
+                val page = memory.page(
+                    limit = PAGE_SIZE,
+                    order = PersistentBackendPageOrder.OLDEST_FIRST,
+                    cursorExclusive = memoryCursor
+                )
+            ) {
+                EncryptedPersistentMemoryPageResult.Empty -> {
+                    memoryEnded = true
+                    AndroidOfflineSemanticMemoryPageResult.End
+                }
+                is EncryptedPersistentMemoryPageResult.Loaded -> {
+                    memoryCursor = page.nextCursor
+                    if (page.nextCursor == null) memoryEnded = true
+                    AndroidOfflineSemanticMemoryPageResult.Loaded(page.entries)
+                }
+                EncryptedPersistentMemoryPageResult.Corrupt ->
+                    AndroidOfflineSemanticMemoryPageResult.Failed(
+                        "encrypted Memory authoritative page is corrupt"
+                    )
+                is EncryptedPersistentMemoryPageResult.Incompatible ->
+                    AndroidOfflineSemanticMemoryPageResult.Failed(page.reason)
+                is EncryptedPersistentMemoryPageResult.EncryptionUnavailable ->
+                    AndroidOfflineSemanticMemoryPageResult.Failed(
+                        "encrypted Memory authoritative page unavailable: " + page.category
+                    )
+                is EncryptedPersistentMemoryPageResult.Failed ->
+                    AndroidOfflineSemanticMemoryPageResult.Failed(
+                        page.reason,
+                        page.throwable
+                    )
+            }
+        }
+
+        override fun nextKnowledgePage(): AndroidOfflineSemanticKnowledgePageResult {
+            if (knowledgeEnded) return AndroidOfflineSemanticKnowledgePageResult.End
+            return when (
+                val page = knowledge.page(
+                    limit = PAGE_SIZE,
+                    order = PersistentBackendPageOrder.OLDEST_FIRST,
+                    cursorExclusive = knowledgeCursor
+                )
+            ) {
+                EncryptedPersistentKnowledgePageResult.Empty -> {
+                    knowledgeEnded = true
+                    AndroidOfflineSemanticKnowledgePageResult.End
+                }
+                is EncryptedPersistentKnowledgePageResult.Loaded -> {
+                    knowledgeCursor = page.nextCursor
+                    if (page.nextCursor == null) knowledgeEnded = true
+                    AndroidOfflineSemanticKnowledgePageResult.Loaded(page.entries)
+                }
+                EncryptedPersistentKnowledgePageResult.Corrupt ->
+                    AndroidOfflineSemanticKnowledgePageResult.Failed(
+                        "encrypted Knowledge authoritative page is corrupt"
+                    )
+                is EncryptedPersistentKnowledgePageResult.Incompatible ->
+                    AndroidOfflineSemanticKnowledgePageResult.Failed(page.reason)
+                is EncryptedPersistentKnowledgePageResult.EncryptionUnavailable ->
+                    AndroidOfflineSemanticKnowledgePageResult.Failed(
+                        "encrypted Knowledge authoritative page unavailable: " + page.category
+                    )
+                is EncryptedPersistentKnowledgePageResult.Failed ->
+                    AndroidOfflineSemanticKnowledgePageResult.Failed(
+                        page.reason,
+                        page.throwable
+                    )
+            }
+        }
+
+        private companion object {
+            const val PAGE_SIZE = 512
+        }
+    }
 }
 
 /**
@@ -167,6 +495,45 @@ class AndroidHeartRuntimeAssembly private constructor(
         )
     }
 
+    fun durableConversation(
+        sessionId: CognitiveConversationSessionId,
+        conversationStoreId: PersistentStoreId,
+        maxRetainedMessages: Int,
+        maxRetainedCharacters: Int,
+        maxMessageCharacters: Int,
+        timestamps: CognitiveTimestampSource
+    ): ProductConversationHost? {
+        val activeRuntime = runtime() ?: return null
+        val turns = productTurns() ?: return null
+        val persistent = when (
+            val opened = cognitiveStorage.openEncryptedConversation(
+                storeId = conversationStoreId,
+                activeDek = activeDek,
+                maxRetainedMessages = maxRetainedMessages,
+                maxMessageChars = maxMessageCharacters
+            )
+        ) {
+            is AndroidEncryptedConversationOpenResult.Opened -> opened.store
+            AndroidEncryptedConversationOpenResult.Corrupt,
+            is AndroidEncryptedConversationOpenResult.Incompatible,
+            is AndroidEncryptedConversationOpenResult.EncryptionUnavailable,
+            is AndroidEncryptedConversationOpenResult.Failed -> return null
+        }
+        return ProductConversationHost.productionDurable(
+            sessionId = sessionId,
+            maxInputChars = activeRuntime.limits.maxInputChars,
+            maxTurnIdChars = activeRuntime.limits.maxTurnIdChars,
+            maxContextItems = activeRuntime.limits.maxContextItems,
+            maxContextItemChars = activeRuntime.limits.maxContextItemChars,
+            maxRetainedMessages = maxRetainedMessages,
+            maxRetainedCharacters = maxRetainedCharacters,
+            maxMessageCharacters = maxMessageCharacters,
+            turns = turns,
+            persistentStore = persistent,
+            timestamps = timestamps
+        )
+    }
+
     fun learningMutationApplicationPort(
         foundation: FoundationComposition,
         mutations: PersistentLearningApplicationMutationComposition,
@@ -237,8 +604,15 @@ class AndroidHeartRuntimeAssembly private constructor(
 
                 when (sync) {
                     pro.liliya.android.semanticprovider.AndroidOfflineSemanticMutationSyncResult.Synchronized,
-                    pro.liliya.android.semanticprovider.AndroidOfflineSemanticMutationSyncResult.AlreadySynchronized ->
-                        AndroidHeartSemanticLearningSyncStatus.SYNCHRONIZED
+                    pro.liliya.android.semanticprovider.AndroidOfflineSemanticMutationSyncResult.AlreadySynchronized -> {
+                        when (semanticStartup?.persistCheckpointIfCurrent()) {
+                            is AndroidOfflineSemanticCheckpointPersistResult.Failed,
+                            null -> AndroidHeartSemanticLearningSyncStatus.REBUILD_REQUIRED
+                            AndroidOfflineSemanticCheckpointPersistResult.Written,
+                            AndroidOfflineSemanticCheckpointPersistResult.Skipped ->
+                                AndroidHeartSemanticLearningSyncStatus.SYNCHRONIZED
+                        }
+                    }
 
                     pro.liliya.android.semanticprovider.AndroidOfflineSemanticMutationSyncResult.RebuildRequired,
                     pro.liliya.android.semanticprovider.AndroidOfflineSemanticMutationSyncResult.NotReady,
@@ -263,74 +637,55 @@ class AndroidHeartRuntimeAssembly private constructor(
         val activeMemory = memory ?: return AndroidHeartSemanticRecoveryResult.Failed
         val activeKnowledge = knowledge ?: return AndroidHeartSemanticRecoveryResult.Failed
 
-        val entryCount = when (semanticAssembly.state()) {
-            pro.liliya.android.semanticprovider.AndroidOfflineSemanticProviderState.LOADED,
-            pro.liliya.android.semanticprovider.AndroidOfflineSemanticProviderState.READY -> {
-                when (
-                    val rebuilt = semanticAssembly.rebuild(
-                        memory = activeMemory.snapshotEntries(),
-                        knowledge = activeKnowledge.snapshotEntries()
-                    )
-                ) {
-                    is AndroidOfflineSemanticProviderRebuildResult.Ready -> rebuilt.entryCount
-                    AndroidOfflineSemanticProviderRebuildResult.Busy ->
-                        return AndroidHeartSemanticRecoveryResult.Busy
-                    AndroidOfflineSemanticProviderRebuildResult.NotLoaded,
-                    AndroidOfflineSemanticProviderRebuildResult.Failed ->
-                        return AndroidHeartSemanticRecoveryResult.Failed
-                }
-            }
+        val currentState = semanticAssembly.state()
+        if (
+            currentState != pro.liliya.android.semanticprovider.AndroidOfflineSemanticProviderState.LOADED &&
+            currentState != pro.liliya.android.semanticprovider.AndroidOfflineSemanticProviderState.READY &&
+            currentState != pro.liliya.android.semanticprovider.AndroidOfflineSemanticProviderState.FAILED
+        ) {
+            return AndroidHeartSemanticRecoveryResult.Failed
+        }
 
-            pro.liliya.android.semanticprovider.AndroidOfflineSemanticProviderState.FAILED -> {
-                val oldCoordinator = semanticStartup
-                val close = if (oldCoordinator != null) {
-                    oldCoordinator.close()
-                } else {
-                    semanticAssembly.close()
-                }
-                when (close) {
-                    AndroidOfflineSemanticProviderCloseResult.Closed,
-                    AndroidOfflineSemanticProviderCloseResult.AlreadyClosed -> Unit
-                    AndroidOfflineSemanticProviderCloseResult.Busy ->
-                        return AndroidHeartSemanticRecoveryResult.Busy
-                    AndroidOfflineSemanticProviderCloseResult.ProviderFailed ->
-                        return AndroidHeartSemanticRecoveryResult.Failed
-                }
+        val oldCoordinator = semanticStartup
+        val close = if (oldCoordinator != null) {
+            oldCoordinator.close()
+        } else {
+            semanticAssembly.close()
+        }
+        when (close) {
+            AndroidOfflineSemanticProviderCloseResult.Closed,
+            AndroidOfflineSemanticProviderCloseResult.AlreadyClosed -> Unit
+            AndroidOfflineSemanticProviderCloseResult.Busy ->
+                return AndroidHeartSemanticRecoveryResult.Busy
+            AndroidOfflineSemanticProviderCloseResult.ProviderFailed ->
+                return AndroidHeartSemanticRecoveryResult.Failed
+        }
 
-                val replacement = AndroidOfflineSemanticProviderAssembly.create()
-                val replacementStartup = AndroidOfflineSemanticStartupCoordinator.create(
-                    assembly = replacement,
-                    authoritativeSnapshots = {
-                        AndroidOfflineSemanticAuthoritativeSnapshot(
-                            memory = activeMemory.snapshotEntries(),
-                            knowledge = activeKnowledge.snapshotEntries()
-                        )
-                    }
-                )
-                val started = replacementStartup.start(semanticRoot, semanticEncoderFile)
-                val recoveredEntries = when (started) {
-                    is AndroidOfflineSemanticStartupResult.Ready -> started.entryCount
-                    AndroidOfflineSemanticStartupResult.Busy ->
-                        return AndroidHeartSemanticRecoveryResult.Busy
-                    AndroidOfflineSemanticStartupResult.ArtifactMissing,
-                    AndroidOfflineSemanticStartupResult.ArtifactRejected,
-                    AndroidOfflineSemanticStartupResult.ResourceRejected,
-                    AndroidOfflineSemanticStartupResult.Unsupported,
-                    AndroidOfflineSemanticStartupResult.ProviderFailed,
-                    AndroidOfflineSemanticStartupResult.AuthoritativeSnapshotFailed,
-                    AndroidOfflineSemanticStartupResult.RebuildFailed ->
-                        return AndroidHeartSemanticRecoveryResult.Failed
-                }
-                semanticAssembly = replacement
-                semanticStartup = replacementStartup
+        val replacement = AndroidOfflineSemanticProviderAssembly.create()
+        val replacementStartup = createSemanticStartupCoordinator(
+            activeMemory = activeMemory,
+            activeKnowledge = activeKnowledge,
+            assembly = replacement
+        )
+        val started = replacementStartup.start(semanticRoot, semanticEncoderFile)
+        val entryCount = when (started) {
+            is AndroidOfflineSemanticStartupResult.Ready -> started.entryCount
+            AndroidOfflineSemanticStartupResult.Busy ->
+                return AndroidHeartSemanticRecoveryResult.Busy
+            AndroidOfflineSemanticStartupResult.ArtifactMissing,
+            AndroidOfflineSemanticStartupResult.ArtifactRejected,
+            AndroidOfflineSemanticStartupResult.ResourceRejected,
+            AndroidOfflineSemanticStartupResult.Unsupported,
+            AndroidOfflineSemanticStartupResult.ProviderFailed,
+            AndroidOfflineSemanticStartupResult.AuthoritativeSnapshotFailed,
+            AndroidOfflineSemanticStartupResult.RebuildFailed ->
+                return AndroidHeartSemanticRecoveryResult.Failed
+        }
 
-                if (!recreateRetrievalAndRuntime(activeMemory, activeKnowledge)) {
-                    return AndroidHeartSemanticRecoveryResult.Failed
-                }
-                recoveredEntries
-            }
-
-            else -> return AndroidHeartSemanticRecoveryResult.Failed
+        semanticAssembly = replacement
+        semanticStartup = replacementStartup
+        if (!recreateRetrievalAndRuntime(activeMemory, activeKnowledge)) {
+            return AndroidHeartSemanticRecoveryResult.Failed
         }
 
         if (!startup.markReadyAfterExplicitRecovery()) {
@@ -347,28 +702,10 @@ class AndroidHeartRuntimeAssembly private constructor(
         activeKnowledge: EncryptedPersistentKnowledgeComposition
     ): Boolean {
         val memoryResolver = MemoryAuthoritativeResolverPort { candidate ->
-            val current = activeMemory.inspect(candidate.recordId)
-            if (
-                current != null &&
-                current.record.id == candidate.recordId &&
-                current.generation == candidate.generation
-            ) {
-                MemoryAuthoritativeResolutionResult.Resolved(current)
-            } else {
-                MemoryAuthoritativeResolutionResult.Stale
-            }
+            resolveEncryptedMemoryCandidate(activeMemory, candidate)
         }
         val knowledgeResolver = KnowledgeAuthoritativeResolverPort { candidate ->
-            val current = activeKnowledge.inspect(candidate.itemId)
-            if (
-                current != null &&
-                current.item.id == candidate.itemId &&
-                current.generation == candidate.generation
-            ) {
-                KnowledgeAuthoritativeResolutionResult.Resolved(current)
-            } else {
-                KnowledgeAuthoritativeResolutionResult.Stale
-            }
+            resolveEncryptedKnowledgeCandidate(activeKnowledge, candidate)
         }
 
         val replacementRetrieval = try {
@@ -426,14 +763,10 @@ class AndroidHeartRuntimeAssembly private constructor(
         val activeMemory = memory ?: return HeartDependencyStartResult.Failed
         val activeKnowledge = knowledge ?: return HeartDependencyStartResult.Failed
 
-        val coordinator = AndroidOfflineSemanticStartupCoordinator.create(
-            assembly = semanticAssembly,
-            authoritativeSnapshots = {
-                AndroidOfflineSemanticAuthoritativeSnapshot(
-                    memory = activeMemory.snapshotEntries(),
-                    knowledge = activeKnowledge.snapshotEntries()
-                )
-            }
+        val coordinator = createSemanticStartupCoordinator(
+            activeMemory = activeMemory,
+            activeKnowledge = activeKnowledge,
+            assembly = semanticAssembly
         )
         semanticStartup = coordinator
 
@@ -453,33 +786,141 @@ class AndroidHeartRuntimeAssembly private constructor(
         }
     }
 
+    private fun createSemanticStartupCoordinator(
+        activeMemory: EncryptedPersistentMemoryComposition,
+        activeKnowledge: EncryptedPersistentKnowledgeComposition,
+        assembly: AndroidOfflineSemanticProviderAssembly
+    ): AndroidOfflineSemanticStartupCoordinator {
+        val authoritativeSnapshots = {
+            AndroidOfflineSemanticAuthoritativeSnapshot(
+                memory = activeMemory.snapshotEntries(),
+                knowledge = activeKnowledge.snapshotEntries()
+            )
+        }
+        val metadataSource = AndroidOfflineSemanticAuthoritativeMetadataSource {
+            val memoryMetadata = activeMemory.durableMetadataSnapshot()
+                ?: return@AndroidOfflineSemanticAuthoritativeMetadataSource null
+            val knowledgeMetadata = activeKnowledge.durableMetadataSnapshot()
+                ?: return@AndroidOfflineSemanticAuthoritativeMetadataSource null
+            AndroidOfflineSemanticAuthoritativeMetadata(
+                memoryRevision = memoryMetadata.revision,
+                memoryHighWatermark = memoryMetadata.highWatermark,
+                memoryEntryCount = memoryMetadata.entryCount,
+                knowledgeRevision = knowledgeMetadata.revision,
+                knowledgeHighWatermark = knowledgeMetadata.highWatermark,
+                knowledgeEntryCount = knowledgeMetadata.entryCount
+            )
+        }
+        val checkpointStorage = when (
+            val opened = cognitiveStorage.openEncryptedBlobSlot(
+                storeId = SEMANTIC_CHECKPOINT_STORE_ID,
+                activeDek = activeDek,
+                entityId = SEMANTIC_CHECKPOINT_ENTITY_ID,
+                schemaId = SEMANTIC_CHECKPOINT_SCHEMA_ID,
+                schemaVersion = SEMANTIC_CHECKPOINT_SCHEMA_VERSION,
+                maxBytes = AndroidOfflineSemanticCheckpointBlob.MAX_BYTES
+            )
+        ) {
+            is AndroidEncryptedBlobSlotOpenResult.Opened ->
+                AndroidHeartEncryptedSemanticCheckpointStorage(opened.slot)
+            AndroidEncryptedBlobSlotOpenResult.Corrupt,
+            is AndroidEncryptedBlobSlotOpenResult.Incompatible,
+            is AndroidEncryptedBlobSlotOpenResult.Failed -> null
+        }
+
+        val authoritativePages = AndroidHeartSemanticAuthoritativePageSource(
+            memory = activeMemory,
+            knowledge = activeKnowledge
+        )
+        val shardStorage = AndroidHeartEncryptedSemanticShardStorage(
+            cognitiveStorage = cognitiveStorage,
+            storeId = SEMANTIC_SHARD_STORE_ID,
+            activeDek = activeDek,
+            schemaId = SEMANTIC_SHARD_SCHEMA_ID,
+            schemaVersion = SEMANTIC_SHARD_SCHEMA_VERSION
+        )
+
+        return AndroidOfflineSemanticStartupCoordinator.create(
+            assembly = assembly,
+            authoritativeSnapshots = authoritativeSnapshots,
+            authoritativeMetadata = metadataSource,
+            checkpointStorage = checkpointStorage,
+            authoritativePages = authoritativePages,
+            shardStorage = shardStorage
+        )
+    }
+
+    private fun resolveEncryptedMemoryCandidate(
+        activeMemory: EncryptedPersistentMemoryComposition,
+        candidate: MemoryRelevanceCandidate
+    ): MemoryAuthoritativeResolutionResult =
+        when (val inspected = activeMemory.inspectResult(candidate.recordId)) {
+            EncryptedPersistentMemoryInspectResult.Missing ->
+                MemoryAuthoritativeResolutionResult.Stale
+            is EncryptedPersistentMemoryInspectResult.Found -> {
+                val current = inspected.snapshot
+                if (
+                    current.record.id == candidate.recordId &&
+                    current.generation == candidate.generation
+                ) {
+                    MemoryAuthoritativeResolutionResult.Resolved(current)
+                } else {
+                    MemoryAuthoritativeResolutionResult.Stale
+                }
+            }
+            EncryptedPersistentMemoryInspectResult.Corrupt ->
+                throw IllegalStateException("encrypted persistent Memory exact read is corrupt")
+            is EncryptedPersistentMemoryInspectResult.Incompatible ->
+                throw IllegalStateException(inspected.reason)
+            is EncryptedPersistentMemoryInspectResult.EncryptionUnavailable ->
+                throw IllegalStateException(
+                    "encrypted persistent Memory exact read unavailable: ${inspected.category}",
+                    inspected.throwable
+                )
+            is EncryptedPersistentMemoryInspectResult.Failed ->
+                throw IllegalStateException(inspected.reason, inspected.throwable)
+        }
+
+    private fun resolveEncryptedKnowledgeCandidate(
+        activeKnowledge: EncryptedPersistentKnowledgeComposition,
+        candidate: KnowledgeRelevanceCandidate
+    ): KnowledgeAuthoritativeResolutionResult =
+        when (val inspected = activeKnowledge.inspectResult(candidate.itemId)) {
+            EncryptedPersistentKnowledgeInspectResult.Missing ->
+                KnowledgeAuthoritativeResolutionResult.Stale
+            is EncryptedPersistentKnowledgeInspectResult.Found -> {
+                val current = inspected.snapshot
+                if (
+                    current.item.id == candidate.itemId &&
+                    current.generation == candidate.generation
+                ) {
+                    KnowledgeAuthoritativeResolutionResult.Resolved(current)
+                } else {
+                    KnowledgeAuthoritativeResolutionResult.Stale
+                }
+            }
+            EncryptedPersistentKnowledgeInspectResult.Corrupt ->
+                throw IllegalStateException("encrypted persistent Knowledge exact read is corrupt")
+            is EncryptedPersistentKnowledgeInspectResult.Incompatible ->
+                throw IllegalStateException(inspected.reason)
+            is EncryptedPersistentKnowledgeInspectResult.EncryptionUnavailable ->
+                throw IllegalStateException(
+                    "encrypted persistent Knowledge exact read unavailable: ${inspected.category}",
+                    inspected.throwable
+                )
+            is EncryptedPersistentKnowledgeInspectResult.Failed ->
+                throw IllegalStateException(inspected.reason, inspected.throwable)
+        }
+
     private fun startGeneration(): HeartDependencyStartResult {
         val activeMemory = memory ?: return HeartDependencyStartResult.Failed
         val activeKnowledge = knowledge ?: return HeartDependencyStartResult.Failed
 
         val memoryResolver = MemoryAuthoritativeResolverPort { candidate ->
-            val current = activeMemory.inspect(candidate.recordId)
-            if (
-                current != null &&
-                current.record.id == candidate.recordId &&
-                current.generation == candidate.generation
-            ) {
-                MemoryAuthoritativeResolutionResult.Resolved(current)
-            } else {
-                MemoryAuthoritativeResolutionResult.Stale
-            }
+            resolveEncryptedMemoryCandidate(activeMemory, candidate)
         }
         val knowledgeResolver = KnowledgeAuthoritativeResolverPort { candidate ->
-            val current = activeKnowledge.inspect(candidate.itemId)
-            if (
-                current != null &&
-                current.item.id == candidate.itemId &&
-                current.generation == candidate.generation
-            ) {
-                KnowledgeAuthoritativeResolutionResult.Resolved(current)
-            } else {
-                KnowledgeAuthoritativeResolutionResult.Stale
-            }
+            resolveEncryptedKnowledgeCandidate(activeKnowledge, candidate)
         }
 
         val activeRetrieval = try {
@@ -573,6 +1014,21 @@ class AndroidHeartRuntimeAssembly private constructor(
     }
 
     companion object {
+        private val SEMANTIC_CHECKPOINT_STORE_ID =
+            PersistentStoreId("semantic-derived-checkpoint-v1")
+        private val SEMANTIC_CHECKPOINT_ENTITY_ID =
+            PersistentEntityId("semantic-index-current")
+        private val SEMANTIC_CHECKPOINT_SCHEMA_ID =
+            PersistentSchemaId("semantic-index-checkpoint")
+        private val SEMANTIC_CHECKPOINT_SCHEMA_VERSION =
+            PersistentSchemaVersion(1)
+        private val SEMANTIC_SHARD_STORE_ID =
+            PersistentStoreId("semantic-derived-shards-v2")
+        private val SEMANTIC_SHARD_SCHEMA_ID =
+            PersistentSchemaId("semantic-index-shard-v2")
+        private val SEMANTIC_SHARD_SCHEMA_VERSION =
+            PersistentSchemaVersion(1)
+
         fun create(
             cognitiveStorage: AndroidCognitiveStorageAssembly,
             memoryStoreId: PersistentStoreId,

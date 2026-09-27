@@ -61,8 +61,9 @@ internal object MemoryPersistentRecordCodec {
             return MemoryPersistentDecodeResult.Incompatible("persistent memory schema version mismatch")
         }
 
+        val payloadBytes = persistent.payload.copyBytes()
         return try {
-            val input = ByteArrayInputStream(persistent.payload.copyBytes())
+            val input = ByteArrayInputStream(payloadBytes)
             val data = DataInputStream(input)
             if (data.readInt() != MAGIC) return MemoryPersistentDecodeResult.Corrupt
 
@@ -97,6 +98,8 @@ internal object MemoryPersistentRecordCodec {
             MemoryPersistentDecodeResult.Corrupt
         } catch (_: RuntimeException) {
             MemoryPersistentDecodeResult.Corrupt
+        } finally {
+            payloadBytes.fill(0)
         }
     }
 

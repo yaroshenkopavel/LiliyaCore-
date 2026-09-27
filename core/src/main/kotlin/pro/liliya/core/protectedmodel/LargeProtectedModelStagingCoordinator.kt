@@ -201,8 +201,6 @@ class LargeProtectedModelStagingCoordinator(
                 )
             is AppendPreparation.Ready -> Unit
         }
-        preparation as AppendPreparation.Ready
-
         val backendResult = try {
             backend.append(preparation.handle, segmentIndex, plaintext)
         } catch (throwable: Throwable) {
@@ -310,8 +308,6 @@ class LargeProtectedModelStagingCoordinator(
                 )
             is SealPreparation.Ready -> Unit
         }
-        preparation as SealPreparation.Ready
-
         val sealed = try {
             backend.seal(preparation.handle)
         } catch (throwable: Throwable) {

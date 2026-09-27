@@ -5,12 +5,14 @@ import java.time.Instant
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import pro.liliya.core.diagnostics.DiagnosticRecorder
 import pro.liliya.core.diagnostics.InMemoryDiagnosticSink
 import pro.liliya.core.foundation.FoundationComposition
 import pro.liliya.core.knowledge.EncryptedPersistentKnowledgeComposition
+import pro.liliya.core.knowledge.EncryptedPersistentKnowledgeInspectResult
 import pro.liliya.core.knowledge.EncryptedPersistentKnowledgeOpenResult
 import pro.liliya.core.knowledge.KnowledgeItem
 import pro.liliya.core.knowledge.KnowledgeItemId
@@ -21,11 +23,13 @@ import pro.liliya.core.logging.CorrelationIdGenerator
 import pro.liliya.core.logging.InMemoryLogWriter
 import pro.liliya.core.logging.StructuredLogger
 import pro.liliya.core.memory.EncryptedPersistentMemoryComposition
+import pro.liliya.core.memory.EncryptedPersistentMemoryInspectResult
 import pro.liliya.core.memory.EncryptedPersistentMemoryOpenResult
 import pro.liliya.core.memory.MemoryProvenance
 import pro.liliya.core.memory.MemoryRecord
 import pro.liliya.core.memory.MemoryRecordId
 import pro.liliya.core.memory.MemorySourceId
+import pro.liliya.core.memory.PersistentMemoryMutationResult
 import pro.liliya.core.memory.PersistentMemoryRememberResult
 import pro.liliya.core.observability.LoggerProvider
 import pro.liliya.core.persistence.InMemoryPersistentRecordBackend
@@ -110,6 +114,146 @@ class EncryptedPersistentMemoryKnowledgeCompositionContractTest {
     }
 
     @Test
+    fun encrypted_exact_read_preserves_found_missing_and_dek_unavailable_states() {
+        val backend = InMemoryPersistentRecordBackend()
+        var dekAvailable = true
+        val dynamicResolver = object : CognitiveDekMaterialResolver {
+            override fun resolve(
+                reference: CognitiveDekReference
+            ): CognitiveEncryptionResult<CognitiveDekMaterial> =
+                if (dekAvailable && reference == dekRef) {
+                    CognitiveEncryptionResult.Success(material)
+                } else {
+                    CognitiveEncryptionResult.Rejected(
+                        CognitiveEncryptionFailureCategory.DEK_MISSING
+                    )
+                }
+        }
+
+        val memoryStoreId = PersistentStoreId("encrypted-memory-exact-read")
+        val memoryComposition = assertIs<EncryptedPersistentMemoryOpenResult.Opened>(
+            EncryptedPersistentMemoryComposition.open(
+                foundation(),
+                encryptedStore(backend, memoryStoreId, dynamicResolver),
+                dekRef
+            )
+        ).composition
+        val memory = memoryRecord("memory-exact-read", "exact read")
+        assertEquals(
+            EncryptedPersistentMemoryInspectResult.Missing,
+            memoryComposition.inspectResult(memory.id)
+        )
+        val remembered = assertIs<PersistentMemoryRememberResult.Remembered>(
+            memoryComposition.remember(memory)
+        ).ownership
+        val memoryFound = assertIs<EncryptedPersistentMemoryInspectResult.Found>(
+            memoryComposition.inspectResult(memory.id)
+        )
+        assertEquals(memory, memoryFound.snapshot.record)
+        assertEquals(remembered.generation, memoryFound.snapshot.generation)
+
+        val knowledgeStoreId = PersistentStoreId("encrypted-knowledge-exact-read")
+        val knowledgeComposition = assertIs<EncryptedPersistentKnowledgeOpenResult.Opened>(
+            EncryptedPersistentKnowledgeComposition.open(
+                foundation(),
+                encryptedStore(backend, knowledgeStoreId, dynamicResolver),
+                dekRef
+            )
+        ).composition
+        val knowledge = KnowledgeItem(
+            id = KnowledgeItemId("knowledge-exact-read"),
+            origin = KnowledgeOrigin.Declared(KnowledgeSourceId("declared")),
+            content = "exact knowledge read",
+            createdAt = Instant.parse("2026-09-17T00:01:00Z")
+        )
+        assertEquals(
+            EncryptedPersistentKnowledgeInspectResult.Missing,
+            knowledgeComposition.inspectResult(knowledge.id)
+        )
+        val created = assertIs<PersistentKnowledgeCreateResult.Created>(
+            knowledgeComposition.create(knowledge)
+        ).ownership
+        val knowledgeFound = assertIs<EncryptedPersistentKnowledgeInspectResult.Found>(
+            knowledgeComposition.inspectResult(knowledge.id)
+        )
+        assertEquals(knowledge, knowledgeFound.snapshot.item)
+        assertEquals(created.generation, knowledgeFound.snapshot.generation)
+
+        dekAvailable = false
+
+        val memoryUnavailable =
+            assertIs<EncryptedPersistentMemoryInspectResult.EncryptionUnavailable>(
+                memoryComposition.inspectResult(memory.id)
+            )
+        assertEquals(
+            CognitiveEncryptionFailureCategory.DEK_MISSING,
+            memoryUnavailable.category
+        )
+
+        val knowledgeUnavailable =
+            assertIs<EncryptedPersistentKnowledgeInspectResult.EncryptionUnavailable>(
+                knowledgeComposition.inspectResult(knowledge.id)
+            )
+        assertEquals(
+            CognitiveEncryptionFailureCategory.DEK_MISSING,
+            knowledgeUnavailable.category
+        )
+    }
+
+    @Test
+    fun encrypted_reopened_exact_snapshot_can_be_removed_without_original_ownership_handle() {
+        val backend = InMemoryPersistentRecordBackend()
+        val storeId = PersistentStoreId("encrypted-memory-exact-remove")
+        val first = openMemory(backend, storeId)
+        val remembered = assertIs<PersistentMemoryRememberResult.Remembered>(
+            first.remember(memoryRecord("memory-exact", "first"))
+        )
+        val snapshot = first.inspect(remembered.ownership.record.id)!!
+
+        val reopened = openMemory(backend, storeId)
+        assertEquals(snapshot, reopened.inspect(snapshot.record.id))
+        assertIs<PersistentMemoryMutationResult.Committed>(reopened.removeExact(snapshot))
+        assertFalse(reopened.contains(snapshot.record.id))
+        assertFalse(openMemory(backend, storeId).contains(snapshot.record.id))
+    }
+
+    @Test
+    fun encrypted_stale_snapshot_cannot_remove_newer_reused_record_generation() {
+        val backend = InMemoryPersistentRecordBackend()
+        val storeId = PersistentStoreId("encrypted-memory-stale-remove")
+        val composition = openMemory(backend, storeId)
+        val first = assertIs<PersistentMemoryRememberResult.Remembered>(
+            composition.remember(memoryRecord("memory-reused", "first"))
+        )
+        val staleSnapshot = composition.inspect(first.ownership.record.id)!!
+        assertIs<PersistentMemoryMutationResult.Committed>(first.ownership.remove())
+        val replacement = assertIs<PersistentMemoryRememberResult.Remembered>(
+            composition.remember(memoryRecord("memory-reused", "replacement"))
+        )
+        val live = composition.inspect(replacement.ownership.record.id)!!
+
+        assertIs<PersistentMemoryMutationResult.Rejected>(composition.removeExact(staleSnapshot))
+        assertEquals(live, composition.inspect(live.record.id))
+        assertEquals(live, openMemory(backend, storeId).inspect(live.record.id))
+    }
+
+    @Test
+    fun encrypted_failed_exact_durable_remove_keeps_local_and_reopened_memory_live() {
+        val backend = InMemoryPersistentRecordBackend()
+        val storeId = PersistentStoreId("encrypted-memory-failed-remove")
+        val composition = openMemory(backend, storeId)
+        val remembered = assertIs<PersistentMemoryRememberResult.Remembered>(
+            composition.remember(memoryRecord("memory-failed", "survives"))
+        )
+        val snapshot = composition.inspect(remembered.ownership.record.id)!!
+        backend.failNextCommit()
+
+        assertIs<PersistentMemoryMutationResult.Failed>(composition.removeExact(snapshot))
+        assertEquals(snapshot, composition.inspect(snapshot.record.id))
+        assertEquals(snapshot, openMemory(backend, storeId).inspect(snapshot.record.id))
+    }
+
+    @Test
     fun missing_dek_fails_reopen_closed_instead_of_restoring_empty_memory() {
         val backend = InMemoryPersistentRecordBackend()
         val storeId = PersistentStoreId("encrypted-memory-missing-dek")
@@ -151,6 +295,24 @@ class EncryptedPersistentMemoryKnowledgeCompositionContractTest {
         )
         assertEquals(CognitiveEncryptionFailureCategory.DEK_MISSING, unavailable.category)
     }
+
+    private fun openMemory(
+        backend: InMemoryPersistentRecordBackend,
+        storeId: PersistentStoreId
+    ): EncryptedPersistentMemoryComposition = assertIs<EncryptedPersistentMemoryOpenResult.Opened>(
+        EncryptedPersistentMemoryComposition.open(
+            foundation(),
+            encryptedStore(backend, storeId, resolver(material)),
+            dekRef
+        )
+    ).composition
+
+    private fun memoryRecord(id: String, content: String): MemoryRecord = MemoryRecord(
+        id = MemoryRecordId(id),
+        provenance = MemoryProvenance(MemorySourceId("conversation")),
+        content = content,
+        createdAt = Instant.parse("2026-09-17T00:00:00Z")
+    )
 
     private fun encryptedStore(
         backend: InMemoryPersistentRecordBackend,

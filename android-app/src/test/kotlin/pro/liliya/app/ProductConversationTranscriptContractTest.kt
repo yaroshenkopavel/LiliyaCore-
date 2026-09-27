@@ -5,6 +5,9 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import org.junit.Test
+import pro.liliya.android.runtime.ProductConversationSnapshot
+import pro.liliya.android.runtime.ProductConversationSnapshotMessage
+import pro.liliya.android.runtime.ProductConversationSnapshotRole
 
 class ProductConversationTranscriptContractTest {
     @Test
@@ -90,6 +93,26 @@ class ProductConversationTranscriptContractTest {
         transcript.appendUser("Второй")
         assertFalse(transcript.rollbackLastUser("другой текст"))
         assertEquals("Вы: Первый\n\nЛилия: Ответ\n\nВы: Второй", transcript.render())
+    }
+
+    @Test
+    fun durable_product_snapshot_restores_the_exact_visible_transcript() {
+        val restored = ProductConversationTranscript.restore(
+            ProductConversationSnapshot(
+                listOf(
+                    ProductConversationSnapshotMessage(
+                        ProductConversationSnapshotRole.USER,
+                        "Привет"
+                    ),
+                    ProductConversationSnapshotMessage(
+                        ProductConversationSnapshotRole.ASSISTANT,
+                        "Здравствуйте"
+                    )
+                )
+            )
+        )
+
+        assertEquals("Вы: Привет\n\nЛилия: Здравствуйте", restored.render())
     }
 
     @Test

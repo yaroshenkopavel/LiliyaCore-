@@ -35,6 +35,7 @@ class LiliyaActivityFirstRunAcquisitionRecreationInstrumentedTest {
 
         val selected = ProductionAndroidLocalModelSelection.importSelected(
             directory = modelDirectory,
+            maxImportBytes = 1024,
             openInput = { ByteArrayInputStream(byteArrayOf(1, 2, 3, 4)) }
         )
         assertIs<ProductionAndroidLocalModelSelectionResult.Selected>(selected)

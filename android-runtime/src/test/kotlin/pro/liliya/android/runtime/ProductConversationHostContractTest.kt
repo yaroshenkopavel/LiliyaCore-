@@ -36,6 +36,101 @@ import pro.liliya.core.reflection.ReflectionRecordId
 class ProductConversationHostContractTest {
 
     @Test
+    fun durable_reconstruction_with_odd_limit_keeps_only_complete_newest_pair() {
+        val session = CognitiveConversationSessionId("durable-odd-limit")
+        val snapshot = CognitiveConversationContextSnapshot(
+            sessionId = session,
+            messages = listOf(
+                pro.liliya.core.cognitive.CognitiveConversationContextMessage(
+                    pro.liliya.core.cognitive.CognitiveConversationSequence(1),
+                    CognitiveConversationRole.USER,
+                    "u1"
+                ),
+                pro.liliya.core.cognitive.CognitiveConversationContextMessage(
+                    pro.liliya.core.cognitive.CognitiveConversationSequence(2),
+                    CognitiveConversationRole.ASSISTANT,
+                    "a1"
+                ),
+                pro.liliya.core.cognitive.CognitiveConversationContextMessage(
+                    pro.liliya.core.cognitive.CognitiveConversationSequence(3),
+                    CognitiveConversationRole.USER,
+                    "u2"
+                ),
+                pro.liliya.core.cognitive.CognitiveConversationContextMessage(
+                    pro.liliya.core.cognitive.CognitiveConversationSequence(4),
+                    CognitiveConversationRole.ASSISTANT,
+                    "a2"
+                )
+            )
+        )
+
+        val reconstructed = requireNotNull(
+            reconstructDurableProductConversation(
+                sessionId = session,
+                snapshot = snapshot,
+                maxRetainedMessages = 3,
+                maxRetainedCharacters = 64,
+                maxMessageCharacters = 16
+            )
+        )
+
+        assertEquals(listOf("u2", "a2"), reconstructed.messages.map { it.content })
+        assertEquals(listOf(3L, 4L), reconstructed.messages.map { it.sequence.value })
+    }
+
+    @Test
+    fun durable_reconstruction_rejects_partial_or_role_malformed_history() {
+        val session = CognitiveConversationSessionId("durable-malformed")
+        val partial = CognitiveConversationContextSnapshot(
+            sessionId = session,
+            messages = listOf(
+                pro.liliya.core.cognitive.CognitiveConversationContextMessage(
+                    pro.liliya.core.cognitive.CognitiveConversationSequence(1),
+                    CognitiveConversationRole.USER,
+                    "orphan"
+                )
+            )
+        )
+        val wrongRoles = CognitiveConversationContextSnapshot(
+            sessionId = session,
+            messages = listOf(
+                pro.liliya.core.cognitive.CognitiveConversationContextMessage(
+                    pro.liliya.core.cognitive.CognitiveConversationSequence(1),
+                    CognitiveConversationRole.ASSISTANT,
+                    "wrong"
+                ),
+                pro.liliya.core.cognitive.CognitiveConversationContextMessage(
+                    pro.liliya.core.cognitive.CognitiveConversationSequence(2),
+                    CognitiveConversationRole.USER,
+                    "wrong"
+                )
+            )
+        )
+
+        assertEquals(
+            null,
+            reconstructDurableProductConversation(
+                sessionId = session,
+                snapshot = partial,
+                maxRetainedMessages = 4,
+                maxRetainedCharacters = 64,
+                maxMessageCharacters = 16
+            )
+        )
+        assertEquals(
+            null,
+            reconstructDurableProductConversation(
+                sessionId = session,
+                snapshot = wrongRoles,
+                maxRetainedMessages = 4,
+                maxRetainedCharacters = 64,
+                maxMessageCharacters = 16
+            )
+        )
+    }
+
+
+    @Test
     fun constructor_rejects_non_positive_bounds() {
         assertFailsWith<IllegalArgumentException> {
             ProductConversationHost(
@@ -268,6 +363,35 @@ class ProductConversationHostContractTest {
         assertEquals(1, processedCalls)
         assertEquals("explicit-follow-up", seen?.id?.value)
         assertEquals(11L, seen?.generation?.value)
+    }
+
+    @Test
+    fun product_snapshot_exposes_only_committed_bounded_transcript_and_is_detached() {
+        val host = host(
+            runner = ProductConversationTurnRunner { _, _, _ -> completed("reply") }
+        )
+
+        assertIs<ProductConversationResult.Completed>(
+            host.send(ProductChatRequest("user", ProductChatGenerationMode.ONE_SHOT))
+        )
+
+        val snapshot = host.snapshot()
+        assertEquals(
+            listOf(
+                ProductConversationSnapshotRole.USER to "user",
+                ProductConversationSnapshotRole.ASSISTANT to "reply"
+            ),
+            snapshot.messages.map { it.role to it.text }
+        )
+
+        assertEquals(ProductConversationClearResult.Cleared, host.clear())
+        assertTrue(host.snapshot().messages.isEmpty())
+        assertEquals(
+            listOf("user", "reply"),
+            snapshot.messages.map { it.text }
+        )
+        assertFalse("user" in snapshot.messages.first().toString())
+        assertFalse("reply" in snapshot.messages.last().toString())
     }
 
     @Test
@@ -611,6 +735,249 @@ class ProductConversationHostContractTest {
         assertFalse("PRIVATE USER" in host.toString())
         assertFalse("PRIVATE REPLY" in host.toString())
         assertFalse("PRIVATE REPLY" in result.toString())
+    }
+
+
+    @Test
+    fun durable_host_reopens_committed_pair_after_recreation() {
+        val session = CognitiveConversationSessionId("durable-session")
+        val persistence = InMemoryConversationPersistence()
+        val firstSnapshots = mutableListOf<CognitiveConversationContextSnapshot>()
+
+        val first = ProductConversationHost(
+            sessionId = session,
+            maxInputChars = 64,
+            maxTurnIdChars = 64,
+            maxRetainedMessages = 8,
+            maxRetainedCharacters = 256,
+            maxMessageCharacters = 64,
+            turnIds = ProductConversationTurnIdSource { "durable-turn-1" },
+            turns = ProductConversationTurnRunner { _, conversation, _ ->
+                firstSnapshots += conversation
+                completed("first reply")
+            },
+            initialSnapshot = persistence.reopen(session),
+            persistence = persistence,
+            timestamps = pro.liliya.core.cognitive.CognitiveTimestampSource {
+                Instant.parse("2026-09-18T00:00:00Z")
+            }
+        )
+
+        val firstResult = assertIs<ProductConversationResult.Completed>(
+            first.send(ProductChatRequest("first user", ProductChatGenerationMode.ONE_SHOT))
+        )
+        assertEquals(ProductConversationCommitStatus.COMMITTED, firstResult.conversationCommit)
+        assertTrue(firstSnapshots.single().messages.isEmpty())
+
+        val secondSnapshots = mutableListOf<CognitiveConversationContextSnapshot>()
+        val second = ProductConversationHost(
+            sessionId = session,
+            maxInputChars = 64,
+            maxTurnIdChars = 64,
+            maxRetainedMessages = 8,
+            maxRetainedCharacters = 256,
+            maxMessageCharacters = 64,
+            turnIds = ProductConversationTurnIdSource { "durable-turn-2" },
+            turns = ProductConversationTurnRunner { _, conversation, _ ->
+                secondSnapshots += conversation
+                completed("second reply")
+            },
+            initialSnapshot = persistence.reopen(session),
+            persistence = persistence,
+            timestamps = pro.liliya.core.cognitive.CognitiveTimestampSource {
+                Instant.parse("2026-09-18T00:00:01Z")
+            }
+        )
+
+        assertIs<ProductConversationResult.Completed>(
+            second.send(ProductChatRequest("second user", ProductChatGenerationMode.ONE_SHOT))
+        )
+
+        assertEquals(
+            listOf("first user", "first reply"),
+            secondSnapshots.single().messages.map { it.content }
+        )
+        assertEquals(
+            listOf(1L, 2L),
+            secondSnapshots.single().messages.map { it.sequence.value }
+        )
+    }
+
+    @Test
+    fun durable_persistence_failure_does_not_commit_local_transcript() {
+        val session = CognitiveConversationSessionId("durable-failure")
+        val snapshots = mutableListOf<CognitiveConversationContextSnapshot>()
+        val persistence = object : ProductConversationPersistencePort {
+            override fun reopen(
+                sessionId: CognitiveConversationSessionId
+            ): CognitiveConversationContextSnapshot? = null
+
+            override fun appendPair(
+                sessionId: CognitiveConversationSessionId,
+                user: pro.liliya.core.cognitive.CognitiveConversationContextMessage,
+                assistant: pro.liliya.core.cognitive.CognitiveConversationContextMessage,
+                persistedAt: Instant
+            ): ProductConversationPersistenceAppendResult =
+                ProductConversationPersistenceAppendResult.Rejected
+        }
+
+        val host = ProductConversationHost(
+            sessionId = session,
+            maxInputChars = 64,
+            maxTurnIdChars = 64,
+            maxRetainedMessages = 8,
+            maxRetainedCharacters = 256,
+            maxMessageCharacters = 64,
+            turnIds = ProductConversationTurnIdSource { "durable-failure-turn" },
+            turns = ProductConversationTurnRunner { _, conversation, _ ->
+                snapshots += conversation
+                completed("reply")
+            },
+            initialSnapshot = null,
+            persistence = persistence,
+            timestamps = pro.liliya.core.cognitive.CognitiveTimestampSource {
+                Instant.parse("2026-09-18T00:00:00Z")
+            }
+        )
+
+        val first = assertIs<ProductConversationResult.Completed>(
+            host.send(ProductChatRequest("first", ProductChatGenerationMode.ONE_SHOT))
+        )
+        assertEquals(
+            ProductConversationCommitStatus.NOT_RETAINED_PERSISTENCE_FAILURE,
+            first.conversationCommit
+        )
+
+        val second = assertIs<ProductConversationResult.Completed>(
+            host.send(ProductChatRequest("second", ProductChatGenerationMode.ONE_SHOT))
+        )
+        assertEquals(
+            ProductConversationCommitStatus.NOT_RETAINED_PERSISTENCE_FAILURE,
+            second.conversationCommit
+        )
+        assertTrue(snapshots[0].messages.isEmpty())
+        assertTrue(snapshots[1].messages.isEmpty())
+    }
+
+    @Test
+    fun distinct_durable_session_ids_never_cross_contaminate_context() {
+        val persistence = InMemoryConversationPersistence()
+        val oldSession = CognitiveConversationSessionId("old-session")
+        val newSession = CognitiveConversationSessionId("new-session")
+
+        val oldHost = ProductConversationHost(
+            sessionId = oldSession,
+            maxInputChars = 64,
+            maxTurnIdChars = 64,
+            maxRetainedMessages = 8,
+            maxRetainedCharacters = 256,
+            maxMessageCharacters = 64,
+            turnIds = ProductConversationTurnIdSource { "old-turn" },
+            turns = ProductConversationTurnRunner { _, _, _ -> completed("old-reply") },
+            initialSnapshot = persistence.reopen(oldSession),
+            persistence = persistence,
+            timestamps = pro.liliya.core.cognitive.CognitiveTimestampSource {
+                Instant.parse("2026-09-18T00:00:00Z")
+            }
+        )
+        assertIs<ProductConversationResult.Completed>(
+            oldHost.send(ProductChatRequest("old-user", ProductChatGenerationMode.ONE_SHOT))
+        )
+
+        val newContexts = mutableListOf<CognitiveConversationContextSnapshot>()
+        val newHost = ProductConversationHost(
+            sessionId = newSession,
+            maxInputChars = 64,
+            maxTurnIdChars = 64,
+            maxRetainedMessages = 8,
+            maxRetainedCharacters = 256,
+            maxMessageCharacters = 64,
+            turnIds = ProductConversationTurnIdSource { "new-turn" },
+            turns = ProductConversationTurnRunner { _, conversation, _ ->
+                newContexts += conversation
+                completed("new-reply")
+            },
+            initialSnapshot = persistence.reopen(newSession),
+            persistence = persistence,
+            timestamps = pro.liliya.core.cognitive.CognitiveTimestampSource {
+                Instant.parse("2026-09-18T00:00:01Z")
+            }
+        )
+        assertIs<ProductConversationResult.Completed>(
+            newHost.send(ProductChatRequest("new-user", ProductChatGenerationMode.ONE_SHOT))
+        )
+
+        assertTrue(newContexts.single().messages.isEmpty())
+        assertEquals(
+            listOf("old-user", "old-reply"),
+            requireNotNull(persistence.reopen(oldSession)).messages.map { it.content }
+        )
+        assertEquals(
+            listOf("new-user", "new-reply"),
+            requireNotNull(persistence.reopen(newSession)).messages.map { it.content }
+        )
+    }
+
+    @Test
+    fun durable_clear_requires_explicit_new_session_and_preserves_current_history() {
+        val session = CognitiveConversationSessionId("durable-clear")
+        val persistence = InMemoryConversationPersistence()
+        val snapshots = mutableListOf<CognitiveConversationContextSnapshot>()
+        var calls = 0
+
+        val host = ProductConversationHost(
+            sessionId = session,
+            maxInputChars = 64,
+            maxTurnIdChars = 64,
+            maxRetainedMessages = 8,
+            maxRetainedCharacters = 256,
+            maxMessageCharacters = 64,
+            turnIds = ProductConversationTurnIdSource { "durable-clear-turn-" + calls },
+            turns = ProductConversationTurnRunner { _, conversation, _ ->
+                snapshots += conversation
+                calls += 1
+                completed("reply-" + calls)
+            },
+            initialSnapshot = persistence.reopen(session),
+            persistence = persistence,
+            timestamps = pro.liliya.core.cognitive.CognitiveTimestampSource {
+                Instant.parse("2026-09-18T00:00:00Z").plusSeconds(calls.toLong())
+            }
+        )
+
+        assertIs<ProductConversationResult.Completed>(
+            host.send(ProductChatRequest("before", ProductChatGenerationMode.ONE_SHOT))
+        )
+        assertEquals(ProductConversationClearResult.NewSessionRequired, host.clear())
+        assertIs<ProductConversationResult.Completed>(
+            host.send(ProductChatRequest("after", ProductChatGenerationMode.ONE_SHOT))
+        )
+
+        assertEquals(
+            listOf("before", "reply-1"),
+            snapshots.last().messages.map { it.content }
+        )
+    }
+
+    private class InMemoryConversationPersistence : ProductConversationPersistencePort {
+        private val snapshots =
+            mutableMapOf<CognitiveConversationSessionId, CognitiveConversationContextSnapshot>()
+
+        override fun reopen(
+            sessionId: CognitiveConversationSessionId
+        ): CognitiveConversationContextSnapshot? = snapshots[sessionId]
+
+        override fun appendPair(
+            sessionId: CognitiveConversationSessionId,
+            user: pro.liliya.core.cognitive.CognitiveConversationContextMessage,
+            assistant: pro.liliya.core.cognitive.CognitiveConversationContextMessage,
+            persistedAt: Instant
+        ): ProductConversationPersistenceAppendResult {
+            val current = snapshots[sessionId]
+            val messages = (current?.messages ?: emptyList()) + user + assistant
+            snapshots[sessionId] = CognitiveConversationContextSnapshot(sessionId, messages)
+            return ProductConversationPersistenceAppendResult.Committed
+        }
     }
 
     private fun host(

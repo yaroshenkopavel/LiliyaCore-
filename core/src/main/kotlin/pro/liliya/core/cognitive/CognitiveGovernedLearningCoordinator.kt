@@ -404,11 +404,6 @@ internal class CognitiveGovernedLearningCoordinator(
                     createdAt = prepared.payloadCreatedAt
                 )
             )
-            else -> return compensateApplicationAndDecision(
-                applicationOwnership,
-                decisionOwnership,
-                CognitiveGovernedLearningFailure.GOVERNANCE_TARGET_REJECTED
-            )
         }
 
         val mutationOwnership = when (

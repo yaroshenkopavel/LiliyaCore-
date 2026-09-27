@@ -46,6 +46,7 @@ import pro.liliya.core.personality.PersonalityOwnership
 import pro.liliya.core.personality.PersonalityProfile
 import pro.liliya.core.personality.PersonalityProfileId
 import pro.liliya.core.personality.PersonalityProfileSnapshot
+import pro.liliya.core.personality.PersonalityProvenance
 import pro.liliya.core.personality.PersonalitySourceId
 import pro.liliya.core.personality.PersonalitySourceReference
 import pro.liliya.core.personality.PersonalityTarget
@@ -302,6 +303,100 @@ class AndroidHeartProductionPersonaBootstrapContractTest {
             ),
             second.installedPersonality.profile.target
         )
+    }
+
+
+    @Test
+    fun durable_mode_reuses_exact_restored_personality_generation_without_install() {
+        val identity = selfIdentity()
+        val selfGeneration = SelfGeneration(1)
+        val expected = PersonalityProfile(
+            id = PersonalityProfileId("liliya-personality"),
+            target = PersonalityTarget.Self(identity.id, selfGeneration),
+            attributes = definition().personalityAttributes,
+            provenance = PersonalityProvenance(
+                sourceId = PersonalitySourceId("product-persona"),
+                sourceReference = PersonalitySourceReference("liliya-v0.1")
+            ),
+            createdAt = Instant.parse("2026-09-08T00:00:01Z")
+        )
+        val restored = PersonalityProfileSnapshot(
+            profile = expected,
+            generation = PersonalityGeneration(7)
+        )
+        var installCalls = 0
+
+        val result = assertIs<AndroidHeartProductionPersonaCreateResult.Ready>(
+            AndroidHeartProductionPersonaBootstrap.createInternal(
+                definition = definition(),
+                self = exactSelfPort(identity, selfGeneration),
+                personality = object : AndroidHeartProductionPersonaPersonalityPort {
+                    override fun install(profile: PersonalityProfile): PersonalityInstallResult {
+                        installCalls += 1
+                        error("restored durable personality must not be reinstalled")
+                    }
+
+                    override fun inspect(id: PersonalityProfileId): PersonalityProfileSnapshot? =
+                        restored.takeIf { id == expected.id }
+
+                    override fun snapshotEntries(): List<PersonalityProfileSnapshot> =
+                        listOf(restored)
+                },
+                reuseExistingPersonality = true
+            )
+        ).composition
+
+        assertEquals(0, installCalls)
+        assertEquals(PersonalityGeneration(7), result.installedPersonality.generation)
+        assertEquals(restored, result.installedPersonality)
+    }
+
+    @Test
+    fun durable_mode_rejects_restored_personality_that_does_not_match_declaration() {
+        val identity = selfIdentity()
+        val selfGeneration = SelfGeneration(1)
+        val mismatched = PersonalityProfileSnapshot(
+            profile = PersonalityProfile(
+                id = PersonalityProfileId("liliya-personality"),
+                target = PersonalityTarget.Self(identity.id, selfGeneration),
+                attributes = listOf(
+                    PersonalityAttribute(
+                        PersonalityAttributeKey("tone"),
+                        PersonalityAttributeValue("unexpected durable value")
+                    )
+                ),
+                provenance = PersonalityProvenance(
+                    sourceId = PersonalitySourceId("product-persona"),
+                    sourceReference = PersonalitySourceReference("liliya-v0.1")
+                ),
+                createdAt = Instant.parse("2026-09-08T00:00:01Z")
+            ),
+            generation = PersonalityGeneration(7)
+        )
+        var installCalls = 0
+
+        val result = assertIs<AndroidHeartProductionPersonaCreateResult.Rejected>(
+            AndroidHeartProductionPersonaBootstrap.createInternal(
+                definition = definition(),
+                self = exactSelfPort(identity, selfGeneration),
+                personality = object : AndroidHeartProductionPersonaPersonalityPort {
+                    override fun install(profile: PersonalityProfile): PersonalityInstallResult {
+                        installCalls += 1
+                        return PersonalityInstallResult.Rejected("must not install")
+                    }
+
+                    override fun inspect(id: PersonalityProfileId): PersonalityProfileSnapshot? =
+                        mismatched
+
+                    override fun snapshotEntries(): List<PersonalityProfileSnapshot> =
+                        listOf(mismatched)
+                },
+                reuseExistingPersonality = true
+            )
+        )
+
+        assertEquals(AndroidHeartProductionPersonaCreateFailure.PERSONALITY_SNAPSHOT_MISMATCH, result.reason)
+        assertEquals(0, installCalls)
     }
 
     @Test
