@@ -112,7 +112,9 @@ internal class OfflineSemanticClaimVectorProjectionDiscovery(
                             source = manifest.source
                         ),
                         candidates = routed.candidates,
-                        truncated = routed.truncated
+                        truncated = routed.truncated,
+                        routingNodeReads = routed.routingNodeReads,
+                        shardReads = routed.shardReads
                     )
             }
         } finally {

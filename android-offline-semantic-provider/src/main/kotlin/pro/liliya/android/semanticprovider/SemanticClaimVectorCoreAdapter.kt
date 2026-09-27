@@ -2,6 +2,7 @@ package pro.liliya.android.semanticprovider
 
 import pro.liliya.core.semantic.SemanticClaimVectorDiscoveryPort
 import pro.liliya.core.semantic.SemanticClaimVectorProviderCandidate
+import pro.liliya.core.semantic.SemanticClaimVectorProviderDiagnostics
 import pro.liliya.core.semantic.SemanticClaimVectorProviderIdentity
 import pro.liliya.core.semantic.SemanticClaimVectorProviderResult
 import pro.liliya.core.semantic.SemanticClaimSourceCheckpoint
@@ -31,8 +32,15 @@ internal sealed interface OfflineSemanticClaimVectorDiscoveryResult {
     data class Ranked(
         val identity: OfflineSemanticClaimVectorIdentity,
         val candidates: List<OfflineSemanticClaimVectorCandidate>,
-        val truncated: Boolean = false
-    ) : OfflineSemanticClaimVectorDiscoveryResult
+        val truncated: Boolean = false,
+        val routingNodeReads: Int = 0,
+        val shardReads: Int = 0
+    ) : OfflineSemanticClaimVectorDiscoveryResult {
+        init {
+            require(routingNodeReads >= 0)
+            require(shardReads >= 0)
+        }
+    }
 
     data class Unavailable(
         val kind: SemanticProviderFailureKind,
@@ -121,7 +129,11 @@ internal class OfflineSemanticClaimVectorDiscoveryAdapter(
                     similarity = it.similarity
                 )
             },
-            truncated = ranked.truncated
+            truncated = ranked.truncated,
+            diagnostics = SemanticClaimVectorProviderDiagnostics(
+                routingNodeReads = ranked.routingNodeReads,
+                shardReads = ranked.shardReads
+            )
         )
     }
 }

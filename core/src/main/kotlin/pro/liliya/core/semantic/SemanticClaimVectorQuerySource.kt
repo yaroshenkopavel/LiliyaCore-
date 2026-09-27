@@ -126,6 +126,8 @@ class SemanticClaimVectorQuerySource private constructor(
                 requestedCandidates = policy.maxCandidates,
                 providerCandidates = ranked.candidates.size,
                 providerTruncated = ranked.truncated,
+                routingNodeReads = ranked.diagnostics.routingNodeReads,
+                shardReads = ranked.diagnostics.shardReads,
                 staleCandidates = 0,
                 returnedCandidates = validated.size
             )

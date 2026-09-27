@@ -70,6 +70,8 @@ class SemanticClaimVectorProjectionDiscoveryContractTest {
             assertEquals(31L, result.identity.indexGeneration)
             assertEquals(reference("one", 4), result.candidates.single().reference)
             assertEquals(1.0, result.candidates.single().similarity, 1e-9)
+            assertTrue(result.routingNodeReads > 0)
+            assertTrue(result.shardReads > 0)
         } finally {
             vector.clear()
             query.clear()

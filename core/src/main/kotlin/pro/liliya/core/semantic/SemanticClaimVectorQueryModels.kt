@@ -25,6 +25,16 @@ data class SemanticClaimVectorProviderIdentity(
     }
 }
 
+data class SemanticClaimVectorProviderDiagnostics(
+    val routingNodeReads: Int = 0,
+    val shardReads: Int = 0
+) {
+    init {
+        require(routingNodeReads >= 0)
+        require(shardReads >= 0)
+    }
+}
+
 data class SemanticClaimVectorProviderCandidate(
     val reference: SemanticClaimVersionReference,
     val similarity: Double
@@ -36,7 +46,9 @@ sealed interface SemanticClaimVectorProviderResult {
     data class Ranked(
         val identity: SemanticClaimVectorProviderIdentity,
         val candidates: List<SemanticClaimVectorProviderCandidate>,
-        val truncated: Boolean = false
+        val truncated: Boolean = false,
+        val diagnostics: SemanticClaimVectorProviderDiagnostics =
+            SemanticClaimVectorProviderDiagnostics()
     ) : SemanticClaimVectorProviderResult
 
     data class Unavailable(val reason: String) : SemanticClaimVectorProviderResult {
@@ -69,6 +81,8 @@ data class SemanticClaimVectorAudit(
     val requestedCandidates: Int,
     val providerCandidates: Int,
     val providerTruncated: Boolean,
+    val routingNodeReads: Int,
+    val shardReads: Int,
     val staleCandidates: Int,
     val returnedCandidates: Int,
     val advisoryOnly: Boolean = true
@@ -76,6 +90,8 @@ data class SemanticClaimVectorAudit(
     init {
         require(requestedCandidates in 1..128)
         require(providerCandidates in 0..requestedCandidates)
+        require(routingNodeReads >= 0)
+        require(shardReads >= 0)
         require(staleCandidates >= 0)
         require(returnedCandidates in 0..providerCandidates)
         require(advisoryOnly)
