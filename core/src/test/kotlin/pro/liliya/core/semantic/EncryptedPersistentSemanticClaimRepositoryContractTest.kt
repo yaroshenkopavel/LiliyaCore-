@@ -271,6 +271,64 @@ class EncryptedPersistentSemanticClaimRepositoryContractTest {
         )
     }
 
+    @Test
+    fun relation_page_is_schema_filtered_bounded_and_cursor_paged() {
+        val backend = IndexedBackend()
+        val repository = openRepository(backend, "semantic-relation-page")
+        val one = claim("Russian", 1, "preferred_language", "episode-page-one")
+        val two = claim("Ukrainian", 1, "preferred_language", "episode-page-two")
+        val three = claim("Polish", 1, "preferred_language", "episode-page-three")
+        listOf(one, two, three).forEach {
+            assertIs<SemanticClaimStoreResult.Stored>(repository.storeClaim(it))
+        }
+
+        val firstRelation = SemanticClaimRelation(
+            type = SemanticClaimRelationType.CONTRADICTS,
+            source = SemanticClaimVersionReference(one.id, one.version),
+            target = SemanticClaimVersionReference(two.id, two.version),
+            recordedAt = Instant.parse("2026-09-24T22:00:00Z")
+        )
+        val secondRelation = SemanticClaimRelation(
+            type = SemanticClaimRelationType.SUPERSEDES,
+            source = SemanticClaimVersionReference(three.id, three.version),
+            target = SemanticClaimVersionReference(one.id, one.version),
+            recordedAt = Instant.parse("2026-09-24T22:01:00Z")
+        )
+        assertIs<SemanticRelationStoreResult.Stored>(repository.storeRelation(firstRelation))
+        assertIs<SemanticRelationStoreResult.Stored>(repository.storeRelation(secondRelation))
+
+        val firstPage = assertIs<SemanticRelationPageResult.Loaded>(
+            repository.relationPage(limit = 1)
+        )
+        assertEquals(
+            listOf(SemanticClaimRelationPersistentCodec.canonical(firstRelation)),
+            firstPage.relations
+        )
+        val cursor = firstPage.nextCursor
+        requireNotNull(cursor)
+
+        val secondPage = assertIs<SemanticRelationPageResult.Loaded>(
+            repository.relationPage(limit = 1, cursorExclusive = cursor)
+        )
+        assertEquals(listOf(secondRelation), secondPage.relations)
+        assertEquals(null, secondPage.nextCursor)
+    }
+
+    @Test
+    fun relation_page_returns_empty_when_only_claim_records_exist() {
+        val backend = IndexedBackend()
+        val repository = openRepository(backend, "semantic-relation-page-empty")
+        assertIs<SemanticClaimStoreResult.Stored>(
+            repository.storeClaim(
+                claim("Russian", 1, "preferred_language", "episode-page-empty")
+            )
+        )
+
+        val result = repository.relationPage(limit = 8)
+        assertEquals(SemanticClaimRelationPersistentCodec.schemaId, backend.lastPageSchemaId)
+        assertIs<SemanticRelationPageResult.Empty>(result)
+    }
+
     private fun claim(
         value: String,
         version: Long,
@@ -356,6 +414,7 @@ class EncryptedPersistentSemanticClaimRepositoryContractTest {
         private var highWatermark = 0L
         var corruptEntryId: PersistentEntityId? = null
         var pageLoadCalls: Int = 0
+        var lastPageSchemaId: pro.liliya.core.persistence.PersistentSchemaId? = null
 
         override fun load(storeId: PersistentStoreId): PersistentBackendLoadResult =
             PersistentBackendLoadResult.Failed("legacy load must not be used")
@@ -395,6 +454,7 @@ class EncryptedPersistentSemanticClaimRepositoryContractTest {
             request: PersistentBackendPageRequest
         ): PersistentBackendPageLoadResult {
             pageLoadCalls += 1
+            lastPageSchemaId = request.schemaId
             val ordered = entries.values
                 .filter {
                     request.schemaId == null ||
@@ -444,7 +504,7 @@ class EncryptedPersistentSemanticClaimRepositoryContractTest {
                 null
             }
 
-            return if (entries.isEmpty()) {
+            return if (page.isEmpty()) {
                 PersistentBackendPageLoadResult.Missing
             } else {
                 PersistentBackendPageLoadResult.Loaded(

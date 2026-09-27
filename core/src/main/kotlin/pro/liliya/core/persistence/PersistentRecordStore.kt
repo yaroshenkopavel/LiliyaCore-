@@ -302,8 +302,11 @@ class PersistentRecordStore private constructor(
         ) {
             PersistentBackendPageLoadResult.Missing -> {
                 return if (
-                    indexedEntryCount == 0L &&
-                    request.cursorExclusive == null
+                    request.schemaId != null ||
+                    (
+                        indexedEntryCount == 0L &&
+                            request.cursorExclusive == null
+                        )
                 ) {
                     PersistentRecordPageResult.Empty
                 } else {
@@ -343,7 +346,10 @@ class PersistentRecordStore private constructor(
         }
 
         if (loaded.entries.isEmpty()) {
-            return if (loaded.nextCursor == null && indexedEntryCount == 0L) {
+            return if (
+                loaded.nextCursor == null &&
+                (request.schemaId != null || indexedEntryCount == 0L)
+            ) {
                 PersistentRecordPageResult.Empty
             } else {
                 PersistentRecordPageResult.Corrupt

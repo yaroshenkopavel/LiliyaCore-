@@ -106,6 +106,10 @@ class PersistentRecordStoreContractTest {
                 revision += 1L
             }
             val ordered = entries.values
+                .filter {
+                    request.schemaId == null ||
+                        it.record.schemaId == request.schemaId
+                }
                 .map { PersistentRecordSnapshot(it.record, it.generation) }
                 .sortedWith(compareBy({ it.record.createdAt }, { it.record.id.value }))
             val filtered = ordered.filter { snapshot ->
@@ -417,6 +421,29 @@ class PersistentRecordStoreContractTest {
             )
         )
         assertTrue(failed.reason.contains("changed during enumeration"))
+    }
+
+    @Test
+    fun schema_filtered_page_can_be_empty_while_store_is_nonempty() {
+        val f = fixture()
+        val backend = LazyIndexedMutationFixtureBackend()
+        val store = open(
+            f,
+            backend,
+            PersistentStoreId("schema-filter-empty-page")
+        )
+        assertIs<PersistentInstallResult.Installed>(store.install(record("one")))
+
+        assertIs<PersistentRecordPageResult.Empty>(
+            store.snapshotPageResult(
+                PersistentBackendPageRequest(
+                    limit = 8,
+                    order = PersistentBackendPageOrder.OLDEST_FIRST,
+                    cursorExclusive = null,
+                    schemaId = PersistentSchemaId("different-schema")
+                )
+            )
+        )
     }
 
     @Test
