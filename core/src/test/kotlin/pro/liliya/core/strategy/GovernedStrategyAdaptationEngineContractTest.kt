@@ -245,6 +245,37 @@ class GovernedStrategyAdaptationEngineContractTest {
     }
 
     @Test
+    fun rollback_target_must_be_preexisting_and_unexpired() {
+        val expiredPrevious = previousStrategyRecord(expiresAt = t0.plusSeconds(1))
+        val expiredRollback = StrategyReference(
+            expiredPrevious.candidate.id,
+            expiredPrevious.candidate.version
+        )
+        assertIs<StrategyValidationExecutionResult.Rejected>(
+            engine(strategies = FakeStrategyRepository(expiredPrevious)).validate(
+                candidate(rollbackTo = expiredRollback),
+                policyId(),
+                policyVersion(),
+                t0.plusSeconds(2)
+            )
+        )
+
+        val futurePrevious = previousStrategyRecord(applicationAt = t0.plusSeconds(2))
+        val futureRollback = StrategyReference(
+            futurePrevious.candidate.id,
+            futurePrevious.candidate.version
+        )
+        assertIs<StrategyValidationExecutionResult.Rejected>(
+            engine(strategies = FakeStrategyRepository(futurePrevious)).validate(
+                candidate(rollbackTo = futureRollback),
+                policyId(),
+                policyVersion(),
+                t0.plusSeconds(2)
+            )
+        )
+    }
+
+    @Test
     fun stage_v_contract_contains_no_authority_execution_or_self_patch_material() {
         val fields = listOf(
             StrategyCandidate::class.java,
@@ -305,7 +336,11 @@ class GovernedStrategyAdaptationEngineContractTest {
     private fun policyId() = StrategyPolicyId("strategy-validation-v1")
     private fun policyVersion() = StrategyPolicyVersion(1)
 
-    private fun previousStrategyRecord(): StrategyAdaptationRecord {
+    private fun previousStrategyRecord(
+        createdAt: Instant = t0.minusSeconds(30),
+        expiresAt: Instant = t0.plusSeconds(600),
+        applicationAt: Instant = t0.minusSeconds(5)
+    ): StrategyAdaptationRecord {
         val previousCandidate = StrategyCandidate.create(
             version = StrategyVersion(7),
             source = StrategyReflectionSource(
@@ -322,8 +357,8 @@ class GovernedStrategyAdaptationEngineContractTest {
                 StrategyCompatibilityConstraint("runtime", "offline")
             ),
             rollbackTo = null,
-            createdAt = t0.minusSeconds(30),
-            expiresAt = t0.plusSeconds(600)
+            createdAt = createdAt,
+            expiresAt = expiresAt
         )
         val ref = StrategyReference(previousCandidate.id, previousCandidate.version)
         val validation = StrategyValidationRecord.create(
@@ -352,7 +387,7 @@ class GovernedStrategyAdaptationEngineContractTest {
             adoption = StrategyAdoptionReference(adoption.id, ref),
             target = previousCandidate.target,
             scope = previousCandidate.scope,
-            createdAt = t0.minusSeconds(5)
+            createdAt = applicationAt
         )
         return StrategyAdaptationRecord(previousCandidate, validation, adoption, intent)
     }

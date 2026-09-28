@@ -110,6 +110,16 @@ class GovernedStrategyAdaptationEngine(
                             "rollback strategy target or scope is incompatible"
                         )
                     }
+                    if (previous.applicationIntent.createdAt > candidate.createdAt) {
+                        return StrategyValidationExecutionResult.Rejected(
+                            "rollback strategy was not established before candidate creation"
+                        )
+                    }
+                    if (previous.candidate.isExpired(validatedAt)) {
+                        return StrategyValidationExecutionResult.Rejected(
+                            "rollback strategy is expired at validation time"
+                        )
+                    }
                 }
                 StrategyAdaptationLookupResult.Corrupt ->
                     return StrategyValidationExecutionResult.Rejected(
