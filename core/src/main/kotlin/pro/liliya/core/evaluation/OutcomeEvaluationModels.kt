@@ -145,8 +145,10 @@ data class OutcomeEvaluationRecord(
             evaluatorPolicyVersion: EvaluatorPolicyVersion,
             evaluatedAt: Instant
         ): OutcomeEvaluationRecord {
-            val canonicalEvidence = canonicalEvidence(evidence)
-            val canonicalValidation = validationReferences.distinct().sortedBy { it.value }
+            val canonicalEvidence = evidence.sortedWith(
+                compareBy<RawEvidenceReference>({ it.namespace.value }, { it.id.value })
+            )
+            val canonicalValidation = validationReferences.sortedBy { it.value }
             return OutcomeEvaluationRecord(
                 id = deterministicId(
                     version, plan, decision, authorizedActionId, expected, observed,

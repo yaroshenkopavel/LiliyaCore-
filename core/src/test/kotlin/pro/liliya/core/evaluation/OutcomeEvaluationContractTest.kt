@@ -68,6 +68,19 @@ class OutcomeEvaluationContractTest {
     }
 
     @Test
+    fun duplicate_evidence_and_validation_references_fail_closed() {
+        val duplicateEvidence = evidence("observation", "dup")
+        assertFailsWith<IllegalArgumentException> {
+            record(evidence = listOf(duplicateEvidence, duplicateEvidence))
+        }
+
+        val duplicateValidation = OutcomeValidationReference("validation-dup")
+        assertFailsWith<IllegalArgumentException> {
+            record(validations = listOf(duplicateValidation, duplicateValidation))
+        }
+    }
+
+    @Test
     fun oversized_provenance_reference_is_rejected_before_codec() {
         assertFailsWith<IllegalArgumentException> {
             record(
