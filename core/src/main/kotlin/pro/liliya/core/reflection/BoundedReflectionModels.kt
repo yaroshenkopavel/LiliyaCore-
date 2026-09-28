@@ -158,9 +158,27 @@ data class ReflectionFinding(
     val outcomes: List<ReflectionOutcomeReference> = emptyList()
 ) {
     init {
-        require(evidence.isNotEmpty() || outcomes.isNotEmpty()) { "reflection finding must retain explicit provenance" }
-        require(evidence.distinct().size == evidence.size) { "reflection finding evidence references must be unique" }
-        require(outcomes.distinct().size == outcomes.size) { "reflection finding outcome references must be unique" }
+        require(evidence.isNotEmpty() || outcomes.isNotEmpty()) {
+            "reflection finding must retain explicit provenance"
+        }
+        require(evidence.size <= ReflectionRequest.MAX_EVIDENCE_REFERENCES) {
+            "reflection finding has too many evidence references"
+        }
+        require(outcomes.size <= ReflectionRequest.MAX_OUTCOME_REFERENCES) {
+            "reflection finding has too many outcome references"
+        }
+        require(evidence.distinct().size == evidence.size) {
+            "reflection finding evidence references must be unique"
+        }
+        require(outcomes.distinct().size == outcomes.size) {
+            "reflection finding outcome references must be unique"
+        }
+        require(evidence == evidence.sortedWith(
+            compareBy<RawEvidenceReference>({ it.namespace.value }, { it.id.value })
+        )) { "reflection finding evidence references must use canonical order" }
+        require(outcomes == outcomes.sortedWith(
+            compareBy<ReflectionOutcomeReference>({ it.id.value }, { it.version.value })
+        )) { "reflection finding outcome references must use canonical order" }
     }
 }
 data class BoundedReflectionResult(

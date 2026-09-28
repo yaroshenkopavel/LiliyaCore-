@@ -190,6 +190,34 @@ class BoundedReflectionEngineContractTest {
     }
 
     @Test
+    fun finding_provenance_order_is_canonical_to_prevent_identity_aliasing() {
+        val secondEvidence = evidence("observation", "obs-2")
+        val firstOutcome = ReflectionOutcomeReference(
+            OutcomeEvaluationId("outcome-evaluation-" + "a".repeat(64)),
+            OutcomeEvaluationVersion(1)
+        )
+        val secondOutcome = ReflectionOutcomeReference(
+            OutcomeEvaluationId("outcome-evaluation-" + "b".repeat(64)),
+            OutcomeEvaluationVersion(1)
+        )
+
+        assertFailsWith<IllegalArgumentException> {
+            ReflectionFinding(
+                ReflectionFindingKind.EXPLANATION_CANDIDATE,
+                ReflectionFindingText("non canonical evidence"),
+                evidence = listOf(secondEvidence, raw)
+            )
+        }
+        assertFailsWith<IllegalArgumentException> {
+            ReflectionFinding(
+                ReflectionFindingKind.EXPLANATION_CANDIDATE,
+                ReflectionFindingText("non canonical outcomes"),
+                outcomes = listOf(secondOutcome, firstOutcome)
+            )
+        }
+    }
+
+    @Test
     fun finding_must_retain_explicit_provenance() {
         assertFailsWith<IllegalArgumentException> {
             ReflectionFinding(
