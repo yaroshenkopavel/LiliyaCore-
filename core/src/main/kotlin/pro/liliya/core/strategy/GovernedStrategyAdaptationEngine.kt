@@ -30,7 +30,8 @@ sealed interface StrategyApplicationIntentResult {
 
 class GovernedStrategyAdaptationEngine(
     private val reflections: BoundedReflectionRepository,
-    private val compatibilityEvaluator: StrategyCompatibilityEvaluator
+    private val compatibilityEvaluator: StrategyCompatibilityEvaluator,
+    private val strategies: StrategyAdaptationRepository
 ) {
     fun validate(
         candidate: StrategyCandidate,
@@ -80,6 +81,49 @@ class GovernedStrategyAdaptationEngine(
             return StrategyValidationExecutionResult.SourceInvalid(
                 "strategy proposal does not match exact reflection finding"
             )
+        }
+
+        candidate.rollbackTo?.let { rollback ->
+            when (val lookup = strategies.lookup(rollback.id)) {
+                StrategyAdaptationLookupResult.Missing ->
+                    return StrategyValidationExecutionResult.Rejected(
+                        "rollback strategy is missing"
+                    )
+                is StrategyAdaptationLookupResult.Found -> {
+                    val previous = lookup.snapshot.record
+                    if (previous.candidate.version != rollback.version) {
+                        return StrategyValidationExecutionResult.Rejected(
+                            "rollback strategy version mismatch"
+                        )
+                    }
+                    if (previous.adoption.disposition != StrategyAdoptionDisposition.ADOPT ||
+                        previous.applicationIntent == null
+                    ) {
+                        return StrategyValidationExecutionResult.Rejected(
+                            "rollback strategy is not an adopted application state"
+                        )
+                    }
+                    if (previous.candidate.target != candidate.target ||
+                        previous.candidate.scope != candidate.scope
+                    ) {
+                        return StrategyValidationExecutionResult.Rejected(
+                            "rollback strategy target or scope is incompatible"
+                        )
+                    }
+                }
+                StrategyAdaptationLookupResult.Corrupt ->
+                    return StrategyValidationExecutionResult.Rejected(
+                        "rollback strategy is corrupt"
+                    )
+                is StrategyAdaptationLookupResult.Incompatible ->
+                    return StrategyValidationExecutionResult.Rejected(lookup.reason)
+                is StrategyAdaptationLookupResult.EncryptionUnavailable ->
+                    return StrategyValidationExecutionResult.Rejected(
+                        "rollback strategy encryption unavailable"
+                    )
+                is StrategyAdaptationLookupResult.Failed ->
+                    return StrategyValidationExecutionResult.Rejected(lookup.reason)
+            }
         }
 
         if (candidate.isExpired(validatedAt)) {

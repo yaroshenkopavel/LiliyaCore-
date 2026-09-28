@@ -219,6 +219,32 @@ class GovernedStrategyAdaptationEngineContractTest {
     }
 
     @Test
+    fun rollback_target_must_exist_and_be_exact_adopted_compatible_state() {
+        val previous = previousStrategyRecord()
+        val rollback = StrategyReference(previous.candidate.id, previous.candidate.version)
+        val candidateWithRollback = candidate(rollbackTo = rollback)
+
+        assertIs<StrategyValidationExecutionResult.Rejected>(
+            engine(strategies = FakeStrategyRepository(null)).validate(
+                candidateWithRollback,
+                policyId(),
+                policyVersion(),
+                t0.plusSeconds(2)
+            )
+        )
+
+        val accepted = assertIs<StrategyValidationExecutionResult.Validated>(
+            engine(strategies = FakeStrategyRepository(previous)).validate(
+                candidateWithRollback,
+                policyId(),
+                policyVersion(),
+                t0.plusSeconds(2)
+            )
+        ).record
+        assertEquals(StrategyValidationDisposition.VALID, accepted.disposition)
+    }
+
+    @Test
     fun stage_v_contract_contains_no_authority_execution_or_self_patch_material() {
         val fields = listOf(
             StrategyCandidate::class.java,
@@ -241,6 +267,7 @@ class GovernedStrategyAdaptationEngineContractTest {
             StrategyCompatibilityConstraint("abi", "arm64-v8a"),
             StrategyCompatibilityConstraint("runtime", "offline")
         ),
+        rollbackTo: StrategyReference? = null,
         expiresAt: Instant = t0.plusSeconds(300)
     ): StrategyCandidate = StrategyCandidate.create(
         version = StrategyVersion(1),
@@ -254,7 +281,7 @@ class GovernedStrategyAdaptationEngineContractTest {
         scope = StrategyScope("semantic.retrieval.ranking"),
         proposal = proposal,
         compatibility = compatibility,
-        rollbackTo = null,
+        rollbackTo = rollbackTo,
         createdAt = t0.plusSeconds(1),
         expiresAt = expiresAt
     )
@@ -264,8 +291,9 @@ class GovernedStrategyAdaptationEngineContractTest {
         evaluator: StrategyCompatibilityEvaluator = all(
             StrategyConstraintDisposition.SATISFIED,
             "compatible"
-        )
-    ) = GovernedStrategyAdaptationEngine(repository, evaluator)
+        ),
+        strategies: StrategyAdaptationRepository = FakeStrategyRepository(null)
+    ) = GovernedStrategyAdaptationEngine(repository, evaluator, strategies)
 
     private fun all(
         disposition: StrategyConstraintDisposition,
@@ -276,6 +304,58 @@ class GovernedStrategyAdaptationEngineContractTest {
 
     private fun policyId() = StrategyPolicyId("strategy-validation-v1")
     private fun policyVersion() = StrategyPolicyVersion(1)
+
+    private fun previousStrategyRecord(): StrategyAdaptationRecord {
+        val previousCandidate = StrategyCandidate.create(
+            version = StrategyVersion(7),
+            source = StrategyReflectionSource(
+                resultId = reflection.result.id,
+                resultVersion = reflection.result.version,
+                findingIndex = 0,
+                findingKind = ReflectionFindingKind.STRATEGY_CANDIDATE_INPUT
+            ),
+            target = StrategyTarget.RETRIEVAL,
+            scope = StrategyScope("semantic.retrieval.ranking"),
+            proposal = StrategyText("prefer validated reciprocal retrieval"),
+            compatibility = listOf(
+                StrategyCompatibilityConstraint("abi", "arm64-v8a"),
+                StrategyCompatibilityConstraint("runtime", "offline")
+            ),
+            rollbackTo = null,
+            createdAt = t0.minusSeconds(30),
+            expiresAt = t0.plusSeconds(600)
+        )
+        val ref = StrategyReference(previousCandidate.id, previousCandidate.version)
+        val validation = StrategyValidationRecord.create(
+            candidate = ref,
+            disposition = StrategyValidationDisposition.VALID,
+            constraintResults = previousCandidate.compatibility.map {
+                StrategyConstraintResult(
+                    it,
+                    StrategyConstraintDisposition.SATISFIED,
+                    "compatible"
+                )
+            },
+            policyId = policyId(),
+            policyVersion = policyVersion(),
+            validatedAt = t0.minusSeconds(20)
+        )
+        val adoption = StrategyAdoptionRecord.create(
+            candidate = ref,
+            validation = StrategyValidationReference(validation.id, ref),
+            disposition = StrategyAdoptionDisposition.ADOPT,
+            rationale = "previous adopted strategy",
+            decidedAt = t0.minusSeconds(10)
+        )
+        val intent = StrategyApplicationIntent.create(
+            candidate = ref,
+            adoption = StrategyAdoptionReference(adoption.id, ref),
+            target = previousCandidate.target,
+            scope = previousCandidate.scope,
+            createdAt = t0.minusSeconds(5)
+        )
+        return StrategyAdaptationRecord(previousCandidate, validation, adoption, intent)
+    }
 
     private fun reflectionRecord(): BoundedReflectionRecord {
         val raw = RawEvidenceReference(
@@ -311,6 +391,28 @@ class GovernedStrategyAdaptationEngineContractTest {
             completedAt = t0.plusSeconds(1)
         )
         return BoundedReflectionRecord(request, result)
+    }
+
+    private class FakeStrategyRepository(
+        private val record: StrategyAdaptationRecord?
+    ) : StrategyAdaptationRepository {
+        override fun store(record: StrategyAdaptationRecord): StrategyAdaptationStoreResult =
+            error("not used")
+
+        override fun lookup(id: StrategyCandidateId): StrategyAdaptationLookupResult =
+            if (record == null || record.candidate.id != id) {
+                StrategyAdaptationLookupResult.Missing
+            } else {
+                StrategyAdaptationLookupResult.Found(
+                    StrategyAdaptationSnapshot(record, 1)
+                )
+            }
+
+        override fun page(
+            limit: Int,
+            order: PersistentBackendPageOrder,
+            cursorExclusive: PersistentBackendPageCursor?
+        ): StrategyAdaptationPageResult = error("not used")
     }
 
     private class FakeReflectionRepository(
