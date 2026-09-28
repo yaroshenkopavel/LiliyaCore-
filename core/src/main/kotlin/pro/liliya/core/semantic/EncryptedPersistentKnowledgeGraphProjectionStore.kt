@@ -54,10 +54,9 @@ class EncryptedPersistentKnowledgeGraphProjectionStore private constructor(
     }
 
     override fun readFragment(
-        buildEpoch: String,
         reference: SemanticClaimVersionReference
     ): KnowledgeGraphProjectionFragmentLoadResult {
-        val entityId = KnowledgeGraphProjectionCodec.fragmentEntityId(buildEpoch, reference)
+        val entityId = KnowledgeGraphProjectionCodec.fragmentEntityId(reference)
         val record = when (val loaded = openPlaintextRecord(entityId)) {
             PlaintextRecordLoadResult.Missing ->
                 return KnowledgeGraphProjectionFragmentLoadResult.Missing
@@ -79,10 +78,7 @@ class EncryptedPersistentKnowledgeGraphProjectionStore private constructor(
 
         return when (val decoded = KnowledgeGraphProjectionCodec.decodeFragment(record)) {
             is KnowledgeGraphProjectionFragmentDecodeResult.Decoded ->
-                if (
-                    decoded.fragment.buildEpoch == buildEpoch &&
-                    decoded.fragment.sourceClaim == reference
-                ) {
+                if (decoded.fragment.sourceClaim == reference) {
                     KnowledgeGraphProjectionFragmentLoadResult.Loaded(decoded.fragment)
                 } else {
                     KnowledgeGraphProjectionFragmentLoadResult.Corrupt

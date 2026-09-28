@@ -134,7 +134,6 @@ sealed interface KnowledgeGraphProjectionFragmentLoadResult {
 internal interface KnowledgeGraphProjectionReader {
     fun readManifest(): KnowledgeGraphProjectionManifestLoadResult
     fun readFragment(
-        buildEpoch: String,
         reference: SemanticClaimVersionReference
     ): KnowledgeGraphProjectionFragmentLoadResult
 }

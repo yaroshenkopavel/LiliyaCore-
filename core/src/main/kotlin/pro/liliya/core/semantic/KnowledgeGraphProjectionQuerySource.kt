@@ -81,7 +81,7 @@ class KnowledgeGraphProjectionQuerySource internal constructor(
             )
         }
 
-        val stored = when (val loaded = reader.readFragment(manifest.buildEpoch, reference)) {
+        val stored = when (val loaded = reader.readFragment(reference)) {
             KnowledgeGraphProjectionFragmentLoadResult.Missing ->
                 return KnowledgeGraphProjectionQueryResult.Missing
             KnowledgeGraphProjectionFragmentLoadResult.Corrupt ->

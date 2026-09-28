@@ -168,14 +168,14 @@ class KnowledgeGraphProjectionContractTest {
     }
 
     @Test
-    fun fragment_entity_id_isolated_by_build_epoch_for_same_claim_version() {
+    fun fragment_entity_id_is_stable_across_rebuild_epochs_for_same_claim_version() {
         val record = claim("claim-epoch-key", SemanticClaimObject.Text("tea"))
         val reference = SemanticClaimVersionReference(record.id, record.version)
 
-        val first = KnowledgeGraphProjectionCodec.fragmentEntityId("epoch-a", reference)
-        val second = KnowledgeGraphProjectionCodec.fragmentEntityId("epoch-b", reference)
+        val first = KnowledgeGraphProjectionCodec.fragmentEntityId(reference)
+        val second = KnowledgeGraphProjectionCodec.fragmentEntityId(reference)
 
-        assertTrue(first != second)
+        assertEquals(first, second)
     }
     @Test
     fun projection_codec_round_trips_manifest_and_fragment() {
@@ -329,7 +329,6 @@ class KnowledgeGraphProjectionContractTest {
             manifestResult
 
         override fun readFragment(
-            buildEpoch: String,
             reference: SemanticClaimVersionReference
         ): KnowledgeGraphProjectionFragmentLoadResult {
             fragmentReads += 1

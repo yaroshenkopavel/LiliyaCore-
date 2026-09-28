@@ -40,14 +40,8 @@ internal object KnowledgeGraphProjectionCodec {
     private val schemaVersion = PersistentSchemaVersion(1)
     val manifestEntityId = PersistentEntityId("knowledge-graph-projection-manifest-v1")
 
-    fun fragmentEntityId(
-        buildEpoch: String,
-        reference: SemanticClaimVersionReference
-    ): PersistentEntityId =
-        PersistentEntityId(
-            "knowledge-graph-fragment-" + epochDigest(buildEpoch) + "-" +
-                referenceDigest(reference)
-        )
+    fun fragmentEntityId(reference: SemanticClaimVersionReference): PersistentEntityId =
+        PersistentEntityId("knowledge-graph-fragment-" + referenceDigest(reference))
 
     fun encodeManifest(manifest: KnowledgeGraphProjectionManifest): PersistentRecord =
         record(manifestEntityId, manifest.buildEpoch) { out ->
@@ -115,7 +109,7 @@ internal object KnowledgeGraphProjectionCodec {
 
     fun encodeFragment(fragment: KnowledgeGraphStoredFragment): PersistentRecord =
         record(
-            fragmentEntityId(fragment.buildEpoch, fragment.sourceClaim),
+            fragmentEntityId(fragment.sourceClaim),
             fragment.buildEpoch
         ) { out ->
             out.writeInt(FRAGMENT_MAGIC)
@@ -262,12 +256,6 @@ internal object KnowledgeGraphProjectionCodec {
             .digest(epoch.toByteArray(StandardCharsets.UTF_8))
         val seconds = ByteBuffer.wrap(digest.copyOfRange(0, 8)).long and Long.MAX_VALUE
         return Instant.ofEpochSecond(seconds % 4_102_444_800L)
-    }
-
-    private fun epochDigest(epoch: String): String {
-        val digest = MessageDigest.getInstance("SHA-256")
-        put(digest, epoch)
-        return digest.digest().joinToString("") { "%02x".format(it) }
     }
 
     private fun referenceDigest(reference: SemanticClaimVersionReference): String {
