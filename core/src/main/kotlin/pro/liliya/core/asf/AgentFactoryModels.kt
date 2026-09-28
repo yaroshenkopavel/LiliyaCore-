@@ -36,7 +36,7 @@ data class AgentCognitiveScope(val domains: List<String>) {
     }
     fun isWithin(parent: AgentCognitiveScope): Boolean = domains.all { it in parent.domains }
     companion object {
-        fun create(domains: Collection<String>) = AgentCognitiveScope(domains.distinct().sorted())
+        fun create(domains: Collection<String>) = AgentCognitiveScope(domains.sorted())
     }
 }
 
@@ -145,7 +145,7 @@ data class AgentSpawnRequest(
     }
 }
 
-data class AgentAdmission(
+class AgentAdmission private constructor(
     val id: AgentAdmissionId,
     val requestId: AgentSpawnRequestId,
     val generation: AgentInstanceGeneration,
@@ -158,9 +158,24 @@ data class AgentAdmission(
             "agent admission id does not match deterministic content identity"
         }
     }
-    fun instanceId() = AgentInstanceId("asf-agent-" + AsfIdentity.sha256("instance-v1", id.value, generation.value.toString()))
+
+    fun instanceId() = AgentInstanceId(
+        "asf-agent-" + AsfIdentity.sha256("instance-v1", id.value, generation.value.toString())
+    )
+
+    override fun equals(other: Any?): Boolean =
+        other is AgentAdmission &&
+            id == other.id &&
+            requestId == other.requestId &&
+            generation == other.generation &&
+            admittedScope == other.admittedScope &&
+            admittedBudget == other.admittedBudget &&
+            admittedAt == other.admittedAt
+
+    override fun hashCode(): Int =
+        listOf(id, requestId, generation, admittedScope, admittedBudget, admittedAt).hashCode()
     companion object {
-        fun create(
+        internal fun create(
             requestId: AgentSpawnRequestId,
             generation: AgentInstanceGeneration,
             admittedScope: AgentCognitiveScope,
@@ -238,14 +253,24 @@ class AgentInstance private constructor(
         listOf(id, admissionId, generation, provenance, lifecycle).hashCode()
 
     companion object {
-        fun fromAdmission(admission: AgentAdmission, provenance: AgentSpawnProvenance): AgentInstance =
-            AgentInstance(
+        fun fromAdmission(admission: AgentAdmission, request: AgentSpawnRequest): AgentInstance {
+            require(admission.requestId == request.id) {
+                "agent admission must reference the exact spawn request"
+            }
+            require(admission.admittedScope.isWithin(request.cognitiveScope)) {
+                "admitted agent scope cannot exceed requested scope"
+            }
+            require(admission.admittedBudget.isWithin(request.budget)) {
+                "admitted agent budget cannot exceed requested budget"
+            }
+            return AgentInstance(
                 id = admission.instanceId(),
                 admissionId = admission.id,
                 generation = admission.generation,
-                provenance = provenance,
+                provenance = request.provenance,
                 lifecycle = AgentLifecycleState.ADMITTED
             )
+        }
     }
 }
 
@@ -281,7 +306,7 @@ data class AgentArtifact(
             provenanceReferences: Collection<String>,
             createdAt: Instant
         ): AgentArtifact {
-            val canonical = provenanceReferences.distinct().sorted()
+            val canonical = provenanceReferences.sorted()
             return AgentArtifact(
                 deterministicId(producerId, producerGeneration, rootTaskId, kind, payloadDigest, canonical, createdAt),
                 producerId, producerGeneration, rootTaskId, kind, payloadDigest, canonical, createdAt

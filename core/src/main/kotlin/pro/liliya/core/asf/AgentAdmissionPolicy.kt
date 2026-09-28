@@ -42,6 +42,7 @@ enum class AgentAdmissionRejection {
     SCOPE_EXCEEDS_BLUEPRINT,
     SCOPE_EXCEEDS_PARENT,
     SCOPE_EXCEEDS_GLOBAL,
+    PARENT_CONTEXT_REQUIRED,
     BUDGET_EXCEEDS_PARENT,
     BUDGET_EXCEEDS_GLOBAL,
     ACTIVE_POPULATION_LIMIT,
@@ -72,6 +73,11 @@ class AgentAdmissionPolicy(
         }
         if (!request.cognitiveScope.isWithin(globalScope)) {
             return reject(AgentAdmissionRejection.SCOPE_EXCEEDS_GLOBAL)
+        }
+        if (request.provenance.parentAgentId != null &&
+            (parentScope == null || parentRemainingBudget == null)
+        ) {
+            return reject(AgentAdmissionRejection.PARENT_CONTEXT_REQUIRED)
         }
         if (parentScope != null && !request.cognitiveScope.isWithin(parentScope)) {
             return reject(AgentAdmissionRejection.SCOPE_EXCEEDS_PARENT)

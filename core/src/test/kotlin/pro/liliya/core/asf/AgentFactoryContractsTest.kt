@@ -105,6 +105,33 @@ class AgentFactoryContractsTest {
     }
 
     @Test
+    fun duplicate_scope_and_artifact_provenance_fail_closed() {
+        assertFailsWith<IllegalArgumentException> {
+            AgentCognitiveScope.create(listOf("research", "research"))
+        }
+
+        val spawn = request()
+        val admission = AgentAdmission.create(
+            spawn.id,
+            AgentInstanceGeneration(1),
+            spawn.cognitiveScope,
+            spawn.budget,
+            now
+        )
+        assertFailsWith<IllegalArgumentException> {
+            AgentArtifact.create(
+                producerId = admission.instanceId(),
+                producerGeneration = admission.generation,
+                rootTaskId = AgentRootTaskId("root-1"),
+                kind = "research-report",
+                payloadDigest = "sha256:abc",
+                provenanceReferences = listOf("evidence:1", "evidence:1"),
+                createdAt = now
+            )
+        }
+    }
+
+    @Test
     fun admission_requires_exact_blueprint_and_fails_closed_for_unknown_blueprint() {
         val policy = policy()
         val population = AgentPopulationSnapshot(0, 0, 0)
@@ -129,6 +156,31 @@ class AgentFactoryContractsTest {
             AgentAdmissionRejection.BLUEPRINT_VERSION_MISMATCH,
             assertIs<AgentAdmissionDecision.Rejected>(
                 policy.evaluate(request(), other, population)
+            ).reason
+        )
+    }
+
+    @Test
+    fun child_admission_requires_parent_scope_and_remaining_budget_context() {
+        val policy = policy()
+        val child = childRequest(depth = 1)
+        val population = AgentPopulationSnapshot(0, 0, 0)
+
+        assertEquals(
+            AgentAdmissionRejection.PARENT_CONTEXT_REQUIRED,
+            assertIs<AgentAdmissionDecision.Rejected>(
+                policy.evaluate(child, blueprint, population)
+            ).reason
+        )
+        assertEquals(
+            AgentAdmissionRejection.PARENT_CONTEXT_REQUIRED,
+            assertIs<AgentAdmissionDecision.Rejected>(
+                policy.evaluate(
+                    child,
+                    blueprint,
+                    population,
+                    parentScope = blueprint.cognitiveScope
+                )
             ).reason
         )
     }
@@ -187,10 +239,22 @@ class AgentFactoryContractsTest {
             policy.evaluate(request(), blueprint, AgentPopulationSnapshot(0, 12, 0))
         }
         assertRejected(AgentAdmissionRejection.SPAWN_DEPTH_LIMIT) {
-            policy.evaluate(childRequest(depth = 4), blueprint, AgentPopulationSnapshot(0, 0, 0))
+            policy.evaluate(
+                childRequest(depth = 4),
+                blueprint,
+                AgentPopulationSnapshot(0, 0, 0),
+                parentScope = blueprint.cognitiveScope,
+                parentRemainingBudget = globalBudget
+            )
         }
         assertRejected(AgentAdmissionRejection.DIRECT_CHILD_LIMIT) {
-            policy.evaluate(childRequest(depth = 1), blueprint, AgentPopulationSnapshot(0, 0, 4))
+            policy.evaluate(
+                childRequest(depth = 1),
+                blueprint,
+                AgentPopulationSnapshot(0, 0, 4),
+                parentScope = blueprint.cognitiveScope,
+                parentRemainingBudget = globalBudget
+            )
         }
         assertRejected(AgentAdmissionRejection.RETRY_LIMIT) {
             policy.evaluate(request(attempt = 2), blueprint, AgentPopulationSnapshot(0, 0, 0))
@@ -208,7 +272,7 @@ class AgentFactoryContractsTest {
             admittedAt = now
         )
 
-        val admitted = AgentInstance.fromAdmission(admission, spawn.provenance)
+        val admitted = AgentInstance.fromAdmission(admission, spawn)
         assertEquals(admission.instanceId(), admitted.id)
         assertEquals(AgentLifecycleState.ADMITTED, admitted.lifecycle)
 
@@ -220,6 +284,25 @@ class AgentFactoryContractsTest {
         assertTrue(completed.lifecycle.terminal)
         assertFailsWith<IllegalArgumentException> {
             completed.transition(AgentLifecycleState.RUNNING)
+        }
+    }
+
+    @Test
+    fun instance_rejects_an_admission_bound_to_a_different_request() {
+        val original = request()
+        val admission = AgentAdmission.create(
+            original.id,
+            AgentInstanceGeneration(1),
+            original.cognitiveScope,
+            original.budget,
+            now
+        )
+        val different = request(
+            budget = original.budget.copy(maxInferenceUnits = original.budget.maxInferenceUnits - 1)
+        )
+
+        assertFailsWith<IllegalArgumentException> {
+            AgentInstance.fromAdmission(admission, different)
         }
     }
 
