@@ -216,7 +216,7 @@ enum class AgentLifecycleState {
     fun canTransitionTo(next: AgentLifecycleState): Boolean = when (this) {
         PROPOSED -> next == ADMITTED
         ADMITTED -> next == SPAWNED
-        SPAWNED -> next == RUNNING || next == CANCELLED || next == EXPIRED
+        SPAWNED -> next == RUNNING || next == FAILED || next == CANCELLED || next == EXPIRED
         RUNNING -> next in setOf(COMPLETED, PARTIAL, FAILED, CANCELLED, EXPIRED, BUDGET_EXHAUSTED)
         COMPLETED, PARTIAL, FAILED, CANCELLED, EXPIRED, BUDGET_EXHAUSTED -> false
     }
