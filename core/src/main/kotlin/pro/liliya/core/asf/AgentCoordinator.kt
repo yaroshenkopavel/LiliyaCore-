@@ -13,6 +13,7 @@ class AgentCoordinator(
         val artifacts = mutableListOf<AgentArtifact>()
         val terminals = mutableListOf<AgentInstance>()
         val completed = mutableMapOf<AgentCoordinatorStepId, Pair<AgentCoordinatorStep, AgentInstance>>()
+        val completedArtifacts = mutableMapOf<AgentCoordinatorStepId, AgentArtifact>()
         val directChildren = mutableMapOf<AgentCoordinatorStepId, Int>()
         val descendants = mutableMapOf<AgentCoordinatorStepId, Int>()
         var completedSteps = 0
@@ -95,6 +96,27 @@ class AgentCoordinator(
                 logicalRoleAttempt = step.logicalRoleAttempt
             )
 
+            val effectiveInputReferences = if (step.includeParentArtifact) {
+                val parentArtifact = parentId?.let { completedArtifacts[it] }
+                    ?: return terminalForStop(
+                        if (completedSteps == 0) AgentCoordinatorTerminalState.FAILED
+                        else AgentCoordinatorTerminalState.PARTIAL,
+                        artifacts, terminals, usage, completedSteps
+                    )
+                val artifactReference = "asf-artifact:${parentArtifact.id.value}"
+                val combined = step.inputReferences + artifactReference
+                if (combined.distinct().size != combined.size) {
+                    return terminalForStop(
+                        if (completedSteps == 0) AgentCoordinatorTerminalState.FAILED
+                        else AgentCoordinatorTerminalState.PARTIAL,
+                        artifacts, terminals, usage, completedSteps
+                    )
+                }
+                combined.sorted()
+            } else {
+                step.inputReferences
+            }
+
             val result = factory.runSingle(
                 request = request,
                 population = AgentPopulationSnapshot(
@@ -105,7 +127,7 @@ class AgentCoordinator(
                 generation = AgentInstanceGeneration(1),
                 admittedAt = runWindow.admittedAt,
                 expiresAt = runWindow.expiresAt,
-                inputReferences = step.inputReferences,
+                inputReferences = effectiveInputReferences,
                 cancellationRequested = cancelled,
                 parentScope = parentScope,
                 parentRemainingBudget = parentRemainingBudget
@@ -149,6 +171,7 @@ class AgentCoordinator(
                         AgentLifecycleState.COMPLETED -> {
                             completedSteps++
                             completed[step.id] = step to result.instance
+                            result.artifact?.let { completedArtifacts[step.id] = it }
                         }
 
                         AgentLifecycleState.CANCELLED -> {
