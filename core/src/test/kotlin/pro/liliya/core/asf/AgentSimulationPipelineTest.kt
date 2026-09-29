@@ -205,6 +205,42 @@ class AgentSimulationPipelineTest {
     }
 
     @Test
+    fun completed_simulation_recovery_never_replays_prior_result() {
+        var adapterCalls = 0
+        val pipeline = pipeline(
+            AgentSimulationAdapter { request ->
+                adapterCalls++
+                AgentSimulationResult.create(
+                    request,
+                    AgentSimulationState.PLAUSIBLE,
+                    listOf("evidence:simulation-$adapterCalls")
+                )
+            }
+        )
+        val proposal = proposal("recovery-no-replay")
+
+        val first = pipeline.run(
+            proposal,
+            listOf("context:a")
+        )
+        val second = pipeline.run(
+            proposal,
+            listOf("context:a")
+        )
+
+        assertEquals(2, adapterCalls)
+        assertEquals(
+            AgentSimulationRecoveryDisposition.NEW_SIMULATION_REQUIRED,
+            first.recoveryDisposition
+        )
+        assertEquals(
+            AgentSimulationRecoveryDisposition.NEW_SIMULATION_REQUIRED,
+            second.recoveryDisposition
+        )
+        assertTrue(first.simulation != second.simulation)
+    }
+
+    @Test
     fun pipeline_contract_contains_no_authority_execution_or_secret_fields() {
         val forbidden = listOf(
             "authority", "permission", "credential", "secret",
