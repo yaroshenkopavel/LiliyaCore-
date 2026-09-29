@@ -17,6 +17,7 @@ data class AgentCoordinatorStep(
     val cognitiveScope: AgentCognitiveScope,
     val budget: AgentWorkBudget,
     val inputReferences: List<String>,
+    val includeParentArtifact: Boolean = false,
     val logicalRoleAttempt: Int = 0
 ) {
     init {
@@ -28,6 +29,9 @@ data class AgentCoordinatorStep(
             "coordinator step input references must use canonical order"
         }
         require(logicalRoleAttempt >= 0) { "logical role attempt must not be negative" }
+        require(!includeParentArtifact || parentStepId != null) {
+            "root coordinator step cannot request a parent artifact"
+        }
     }
 
     companion object {
@@ -38,6 +42,7 @@ data class AgentCoordinatorStep(
             cognitiveScope: AgentCognitiveScope,
             budget: AgentWorkBudget,
             inputReferences: Collection<String>,
+            includeParentArtifact: Boolean = false,
             logicalRoleAttempt: Int = 0
         ) = AgentCoordinatorStep(
             id = id,
@@ -46,6 +51,7 @@ data class AgentCoordinatorStep(
             cognitiveScope = cognitiveScope,
             budget = budget,
             inputReferences = inputReferences.sorted(),
+            includeParentArtifact = includeParentArtifact,
             logicalRoleAttempt = logicalRoleAttempt
         )
     }
