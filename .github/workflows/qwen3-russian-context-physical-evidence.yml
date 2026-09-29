@@ -44,7 +44,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout exact source
-        uses: actions/checkout@v4
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
@@ -111,23 +111,23 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: Checkout exact source
-        uses: actions/checkout@v4
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Set up Java 17
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
         with:
           distribution: temurin
           java-version: '17'
 
       - name: Set up Gradle 9.6.1
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@4c125117fe7c5aed11272ec4213f602f012f89f2
         with:
           gradle-version: '9.6.1'
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v4
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
         with:
           packages: platform-tools
 
@@ -200,7 +200,7 @@ jobs:
           cat "$out/qwen3-russian-context-physical-test-bundle.json"
 
       - name: Publish exact quality/context APK bundle
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: qwen3-russian-context-physical-test-bundle-${{ github.event.pull_request.head.sha || github.sha }}
           path: ${{ runner.temp }}/qwen3-russian-context-bundle
@@ -239,7 +239,7 @@ jobs:
             > "$RUNNER_TEMP/qwen3-russian-context-probe.json"
 
       - name: Download exact quality/context APK bundle
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: qwen3-russian-context-physical-test-bundle-${{ github.sha }}
           path: ${{ runner.temp }}/qwen3-russian-context-bundle
@@ -420,7 +420,7 @@ jobs:
 
       - name: Publish physical Russian/context evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: qwen3-russian-context-physical-evidence-${{ github.sha }}
           path: |
