@@ -15,7 +15,8 @@ class AgentBlueprintEvaluationTest {
             inferenceUnits = 100,
             contextBytes = 1000,
             artifactCount = 2,
-            retryCount = 0
+            retryCount = 0,
+            cancellationCount = 0
         )
         val candidate = AgentBlueprintEvaluationVector(
             completed = true,
@@ -25,7 +26,8 @@ class AgentBlueprintEvaluationTest {
             inferenceUnits = 120,
             contextBytes = 900,
             artifactCount = 2,
-            retryCount = 0
+            retryCount = 0,
+            cancellationCount = 0
         )
 
         val result = AgentBlueprintEvaluationComparator.compare(
@@ -90,10 +92,37 @@ class AgentBlueprintEvaluationTest {
                 result.inference,
                 result.context,
                 result.artifacts,
-                result.retries
+                result.retries,
+                result.cancellations
             ).all { it == AgentBlueprintEvaluationRelation.EQUAL }
         )
         assertTrue(!result.mixedTradeoffs)
+    }
+
+    @Test
+    fun cancellation_regression_is_explicit_axis() {
+        val baseline = AgentBlueprintEvaluationVector(
+            completed = true,
+            challengedFindings = 0,
+            unresolvedConflictFindings = 0,
+            wallClockMillis = 100,
+            inferenceUnits = 100,
+            contextBytes = 100,
+            artifactCount = 1,
+            retryCount = 0,
+            cancellationCount = 0
+        )
+        val candidate = baseline.copy(cancellationCount = 2)
+
+        val result = AgentBlueprintEvaluationComparator.compare(
+            baseline,
+            candidate
+        )
+
+        assertEquals(
+            AgentBlueprintEvaluationRelation.WORSE,
+            result.cancellations
+        )
     }
 
     @Test
@@ -124,6 +153,7 @@ class AgentBlueprintEvaluationTest {
         inferenceUnits = inference,
         contextBytes = 100,
         artifactCount = 1,
-        retryCount = 0
+        retryCount = 0,
+        cancellationCount = 0
     )
 }

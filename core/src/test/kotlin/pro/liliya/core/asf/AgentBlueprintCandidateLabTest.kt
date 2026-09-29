@@ -48,10 +48,15 @@ class AgentBlueprintCandidateLabTest {
                 completed = true,
                 inference = 80,
                 unresolved = 0
-            )
+            ),
+            evidenceReferences = listOf("eval:baseline-vs-candidate")
         )
 
         assertEquals(c.id, evaluation.candidateId)
+        assertEquals(
+            listOf("eval:baseline-vs-candidate"),
+            evaluation.evidenceReferences
+        )
         assertEquals(
             AgentBlueprintCandidateState.EVALUATED,
             lab.candidate(c.id)?.state
@@ -92,7 +97,8 @@ class AgentBlueprintCandidateLabTest {
                 widened.id,
                 AgentBlueprintReference(parent.id, parent.version),
                 vector(true, 100, 0),
-                vector(true, 90, 0)
+                vector(true, 90, 0),
+                listOf("eval:invalid-candidate")
             )
         }
     }
@@ -116,7 +122,27 @@ class AgentBlueprintCandidateLabTest {
                 c.id,
                 AgentBlueprintReference(other.id, other.version),
                 vector(true, 100, 0),
-                vector(true, 90, 0)
+                vector(true, 90, 0),
+                listOf("eval:wrong-baseline")
+            )
+        }
+        assertNull(lab.evaluation(c.id))
+    }
+
+    @Test
+    fun evaluation_without_evidence_provenance_fails_closed() {
+        val lab = AgentBlueprintCandidateLab()
+        val c = candidate()
+        lab.propose(c)
+        lab.validate(c.id, parent, budget)
+
+        assertFailsWith<IllegalArgumentException> {
+            lab.recordEvaluation(
+                c.id,
+                AgentBlueprintReference(parent.id, parent.version),
+                vector(true, 100, 0),
+                vector(true, 90, 0),
+                emptyList()
             )
         }
         assertNull(lab.evaluation(c.id))
@@ -132,7 +158,8 @@ class AgentBlueprintCandidateLabTest {
             c.id,
             AgentBlueprintReference(parent.id, parent.version),
             vector(true, 100, 0),
-            vector(true, 90, 0)
+            vector(true, 90, 0),
+            listOf("eval:first")
         )
 
         assertFailsWith<IllegalArgumentException> {
@@ -140,7 +167,8 @@ class AgentBlueprintCandidateLabTest {
                 c.id,
                 AgentBlueprintReference(parent.id, parent.version),
                 vector(true, 100, 0),
-                vector(true, 1, 0)
+                vector(true, 1, 0),
+                listOf("eval:replacement")
             )
         }
     }
@@ -210,6 +238,7 @@ class AgentBlueprintCandidateLabTest {
         inferenceUnits = inference,
         contextBytes = 100,
         artifactCount = 1,
-        retryCount = 0
+        retryCount = 0,
+        cancellationCount = 0
     )
 }

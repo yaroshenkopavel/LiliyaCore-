@@ -5,7 +5,8 @@ data class AgentBlueprintCandidateEvaluation(
     val baselineBlueprint: AgentBlueprintReference,
     val baseline: AgentBlueprintEvaluationVector,
     val candidate: AgentBlueprintEvaluationVector,
-    val comparison: AgentBlueprintEvaluationComparison
+    val comparison: AgentBlueprintEvaluationComparison,
+    val evidenceReferences: List<String>
 ) {
     init {
         require(
@@ -14,6 +15,17 @@ data class AgentBlueprintCandidateEvaluation(
                 candidate
             )
         ) { "candidate evaluation comparison must match vectors" }
+        require(evidenceReferences.isNotEmpty()) {
+            "candidate evaluation requires evidence provenance"
+        }
+        require(evidenceReferences.size <= 64) {
+            "too many candidate evaluation evidence references"
+        }
+        require(evidenceReferences.distinct().size == evidenceReferences.size)
+        require(evidenceReferences == evidenceReferences.sorted())
+        evidenceReferences.forEach {
+            require(it.isNotBlank() && it.length <= 256)
+        }
     }
 
     companion object {
@@ -21,7 +33,8 @@ data class AgentBlueprintCandidateEvaluation(
             candidateId: AgentBlueprintCandidateId,
             baselineBlueprint: AgentBlueprintReference,
             baseline: AgentBlueprintEvaluationVector,
-            candidate: AgentBlueprintEvaluationVector
+            candidate: AgentBlueprintEvaluationVector,
+            evidenceReferences: Collection<String>
         ) = AgentBlueprintCandidateEvaluation(
             candidateId = candidateId,
             baselineBlueprint = baselineBlueprint,
@@ -30,7 +43,8 @@ data class AgentBlueprintCandidateEvaluation(
             comparison = AgentBlueprintEvaluationComparator.compare(
                 baseline,
                 candidate
-            )
+            ),
+            evidenceReferences = evidenceReferences.sorted()
         )
     }
 }
@@ -85,7 +99,8 @@ class AgentBlueprintCandidateLab(
         id: AgentBlueprintCandidateId,
         baselineBlueprint: AgentBlueprintReference,
         baseline: AgentBlueprintEvaluationVector,
-        candidateVector: AgentBlueprintEvaluationVector
+        candidateVector: AgentBlueprintEvaluationVector,
+        evidenceReferences: Collection<String>
     ): AgentBlueprintCandidateEvaluation {
         val current = requireNotNull(candidates.get(id)) {
             "unknown blueprint candidate"
@@ -104,7 +119,8 @@ class AgentBlueprintCandidateLab(
             id,
             baselineBlueprint,
             baseline,
-            candidateVector
+            candidateVector,
+            evidenceReferences
         )
         evaluations[id] = evaluation
         candidates.replace(

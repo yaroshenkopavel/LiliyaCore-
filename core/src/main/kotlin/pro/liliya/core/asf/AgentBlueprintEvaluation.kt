@@ -8,7 +8,8 @@ data class AgentBlueprintEvaluationVector(
     val inferenceUnits: Long,
     val contextBytes: Int,
     val artifactCount: Int,
-    val retryCount: Int
+    val retryCount: Int,
+    val cancellationCount: Int
 ) {
     init {
         require(challengedFindings >= 0)
@@ -18,6 +19,7 @@ data class AgentBlueprintEvaluationVector(
         require(contextBytes >= 0)
         require(artifactCount >= 0)
         require(retryCount >= 0)
+        require(cancellationCount >= 0)
     }
 }
 
@@ -35,7 +37,8 @@ data class AgentBlueprintEvaluationComparison(
     val inference: AgentBlueprintEvaluationRelation,
     val context: AgentBlueprintEvaluationRelation,
     val artifacts: AgentBlueprintEvaluationRelation,
-    val retries: AgentBlueprintEvaluationRelation
+    val retries: AgentBlueprintEvaluationRelation,
+    val cancellations: AgentBlueprintEvaluationRelation
 ) {
     val mixedTradeoffs: Boolean
         get() {
@@ -47,7 +50,8 @@ data class AgentBlueprintEvaluationComparison(
                 inference,
                 context,
                 artifacts,
-                retries
+                retries,
+                cancellations
             )
             return AgentBlueprintEvaluationRelation.BETTER in values &&
                 AgentBlueprintEvaluationRelation.WORSE in values
@@ -87,6 +91,10 @@ object AgentBlueprintEvaluationComparator {
         retries = lowerIsBetter(
             baseline.retryCount,
             candidate.retryCount
+        ),
+        cancellations = lowerIsBetter(
+            baseline.cancellationCount,
+            candidate.cancellationCount
         )
     )
 
