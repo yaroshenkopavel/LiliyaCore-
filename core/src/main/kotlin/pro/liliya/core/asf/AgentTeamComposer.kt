@@ -90,6 +90,11 @@ object AgentTeamComposer {
         }
 
         val rootStepId = stepId(rootClass)
+        val templateKind = if (orderedClasses.size == 1) {
+            AgentTeamTemplateKind.SINGLE_WORKER
+        } else {
+            AgentTeamTemplateKind.ROOT_REVIEW_FAN_OUT
+        }
         val steps = orderedClasses.mapIndexed { index, workerClass ->
             val candidate = candidatesByClass.getValue(workerClass)
             AgentCoordinatorStep.create(
@@ -99,7 +104,7 @@ object AgentTeamComposer {
                 cognitiveScope = candidate.cognitiveScope,
                 budget = candidate.budget,
                 inputReferences = request.inputReferences,
-                includeParentArtifact = false,
+                includeParentArtifact = index != 0,
                 workerClass = candidate.workerClass,
                 runtime = candidate.runtime
             )
@@ -116,6 +121,7 @@ object AgentTeamComposer {
                 inputReferences = request.inputReferences,
                 selectedRequirements = request.taskShape.workerRequirements,
                 selectedWorkerClasses = orderedClasses,
+                templateKind = templateKind,
                 coordinatorPlan = coordinatorPlan
             )
         )
@@ -206,6 +212,11 @@ object AgentTeamComposer {
                 ":" + (candidate.runtime.modelId ?: "")
         }
         request.taskShape.workerRequirements.forEach { values += "requirement:" + it.name }
+        values += "template:" + if (orderedClasses.size == 1) {
+            AgentTeamTemplateKind.SINGLE_WORKER.name
+        } else {
+            AgentTeamTemplateKind.ROOT_REVIEW_FAN_OUT.name
+        }
         orderedClasses.forEach { workerClass ->
             val candidate = candidatesByClass.getValue(workerClass)
             values += "worker:" + workerClass.name
