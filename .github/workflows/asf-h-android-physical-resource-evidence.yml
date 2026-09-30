@@ -298,12 +298,14 @@ jobs:
             local http_code
             sha="$(sha256sum "$apk" | awk '{print $1}')"
 
-            set +e
-            http_code="$(
+            local curl_exit
+            if http_code="$(
               curl --silent --show-error -X POST "${auth[@]}"                 -H "X-Liliya-Sha256: $sha"                 -H 'Content-Type: application/vnd.android.package-archive'                 --data-binary "@$apk"                 --output "$out"                 --write-out '%{http_code}'                 "$PRIMARY_BRIDGE_URL/v1/install/$kind"
-            )"
-            local curl_exit=$?
-            set -e
+            )"; then
+              curl_exit=0
+            else
+              curl_exit=$?
+            fi
 
             if [ "$curl_exit" -eq 0 ] && [[ "$http_code" =~ ^2 ]]; then
               python3 - "$out" <<'PY'
@@ -330,11 +332,10 @@ jobs:
           }
 
           app="$bundle/liliya-app-debug.apk"
-          set +e
-          install_one app "$app" "$RUNNER_TEMP/asf-h-install-app.json"
-          rc=$?
-          set -e
-          if [ "$rc" -ne 0 ]; then
+          if install_one app "$app" "$RUNNER_TEMP/asf-h-install-app.json"; then
+            :
+          else
+            rc=$?
             if [ "$rc" -eq 10 ]; then
               exit 0
             fi
@@ -342,11 +343,10 @@ jobs:
           fi
 
           test_apk="$bundle/liliya-app-debug-androidTest.apk"
-          set +e
-          install_one test "$test_apk" "$RUNNER_TEMP/asf-h-install-test.json"
-          rc=$?
-          set -e
-          if [ "$rc" -ne 0 ]; then
+          if install_one test "$test_apk" "$RUNNER_TEMP/asf-h-install-test.json"; then
+            :
+          else
+            rc=$?
             if [ "$rc" -eq 10 ]; then
               exit 0
             fi
