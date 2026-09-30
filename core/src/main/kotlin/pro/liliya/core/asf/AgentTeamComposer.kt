@@ -11,21 +11,26 @@ object AgentTeamComposer {
             )
         }
 
-        val candidatesByClass = request.candidates
-            .filter { it.workerClass in request.capacity.allowedWorkerClasses }
-            .associateBy { it.workerClass }
-        val admittedClasses = candidatesByClass.keys
+        val candidatesByClass = request.candidates.associateBy { it.workerClass }
+        val availableClasses = candidatesByClass.keys
 
         val selectedClasses = linkedSetOf<AgentWorkerClass>()
         request.taskShape.workerRequirements.forEach { requirement ->
-            when (val routed = AgentWorkerRouter.route(requirement, admittedClasses)) {
+            when (val routed = AgentWorkerRouter.route(requirement, availableClasses)) {
                 AgentWorkerRoutingDecision.DeterministicCheck ->
                     error("deterministic requirement must not enter worker composition")
                 AgentWorkerRoutingDecision.Declined ->
                     return AgentTeamCompositionDecision.Rejected(
                         AgentTeamCompositionRejection.NO_SUITABLE_WORKER
                     )
-                is AgentWorkerRoutingDecision.Worker -> selectedClasses += routed.workerClass
+                is AgentWorkerRoutingDecision.Worker -> {
+                    if (routed.workerClass !in request.capacity.allowedWorkerClasses) {
+                        return AgentTeamCompositionDecision.Rejected(
+                            AgentTeamCompositionRejection.CAPACITY_RESTRICTED
+                        )
+                    }
+                    selectedClasses += routed.workerClass
+                }
             }
         }
 
@@ -43,7 +48,7 @@ object AgentTeamComposer {
 
         if (orderedClasses.size > request.capacity.maxWorkers) {
             return AgentTeamCompositionDecision.Rejected(
-                AgentTeamCompositionRejection.AGGREGATE_BUDGET_EXCEEDED
+                AgentTeamCompositionRejection.CAPACITY_RESTRICTED
             )
         }
 
