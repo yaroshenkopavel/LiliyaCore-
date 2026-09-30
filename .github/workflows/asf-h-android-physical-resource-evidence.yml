@@ -382,7 +382,10 @@ jobs:
           source = data.get("sourceCommit")
           if not isinstance(source, str) or len(source) != 40:
               raise SystemExit("evidence source commit missing")
-          subprocess.check_call(["git", "merge-base", "--is-ancestor", source, "HEAD"])
+          subprocess.check_call(
+              ["git", "fetch", "--no-tags", "--depth=1", "origin", source]
+          )
+          subprocess.check_call(["git", "cat-file", "-e", f"{source}^{{commit}}"])
 
           allowed = {
               ".github/workflows/asf-h-android-physical-resource-evidence.yml",
