@@ -2,7 +2,8 @@ package pro.liliya.core.asf
 
 class AgentCoordinator(
     private val factory: AgentFactory,
-    private val aggregateBudget: AgentAggregateBudget
+    private val aggregateBudget: AgentAggregateBudget,
+    private val workerFactory: AgentWorkerFactory? = null
 ) {
     fun runSequential(
         plan: AgentCoordinatorPlan,
@@ -117,20 +118,23 @@ class AgentCoordinator(
                 step.inputReferences
             }
 
-            val result = factory.runSingle(
+            val result = runStep(
+                step = step,
                 request = request,
                 population = AgentPopulationSnapshot(
                     activeAgents = 0,
                     agentsForRootTask = terminals.size,
                     directChildrenForParent = parentId?.let { directChildren[it] ?: 0 } ?: 0
                 ),
-                generation = AgentInstanceGeneration(1),
-                admittedAt = runWindow.admittedAt,
-                expiresAt = runWindow.expiresAt,
+                runWindow = runWindow,
                 inputReferences = effectiveInputReferences,
-                cancellationRequested = cancelled,
+                cancelled = cancelled,
                 parentScope = parentScope,
                 parentRemainingBudget = parentRemainingBudget
+            ) ?: return terminalForStop(
+                if (completedSteps == 0) AgentCoordinatorTerminalState.FAILED
+                else AgentCoordinatorTerminalState.PARTIAL,
+                artifacts, terminals, usage, completedSteps
             )
 
             when (result) {
@@ -205,6 +209,54 @@ class AgentCoordinator(
             aggregateUsage = usage,
             completedSteps = completedSteps
         )
+    }
+
+    private fun runStep(
+        step: AgentCoordinatorStep,
+        request: AgentSpawnRequest,
+        population: AgentPopulationSnapshot,
+        runWindow: AgentCoordinatorRunWindow,
+        inputReferences: Collection<String>,
+        cancelled: () -> Boolean,
+        parentScope: AgentCognitiveScope?,
+        parentRemainingBudget: AgentWorkBudget?
+    ): AgentFactoryResult? {
+        val workerClass = step.workerClass
+        if (workerClass == null) {
+            return factory.runSingle(
+                request = request,
+                population = population,
+                generation = AgentInstanceGeneration(1),
+                admittedAt = runWindow.admittedAt,
+                expiresAt = runWindow.expiresAt,
+                inputReferences = inputReferences,
+                cancellationRequested = cancelled,
+                parentScope = parentScope,
+                parentRemainingBudget = parentRemainingBudget
+            )
+        }
+
+        val workerExecutor = workerFactory ?: return null
+        val runtime = step.runtime ?: return null
+        return when (
+            val workerResult = workerExecutor.runSingle(
+                workerClass = workerClass,
+                runtime = runtime,
+                request = request,
+                population = population,
+                generation = AgentInstanceGeneration(1),
+                admittedAt = runWindow.admittedAt,
+                expiresAt = runWindow.expiresAt,
+                inputReferences = inputReferences,
+                protectedToolViewRequested = step.protectedToolViewRequested,
+                cancellationRequested = cancelled,
+                parentScope = parentScope,
+                parentRemainingBudget = parentRemainingBudget
+            )
+        ) {
+            is AgentWorkerFactoryResult.Rejected -> null
+            is AgentWorkerFactoryResult.Delegated -> workerResult.result
+        }
     }
 
     private fun ancestorChain(

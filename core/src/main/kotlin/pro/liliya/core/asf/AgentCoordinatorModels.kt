@@ -18,7 +18,10 @@ data class AgentCoordinatorStep(
     val budget: AgentWorkBudget,
     val inputReferences: List<String>,
     val includeParentArtifact: Boolean = false,
-    val logicalRoleAttempt: Int = 0
+    val logicalRoleAttempt: Int = 0,
+    val workerClass: AgentWorkerClass? = null,
+    val runtime: AgentWorkerRuntimeDescriptor? = null,
+    val protectedToolViewRequested: Boolean = false
 ) {
     init {
         require(inputReferences.isNotEmpty()) { "coordinator step requires input provenance" }
@@ -29,6 +32,12 @@ data class AgentCoordinatorStep(
             "coordinator step input references must use canonical order"
         }
         require(logicalRoleAttempt >= 0) { "logical role attempt must not be negative" }
+        require((workerClass == null) == (runtime == null)) {
+            "worker class and runtime descriptor must be present together"
+        }
+        require(!protectedToolViewRequested || workerClass != null) {
+            "protected ToolView request requires a worker execution profile"
+        }
         require(!includeParentArtifact || parentStepId != null) {
             "root coordinator step cannot request a parent artifact"
         }
@@ -43,7 +52,10 @@ data class AgentCoordinatorStep(
             budget: AgentWorkBudget,
             inputReferences: Collection<String>,
             includeParentArtifact: Boolean = false,
-            logicalRoleAttempt: Int = 0
+            logicalRoleAttempt: Int = 0,
+            workerClass: AgentWorkerClass? = null,
+            runtime: AgentWorkerRuntimeDescriptor? = null,
+            protectedToolViewRequested: Boolean = false
         ) = AgentCoordinatorStep(
             id = id,
             parentStepId = parentStepId,
@@ -52,7 +64,10 @@ data class AgentCoordinatorStep(
             budget = budget,
             inputReferences = inputReferences.sorted(),
             includeParentArtifact = includeParentArtifact,
-            logicalRoleAttempt = logicalRoleAttempt
+            logicalRoleAttempt = logicalRoleAttempt,
+            workerClass = workerClass,
+            runtime = runtime,
+            protectedToolViewRequested = protectedToolViewRequested
         )
     }
 }
