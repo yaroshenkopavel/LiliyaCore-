@@ -308,15 +308,7 @@ jobs:
             fi
 
             if [ "$curl_exit" -eq 0 ] && [[ "$http_code" =~ ^2 ]]; then
-              python3 - "$out" <<'PY'
-              import json, sys
-              result = json.load(open(sys.argv[1], encoding="utf-8"))
-              output = str(result.get("installOutput", ""))
-              if "Failure [" in output:
-                  raise SystemExit(f"install response contains failure: {output}")
-              if not str(result.get("packagePath", "")).strip():
-                  raise SystemExit("installed package path missing")
-              PY
+              python3 -c 'import json,sys; r=json.load(open(sys.argv[1], encoding="utf-8")); o=str(r.get("installOutput", "")); assert "Failure [" not in o, f"install response contains failure: {o}"; assert str(r.get("packagePath", "")).strip(), "installed package path missing"' "$out"
               return 0
             fi
 
