@@ -263,6 +263,28 @@ class AgentTeamComposerContractTest {
     }
 
     @Test
+    fun composition_input_provenance_is_bounded() {
+        assertFailsWith<IllegalArgumentException> {
+            request(
+                shape = AgentTeamTaskShape.workers(
+                    listOf(AgentWorkerRequirement.ATOMIC_VALIDATION)
+                ),
+                candidates = allCandidates(),
+                inputs = (1..65).map { "evidence:" + it }
+            )
+        }
+        assertFailsWith<IllegalArgumentException> {
+            request(
+                shape = AgentTeamTaskShape.workers(
+                    listOf(AgentWorkerRequirement.ATOMIC_VALIDATION)
+                ),
+                candidates = allCandidates(),
+                inputs = listOf("x".repeat(257))
+            )
+        }
+    }
+
+    @Test
     fun worker_shape_rejects_mixed_deterministic_requirement() {
         assertFailsWith<IllegalArgumentException> {
             AgentTeamTaskShape.workers(
