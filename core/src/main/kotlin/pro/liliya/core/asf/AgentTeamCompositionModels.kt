@@ -149,6 +149,11 @@ data class AgentTeamCompositionRequest(
     }
 }
 
+enum class AgentTeamTemplateKind {
+    SINGLE_WORKER,
+    ROOT_REVIEW_FAN_OUT
+}
+
 enum class AgentTeamCompositionRejection {
     NO_SUITABLE_WORKER,
     CAPACITY_RESTRICTED,
@@ -181,6 +186,7 @@ data class AgentTeamCompositionPlan(
     val inputReferences: List<String>,
     val selectedRequirements: List<AgentWorkerRequirement>,
     val selectedWorkerClasses: List<AgentWorkerClass>,
+    val templateKind: AgentTeamTemplateKind,
     val coordinatorPlan: AgentCoordinatorPlan
 ) {
     init {
@@ -201,6 +207,12 @@ data class AgentTeamCompositionPlan(
         }
         require(coordinatorPlan.steps.size == selectedWorkerClasses.size) {
             "team composition plan worker count must match coordinator steps"
+        }
+        require(
+            (selectedWorkerClasses.size == 1 && templateKind == AgentTeamTemplateKind.SINGLE_WORKER) ||
+                (selectedWorkerClasses.size > 1 && templateKind == AgentTeamTemplateKind.ROOT_REVIEW_FAN_OUT)
+        ) {
+            "team composition template must match selected worker count"
         }
     }
 }
