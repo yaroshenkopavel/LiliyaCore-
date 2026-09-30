@@ -49,14 +49,17 @@ data class AgentTeamTaskShape(
             workerRequirements = emptyList()
         )
 
-        fun workers(requirements: Collection<AgentWorkerRequirement>) =
-            AgentTeamTaskShape(
+        fun workers(requirements: Collection<AgentWorkerRequirement>): AgentTeamTaskShape {
+            require(requirements.none { it == AgentWorkerRequirement.DETERMINISTIC_CHECK }) {
+                "worker task shape must not mix deterministic check with worker requirements"
+            }
+            return AgentTeamTaskShape(
                 deterministicResolutionAvailable = false,
                 workerRequirements = requirements
-                    .filterNot { it == AgentWorkerRequirement.DETERMINISTIC_CHECK }
                     .distinct()
                     .sortedBy { it.ordinal }
             )
+        }
     }
 }
 
