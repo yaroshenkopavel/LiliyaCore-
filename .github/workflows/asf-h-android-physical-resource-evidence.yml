@@ -209,6 +209,13 @@ jobs:
               raise SystemExit("Android shell identity required")
           PY
 
+      - name: Clean physical bundle staging directory
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf "$RUNNER_TEMP/asf-h-physical-bundle"
+          mkdir -p "$RUNNER_TEMP/asf-h-physical-bundle"
+
       - uses: actions/download-artifact@v4
         with:
           name: asf-h-physical-test-bundle-${{ env.SOURCE_SHA }}
