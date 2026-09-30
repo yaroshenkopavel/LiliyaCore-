@@ -15,6 +15,7 @@ object AgentTeamComposer {
         val availableClasses = candidatesByClass.keys
 
         val selectedClasses = linkedSetOf<AgentWorkerClass>()
+        val requirementRoutes = mutableListOf<Pair<AgentWorkerRequirement, AgentWorkerClass>>()
         request.taskShape.workerRequirements.forEach { requirement ->
             when (val routed = AgentWorkerRouter.route(requirement, availableClasses)) {
                 AgentWorkerRoutingDecision.DeterministicCheck ->
@@ -30,6 +31,7 @@ object AgentTeamComposer {
                         )
                     }
                     selectedClasses += routed.workerClass
+                    requirementRoutes += requirement to routed.workerClass
                 }
             }
         }
@@ -113,7 +115,19 @@ object AgentTeamComposer {
             rootTaskId = request.rootTaskId,
             steps = steps
         )
-        val decisionId = composedDecisionId(request, orderedClasses, candidatesByClass)
+        val assignments = requirementRoutes.map { (requirement, workerClass) ->
+            AgentTeamRequirementAssignment(
+                requirement = requirement,
+                workerClass = workerClass,
+                stepId = stepId(workerClass)
+            )
+        }
+        val decisionId = composedDecisionId(
+            request,
+            orderedClasses,
+            candidatesByClass,
+            requirementRoutes
+        )
         return AgentTeamCompositionDecision.Composed(
             AgentTeamCompositionPlan(
                 decisionId = decisionId,
@@ -121,6 +135,7 @@ object AgentTeamComposer {
                 inputReferences = request.inputReferences,
                 selectedRequirements = request.taskShape.workerRequirements,
                 selectedWorkerClasses = orderedClasses,
+                assignments = assignments,
                 templateKind = templateKind,
                 coordinatorPlan = coordinatorPlan
             )
@@ -184,7 +199,8 @@ object AgentTeamComposer {
     private fun composedDecisionId(
         request: AgentTeamCompositionRequest,
         orderedClasses: List<AgentWorkerClass>,
-        candidatesByClass: Map<AgentWorkerClass, AgentTeamWorkerCandidate>
+        candidatesByClass: Map<AgentWorkerClass, AgentTeamWorkerCandidate>,
+        requirementRoutes: List<Pair<AgentWorkerRequirement, AgentWorkerClass>>
     ): AgentTeamCompositionDecisionId {
         val values = mutableListOf(
             "team-composition-v1",
@@ -211,7 +227,9 @@ object AgentTeamComposer {
                 ":" + candidate.runtime.kind.name +
                 ":" + (candidate.runtime.modelId ?: "")
         }
-        request.taskShape.workerRequirements.forEach { values += "requirement:" + it.name }
+        requirementRoutes.forEach { (requirement, workerClass) ->
+            values += "assignment:" + requirement.name + "->" + workerClass.name
+        }
         values += "template:" + if (orderedClasses.size == 1) {
             AgentTeamTemplateKind.SINGLE_WORKER.name
         } else {
