@@ -151,6 +151,7 @@ data class AgentTeamCompositionRequest(
 
 enum class AgentTeamCompositionRejection {
     NO_SUITABLE_WORKER,
+    CAPACITY_RESTRICTED,
     AGGREGATE_BUDGET_EXCEEDED,
     ROOT_DESCENDANT_BUDGET_EXCEEDED,
     ROOT_SCOPE_TOO_NARROW,
