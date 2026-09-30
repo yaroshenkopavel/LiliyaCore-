@@ -114,12 +114,20 @@ class AgentTeamCompositionExecutionContractTest {
         assertEquals(AgentCoordinatorTerminalState.COMPLETED, result.state)
         assertEquals(3, runtimeCalls)
         assertEquals(3, result.completedSteps)
+        assertEquals(AgentTeamTemplateKind.ROOT_REVIEW_FAN_OUT, composition.templateKind)
         assertEquals(3, result.aggregateUsage.agentsStarted)
         assertEquals(1, result.workerAggregateUsage.full.agentsStarted)
         assertEquals(1, result.workerAggregateUsage.micro.agentsStarted)
         assertEquals(1, result.workerAggregateUsage.nano.agentsStarted)
         assertEquals(result.aggregateUsage, result.workerAggregateUsage.total())
         assertTrue(result.artifacts.all { it.rootTaskId == rootTask })
+        val rootArtifact = result.artifacts.first()
+        val rootArtifactReference = "asf-artifact:" + rootArtifact.id.value
+        assertTrue(
+            result.artifacts.drop(1).all {
+                rootArtifactReference in it.provenanceReferences
+            }
+        )
         assertTrue(
             result.terminalInstances.drop(1).all {
                 it.provenance.parentAgentId == result.terminalInstances.first().id
@@ -155,6 +163,7 @@ class AgentTeamCompositionExecutionContractTest {
             AgentCoordinatorRunWindow(now, expires)
         )
 
+        assertEquals(AgentTeamTemplateKind.SINGLE_WORKER, composition.templateKind)
         assertEquals(AgentCoordinatorTerminalState.FAILED, result.state)
         assertEquals(0, runtimeCalls)
         assertEquals(0, result.completedSteps)
