@@ -79,11 +79,34 @@ data class AgentTeamWorkerCandidate(
     }
 }
 
+data class AgentTeamCapacityEnvelope(
+    val allowedWorkerClasses: Set<AgentWorkerClass>,
+    val maxWorkers: Int
+) {
+    init {
+        require(maxWorkers > 0) { "team capacity maxWorkers must be positive" }
+        require(maxWorkers <= AgentFactoryBounds.PROTOTYPE.maxAgentsPerRootTask) {
+            "team capacity exceeds prototype root population bound"
+        }
+        require(allowedWorkerClasses.isNotEmpty()) {
+            "team capacity must allow at least one worker class"
+        }
+    }
+
+    companion object {
+        fun full(aggregateBudget: AgentAggregateBudget) = AgentTeamCapacityEnvelope(
+            allowedWorkerClasses = AgentWorkerClass.entries.toSet(),
+            maxWorkers = aggregateBudget.maxAgents
+        )
+    }
+}
+
 data class AgentTeamCompositionRequest(
     val rootTaskId: AgentRootTaskId,
     val policyVersion: AgentTeamCompositionPolicyVersion,
     val taskShape: AgentTeamTaskShape,
     val aggregateBudget: AgentAggregateBudget,
+    val capacity: AgentTeamCapacityEnvelope,
     val inputReferences: List<String>,
     val candidates: List<AgentTeamWorkerCandidate>
 ) {
@@ -100,6 +123,9 @@ data class AgentTeamCompositionRequest(
         require(candidates.map { it.workerClass }.distinct().size == candidates.size) {
             "team composition may contain at most one candidate per worker class"
         }
+        require(capacity.maxWorkers <= aggregateBudget.maxAgents) {
+            "team capacity cannot exceed aggregate worker budget"
+        }
     }
 
     companion object {
@@ -108,6 +134,7 @@ data class AgentTeamCompositionRequest(
             policyVersion: AgentTeamCompositionPolicyVersion,
             taskShape: AgentTeamTaskShape,
             aggregateBudget: AgentAggregateBudget,
+            capacity: AgentTeamCapacityEnvelope = AgentTeamCapacityEnvelope.full(aggregateBudget),
             inputReferences: Collection<String>,
             candidates: Collection<AgentTeamWorkerCandidate>
         ) = AgentTeamCompositionRequest(
@@ -115,6 +142,7 @@ data class AgentTeamCompositionRequest(
             policyVersion = policyVersion,
             taskShape = taskShape,
             aggregateBudget = aggregateBudget,
+            capacity = capacity,
             inputReferences = inputReferences.sorted(),
             candidates = candidates.sortedBy { it.workerClass.order }
         )
