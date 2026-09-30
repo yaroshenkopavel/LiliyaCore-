@@ -7,6 +7,7 @@ import java.io.File
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import org.json.JSONObject
+import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import pro.liliya.core.asf.AgentAdmissionPolicy
@@ -87,11 +88,9 @@ class AsfHierarchicalPhysicalResourceInstrumentedTest {
     fun physical_resource_profile_preserves_quality_and_emits_summary() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val targetContext = instrumentation.targetContext.applicationContext
-        val mode = Mode.valueOf(
-            requireNotNull(InstrumentationRegistry.getArguments().getString(ARG_MODE)) {
-                "missing fixed ASF-H physical mode"
-            }
-        )
+        val modeValue = InstrumentationRegistry.getArguments().getString(ARG_MODE)
+        assumeTrue("ASF-H physical evidence requires explicit $ARG_MODE", modeValue != null)
+        val mode = Mode.valueOf(requireNotNull(modeValue))
 
         val coordinator = coordinator()
         val plan = plan(mode)
