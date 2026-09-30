@@ -304,6 +304,50 @@ class AgentWorkerExecutionContractTest {
         }
     }
 
+    @Test
+    fun mixed_worker_root_accounting_reconciles_per_class_with_root_total() {
+        val coordinator = workerCoordinator(
+            adapter = successfulAdapter { }
+        )
+
+        val result = coordinator.runSequential(
+            AgentCoordinatorPlan(
+                rootTask,
+                listOf(
+                    workerStep(
+                        "full-root",
+                        null,
+                        AgentWorkerClass.FULL,
+                        fullRuntime,
+                        fullBudget.copy(maxDescendants = 2)
+                    ),
+                    workerStep(
+                        "micro-child",
+                        "full-root",
+                        AgentWorkerClass.MICRO,
+                        microRuntime,
+                        microBudget.copy(maxDescendants = 0)
+                    ),
+                    workerStep(
+                        "nano-child",
+                        "full-root",
+                        AgentWorkerClass.NANO,
+                        nanoRuntime,
+                        nanoBudget
+                    )
+                )
+            ),
+            AgentCoordinatorRunWindow(now, expires)
+        )
+
+        assertEquals(AgentCoordinatorTerminalState.COMPLETED, result.state)
+        assertEquals(3, result.aggregateUsage.agentsStarted)
+        assertEquals(1, result.workerAggregateUsage.full.agentsStarted)
+        assertEquals(1, result.workerAggregateUsage.micro.agentsStarted)
+        assertEquals(1, result.workerAggregateUsage.nano.agentsStarted)
+        assertEquals(result.aggregateUsage, result.workerAggregateUsage.total())
+    }
+
     private fun request(
         budget: AgentWorkBudget,
         attempt: Int = 0

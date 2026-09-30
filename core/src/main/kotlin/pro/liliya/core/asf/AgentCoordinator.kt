@@ -11,6 +11,7 @@ class AgentCoordinator(
         cancelled: () -> Boolean = { false }
     ): AgentCoordinatorResult {
         var usage = AgentAggregateUsage()
+        var workerUsage = AgentWorkerAggregateUsage()
         val artifacts = mutableListOf<AgentArtifact>()
         val terminals = mutableListOf<AgentInstance>()
         val completed = mutableMapOf<AgentCoordinatorStepId, Pair<AgentCoordinatorStep, AgentInstance>>()
@@ -24,17 +25,17 @@ class AgentCoordinator(
                 return terminalForStop(
                     if (completedSteps == 0) AgentCoordinatorTerminalState.CANCELLED
                     else AgentCoordinatorTerminalState.PARTIAL,
-                    artifacts, terminals, usage, completedSteps
+                    artifacts, terminals, usage, workerUsage, completedSteps
                 )
             }
 
             val projectedStarted = try {
                 usage.startAgent()
             } catch (_: ArithmeticException) {
-                return budgetExhausted(artifacts, terminals, usage, completedSteps)
+                return budgetExhausted(artifacts, terminals, usage, workerUsage, completedSteps)
             }
             if (!aggregateBudget.allows(projectedStarted)) {
-                return budgetExhausted(artifacts, terminals, usage, completedSteps)
+                return budgetExhausted(artifacts, terminals, usage, workerUsage, completedSteps)
             }
 
             val parentId = step.parentStepId
@@ -43,7 +44,7 @@ class AgentCoordinator(
                 return terminalForStop(
                     if (completedSteps == 0) AgentCoordinatorTerminalState.FAILED
                     else AgentCoordinatorTerminalState.PARTIAL,
-                    artifacts, terminals, usage, completedSteps
+                    artifacts, terminals, usage, workerUsage, completedSteps
                 )
             }
 
@@ -72,7 +73,7 @@ class AgentCoordinator(
                         (descendants[ancestorId] ?: 0) >= ancestor.budget.maxDescendants
                     }
                 ) {
-                    return budgetExhausted(artifacts, terminals, usage, completedSteps)
+                    return budgetExhausted(artifacts, terminals, usage, workerUsage, completedSteps)
                 }
 
                 val parentStep = parent.first
@@ -80,7 +81,7 @@ class AgentCoordinator(
                 val parentRemainingDescendants =
                     parentStep.budget.maxDescendants - parentUsedDescendants - 1
                 if (parentRemainingDescendants < 0 || remainingAggregate == null) {
-                    return budgetExhausted(artifacts, terminals, usage, completedSteps)
+                    return budgetExhausted(artifacts, terminals, usage, workerUsage, completedSteps)
                 }
 
                 parentScope = parentStep.cognitiveScope
@@ -102,7 +103,7 @@ class AgentCoordinator(
                     ?: return terminalForStop(
                         if (completedSteps == 0) AgentCoordinatorTerminalState.FAILED
                         else AgentCoordinatorTerminalState.PARTIAL,
-                        artifacts, terminals, usage, completedSteps
+                        artifacts, terminals, usage, workerUsage, completedSteps
                     )
                 val artifactReference = "asf-artifact:${parentArtifact.id.value}"
                 val combined = step.inputReferences + artifactReference
@@ -110,7 +111,7 @@ class AgentCoordinator(
                     return terminalForStop(
                         if (completedSteps == 0) AgentCoordinatorTerminalState.FAILED
                         else AgentCoordinatorTerminalState.PARTIAL,
-                        artifacts, terminals, usage, completedSteps
+                        artifacts, terminals, usage, workerUsage, completedSteps
                     )
                 }
                 combined.sorted()
@@ -134,7 +135,7 @@ class AgentCoordinator(
             ) ?: return terminalForStop(
                 if (completedSteps == 0) AgentCoordinatorTerminalState.FAILED
                 else AgentCoordinatorTerminalState.PARTIAL,
-                artifacts, terminals, usage, completedSteps
+                artifacts, terminals, usage, workerUsage, completedSteps
             )
 
             when (result) {
@@ -142,12 +143,21 @@ class AgentCoordinator(
                     return terminalForStop(
                         if (completedSteps == 0) AgentCoordinatorTerminalState.FAILED
                         else AgentCoordinatorTerminalState.PARTIAL,
-                        artifacts, terminals, usage, completedSteps
+                        artifacts, terminals, usage, workerUsage, completedSteps
                     )
                 }
 
                 is AgentFactoryResult.Terminal -> {
                     usage = projectedStarted
+                    step.workerClass?.let { workerClass ->
+                        workerUsage = try {
+                            workerUsage.recordStarted(workerClass)
+                        } catch (_: ArithmeticException) {
+                            return budgetExhausted(
+                                artifacts, terminals, usage, workerUsage, completedSteps
+                            )
+                        }
+                    }
                     terminals += result.instance
 
                     if (parentId != null) {
@@ -157,16 +167,21 @@ class AgentCoordinator(
                         }
                     }
 
-                    result.usage?.let {
-                        usage = try {
-                            usage.plus(it)
+                    result.usage?.let { runtimeUsage ->
+                        try {
+                            usage = usage.plus(runtimeUsage)
+                            step.workerClass?.let { workerClass ->
+                                workerUsage = workerUsage.plus(workerClass, runtimeUsage)
+                            }
                         } catch (_: ArithmeticException) {
-                            return budgetExhausted(artifacts, terminals, usage, completedSteps)
+                            return budgetExhausted(
+                                artifacts, terminals, usage, workerUsage, completedSteps
+                            )
                         }
                     }
 
                     if (!aggregateBudget.allows(usage)) {
-                        return budgetExhausted(artifacts, terminals, usage, completedSteps)
+                        return budgetExhausted(artifacts, terminals, usage, workerUsage, completedSteps)
                     }
 
                     result.artifact?.let { artifacts += it }
@@ -182,19 +197,19 @@ class AgentCoordinator(
                             return terminalForStop(
                                 if (completedSteps == 0) AgentCoordinatorTerminalState.CANCELLED
                                 else AgentCoordinatorTerminalState.PARTIAL,
-                                artifacts, terminals, usage, completedSteps
+                                artifacts, terminals, usage, workerUsage, completedSteps
                             )
                         }
 
                         AgentLifecycleState.BUDGET_EXHAUSTED -> {
-                            return budgetExhausted(artifacts, terminals, usage, completedSteps)
+                            return budgetExhausted(artifacts, terminals, usage, workerUsage, completedSteps)
                         }
 
                         else -> {
                             return terminalForStop(
                                 if (completedSteps == 0) AgentCoordinatorTerminalState.FAILED
                                 else AgentCoordinatorTerminalState.PARTIAL,
-                                artifacts, terminals, usage, completedSteps
+                                artifacts, terminals, usage, workerUsage, completedSteps
                             )
                         }
                     }
@@ -207,6 +222,7 @@ class AgentCoordinator(
             artifacts = artifacts.toList(),
             terminalInstances = terminals.toList(),
             aggregateUsage = usage,
+            workerAggregateUsage = workerUsage,
             completedSteps = completedSteps
         )
     }
@@ -277,12 +293,14 @@ class AgentCoordinator(
         artifacts: List<AgentArtifact>,
         terminals: List<AgentInstance>,
         usage: AgentAggregateUsage,
+        workerUsage: AgentWorkerAggregateUsage,
         completedSteps: Int
     ) = AgentCoordinatorResult(
         state = state,
         artifacts = artifacts.toList(),
         terminalInstances = terminals.toList(),
         aggregateUsage = usage,
+        workerAggregateUsage = workerUsage,
         completedSteps = completedSteps
     )
 
@@ -290,12 +308,14 @@ class AgentCoordinator(
         artifacts: List<AgentArtifact>,
         terminals: List<AgentInstance>,
         usage: AgentAggregateUsage,
+        workerUsage: AgentWorkerAggregateUsage,
         completedSteps: Int
     ) = terminalForStop(
         AgentCoordinatorTerminalState.BUDGET_EXHAUSTED,
         artifacts,
         terminals,
         usage,
+        workerUsage,
         completedSteps
     )
 }
