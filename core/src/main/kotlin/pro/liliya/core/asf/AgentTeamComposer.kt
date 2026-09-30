@@ -147,6 +147,13 @@ object AgentTeamComposer {
             request.rootTaskId.value,
             request.policyVersion.value,
             "deterministic",
+            "aggregate:" +
+                request.aggregateBudget.maxWallClockMillis + ":" +
+                request.aggregateBudget.maxInferenceUnits + ":" +
+                request.aggregateBudget.maxContextBytes + ":" +
+                request.aggregateBudget.maxRetrievalItems + ":" +
+                request.aggregateBudget.maxArtifacts + ":" +
+                request.aggregateBudget.maxAgents,
             *request.inputReferences.toTypedArray()
         )
     )
@@ -162,6 +169,21 @@ object AgentTeamComposer {
             request.policyVersion.value
         )
         values += request.inputReferences
+        values += "aggregate:" +
+            request.aggregateBudget.maxWallClockMillis + ":" +
+            request.aggregateBudget.maxInferenceUnits + ":" +
+            request.aggregateBudget.maxContextBytes + ":" +
+            request.aggregateBudget.maxRetrievalItems + ":" +
+            request.aggregateBudget.maxArtifacts + ":" +
+            request.aggregateBudget.maxAgents
+        request.candidates.forEach { candidate ->
+            values += "candidate:" + candidate.workerClass.name +
+                ":" + candidate.blueprint.id.value +
+                ":" + candidate.blueprint.version.value +
+                ":" + candidate.runtime.runtimeId +
+                ":" + candidate.runtime.kind.name +
+                ":" + (candidate.runtime.modelId ?: "")
+        }
         request.taskShape.workerRequirements.forEach { values += "requirement:" + it.name }
         orderedClasses.forEach { workerClass ->
             val candidate = candidatesByClass.getValue(workerClass)
