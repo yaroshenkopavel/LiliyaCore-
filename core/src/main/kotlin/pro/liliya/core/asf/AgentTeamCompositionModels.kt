@@ -154,6 +154,18 @@ enum class AgentTeamTemplateKind {
     ROOT_REVIEW_FAN_OUT
 }
 
+data class AgentTeamRequirementAssignment(
+    val requirement: AgentWorkerRequirement,
+    val workerClass: AgentWorkerClass,
+    val stepId: AgentCoordinatorStepId
+) {
+    init {
+        require(requirement != AgentWorkerRequirement.DETERMINISTIC_CHECK) {
+            "deterministic checks cannot be assigned to an agent worker"
+        }
+    }
+}
+
 enum class AgentTeamCompositionRejection {
     NO_SUITABLE_WORKER,
     CAPACITY_RESTRICTED,
@@ -186,6 +198,7 @@ data class AgentTeamCompositionPlan(
     val inputReferences: List<String>,
     val selectedRequirements: List<AgentWorkerRequirement>,
     val selectedWorkerClasses: List<AgentWorkerClass>,
+    val assignments: List<AgentTeamRequirementAssignment>,
     val templateKind: AgentTeamTemplateKind,
     val coordinatorPlan: AgentCoordinatorPlan
 ) {
@@ -202,11 +215,24 @@ data class AgentTeamCompositionPlan(
         require(selectedWorkerClasses.distinct().size == selectedWorkerClasses.size) {
             "team composition plan worker classes must be unique"
         }
+        require(assignments.size == selectedRequirements.size) {
+            "team composition plan must assign every worker requirement exactly once"
+        }
+        require(assignments.map { it.requirement } == selectedRequirements) {
+            "team composition assignments must preserve canonical requirement order"
+        }
+        require(assignments.all { it.workerClass in selectedWorkerClasses }) {
+            "team composition assignment must reference a selected worker class"
+        }
         require(selectedWorkerClasses == selectedWorkerClasses.sortedByDescending { it.order }) {
             "team composition plan must list root-first worker classes"
         }
         require(coordinatorPlan.steps.size == selectedWorkerClasses.size) {
             "team composition plan worker count must match coordinator steps"
+        }
+        val coordinatorStepIds = coordinatorPlan.steps.map { it.id }.toSet()
+        require(assignments.all { it.stepId in coordinatorStepIds }) {
+            "team composition assignment must reference a coordinator step"
         }
         require(
             (selectedWorkerClasses.size == 1 && templateKind == AgentTeamTemplateKind.SINGLE_WORKER) ||
