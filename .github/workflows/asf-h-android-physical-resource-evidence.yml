@@ -267,6 +267,7 @@ jobs:
           set -euo pipefail
           bridge='tools/physical-runner/liliya_asf_h_resource_metrics_bridge.py'
           chmod 700 "$bridge"
+          export LILIYA_PHYSICAL_BRIDGE_TOKEN_FILE='/data/data/com.termux/files/home/.liliya-physical-bridge-token'
           nohup python3 "$bridge"             > "$RUNNER_TEMP/asf-h-metrics-bridge.log" 2>&1 &
           echo "$!" > "$RUNNER_TEMP/asf-h-metrics-bridge.pid"
 
