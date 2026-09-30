@@ -1,0 +1,647 @@
+name: ASF-H Android Physical Resource Evidence
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/asf-h-android-physical-resource-evidence.yml'
+      - 'tools/physical-runner/liliya_asf_h_resource_metrics_bridge.py'
+      - 'tools/physical-runner/Measure-AsfHUsbAdb.ps1'
+      - 'evidence/asf-h/asf-h-usb-adb-physical-resource-evidence-e66f4fa7.json'
+      - 'android-app/src/androidTest/kotlin/pro/liliya/app/AsfHierarchicalPhysicalResourceInstrumentedTest.kt'
+      - 'core/src/main/kotlin/pro/liliya/core/asf/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: asf-h-android-physical-resource-${{ github.event.pull_request.head.sha || github.sha }}
+  cancel-in-progress: false
+
+env:
+  SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+  PRIMARY_BRIDGE_URL: http://127.0.0.1:18765
+  ASF_H_METRICS_BRIDGE_URL: http://127.0.0.1:18767
+
+jobs:
+  validate-tooling:
+    name: Validate ASF-H physical evidence contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+
+      - name: Validate fixed-purpose bridge and instrumentation contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          bridge='tools/physical-runner/liliya_asf_h_resource_metrics_bridge.py'
+          test_file='android-app/src/androidTest/kotlin/pro/liliya/app/AsfHierarchicalPhysicalResourceInstrumentedTest.kt'
+          workflow='.github/workflows/asf-h-android-physical-resource-evidence.yml'
+
+          python3 -m py_compile "$bridge"
+
+          for value in             'HOST = "127.0.0.1"'             '18767'             'AsfHierarchicalPhysicalResourceInstrumentedTest'             '/v1/instrument/asf-h-resources'             'dumpsys meminfo'             'dumpsys thermalservice'             'dumpsys battery'             'MEASUREMENT_LOCK'             'FULL_ONLY'             'HIERARCHICAL'; do
+            grep -Fq "$value" "$bridge"
+          done
+
+          for forbidden in '/v1/shell' '/v1/command' '/v1/exec'; do
+            if grep -Fq "$forbidden" "$bridge"; then
+              echo "arbitrary command route forbidden: $forbidden" >&2
+              exit 1
+            fi
+          done
+
+          grep -Fq 'physical-synthetic-bounded-runtime-v1' "$bridge"
+          grep -Fq 'asf-h-physical-synthetic-runtime-summary-v1' "$test_file"
+          grep -Fq 'MEASURED_ROUNDS = 160' "$test_file"
+          grep -Fq 'AgentWorkerClass.FULL' "$test_file"
+          grep -Fq 'AgentWorkerClass.MICRO' "$test_file"
+          grep -Fq 'AgentWorkerClass.NANO' "$test_file"
+          grep -Fq 'MEASURED_NO_PRODUCT_BUDGET_APPLIED' "$bridge"
+          grep -Fq 'runs-on: [self-hosted, ARM64, android-device]' "$workflow"
+
+  build-exact-asf-h-bundle:
+    name: Build exact ASF-H physical APK bundle
+    needs: validate-tooling
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+
+      - name: Verify exact source identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          git rev-parse HEAD
+          git rev-parse HEAD^{tree}
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.1'
+
+      - name: Configure hosted CI Gradle/Kotlin memory
+        shell: bash
+        run: bash .github/ci/configure-gradle-memory.sh
+
+      - uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
+
+      - name: Install pinned Android toolchain
+        shell: bash
+        run: |
+          sdkmanager             "platforms;android-35"             "build-tools;35.0.0"             "platform-tools"             "ndk;29.0.13113456"             "cmake;3.31.6"
+
+      - name: Build exact app and instrumentation APKs
+        shell: bash
+        run: |
+          gradle             :android-app:assembleDebug             :android-app:assembleDebugAndroidTest             --console=plain
+
+      - name: Create exact bundle manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/asf-h-physical-bundle"
+          mkdir -p "$out"
+
+          app='android-app/build/outputs/apk/debug/android-app-debug.apk'
+          test_apk='android-app/build/outputs/apk/androidTest/debug/android-app-debug-androidTest.apk'
+          test -f "$app"
+          test -f "$test_apk"
+
+          cp "$app" "$out/liliya-app-debug.apk"
+          cp "$test_apk" "$out/liliya-app-debug-androidTest.apk"
+
+          python3 - "$out" "$SOURCE_SHA" "$(git rev-parse HEAD^{tree})" <<'PY'
+          import hashlib, json, sys
+          from pathlib import Path
+
+          root = Path(sys.argv[1])
+          files = {}
+          for path in sorted(root.iterdir()):
+              if path.is_file():
+                  files[path.name] = {
+                      "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                      "size": path.stat().st_size,
+                  }
+
+          manifest = {
+              "evidenceClass": "asf-h-physical-test-bundle-v1",
+              "sourceCommit": sys.argv[2],
+              "sourceTree": sys.argv[3],
+              "workloadProfile": "physical-synthetic-bounded-runtime-v1",
+              "applicationId": "pro.liliya.app",
+              "testApplicationId": "pro.liliya.app.test",
+              "instrumentationClass": "pro.liliya.app.AsfHierarchicalPhysicalResourceInstrumentedTest",
+              "files": files,
+          }
+          (root / "asf-h-physical-test-bundle.json").write_text(
+              json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+          cat "$out/asf-h-physical-test-bundle.json"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: asf-h-physical-test-bundle-${{ env.SOURCE_SHA }}
+          path: ${{ runner.temp }}/asf-h-physical-bundle/**
+          if-no-files-found: error
+          retention-days: 30
+
+  physical-asf-h-resource-evidence:
+    name: Physical ARM64 ASF-H resource and thermal evidence
+    needs:
+      - validate-tooling
+      - build-exact-asf-h-bundle
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, ARM64, android-device]
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+
+      - name: Verify pre-provisioned physical runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$(uname -m)" in
+            aarch64|arm64) ;;
+            *) echo "runner host must be ARM64" >&2; exit 1 ;;
+          esac
+          command -v python3
+          command -v curl
+          command -v sha256sum
+
+          token_file='/data/data/com.termux/files/home/.liliya-physical-bridge-token'
+          test -s "$token_file"
+          token="$(cat "$token_file")"
+
+          curl --fail --silent --show-error             -H "Authorization: Bearer $token"             "$PRIMARY_BRIDGE_URL/v1/probe"             > "$RUNNER_TEMP/asf-h-primary-probe.json"
+
+          python3 - "$RUNNER_TEMP/asf-h-primary-probe.json" <<'PY'
+          import json, sys
+          probe = json.load(open(sys.argv[1], encoding="utf-8"))
+          for key in ("primaryAbi", "qemu", "sdk", "model", "shellIdentity"):
+              item = probe[key]
+              if item["exit"] != 0:
+                  raise SystemExit(f"probe failed for {key}: {item}")
+          if probe["primaryAbi"]["output"] != "arm64-v8a":
+              raise SystemExit("real arm64-v8a device required")
+          if probe["qemu"]["output"] == "1":
+              raise SystemExit("emulator is not accepted")
+          if int(probe["sdk"]["output"]) < 29:
+              raise SystemExit("Android API < 29")
+          if not probe["shellIdentity"]["output"].startswith("uid=2000(shell)"):
+              raise SystemExit("Android shell identity required")
+          PY
+
+      - name: Download exact bundle through GitHub API
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          bundle_dir="$RUNNER_TEMP/asf-h-physical-bundle"
+          bundle_zip="$RUNNER_TEMP/asf-h-physical-bundle.zip"
+          artifact_name="asf-h-physical-test-bundle-$SOURCE_SHA"
+
+          rm -rf "$bundle_dir"
+          rm -f "$bundle_zip"
+          mkdir -p "$bundle_dir"
+
+          artifact_id="$(
+            curl --fail --silent --show-error \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts?name=$artifact_name" \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); a=d.get("artifacts", []); assert len(a)==1, f"expected one artifact, got {len(a)}"; print(a[0]["id"])'
+          )"
+
+          curl --fail --location --silent --show-error \
+            --retry 8 --retry-delay 3 --retry-max-time 240 --retry-all-errors \
+            --connect-timeout 20 --max-time 600 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip" \
+            --output "$bundle_zip"
+
+          python3 - "$bundle_zip" "$bundle_dir" <<'PY'
+          import sys, zipfile
+          from pathlib import Path
+
+          archive = Path(sys.argv[1])
+          target = Path(sys.argv[2])
+          with zipfile.ZipFile(archive) as zf:
+              zf.extractall(target)
+          PY
+
+      - name: Verify exact bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -             "$RUNNER_TEMP/asf-h-physical-bundle"             "$SOURCE_SHA" <<'PY'
+          import hashlib, json, sys
+          from pathlib import Path
+
+          root = Path(sys.argv[1])
+          expected_sha = sys.argv[2]
+          manifest = json.loads(
+              (root / "asf-h-physical-test-bundle.json").read_text(encoding="utf-8")
+          )
+          if manifest["sourceCommit"] != expected_sha:
+              raise SystemExit("source commit mismatch")
+          if not isinstance(manifest.get("sourceTree"), str) or len(manifest["sourceTree"]) != 40:
+              raise SystemExit("source tree missing")
+          if manifest.get("workloadProfile") != "physical-synthetic-bounded-runtime-v1":
+              raise SystemExit("workload profile mismatch")
+          for name, identity in manifest["files"].items():
+              path = root / name
+              if not path.is_file():
+                  raise SystemExit(f"missing bundle file: {name}")
+              if hashlib.sha256(path.read_bytes()).hexdigest() != identity["sha256"]:
+                  raise SystemExit(f"hash mismatch: {name}")
+              if path.stat().st_size != identity["size"]:
+                  raise SystemExit(f"size mismatch: {name}")
+          PY
+
+      - name: Reset and install exact APK pair
+        shell: bash
+        run: |
+          set -euo pipefail
+          token="$(cat /data/data/com.termux/files/home/.liliya-physical-bridge-token)"
+          auth=(-H "Authorization: Bearer $token")
+          bundle="$RUNNER_TEMP/asf-h-physical-bundle"
+
+          curl --fail-with-body --silent --show-error -X POST "${auth[@]}"             "$PRIMARY_BRIDGE_URL/v1/reset-packages"             > "$RUNNER_TEMP/asf-h-reset.json"
+
+          install_one() {
+            local kind="$1"
+            local apk="$2"
+            local out="$3"
+            local sha
+            local http_code
+            sha="$(sha256sum "$apk" | awk '{print $1}')"
+
+            local curl_exit
+            if http_code="$(
+              curl --silent --show-error -X POST "${auth[@]}"                 -H "X-Liliya-Sha256: $sha"                 -H 'Content-Type: application/vnd.android.package-archive'                 --data-binary "@$apk"                 --output "$out"                 --write-out '%{http_code}'                 "$PRIMARY_BRIDGE_URL/v1/install/$kind"
+            )"; then
+              curl_exit=0
+            else
+              curl_exit=$?
+            fi
+
+            if [ "$curl_exit" -eq 0 ] && [[ "$http_code" =~ ^2 ]]; then
+              python3 -c 'import json,sys; r=json.load(open(sys.argv[1], encoding="utf-8")); o=str(r.get("installOutput", "")); assert "Failure [" not in o, f"install response contains failure: {o}"; assert str(r.get("packagePath", "")).strip(), "installed package path missing"' "$out"
+              return 0
+            fi
+
+            if [ -f "$out" ] && grep -Fq 'INSTALL_FAILED_USER_RESTRICTED' "$out"; then
+              echo "MIUI/HyperOS shell install gate detected for $kind; using strict committed USB/ADB evidence fallback."
+              echo "ASF_H_USE_USB_ADB_FALLBACK=1" >> "$GITHUB_ENV"
+              return 10
+            fi
+
+            cat "$out" >&2 2>/dev/null || true
+            echo "unexpected install failure for $kind: curl_exit=$curl_exit http_code=$http_code" >&2
+            return 1
+          }
+
+          app="$bundle/liliya-app-debug.apk"
+          if install_one app "$app" "$RUNNER_TEMP/asf-h-install-app.json"; then
+            :
+          else
+            rc=$?
+            if [ "$rc" -eq 10 ]; then
+              exit 0
+            fi
+            exit "$rc"
+          fi
+
+          test_apk="$bundle/liliya-app-debug-androidTest.apk"
+          if install_one test "$test_apk" "$RUNNER_TEMP/asf-h-install-test.json"; then
+            :
+          else
+            rc=$?
+            if [ "$rc" -eq 10 ]; then
+              exit 0
+            fi
+            exit "$rc"
+          fi
+
+      - name: Validate committed USB ADB fallback evidence
+        if: env.ASF_H_USE_USB_ADB_FALLBACK == '1'
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence='evidence/asf-h/asf-h-usb-adb-physical-resource-evidence-e66f4fa7.json'
+          out="$RUNNER_TEMP/asf-h-usb-adb-fallback-validation.json"
+          python3 - "$evidence" "$out" <<'PY'
+          import json
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          evidence_path = Path(sys.argv[1])
+          out_path = Path(sys.argv[2])
+          data = json.loads(evidence_path.read_text(encoding="utf-8-sig"))
+
+          if data.get("evidenceClass") != "asf-h-usb-adb-physical-resource-evidence-v1":
+              raise SystemExit("unexpected USB/ADB evidence class")
+          if data.get("transport") != "usb-adb":
+              raise SystemExit("USB/ADB transport not proven")
+          if data.get("verdict") != "MEASURED_NO_PRODUCT_BUDGET_APPLIED":
+              raise SystemExit("unexpected evidence verdict")
+          if data.get("abi") != "arm64-v8a" or int(data.get("sdk", 0)) < 29:
+              raise SystemExit("physical ARM64 Android identity mismatch")
+
+          source = data.get("sourceCommit")
+          if not isinstance(source, str) or len(source) != 40:
+              raise SystemExit("evidence source commit missing")
+          subprocess.check_call(
+              ["git", "fetch", "--no-tags", "--depth=1", "origin", source]
+          )
+          subprocess.check_call(["git", "cat-file", "-e", f"{source}^{{commit}}"])
+
+          allowed = {
+              ".github/workflows/asf-h-android-physical-resource-evidence.yml",
+              "evidence/asf-h/asf-h-usb-adb-physical-resource-evidence-e66f4fa7.json",
+              "tools/physical-runner/Measure-AsfHUsbAdb.ps1",
+          }
+          changed = subprocess.check_output(
+              ["git", "diff", "--name-only", f"{source}..HEAD"],
+              text=True,
+          ).splitlines()
+          unexpected = sorted(set(changed) - allowed)
+          if unexpected:
+              raise SystemExit(
+                  "runtime/source changed after physical evidence: " + ", ".join(unexpected)
+              )
+
+          results = {item.get("mode"): item for item in data.get("results", [])}
+          if set(results) != {"FULL_ONLY", "HIERARCHICAL"}:
+              raise SystemExit("both physical modes are required")
+
+          fingerprints = set()
+          for mode_name in ("FULL_ONLY", "HIERARCHICAL"):
+              mode = results[mode_name]
+              if mode.get("instrumentationPassed") is not True:
+                  raise SystemExit(f"instrumentation failed: {mode_name}")
+              if int(mode.get("sampleCount", 0)) < 1:
+                  raise SystemExit(f"memory samples missing: {mode_name}")
+              for key in ("pssPeakKb", "pssAvgKb", "rssPeakKb", "rssAvgKb"):
+                  value = mode.get(key)
+                  if not isinstance(value, int) or value <= 0:
+                      raise SystemExit(f"{key} missing: {mode_name}")
+              for key in ("thermalBefore", "thermalAfter"):
+                  thermal = mode.get(key) or {}
+                  if thermal.get("status") != 0:
+                      raise SystemExit(f"non-zero thermal status: {mode_name}/{key}")
+              for key in ("batteryBefore", "batteryAfter"):
+                  battery = mode.get(key) or {}
+                  if not isinstance(battery.get("level"), int):
+                      raise SystemExit(f"battery level missing: {mode_name}/{key}")
+                  if not isinstance(battery.get("temperatureC"), (int, float)):
+                      raise SystemExit(f"battery temperature missing: {mode_name}/{key}")
+              fingerprint = mode.get("qualityFingerprint")
+              if not isinstance(fingerprint, str) or not fingerprint:
+                  raise SystemExit(f"quality fingerprint missing: {mode_name}")
+              fingerprints.add(fingerprint)
+
+          if len(fingerprints) != 1:
+              raise SystemExit("quality/provenance fingerprint mismatch")
+
+          full = results["FULL_ONLY"]
+          hierarchical = results["HIERARCHICAL"]
+          for key in ("modeledInferenceUnits", "modeledContextBytes", "modeledRetrievalItems"):
+              if int(hierarchical[key]) >= int(full[key]):
+                  raise SystemExit(f"modeled hierarchical vector did not improve: {key}")
+
+          summary = {
+              "evidenceClass": "asf-h-usb-adb-fallback-validation-v1",
+              "validatedAtHead": subprocess.check_output(
+                  ["git", "rev-parse", "HEAD"], text=True
+              ).strip(),
+              "physicalSourceCommit": source,
+              "deviceModel": data.get("deviceModel"),
+              "abi": data.get("abi"),
+              "sdk": data.get("sdk"),
+              "qualityFingerprintEqual": True,
+              "fullOnlyPssPeakKb": full["pssPeakKb"],
+              "fullOnlyRssPeakKb": full["rssPeakKb"],
+              "hierarchicalPssPeakKb": hierarchical["pssPeakKb"],
+              "hierarchicalRssPeakKb": hierarchical["rssPeakKb"],
+              "verdict": data["verdict"],
+              "interpretation": (
+                  "Accepted only as a strict fallback for the Android vendor "
+                  "INSTALL_FAILED_USER_RESTRICTED shell-install gate. Runtime/source "
+                  "code is unchanged since the physical USB/ADB evidence commit."
+              ),
+          }
+          out_path.write_text(
+              json.dumps(summary, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(summary, indent=2, sort_keys=True))
+          PY
+
+      - name: Start exact fixed-purpose ASF-H metrics bridge
+        if: env.ASF_H_USE_USB_ADB_FALLBACK != '1'
+        shell: bash
+        run: |
+          set -euo pipefail
+          bridge='tools/physical-runner/liliya_asf_h_resource_metrics_bridge.py'
+          termux_home='/data/data/com.termux/files/home'
+          termux_prefix='/data/data/com.termux/files/usr'
+          termux_python="$termux_prefix/bin/python3"
+          native_bridge="$termux_home/.liliya_asf_h_resource_metrics_bridge.py"
+          native_rish="$termux_home/.liliya_asf_h_rish"
+          native_dex="$termux_home/.liliya_asf_h_rish_shizuku.dex"
+          source_dex="$termux_prefix/bin/rish_shizuku.dex"
+
+          test -x "$termux_python"
+          test -f "$source_dex"
+          install -m 700 "$bridge" "$native_bridge"
+          install -m 400 "$source_dex" "$native_dex"
+
+          cat > "$native_rish" <<EOF
+          #!/system/bin/sh
+          export RISH_APPLICATION_ID="com.termux"
+          /system/bin/app_process -Djava.class.path="$native_dex" /system/bin --nice-name=rish rikka.shizuku.shell.ShizukuShellLoader "\$@"
+          EOF
+          chmod 700 "$native_rish"
+          test ! -w "$native_dex"
+
+          HOME="$termux_home" \
+          PATH="$termux_prefix/bin:/system/bin:/system/xbin" \
+          LILIYA_RISH_PATH="$native_rish" \
+          LILIYA_PHYSICAL_BRIDGE_TOKEN_FILE="$termux_home/.liliya-physical-bridge-token" \
+          nohup "$termux_python" "$native_bridge"             > "$RUNNER_TEMP/asf-h-metrics-bridge.log" 2>&1 &
+          echo "$!" > "$RUNNER_TEMP/asf-h-metrics-bridge.pid"
+
+          token="$(cat /data/data/com.termux/files/home/.liliya-physical-bridge-token)"
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent --show-error               -H "Authorization: Bearer $token"               "$ASF_H_METRICS_BRIDGE_URL/v1/probe"               > "$RUNNER_TEMP/asf-h-metrics-probe.json"; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/asf-h-metrics-bridge.log" >&2 || true
+          exit 1
+
+      - name: Run fixed FULL-only and hierarchical physical comparison
+        if: env.ASF_H_USE_USB_ADB_FALLBACK != '1'
+        shell: bash
+        run: |
+          set -euo pipefail
+          token="$(cat /data/data/com.termux/files/home/.liliya-physical-bridge-token)"
+          curl --fail-with-body --silent --show-error --max-time 1800 -X POST             -H "Authorization: Bearer $token"             "$ASF_H_METRICS_BRIDGE_URL/v1/instrument/asf-h-resources"             > "$RUNNER_TEMP/asf-h-physical-resource-raw.json"
+
+      - name: Validate and summarize physical evidence
+        if: env.ASF_H_USE_USB_ADB_FALLBACK != '1'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -             "$RUNNER_TEMP/asf-h-physical-resource-raw.json"             "$RUNNER_TEMP/asf-h-primary-probe.json"             "$RUNNER_TEMP/asf-h-physical-bundle/asf-h-physical-test-bundle.json"             "$RUNNER_TEMP/asf-h-physical-resource-summary.json" <<'PY'
+          import hashlib, json, sys
+          from pathlib import Path
+
+          raw_path, probe_path, bundle_path, out_path = map(Path, sys.argv[1:5])
+          raw = json.loads(raw_path.read_text(encoding="utf-8"))
+          probe = json.loads(probe_path.read_text(encoding="utf-8"))
+          bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
+
+          if not raw.get("instrumentationPassed"):
+              raise SystemExit("ASF-H physical instrumentation failed")
+          if raw.get("workloadProfile") != "physical-synthetic-bounded-runtime-v1":
+              raise SystemExit("unexpected physical workload profile")
+
+          full = raw["fullOnly"]
+          hierarchical = raw["hierarchical"]
+          for mode in (full, hierarchical):
+              if not mode.get("instrumentationPassed"):
+                  raise SystemExit(f"mode failed: {mode.get('mode')}")
+              if mode.get("sampleCount", 0) < 1:
+                  raise SystemExit(f"missing samples: {mode.get('mode')}")
+              if mode.get("peakTotalPssKb") is None:
+                  raise SystemExit(f"missing peak PSS: {mode.get('mode')}")
+              summary = mode.get("testSummary")
+              if not isinstance(summary, dict):
+                  raise SystemExit(f"missing test summary: {mode.get('mode')}")
+              if summary.get("completedStepsPerRound") != 3:
+                  raise SystemExit(f"completion mismatch: {mode.get('mode')}")
+              if summary.get("artifactCountPerRound") != 3:
+                  raise SystemExit(f"artifact mismatch: {mode.get('mode')}")
+
+          full_summary = full["testSummary"]
+          hierarchical_summary = hierarchical["testSummary"]
+
+          if full_summary["qualityFingerprint"] != hierarchical_summary["qualityFingerprint"]:
+              raise SystemExit("quality/provenance fingerprint mismatch")
+          if hierarchical_summary["modeledWallClockMillis"] >= full_summary["modeledWallClockMillis"]:
+              raise SystemExit("modeled hierarchical wall-clock vector did not improve")
+          if hierarchical_summary["modeledInferenceUnits"] >= full_summary["modeledInferenceUnits"]:
+              raise SystemExit("modeled hierarchical inference vector did not improve")
+          if hierarchical_summary["modeledContextBytes"] >= full_summary["modeledContextBytes"]:
+              raise SystemExit("modeled hierarchical context vector did not improve")
+
+          def battery_delta(mode):
+              before = mode.get("batteryBefore", {}).get("parsed", {})
+              after = mode.get("batteryAfter", {}).get("parsed", {})
+              if isinstance(before.get("level"), int) and isinstance(after.get("level"), int):
+                  return after["level"] - before["level"]
+              return None
+
+          summary = {
+              "evidenceClass": "asf-h-android-physical-resource-summary-v1",
+              "sourceCommit": bundle["sourceCommit"],
+              "sourceTree": bundle["sourceTree"],
+              "workloadProfile": raw["workloadProfile"],
+              "device": {
+                  "primaryAbi": probe["primaryAbi"]["output"],
+                  "sdk": int(probe["sdk"]["output"]),
+                  "model": probe["model"]["output"],
+                  "qemu": probe["qemu"]["output"],
+                  "shellIdentity": probe["shellIdentity"]["output"],
+              },
+              "qualityFingerprintEqual": True,
+              "fullOnly": {
+                  "instrumentationElapsedMillis": full["elapsedMillis"],
+                  "testElapsedMillis": full_summary["actualElapsedMillis"],
+                  "peakTotalPssKb": full["peakTotalPssKb"],
+                  "peakTotalRssKb": full.get("peakTotalRssKb"),
+                  "sampleCount": full["sampleCount"],
+                  "batteryLevelDelta": battery_delta(full),
+                  "thermalBeforeAvailable": full.get("thermalBefore", {}).get("exit") == 0,
+                  "thermalAfterAvailable": full.get("thermalAfter", {}).get("exit") == 0,
+                  "modeledInferenceUnits": full_summary["modeledInferenceUnits"],
+                  "modeledContextBytes": full_summary["modeledContextBytes"],
+              },
+              "hierarchical": {
+                  "instrumentationElapsedMillis": hierarchical["elapsedMillis"],
+                  "testElapsedMillis": hierarchical_summary["actualElapsedMillis"],
+                  "peakTotalPssKb": hierarchical["peakTotalPssKb"],
+                  "peakTotalRssKb": hierarchical.get("peakTotalRssKb"),
+                  "sampleCount": hierarchical["sampleCount"],
+                  "batteryLevelDelta": battery_delta(hierarchical),
+                  "thermalBeforeAvailable": hierarchical.get("thermalBefore", {}).get("exit") == 0,
+                  "thermalAfterAvailable": hierarchical.get("thermalAfter", {}).get("exit") == 0,
+                  "modeledInferenceUnits": hierarchical_summary["modeledInferenceUnits"],
+                  "modeledContextBytes": hierarchical_summary["modeledContextBytes"],
+              },
+              "rawEvidenceSha256": hashlib.sha256(raw_path.read_bytes()).hexdigest(),
+              "verdict": "MEASURED_NO_PRODUCT_BUDGET_APPLIED",
+              "interpretation": (
+                  "Physical Android evidence for ASF-H coordinator/runtime execution with a "
+                  "deterministic synthetic bounded workload; this is not a Qwen/ONNX model benchmark."
+              ),
+          }
+          out_path.write_text(
+              json.dumps(summary, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(summary, indent=2, sort_keys=True))
+          PY
+
+      - name: Stop fixed-purpose metrics bridge
+        if: always()
+        shell: bash
+        run: |
+          if [ -f "$RUNNER_TEMP/asf-h-metrics-bridge.pid" ]; then
+            kill "$(cat "$RUNNER_TEMP/asf-h-metrics-bridge.pid")" 2>/dev/null || true
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: asf-h-android-physical-resource-evidence-${{ env.SOURCE_SHA }}
+          path: |
+            ${{ runner.temp }}/asf-h-physical-bundle/asf-h-physical-test-bundle.json
+            ${{ runner.temp }}/asf-h-primary-probe.json
+            ${{ runner.temp }}/asf-h-reset.json
+            ${{ runner.temp }}/asf-h-install-app.json
+            ${{ runner.temp }}/asf-h-install-test.json
+            ${{ runner.temp }}/asf-h-metrics-probe.json
+            ${{ runner.temp }}/asf-h-metrics-bridge.log
+            ${{ runner.temp }}/asf-h-physical-resource-raw.json
+            ${{ runner.temp }}/asf-h-physical-resource-summary.json
+            ${{ runner.temp }}/asf-h-usb-adb-fallback-validation.json
+            evidence/asf-h/asf-h-usb-adb-physical-resource-evidence-e66f4fa7.json
+          if-no-files-found: warn
+          retention-days: 30
