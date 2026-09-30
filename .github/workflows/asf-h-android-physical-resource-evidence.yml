@@ -301,9 +301,17 @@ jobs:
         run: |
           set -euo pipefail
           bridge='tools/physical-runner/liliya_asf_h_resource_metrics_bridge.py'
-          chmod 700 "$bridge"
-          export LILIYA_PHYSICAL_BRIDGE_TOKEN_FILE='/data/data/com.termux/files/home/.liliya-physical-bridge-token'
-          nohup python3 "$bridge"             > "$RUNNER_TEMP/asf-h-metrics-bridge.log" 2>&1 &
+          termux_home='/data/data/com.termux/files/home'
+          termux_python='/data/data/com.termux/files/usr/bin/python3'
+          native_bridge="$termux_home/.liliya_asf_h_resource_metrics_bridge.py"
+
+          test -x "$termux_python"
+          install -m 700 "$bridge" "$native_bridge"
+
+          HOME="$termux_home" \
+          PATH='/data/data/com.termux/files/usr/bin:/system/bin:/system/xbin' \
+          LILIYA_PHYSICAL_BRIDGE_TOKEN_FILE="$termux_home/.liliya-physical-bridge-token" \
+          nohup "$termux_python" "$native_bridge"             > "$RUNNER_TEMP/asf-h-metrics-bridge.log" 2>&1 &
           echo "$!" > "$RUNNER_TEMP/asf-h-metrics-bridge.pid"
 
           token="$(cat /data/data/com.termux/files/home/.liliya-physical-bridge-token)"
