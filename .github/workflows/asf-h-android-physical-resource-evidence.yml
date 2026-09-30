@@ -232,6 +232,8 @@ jobs:
           )"
 
           curl --fail --location --silent --show-error \
+            --retry 8 --retry-delay 3 --retry-max-time 240 --retry-all-errors \
+            --connect-timeout 20 --max-time 600 \
             -H "Authorization: Bearer $GH_TOKEN" \
             -H "Accept: application/vnd.github+json" \
             "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip" \
