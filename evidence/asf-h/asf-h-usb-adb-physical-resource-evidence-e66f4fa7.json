@@ -1,0 +1,186 @@
+﻿{
+    "evidenceClass":  "asf-h-usb-adb-physical-resource-evidence-v1",
+    "sourceCommit":  "e66f4fa762595e204675fddb73ade3ba976839b3",
+    "deviceModel":  "23030RAC7Y",
+    "abi":  "arm64-v8a",
+    "sdk":  34,
+    "transport":  "usb-adb",
+    "verdict":  "MEASURED_NO_PRODUCT_BUDGET_APPLIED",
+    "results":  [
+                    {
+                        "mode":  "FULL_ONLY",
+                        "instrumentationPassed":  true,
+                        "wallElapsedMs":  18323,
+                        "summaryActualElapsedMillis":  2386,
+                        "sampleCount":  8,
+                        "pssPeakKb":  58945,
+                        "pssAvgKb":  55273,
+                        "rssPeakKb":  160132,
+                        "rssAvgKb":  152759,
+                        "thermalBefore":  {
+                                              "status":  0,
+                                              "cpuMaxC":  43.652,
+                                              "skinMaxC":  36.664,
+                                              "batteryMaxC":  34.8
+                                          },
+                        "thermalAfter":  {
+                                             "status":  0,
+                                             "cpuMaxC":  43.652,
+                                             "skinMaxC":  36.607,
+                                             "batteryMaxC":  34.8
+                                         },
+                        "batteryBefore":  {
+                                              "level":  66,
+                                              "temperatureC":  34.8,
+                                              "voltageMv":  3992
+                                          },
+                        "batteryAfter":  {
+                                             "level":  66,
+                                             "temperatureC":  34.8,
+                                             "voltageMv":  3992
+                                         },
+                        "qualityFingerprint":  "comparison-result:sha256:evidence:broad:evidence:broad:root-asf-h-physical|comparison-result:sha256:evidence:narrow:evidence:narrow:root-asf-h-physical|comparison-result:sha256:evidence:atomic:evidence:atomic:root-asf-h-physical",
+                        "modeledWallClockMillis":  57600,
+                        "modeledInferenceUnits":  480000,
+                        "modeledContextBytes":  1920000,
+                        "modeledRetrievalItems":  1920,
+                        "samples":  [
+                                        {
+                                            "timestampUtc":  "2026-09-30T18:12:45.6113714Z",
+                                            "pssKb":  45998,
+                                            "rssKb":  117584
+                                        },
+                                        {
+                                            "timestampUtc":  "2026-09-30T18:12:45.9281353Z",
+                                            "pssKb":  55101,
+                                            "rssKb":  156260
+                                        },
+                                        {
+                                            "timestampUtc":  "2026-09-30T18:12:46.2312370Z",
+                                            "pssKb":  55173,
+                                            "rssKb":  156348
+                                        },
+                                        {
+                                            "timestampUtc":  "2026-09-30T18:12:46.5798212Z",
+                                            "pssKb":  57365,
+                                            "rssKb":  158548
+                                        },
+                                        {
+                                            "timestampUtc":  "2026-09-30T18:12:47.0631934Z",
+                                            "pssKb":  58945,
+                                            "rssKb":  160132
+                                        },
+                                        {
+                                            "timestampUtc":  "2026-09-30T18:12:47.4349651Z",
+                                            "pssKb":  58373,
+                                            "rssKb":  159568
+                                        },
+                                        {
+                                            "timestampUtc":  "2026-09-30T18:12:47.7581366Z",
+                                            "pssKb":  55881,
+                                            "rssKb":  157080
+                                        },
+                                        {
+                                            "timestampUtc":  "2026-09-30T18:12:49.3733062Z",
+                                            "pssKb":  55349,
+                                            "rssKb":  156552
+                                        }
+                                    ]
+                    },
+                    {
+                        "mode":  "HIERARCHICAL",
+                        "instrumentationPassed":  true,
+                        "wallElapsedMs":  5555,
+                        "summaryActualElapsedMillis":  2393,
+                        "sampleCount":  11,
+                        "pssPeakKb":  59929,
+                        "pssAvgKb":  55628,
+                        "rssPeakKb":  161204,
+                        "rssAvgKb":  153645,
+                        "thermalBefore":  {
+                                              "status":  0,
+                                              "cpuMaxC":  43.652,
+                                              "skinMaxC":  35.809,
+                                              "batteryMaxC":  34.7
+                                          },
+                        "thermalAfter":  {
+                                             "status":  0,
+                                             "cpuMaxC":  50.435,
+                                             "skinMaxC":  36.607,
+                                             "batteryMaxC":  34.7
+                                         },
+                        "batteryBefore":  {
+                                              "level":  66,
+                                              "temperatureC":  34.7,
+                                              "voltageMv":  4039
+                                          },
+                        "batteryAfter":  {
+                                             "level":  66,
+                                             "temperatureC":  34.7,
+                                             "voltageMv":  4039
+                                         },
+                        "qualityFingerprint":  "comparison-result:sha256:evidence:broad:evidence:broad:root-asf-h-physical|comparison-result:sha256:evidence:narrow:evidence:narrow:root-asf-h-physical|comparison-result:sha256:evidence:atomic:evidence:atomic:root-asf-h-physical",
+                        "modeledWallClockMillis":  26880,
+                        "modeledInferenceUnits":  204000,
+                        "modeledContextBytes":  820480,
+                        "modeledRetrievalItems":  960,
+                        "samples":  [
+                                        {
+                                            "timestampUtc":  "2026-09-30T18:13:38.6447105Z",
+                                            "pssKb":  45092,
+                                            "rssKb":  112028
+                                        },
+                                        {
+                                            "timestampUtc":  "2026-09-30T18:13:39.0105338Z",
+                                            "pssKb":  57315,
+                                            "rssKb":  157220
+                                        },
+                                        {
+                                            "timestampUtc":  "2026-09-30T18:13:39.3524479Z",
+                                            "pssKb":  55589,
+                                            "rssKb":  156808
+                                        },
+                                        {
+                                            "timestampUtc":  "2026-09-30T18:13:39.6836439Z",
+                                            "pssKb":  55677,
+                                            "rssKb":  156916
+                                        },
+                                        {
+                                            "timestampUtc":  "2026-09-30T18:13:40.0392871Z",
+                                            "pssKb":  57393,
+                                            "rssKb":  158644
+                                        },
+                                        {
+                                            "timestampUtc":  "2026-09-30T18:13:40.4034121Z",
+                                            "pssKb":  56281,
+                                            "rssKb":  157544
+                                        },
+                                        {
+                                            "timestampUtc":  "2026-09-30T18:13:40.8468496Z",
+                                            "pssKb":  56941,
+                                            "rssKb":  158204
+                                        },
+                                        {
+                                            "timestampUtc":  "2026-09-30T18:13:41.1474518Z",
+                                            "pssKb":  59929,
+                                            "rssKb":  161204
+                                        },
+                                        {
+                                            "timestampUtc":  "2026-09-30T18:13:41.4585591Z",
+                                            "pssKb":  56133,
+                                            "rssKb":  157408
+                                        },
+                                        {
+                                            "timestampUtc":  "2026-09-30T18:13:41.6862927Z",
+                                            "pssKb":  55189,
+                                            "rssKb":  156468
+                                        },
+                                        {
+                                            "timestampUtc":  "2026-09-30T18:13:41.9751486Z",
+                                            "pssKb":  56373,
+                                            "rssKb":  157656
+                                        }
+                                    ]
+                    }
+                ]
+}
