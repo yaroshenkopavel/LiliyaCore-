@@ -6,6 +6,8 @@ on:
     paths:
       - '.github/workflows/asf-h-android-physical-resource-evidence.yml'
       - 'tools/physical-runner/liliya_asf_h_resource_metrics_bridge.py'
+      - 'tools/physical-runner/Measure-AsfHUsbAdb.ps1'
+      - 'evidence/asf-h/asf-h-usb-adb-physical-resource-evidence-e66f4fa7.json'
       - 'android-app/src/androidTest/kotlin/pro/liliya/app/AsfHierarchicalPhysicalResourceInstrumentedTest.kt'
       - 'core/src/main/kotlin/pro/liliya/core/asf/**'
   workflow_dispatch:
@@ -288,15 +290,178 @@ jobs:
 
           curl --fail-with-body --silent --show-error -X POST "${auth[@]}"             "$PRIMARY_BRIDGE_URL/v1/reset-packages"             > "$RUNNER_TEMP/asf-h-reset.json"
 
+          install_one() {
+            local kind="$1"
+            local apk="$2"
+            local out="$3"
+            local sha
+            local http_code
+            sha="$(sha256sum "$apk" | awk '{print $1}')"
+
+            set +e
+            http_code="$(
+              curl --silent --show-error -X POST "${auth[@]}"                 -H "X-Liliya-Sha256: $sha"                 -H 'Content-Type: application/vnd.android.package-archive'                 --data-binary "@$apk"                 --output "$out"                 --write-out '%{http_code}'                 "$PRIMARY_BRIDGE_URL/v1/install/$kind"
+            )"
+            local curl_exit=$?
+            set -e
+
+            if [ "$curl_exit" -eq 0 ] && [[ "$http_code" =~ ^2 ]]; then
+              python3 - "$out" <<'PY'
+              import json, sys
+              result = json.load(open(sys.argv[1], encoding="utf-8"))
+              output = str(result.get("installOutput", ""))
+              if "Failure [" in output:
+                  raise SystemExit(f"install response contains failure: {output}")
+              if not str(result.get("packagePath", "")).strip():
+                  raise SystemExit("installed package path missing")
+              PY
+              return 0
+            fi
+
+            if [ -f "$out" ] && grep -Fq 'INSTALL_FAILED_USER_RESTRICTED' "$out"; then
+              echo "MIUI/HyperOS shell install gate detected for $kind; using strict committed USB/ADB evidence fallback."
+              echo "ASF_H_USE_USB_ADB_FALLBACK=1" >> "$GITHUB_ENV"
+              return 10
+            fi
+
+            cat "$out" >&2 2>/dev/null || true
+            echo "unexpected install failure for $kind: curl_exit=$curl_exit http_code=$http_code" >&2
+            return 1
+          }
+
           app="$bundle/liliya-app-debug.apk"
-          app_sha="$(sha256sum "$app" | awk '{print $1}')"
-          curl --fail-with-body --silent --show-error -X POST "${auth[@]}"             -H "X-Liliya-Sha256: $app_sha"             -H 'Content-Type: application/vnd.android.package-archive'             --data-binary "@$app"             "$PRIMARY_BRIDGE_URL/v1/install/app"             > "$RUNNER_TEMP/asf-h-install-app.json"
+          if ! install_one app "$app" "$RUNNER_TEMP/asf-h-install-app.json"; then
+            rc=$?
+            if [ "$rc" -eq 10 ]; then
+              exit 0
+            fi
+            exit "$rc"
+          fi
 
           test_apk="$bundle/liliya-app-debug-androidTest.apk"
-          test_sha="$(sha256sum "$test_apk" | awk '{print $1}')"
-          curl --fail-with-body --silent --show-error -X POST "${auth[@]}"             -H "X-Liliya-Sha256: $test_sha"             -H 'Content-Type: application/vnd.android.package-archive'             --data-binary "@$test_apk"             "$PRIMARY_BRIDGE_URL/v1/install/test"             > "$RUNNER_TEMP/asf-h-install-test.json"
+          if ! install_one test "$test_apk" "$RUNNER_TEMP/asf-h-install-test.json"; then
+            rc=$?
+            if [ "$rc" -eq 10 ]; then
+              exit 0
+            fi
+            exit "$rc"
+          fi
+
+      - name: Validate committed USB ADB fallback evidence
+        if: env.ASF_H_USE_USB_ADB_FALLBACK == '1'
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence='evidence/asf-h/asf-h-usb-adb-physical-resource-evidence-e66f4fa7.json'
+          out="$RUNNER_TEMP/asf-h-usb-adb-fallback-validation.json"
+          python3 - "$evidence" "$out" <<'PY'
+          import json
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          evidence_path = Path(sys.argv[1])
+          out_path = Path(sys.argv[2])
+          data = json.loads(evidence_path.read_text(encoding="utf-8-sig"))
+
+          if data.get("evidenceClass") != "asf-h-usb-adb-physical-resource-evidence-v1":
+              raise SystemExit("unexpected USB/ADB evidence class")
+          if data.get("transport") != "usb-adb":
+              raise SystemExit("USB/ADB transport not proven")
+          if data.get("verdict") != "MEASURED_NO_PRODUCT_BUDGET_APPLIED":
+              raise SystemExit("unexpected evidence verdict")
+          if data.get("abi") != "arm64-v8a" or int(data.get("sdk", 0)) < 29:
+              raise SystemExit("physical ARM64 Android identity mismatch")
+
+          source = data.get("sourceCommit")
+          if not isinstance(source, str) or len(source) != 40:
+              raise SystemExit("evidence source commit missing")
+          subprocess.check_call(["git", "merge-base", "--is-ancestor", source, "HEAD"])
+
+          allowed = {
+              ".github/workflows/asf-h-android-physical-resource-evidence.yml",
+              "evidence/asf-h/asf-h-usb-adb-physical-resource-evidence-e66f4fa7.json",
+              "tools/physical-runner/Measure-AsfHUsbAdb.ps1",
+          }
+          changed = subprocess.check_output(
+              ["git", "diff", "--name-only", f"{source}..HEAD"],
+              text=True,
+          ).splitlines()
+          unexpected = sorted(set(changed) - allowed)
+          if unexpected:
+              raise SystemExit(
+                  "runtime/source changed after physical evidence: " + ", ".join(unexpected)
+              )
+
+          results = {item.get("mode"): item for item in data.get("results", [])}
+          if set(results) != {"FULL_ONLY", "HIERARCHICAL"}:
+              raise SystemExit("both physical modes are required")
+
+          fingerprints = set()
+          for mode_name in ("FULL_ONLY", "HIERARCHICAL"):
+              mode = results[mode_name]
+              if mode.get("instrumentationPassed") is not True:
+                  raise SystemExit(f"instrumentation failed: {mode_name}")
+              if int(mode.get("sampleCount", 0)) < 1:
+                  raise SystemExit(f"memory samples missing: {mode_name}")
+              for key in ("pssPeakKb", "pssAvgKb", "rssPeakKb", "rssAvgKb"):
+                  value = mode.get(key)
+                  if not isinstance(value, int) or value <= 0:
+                      raise SystemExit(f"{key} missing: {mode_name}")
+              for key in ("thermalBefore", "thermalAfter"):
+                  thermal = mode.get(key) or {}
+                  if thermal.get("status") != 0:
+                      raise SystemExit(f"non-zero thermal status: {mode_name}/{key}")
+              for key in ("batteryBefore", "batteryAfter"):
+                  battery = mode.get(key) or {}
+                  if not isinstance(battery.get("level"), int):
+                      raise SystemExit(f"battery level missing: {mode_name}/{key}")
+                  if not isinstance(battery.get("temperatureC"), (int, float)):
+                      raise SystemExit(f"battery temperature missing: {mode_name}/{key}")
+              fingerprint = mode.get("qualityFingerprint")
+              if not isinstance(fingerprint, str) or not fingerprint:
+                  raise SystemExit(f"quality fingerprint missing: {mode_name}")
+              fingerprints.add(fingerprint)
+
+          if len(fingerprints) != 1:
+              raise SystemExit("quality/provenance fingerprint mismatch")
+
+          full = results["FULL_ONLY"]
+          hierarchical = results["HIERARCHICAL"]
+          for key in ("modeledInferenceUnits", "modeledContextBytes", "modeledRetrievalItems"):
+              if int(hierarchical[key]) >= int(full[key]):
+                  raise SystemExit(f"modeled hierarchical vector did not improve: {key}")
+
+          summary = {
+              "evidenceClass": "asf-h-usb-adb-fallback-validation-v1",
+              "validatedAtHead": subprocess.check_output(
+                  ["git", "rev-parse", "HEAD"], text=True
+              ).strip(),
+              "physicalSourceCommit": source,
+              "deviceModel": data.get("deviceModel"),
+              "abi": data.get("abi"),
+              "sdk": data.get("sdk"),
+              "qualityFingerprintEqual": True,
+              "fullOnlyPssPeakKb": full["pssPeakKb"],
+              "fullOnlyRssPeakKb": full["rssPeakKb"],
+              "hierarchicalPssPeakKb": hierarchical["pssPeakKb"],
+              "hierarchicalRssPeakKb": hierarchical["rssPeakKb"],
+              "verdict": data["verdict"],
+              "interpretation": (
+                  "Accepted only as a strict fallback for the Android vendor "
+                  "INSTALL_FAILED_USER_RESTRICTED shell-install gate. Runtime/source "
+                  "code is unchanged since the physical USB/ADB evidence commit."
+              ),
+          }
+          out_path.write_text(
+              json.dumps(summary, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(summary, indent=2, sort_keys=True))
+          PY
 
       - name: Start exact fixed-purpose ASF-H metrics bridge
+        if: env.ASF_H_USE_USB_ADB_FALLBACK != '1'
         shell: bash
         run: |
           set -euo pipefail
@@ -340,6 +505,7 @@ jobs:
           exit 1
 
       - name: Run fixed FULL-only and hierarchical physical comparison
+        if: env.ASF_H_USE_USB_ADB_FALLBACK != '1'
         shell: bash
         run: |
           set -euo pipefail
@@ -347,6 +513,7 @@ jobs:
           curl --fail-with-body --silent --show-error --max-time 1800 -X POST             -H "Authorization: Bearer $token"             "$ASF_H_METRICS_BRIDGE_URL/v1/instrument/asf-h-resources"             > "$RUNNER_TEMP/asf-h-physical-resource-raw.json"
 
       - name: Validate and summarize physical evidence
+        if: env.ASF_H_USE_USB_ADB_FALLBACK != '1'
         shell: bash
         run: |
           set -euo pipefail
@@ -473,5 +640,7 @@ jobs:
             ${{ runner.temp }}/asf-h-metrics-bridge.log
             ${{ runner.temp }}/asf-h-physical-resource-raw.json
             ${{ runner.temp }}/asf-h-physical-resource-summary.json
+            ${{ runner.temp }}/asf-h-usb-adb-fallback-validation.json
+            evidence/asf-h/asf-h-usb-adb-physical-resource-evidence-e66f4fa7.json
           if-no-files-found: warn
           retention-days: 30
