@@ -209,17 +209,43 @@ jobs:
               raise SystemExit("Android shell identity required")
           PY
 
-      - name: Clean physical bundle staging directory
+      - name: Download exact bundle through GitHub API
         shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          rm -rf "$RUNNER_TEMP/asf-h-physical-bundle"
-          mkdir -p "$RUNNER_TEMP/asf-h-physical-bundle"
+          bundle_dir="$RUNNER_TEMP/asf-h-physical-bundle"
+          bundle_zip="$RUNNER_TEMP/asf-h-physical-bundle.zip"
+          artifact_name="asf-h-physical-test-bundle-$SOURCE_SHA"
 
-      - uses: actions/download-artifact@v4
-        with:
-          name: asf-h-physical-test-bundle-${{ env.SOURCE_SHA }}
-          path: ${{ runner.temp }}/asf-h-physical-bundle
+          rm -rf "$bundle_dir"
+          rm -f "$bundle_zip"
+          mkdir -p "$bundle_dir"
+
+          artifact_id="$(
+            curl --fail --silent --show-error \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts?name=$artifact_name" \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); a=d.get("artifacts", []); assert len(a)==1, f"expected one artifact, got {len(a)}"; print(a[0]["id"])'
+          )"
+
+          curl --fail --location --silent --show-error \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip" \
+            --output "$bundle_zip"
+
+          python3 - "$bundle_zip" "$bundle_dir" <<'PY'
+          import sys, zipfile
+          from pathlib import Path
+
+          archive = Path(sys.argv[1])
+          target = Path(sys.argv[2])
+          with zipfile.ZipFile(archive) as zf:
+              zf.extractall(target)
+          PY
 
       - name: Verify exact bundle
         shell: bash
