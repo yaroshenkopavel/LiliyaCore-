@@ -302,14 +302,29 @@ jobs:
           set -euo pipefail
           bridge='tools/physical-runner/liliya_asf_h_resource_metrics_bridge.py'
           termux_home='/data/data/com.termux/files/home'
-          termux_python='/data/data/com.termux/files/usr/bin/python3'
+          termux_prefix='/data/data/com.termux/files/usr'
+          termux_python="$termux_prefix/bin/python3"
           native_bridge="$termux_home/.liliya_asf_h_resource_metrics_bridge.py"
+          native_rish="$termux_home/.liliya_asf_h_rish"
+          native_dex="$termux_home/.liliya_asf_h_rish_shizuku.dex"
+          source_dex="$termux_prefix/bin/rish_shizuku.dex"
 
           test -x "$termux_python"
+          test -f "$source_dex"
           install -m 700 "$bridge" "$native_bridge"
+          install -m 400 "$source_dex" "$native_dex"
+
+          cat > "$native_rish" <<EOF
+          #!/system/bin/sh
+          export RISH_APPLICATION_ID="com.termux"
+          /system/bin/app_process -Djava.class.path="$native_dex" /system/bin --nice-name=rish rikka.shizuku.shell.ShizukuShellLoader "\$@"
+          EOF
+          chmod 700 "$native_rish"
+          test ! -w "$native_dex"
 
           HOME="$termux_home" \
-          PATH='/data/data/com.termux/files/usr/bin:/system/bin:/system/xbin' \
+          PATH="$termux_prefix/bin:/system/bin:/system/xbin" \
+          LILIYA_RISH_PATH="$native_rish" \
           LILIYA_PHYSICAL_BRIDGE_TOKEN_FILE="$termux_home/.liliya-physical-bridge-token" \
           nohup "$termux_python" "$native_bridge"             > "$RUNNER_TEMP/asf-h-metrics-bridge.log" 2>&1 &
           echo "$!" > "$RUNNER_TEMP/asf-h-metrics-bridge.pid"
