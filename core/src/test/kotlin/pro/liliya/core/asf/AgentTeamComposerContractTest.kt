@@ -94,6 +94,7 @@ class AgentTeamComposerContractTest {
 
         val plan = assertIs<AgentTeamCompositionDecision.Composed>(result).plan
         assertEquals(listOf(AgentWorkerClass.NANO), plan.selectedWorkerClasses)
+        assertEquals(AgentTeamTemplateKind.SINGLE_WORKER, plan.templateKind)
         assertEquals(1, plan.coordinatorPlan.steps.size)
         assertEquals(AgentWorkerClass.NANO, plan.coordinatorPlan.steps.single().workerClass)
         assertNull(plan.coordinatorPlan.steps.single().parentStepId)
@@ -142,15 +143,17 @@ class AgentTeamComposerContractTest {
             ),
             plan.selectedWorkerClasses
         )
+        assertEquals(AgentTeamTemplateKind.ROOT_REVIEW_FAN_OUT, plan.templateKind)
         assertEquals(3, plan.coordinatorPlan.steps.size)
         val rootStep = plan.coordinatorPlan.steps.first()
         assertEquals(AgentWorkerClass.FULL, rootStep.workerClass)
         assertNull(rootStep.parentStepId)
         assertTrue(
             plan.coordinatorPlan.steps.drop(1).all {
-                it.parentStepId == rootStep.id
+                it.parentStepId == rootStep.id && it.includeParentArtifact
             }
         )
+        assertTrue(!rootStep.includeParentArtifact)
         assertTrue(plan.coordinatorPlan.steps.all { it.inputReferences == listOf("evidence:a") })
     }
 
