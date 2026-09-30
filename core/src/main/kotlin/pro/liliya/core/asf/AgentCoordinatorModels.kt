@@ -180,11 +180,15 @@ data class AgentCoordinatorResult(
     val artifacts: List<AgentArtifact>,
     val terminalInstances: List<AgentInstance>,
     val aggregateUsage: AgentAggregateUsage,
+    val workerAggregateUsage: AgentWorkerAggregateUsage = AgentWorkerAggregateUsage(),
     val completedSteps: Int
 ) {
     init {
         require(completedSteps >= 0)
         require(completedSteps <= terminalInstances.size)
+        require(workerAggregateUsage.total().isWithin(aggregateUsage)) {
+            "worker-class aggregate usage must stay within root aggregate usage"
+        }
         require(artifacts.all { artifact ->
             terminalInstances.any {
                 it.id == artifact.producerId &&
