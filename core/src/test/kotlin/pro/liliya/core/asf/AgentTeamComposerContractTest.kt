@@ -257,6 +257,79 @@ class AgentTeamComposerContractTest {
     }
 
     @Test
+    fun capacity_cannot_escalate_atomic_work_to_larger_worker() {
+        val constrained = AgentTeamCapacityEnvelope(
+            allowedWorkerClasses = setOf(
+                AgentWorkerClass.MICRO,
+                AgentWorkerClass.FULL
+            ),
+            maxWorkers = 2
+        )
+        val result = AgentTeamComposer.compose(
+            request(
+                shape = AgentTeamTaskShape.workers(
+                    listOf(AgentWorkerRequirement.ATOMIC_VALIDATION)
+                ),
+                candidates = allCandidates(),
+                capacity = constrained
+            )
+        )
+
+        assertEquals(
+            AgentTeamCompositionRejection.CAPACITY_RESTRICTED,
+            assertIs<AgentTeamCompositionDecision.Rejected>(result).reason
+        )
+    }
+
+    @Test
+    fun capacity_team_size_limit_declines_instead_of_widening_budget() {
+        val constrained = AgentTeamCapacityEnvelope(
+            allowedWorkerClasses = AgentWorkerClass.entries.toSet(),
+            maxWorkers = 1
+        )
+        val result = AgentTeamComposer.compose(
+            request(
+                shape = AgentTeamTaskShape.workers(
+                    listOf(
+                        AgentWorkerRequirement.ATOMIC_VALIDATION,
+                        AgentWorkerRequirement.NARROW_MULTI_STEP,
+                        AgentWorkerRequirement.BROAD_SPECIALIST
+                    )
+                ),
+                candidates = allCandidates(),
+                capacity = constrained
+            )
+        )
+
+        assertEquals(
+            AgentTeamCompositionRejection.CAPACITY_RESTRICTED,
+            assertIs<AgentTeamCompositionDecision.Rejected>(result).reason
+        )
+    }
+
+    @Test
+    fun full_capacity_preserves_smallest_sufficient_selection() {
+        val result = AgentTeamComposer.compose(
+            request(
+                shape = AgentTeamTaskShape.workers(
+                    listOf(
+                        AgentWorkerRequirement.ATOMIC_VALIDATION,
+                        AgentWorkerRequirement.NARROW_MULTI_STEP
+                    )
+                ),
+                candidates = allCandidates(),
+                capacity = AgentTeamCapacityEnvelope.full(aggregate)
+            )
+        )
+
+        val plan = assertIs<AgentTeamCompositionDecision.Composed>(result).plan
+        assertEquals(
+            listOf(AgentWorkerClass.MICRO, AgentWorkerClass.NANO),
+            plan.selectedWorkerClasses
+        )
+    }
+
+    @Test
     fun composition_identity_changes_with_aggregate_envelope_or_candidate_set() {
         val shape = AgentTeamTaskShape.workers(
             listOf(AgentWorkerRequirement.NARROW_MULTI_STEP)
@@ -351,6 +424,7 @@ class AgentTeamComposerContractTest {
         shape: AgentTeamTaskShape,
         candidates: List<AgentTeamWorkerCandidate>,
         aggregateBudget: AgentAggregateBudget = aggregate,
+        capacity: AgentTeamCapacityEnvelope = AgentTeamCapacityEnvelope.full(aggregateBudget),
         inputs: Collection<String> = listOf("evidence:a"),
         policyVersion: AgentTeamCompositionPolicyVersion = policy
     ) = AgentTeamCompositionRequest.create(
@@ -358,6 +432,7 @@ class AgentTeamComposerContractTest {
         policyVersion = policyVersion,
         taskShape = shape,
         aggregateBudget = aggregateBudget,
+        capacity = capacity,
         inputReferences = inputs,
         candidates = candidates
     )
