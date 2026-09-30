@@ -330,8 +330,11 @@ jobs:
           }
 
           app="$bundle/liliya-app-debug.apk"
-          if ! install_one app "$app" "$RUNNER_TEMP/asf-h-install-app.json"; then
-            rc=$?
+          set +e
+          install_one app "$app" "$RUNNER_TEMP/asf-h-install-app.json"
+          rc=$?
+          set -e
+          if [ "$rc" -ne 0 ]; then
             if [ "$rc" -eq 10 ]; then
               exit 0
             fi
@@ -339,8 +342,11 @@ jobs:
           fi
 
           test_apk="$bundle/liliya-app-debug-androidTest.apk"
-          if ! install_one test "$test_apk" "$RUNNER_TEMP/asf-h-install-test.json"; then
-            rc=$?
+          set +e
+          install_one test "$test_apk" "$RUNNER_TEMP/asf-h-install-test.json"
+          rc=$?
+          set -e
+          if [ "$rc" -ne 0 ]; then
             if [ "$rc" -eq 10 ]; then
               exit 0
             fi
