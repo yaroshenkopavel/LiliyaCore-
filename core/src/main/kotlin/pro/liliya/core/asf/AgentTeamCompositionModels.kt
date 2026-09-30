@@ -15,8 +15,8 @@ value class AgentTeamCompositionPolicyVersion(val value: String) {
 @JvmInline
 value class AgentTeamCompositionDecisionId(val value: String) {
     init {
-        require(value.startsWith("asf-team-composition-")) {
-            "team composition decision id must use canonical prefix"
+        require(value.matches(Regex("asf-team-composition-[0-9a-f]{64}"))) {
+            "team composition decision id must use canonical sha256 identity"
         }
     }
 }
@@ -113,6 +113,15 @@ data class AgentTeamCompositionRequest(
     init {
         require(inputReferences.isNotEmpty()) {
             "team composition request requires input provenance"
+        }
+        require(inputReferences.size <= 64) {
+            "team composition request has too many input references"
+        }
+        inputReferences.forEach {
+            require(it.isNotBlank()) { "team composition input reference must not be blank" }
+            require(it.toByteArray(StandardCharsets.UTF_8).size <= 256) {
+                "team composition input reference exceeds bounded size"
+            }
         }
         require(inputReferences.distinct().size == inputReferences.size) {
             "team composition input references must be unique"
