@@ -245,6 +245,51 @@ class AgentTeamComposerContractTest {
     }
 
     @Test
+    fun worker_shape_rejects_mixed_deterministic_requirement() {
+        assertFailsWith<IllegalArgumentException> {
+            AgentTeamTaskShape.workers(
+                listOf(
+                    AgentWorkerRequirement.DETERMINISTIC_CHECK,
+                    AgentWorkerRequirement.ATOMIC_VALIDATION
+                )
+            )
+        }
+    }
+
+    @Test
+    fun composition_identity_changes_with_aggregate_envelope_or_candidate_set() {
+        val shape = AgentTeamTaskShape.workers(
+            listOf(AgentWorkerRequirement.NARROW_MULTI_STEP)
+        )
+        val baseline = assertIs<AgentTeamCompositionDecision.Composed>(
+            AgentTeamComposer.compose(
+                request(shape, allCandidates())
+            )
+        ).plan
+        val changedEnvelope = assertIs<AgentTeamCompositionDecision.Composed>(
+            AgentTeamComposer.compose(
+                request(
+                    shape,
+                    allCandidates(),
+                    aggregateBudget = aggregate.copy(maxInferenceUnits = 19_999)
+                )
+            )
+        ).plan
+        val changedCandidates = assertIs<AgentTeamCompositionDecision.Composed>(
+            AgentTeamComposer.compose(
+                request(
+                    shape,
+                    listOf(microCandidate(), fullCandidate())
+                )
+            )
+        ).plan
+
+        assertNotEquals(baseline.decisionId, changedEnvelope.decisionId)
+        assertNotEquals(baseline.decisionId, changedCandidates.decisionId)
+        assertEquals(baseline.selectedWorkerClasses, changedCandidates.selectedWorkerClasses)
+    }
+
+    @Test
     fun composition_identity_is_deterministic_and_policy_sensitive() {
         val shape = AgentTeamTaskShape.workers(
             listOf(
