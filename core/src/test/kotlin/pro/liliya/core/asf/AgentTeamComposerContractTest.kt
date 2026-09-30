@@ -116,6 +116,13 @@ class AgentTeamComposerContractTest {
 
         val plan = assertIs<AgentTeamCompositionDecision.Composed>(result).plan
         assertEquals(listOf(AgentWorkerClass.MICRO), plan.selectedWorkerClasses)
+        assertEquals(
+            listOf(
+                AgentWorkerRequirement.ATOMIC_VALIDATION to AgentWorkerClass.MICRO,
+                AgentWorkerRequirement.NARROW_MULTI_STEP to AgentWorkerClass.MICRO
+            ),
+            plan.assignments.map { it.requirement to it.workerClass }
+        )
         assertEquals(1, plan.coordinatorPlan.steps.size)
     }
 
@@ -142,6 +149,14 @@ class AgentTeamComposerContractTest {
                 AgentWorkerClass.NANO
             ),
             plan.selectedWorkerClasses
+        )
+        assertEquals(
+            listOf(
+                AgentWorkerRequirement.ATOMIC_VALIDATION to AgentWorkerClass.NANO,
+                AgentWorkerRequirement.NARROW_MULTI_STEP to AgentWorkerClass.MICRO,
+                AgentWorkerRequirement.BROAD_SPECIALIST to AgentWorkerClass.FULL
+            ),
+            plan.assignments.map { it.requirement to it.workerClass }
         )
         assertEquals(AgentTeamTemplateKind.ROOT_REVIEW_FAN_OUT, plan.templateKind)
         assertEquals(3, plan.coordinatorPlan.steps.size)
@@ -411,6 +426,8 @@ class AgentTeamComposerContractTest {
             AgentTeamTaskShape::class.java,
             AgentTeamWorkerCandidate::class.java,
             AgentTeamCompositionPlan::class.java,
+            AgentTeamRequirementAssignment::class.java,
+            AgentTeamCapacityEnvelope::class.java,
             AgentTeamCompositionDecision.DeterministicFallback::class.java
         ).forEach { type ->
             val names = type.declaredFields.map { it.name.lowercase() }
