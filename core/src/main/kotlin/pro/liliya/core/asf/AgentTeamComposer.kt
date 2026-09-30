@@ -11,7 +11,9 @@ object AgentTeamComposer {
             )
         }
 
-        val candidatesByClass = request.candidates.associateBy { it.workerClass }
+        val candidatesByClass = request.candidates
+            .filter { it.workerClass in request.capacity.allowedWorkerClasses }
+            .associateBy { it.workerClass }
         val admittedClasses = candidatesByClass.keys
 
         val selectedClasses = linkedSetOf<AgentWorkerClass>()
@@ -37,6 +39,12 @@ object AgentTeamComposer {
                 .filterNot { it == rootClass }
                 .sortedByDescending { it.order }
                 .forEach(::add)
+        }
+
+        if (orderedClasses.size > request.capacity.maxWorkers) {
+            return AgentTeamCompositionDecision.Rejected(
+                AgentTeamCompositionRejection.AGGREGATE_BUDGET_EXCEEDED
+            )
         }
 
         val root = candidatesByClass.getValue(rootClass)
@@ -154,6 +162,10 @@ object AgentTeamComposer {
                 request.aggregateBudget.maxRetrievalItems + ":" +
                 request.aggregateBudget.maxArtifacts + ":" +
                 request.aggregateBudget.maxAgents,
+            "capacity:" +
+                request.capacity.maxWorkers + ":" +
+                request.capacity.allowedWorkerClasses.sortedBy { it.order }
+                    .joinToString(",") { it.name },
             *request.inputReferences.toTypedArray()
         )
     )
@@ -176,6 +188,10 @@ object AgentTeamComposer {
             request.aggregateBudget.maxRetrievalItems + ":" +
             request.aggregateBudget.maxArtifacts + ":" +
             request.aggregateBudget.maxAgents
+        values += "capacity:" +
+            request.capacity.maxWorkers + ":" +
+            request.capacity.allowedWorkerClasses.sortedBy { it.order }
+                .joinToString(",") { it.name }
         request.candidates.forEach { candidate ->
             values += "candidate:" + candidate.workerClass.name +
                 ":" + candidate.blueprint.id.value +
