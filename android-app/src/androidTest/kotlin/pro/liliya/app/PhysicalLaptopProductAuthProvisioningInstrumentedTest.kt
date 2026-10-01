@@ -13,7 +13,7 @@ import org.junit.runner.RunWith
  * Acceptance-only Product Auth import for the laptop-hosted #259 path.
  *
  * Secret bytes never arrive through instrumentation arguments or logs. A one-shot LPAUTH1 artifact
- * is staged into the instrumentation package private files directory by the deployment operator.
+ * is staged into the target application private files directory by the deployment operator.
  * This test imports it through the production importer into the production encrypted Product Auth
  * store, then overwrites/deletes the one-shot artifact.
  */
@@ -26,7 +26,7 @@ class PhysicalLaptopProductAuthProvisioningInstrumentedTest {
         val application =
             instrumentation.targetContext.applicationContext as LiliyaApplication
         val staged = File(
-            instrumentation.context.filesDir,
+            instrumentation.targetContext.filesDir,
             ARTIFACT_FILE
         )
         assertTrue(staged.isFile, "one-shot Product Auth artifact is not staged")
