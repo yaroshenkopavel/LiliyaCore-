@@ -46,9 +46,13 @@ class PhysicalLicensingPrivateCaTrustInstrumentedTest {
             )
         )
 
+        val rejected = assertIs<LicenseClientTransportResult.ServiceRejected>(
+            result,
+            message = "physical licensing transport result=$result"
+        )
         assertEquals(
             LicenseRemoteServiceFailure.AUTHENTICATION_REQUIRED,
-            assertIs<LicenseClientTransportResult.ServiceRejected>(result).reason
+            rejected.reason
         )
     }
 }
