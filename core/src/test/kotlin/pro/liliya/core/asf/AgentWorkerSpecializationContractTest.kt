@@ -284,6 +284,211 @@ class AgentWorkerSpecializationContractTest {
         }
     }
 
+    @Test
+    fun precomposition_selector_can_choose_a_narrower_same_class_profile_from_good_evidence() {
+        val baseline = teamCandidate(
+            workerClass = AgentWorkerClass.MICRO,
+            name = "baseline-micro",
+            runtimeId = "baseline-runtime",
+            budget = AgentWorkBudget(30_000, 20_000, 128_000, 16, 4, 1),
+            scope = AgentCognitiveScope.create(listOf("planning", "verification"))
+        )
+        val specialized = teamCandidate(
+            workerClass = AgentWorkerClass.MICRO,
+            name = "specialized-micro",
+            runtimeId = "specialized-runtime",
+            budget = AgentWorkBudget(20_000, 12_000, 96_000, 12, 3, 0),
+            scope = AgentCognitiveScope.create(listOf("verification"))
+        )
+        val records = (1..3).map {
+            evidence(
+                specialized.specializationProfile(),
+                "selector-good-$it",
+                now.minusSeconds(it * 60L),
+                positiveComparison()
+            )
+        }
+
+        val selection = AgentWorkerSpecializationCandidateSelector.select(
+            taskClass = AgentWorkerRequirement.NARROW_MULTI_STEP,
+            baseline = baseline,
+            alternatives = listOf(specialized),
+            evidence = AgentWorkerSpecializationEvidenceSet.create(records),
+            now = now
+        )
+
+        val selected = assertIs<AgentWorkerSpecializationSelection.Selected>(selection)
+        assertEquals(
+            AgentWorkerSpecializationSelectionSource.SPECIALIZATION,
+            selected.source
+        )
+        assertEquals(specialized.blueprint, selected.candidate.blueprint)
+        assertEquals(3, selected.evidenceReferences.size)
+    }
+
+    @Test
+    fun specialization_cannot_widen_budget_even_with_strong_positive_history() {
+        val baseline = teamCandidate(
+            workerClass = AgentWorkerClass.MICRO,
+            name = "bounded-baseline",
+            runtimeId = "bounded-baseline-runtime",
+            budget = AgentWorkBudget(20_000, 10_000, 96_000, 12, 3, 1)
+        )
+        val wider = teamCandidate(
+            workerClass = AgentWorkerClass.MICRO,
+            name = "wider-profile",
+            runtimeId = "wider-runtime",
+            budget = AgentWorkBudget(20_001, 10_000, 96_000, 12, 3, 1)
+        )
+        val records = (1..4).map {
+            evidence(
+                wider.specializationProfile(),
+                "wider-$it",
+                now.minusSeconds(it * 60L),
+                positiveComparison()
+            )
+        }
+
+        val selection = assertIs<AgentWorkerSpecializationSelection.Selected>(
+            AgentWorkerSpecializationCandidateSelector.select(
+                taskClass = AgentWorkerRequirement.NARROW_MULTI_STEP,
+                baseline = baseline,
+                alternatives = listOf(wider),
+                evidence = AgentWorkerSpecializationEvidenceSet.create(records),
+                now = now
+            )
+        )
+
+        assertEquals(AgentWorkerSpecializationSelectionSource.BASELINE, selection.source)
+        assertEquals(baseline.blueprint, selection.candidate.blueprint)
+        assertTrue(selection.evidenceReferences.isEmpty())
+    }
+
+    @Test
+    fun specialization_cannot_widen_cognitive_scope_even_with_strong_positive_history() {
+        val baseline = teamCandidate(
+            workerClass = AgentWorkerClass.MICRO,
+            name = "narrow-scope-baseline",
+            runtimeId = "narrow-scope-runtime",
+            budget = AgentWorkBudget(20_000, 10_000, 96_000, 12, 3, 1),
+            scope = AgentCognitiveScope.create(listOf("verification"))
+        )
+        val widerScope = teamCandidate(
+            workerClass = AgentWorkerClass.MICRO,
+            name = "wide-scope-profile",
+            runtimeId = "wide-scope-runtime",
+            budget = baseline.budget,
+            scope = AgentCognitiveScope.create(listOf("planning", "verification"))
+        )
+        val records = (1..3).map {
+            evidence(
+                widerScope.specializationProfile(),
+                "wide-scope-$it",
+                now.minusSeconds(it * 60L),
+                positiveComparison()
+            )
+        }
+
+        val selection = assertIs<AgentWorkerSpecializationSelection.Selected>(
+            AgentWorkerSpecializationCandidateSelector.select(
+                taskClass = AgentWorkerRequirement.NARROW_MULTI_STEP,
+                baseline = baseline,
+                alternatives = listOf(widerScope),
+                evidence = AgentWorkerSpecializationEvidenceSet.create(records),
+                now = now
+            )
+        )
+
+        assertEquals(AgentWorkerSpecializationSelectionSource.BASELINE, selection.source)
+        assertEquals(baseline.blueprint, selection.candidate.blueprint)
+    }
+
+    @Test
+    fun different_worker_class_history_cannot_replace_the_routed_class() {
+        val baseline = teamCandidate(
+            workerClass = AgentWorkerClass.MICRO,
+            name = "micro-route",
+            runtimeId = "micro-route-runtime",
+            budget = AgentWorkBudget(20_000, 10_000, 96_000, 12, 3, 1)
+        )
+        val fullAlternative = teamCandidate(
+            workerClass = AgentWorkerClass.FULL,
+            name = "full-history",
+            runtimeId = "full-history-runtime",
+            budget = AgentWorkBudget(20_000, 10_000, 96_000, 12, 3, 1)
+        )
+        val records = (1..4).map {
+            evidence(
+                fullAlternative.specializationProfile(),
+                "full-history-$it",
+                now.minusSeconds(it * 60L),
+                positiveComparison()
+            )
+        }
+
+        val selection = assertIs<AgentWorkerSpecializationSelection.Selected>(
+            AgentWorkerSpecializationCandidateSelector.select(
+                taskClass = AgentWorkerRequirement.NARROW_MULTI_STEP,
+                baseline = baseline,
+                alternatives = listOf(fullAlternative),
+                evidence = AgentWorkerSpecializationEvidenceSet.create(records),
+                now = now
+            )
+        )
+
+        assertEquals(AgentWorkerSpecializationSelectionSource.BASELINE, selection.source)
+        assertEquals(AgentWorkerClass.MICRO, selection.candidate.workerClass)
+    }
+
+    @Test
+    fun incompatible_baseline_is_rejected_before_specialization_statistics_are_considered() {
+        val microBaseline = teamCandidate(
+            workerClass = AgentWorkerClass.MICRO,
+            name = "incompatible-micro",
+            runtimeId = "incompatible-runtime",
+            budget = AgentWorkBudget(20_000, 10_000, 96_000, 12, 3, 1)
+        )
+
+        val selection = AgentWorkerSpecializationCandidateSelector.select(
+            taskClass = AgentWorkerRequirement.BROAD_SPECIALIST,
+            baseline = microBaseline,
+            alternatives = emptyList(),
+            evidence = AgentWorkerSpecializationEvidenceSet.empty(),
+            now = now
+        )
+
+        val rejected = assertIs<AgentWorkerSpecializationSelection.Rejected>(selection)
+        assertEquals(
+            AgentWorkerSpecializationSelectionRejection.INCOMPATIBLE_BASELINE,
+            rejected.reason
+        )
+    }
+
+    private fun teamCandidate(
+        workerClass: AgentWorkerClass,
+        name: String,
+        runtimeId: String,
+        budget: AgentWorkBudget,
+        scope: AgentCognitiveScope = AgentCognitiveScope.create(listOf("verification"))
+    ): AgentTeamWorkerCandidate {
+        val blueprint = AgentBlueprint.create(
+            AgentBlueprintVersion(1),
+            name,
+            "bounded-specialization-candidate",
+            scope
+        )
+        return AgentTeamWorkerCandidate(
+            workerClass = workerClass,
+            blueprint = AgentBlueprintReference(blueprint.id, blueprint.version),
+            cognitiveScope = scope,
+            budget = budget,
+            runtime = AgentWorkerRuntimeDescriptor(
+                runtimeId = runtimeId,
+                kind = AgentWorkerRuntimeKind.DETERMINISTIC
+            )
+        )
+    }
+
     private fun profile(
         workerClass: AgentWorkerClass,
         name: String,
