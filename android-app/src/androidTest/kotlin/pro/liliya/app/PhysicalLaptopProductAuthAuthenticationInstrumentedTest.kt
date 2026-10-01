@@ -62,7 +62,7 @@ class PhysicalLaptopProductAuthAuthenticationInstrumentedTest {
 
         val credential = ProductionAndroidProductAuthCredentialAdapter
             .bearerFactory(store)
-            .open()
+            .create()
         val result = try {
             client.execute(
                 request = LicenseServiceTransportRequest(
