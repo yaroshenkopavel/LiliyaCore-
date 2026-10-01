@@ -60,18 +60,23 @@ class PhysicalLaptopProductAuthAuthenticationInstrumentedTest {
             )
         )
 
-        val result = client.execute(
-            request = LicenseServiceTransportRequest(
-                protocolVersion = LicenseServiceProtocolVersion(1),
-                operation = LicenseServiceOperation.ISSUE,
-                productId = LicenseProductId("liliya-pro"),
-                subjectReference = LicenseSubject("rc259-authenticated-non-entitled-probe"),
-                requestId = LicenseServiceRequestId("rc259-auth-probe")
-            ),
-            authorizationBearer = ProductionAndroidProductAuthCredentialAdapter
-                .bearerFactory(store)
-                .open()
-        )
+        val credential = ProductionAndroidProductAuthCredentialAdapter
+            .bearerFactory(store)
+            .open()
+        val result = try {
+            client.execute(
+                request = LicenseServiceTransportRequest(
+                    protocolVersion = LicenseServiceProtocolVersion(1),
+                    operation = LicenseServiceOperation.ISSUE,
+                    productId = LicenseProductId("liliya-pro"),
+                    subjectReference = LicenseSubject("rc259-authenticated-non-entitled-probe"),
+                    requestId = LicenseServiceRequestId("rc259-auth-probe")
+                ),
+                authentication = credential
+            )
+        } finally {
+            credential.close()
+        }
 
         val rejected = assertIs<LicenseClientTransportResult.ServiceRejected>(result)
         assertEquals(LicenseRemoteServiceFailure.SUBJECT_NOT_ELIGIBLE, rejected.reason)
