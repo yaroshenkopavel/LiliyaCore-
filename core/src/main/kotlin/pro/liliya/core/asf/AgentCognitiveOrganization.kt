@@ -43,13 +43,15 @@ data class AgentCognitiveGraphBounds(
     val maxNodes: Int = 32,
     val maxEdges: Int = 64,
     val maxDepth: Int = 8,
-    val maxClusters: Int = 8
+    val maxClusters: Int = 8,
+    val maxMutations: Int = 64
 ) {
     init {
         require(maxNodes in 1..128)
         require(maxEdges in 0..256)
         require(maxDepth in 1..32)
         require(maxClusters in 1..32)
+        require(maxMutations in 1..256)
     }
 }
 
@@ -94,6 +96,7 @@ data class AgentCognitiveOrganizationSnapshot(
     val createdAt: Instant,
     val expiresAt: Instant,
     val bounds: AgentCognitiveGraphBounds,
+    val mutationCount: Int,
     val nodes: List<AgentCognitiveGraphNode>,
     val edges: List<AgentCognitiveGraphEdge>,
     val provenanceReferences: List<String>
@@ -105,7 +108,8 @@ data class AgentCognitiveOrganizationMetrics(
     val activeWorkerCount: Int,
     val terminalWorkerCount: Int,
     val clusterCount: Int,
-    val maxDepth: Int
+    val maxDepth: Int,
+    val mutationCount: Int
 )
 
 class AgentCognitiveOrganization private constructor(
@@ -114,6 +118,7 @@ class AgentCognitiveOrganization private constructor(
     val createdAt: Instant,
     val expiresAt: Instant,
     val bounds: AgentCognitiveGraphBounds,
+    val mutationCount: Int,
     val state: AgentCognitiveOrganizationState,
     val nodes: List<AgentCognitiveGraphNode>,
     val edges: List<AgentCognitiveGraphEdge>,
@@ -125,6 +130,7 @@ class AgentCognitiveOrganization private constructor(
         }
         require(nodes.size <= bounds.maxNodes)
         require(edges.size <= bounds.maxEdges)
+        require(mutationCount in 0..bounds.maxMutations)
         require(nodes.map { it.id }.distinct().size == nodes.size)
         require(edges.distinct().size == edges.size)
         require(provenanceReferences.isNotEmpty())
@@ -178,6 +184,7 @@ class AgentCognitiveOrganization private constructor(
             "artifact already represented in cognitive organization"
         }
         return copyValidated(
+            mutationCount = nextMutationCount(),
             nodes = canonicalNodes(nodes + node),
             edges = canonicalEdges(
                 edges + AgentCognitiveGraphEdge(
@@ -224,6 +231,7 @@ class AgentCognitiveOrganization private constructor(
             )
         }
         return copyValidated(
+            mutationCount = nextMutationCount(),
             nodes = canonicalNodes(nodes + gate),
             edges = canonicalEdges(edges + newEdges)
         )
@@ -236,6 +244,7 @@ class AgentCognitiveOrganization private constructor(
         val worker = workerNode(stepId)
         if (worker.terminal) return this
         return copyValidated(
+            mutationCount = nextMutationCount(),
             nodes = canonicalNodes(
                 nodes.map {
                     if (it.id == worker.id) it.copy(terminal = true) else it
@@ -286,6 +295,7 @@ class AgentCognitiveOrganization private constructor(
             addAll(producedArtifacts - externallyRequiredArtifacts)
         }
         return copyValidated(
+            mutationCount = nextMutationCount(),
             nodes = canonicalNodes(nodes.filterNot { it.id in removable }),
             edges = canonicalEdges(
                 edges.filterNot { it.from in removable || it.to in removable }
@@ -310,6 +320,7 @@ class AgentCognitiveOrganization private constructor(
             createdAt = createdAt,
             expiresAt = expiresAt,
             bounds = bounds,
+            mutationCount = mutationCount,
             state = AgentCognitiveOrganizationState.COLLAPSED,
             nodes = emptyList(),
             edges = emptyList(),
@@ -327,6 +338,7 @@ class AgentCognitiveOrganization private constructor(
             createdAt = createdAt,
             expiresAt = expiresAt,
             bounds = bounds,
+            mutationCount = mutationCount,
             nodes = nodes,
             edges = edges,
             provenanceReferences = provenanceReferences
@@ -344,7 +356,8 @@ class AgentCognitiveOrganization private constructor(
                 it.kind == AgentCognitiveGraphNodeKind.WORKER && it.terminal
             },
             clusterCount = nodes.map { it.cluster }.distinct().size,
-            maxDepth = computeMaxDepth(nodes, edges)
+            maxDepth = computeMaxDepth(nodes, edges),
+            mutationCount = mutationCount
         )
 
     private fun workerNode(stepId: AgentCoordinatorStepId): AgentCognitiveGraphNode =
@@ -353,6 +366,13 @@ class AgentCognitiveOrganization private constructor(
                 it.reference == stepId.value
         } ?: error("worker step is not represented in cognitive organization")
 
+    private fun nextMutationCount(): Int {
+        require(mutationCount < bounds.maxMutations) {
+            "cognitive organization mutation budget exhausted"
+        }
+        return mutationCount + 1
+    }
+
     private fun requireActive() {
         require(state == AgentCognitiveOrganizationState.ACTIVE) {
             "cognitive organization mutation requires active state"
@@ -360,6 +380,7 @@ class AgentCognitiveOrganization private constructor(
     }
 
     private fun copyValidated(
+        mutationCount: Int = this.mutationCount,
         nodes: List<AgentCognitiveGraphNode> = this.nodes,
         edges: List<AgentCognitiveGraphEdge> = this.edges
     ) = AgentCognitiveOrganization(
@@ -368,6 +389,7 @@ class AgentCognitiveOrganization private constructor(
         createdAt = createdAt,
         expiresAt = expiresAt,
         bounds = bounds,
+        mutationCount = mutationCount,
         state = state,
         nodes = nodes,
         edges = edges,
@@ -390,6 +412,7 @@ class AgentCognitiveOrganization private constructor(
             workerSurfaceReduction = baselineWorkers - activeWorkers,
             dynamicNodeCount = nodes.size,
             dynamicEdgeCount = edges.size,
+            graphMutationCount = mutationCount,
             preservedProvenanceReferenceCount = provenanceReferences.size
         )
     }
@@ -434,6 +457,7 @@ class AgentCognitiveOrganization private constructor(
                 createdAt = createdAt,
                 expiresAt = expiresAt,
                 bounds = bounds,
+                mutationCount = 0,
                 state = AgentCognitiveOrganizationState.ACTIVE,
                 nodes = canonicalNodes(stepToNode.values),
                 edges = canonicalEdges(edges),
@@ -457,6 +481,7 @@ class AgentCognitiveOrganization private constructor(
                 createdAt = snapshot.createdAt,
                 expiresAt = snapshot.expiresAt,
                 bounds = snapshot.bounds,
+                mutationCount = snapshot.mutationCount,
                 state = AgentCognitiveOrganizationState.RECOVERED_PAUSED,
                 nodes = snapshot.nodes,
                 edges = snapshot.edges,
@@ -552,6 +577,7 @@ data class AgentCognitiveOrganizationExperimentResult(
     val workerSurfaceReduction: Int,
     val dynamicNodeCount: Int,
     val dynamicEdgeCount: Int,
+    val graphMutationCount: Int,
     val preservedProvenanceReferenceCount: Int
 ) {
     init {
@@ -561,6 +587,7 @@ data class AgentCognitiveOrganizationExperimentResult(
             baselineStaticWorkerCount - dynamicWorkerNodeCount)
         require(dynamicNodeCount >= dynamicWorkerNodeCount)
         require(dynamicEdgeCount >= 0)
+        require(graphMutationCount >= 0)
         require(preservedProvenanceReferenceCount > 0)
     }
 }
