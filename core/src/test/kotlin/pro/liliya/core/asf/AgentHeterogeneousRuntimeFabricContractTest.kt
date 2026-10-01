@@ -229,6 +229,60 @@ class AgentHeterogeneousRuntimeFabricContractTest {
     }
 
     @Test
+    fun existing_llm_worker_is_compatible_with_the_same_fabric_without_extra_privilege() {
+        var calls = 0
+        val llmRuntime = AgentWorkerRuntimeDescriptor(
+            runtimeId = "llm-v1",
+            kind = AgentWorkerRuntimeKind.LLM,
+            modelId = "qwen3-1.7b"
+        )
+        val fabric = AgentHeterogeneousRuntimeFabric(
+            listOf(
+                registration(
+                    llmRuntime,
+                    AgentCognitiveRuntimeAdapters.llm {
+                        calls++
+                        completed(
+                            it,
+                            "llm-result",
+                            AgentRuntimeUsage(20, 200, 32, 0, 1)
+                        )
+                    }
+                )
+            )
+        )
+
+        val result = runSingleFull(llmRuntime, fabric)
+
+        assertEquals(AgentCoordinatorTerminalState.COMPLETED, result.state)
+        assertEquals(1, calls)
+        assertTrue(
+            result.artifacts.single().provenanceReferences
+                .contains("asf-runtime-kind:llm")
+        )
+    }
+
+    @Test
+    fun duplicate_exact_runtime_identity_is_rejected_at_fabric_construction() {
+        val first = registration(
+            graphRuntime,
+            AgentCognitiveRuntimeAdapters.retrievalGraph {
+                completed(it, "first", AgentRuntimeUsage(1, 0, 1, 1, 1))
+            }
+        )
+        val second = registration(
+            graphRuntime,
+            AgentCognitiveRuntimeAdapters.retrievalGraph {
+                completed(it, "second", AgentRuntimeUsage(1, 0, 1, 1, 1))
+            }
+        )
+
+        kotlin.test.assertFailsWith<IllegalArgumentException> {
+            AgentHeterogeneousRuntimeFabric(listOf(first, second))
+        }
+    }
+
+    @Test
     fun unavailable_runtime_fails_closed_without_hidden_fallback() {
         var unavailableCalls = 0
         var alternativeCalls = 0
