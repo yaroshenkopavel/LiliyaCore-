@@ -5,11 +5,13 @@ import pro.liliya.core.knowledge.KnowledgeGeneration
 import pro.liliya.core.knowledge.KnowledgeItemId
 import pro.liliya.core.knowledge.KnowledgeItemSnapshot
 import pro.liliya.core.knowledge.PersistentKnowledgeComposition
+import pro.liliya.core.knowledge.PersistentKnowledgeInspectResult
 import pro.liliya.core.memory.MemoryComposition
 import pro.liliya.core.memory.MemoryGeneration
 import pro.liliya.core.memory.MemoryRecordId
 import pro.liliya.core.memory.MemoryRecordSnapshot
 import pro.liliya.core.memory.PersistentMemoryComposition
+import pro.liliya.core.memory.PersistentMemoryInspectResult
 
 /**
  * Advisory semantic/relevance candidate for one exact observed Memory generation.
@@ -145,7 +147,16 @@ class PersistentMemoryCompositionAuthoritativeResolver(
     override fun resolveExact(
         candidate: MemoryRelevanceCandidate
     ): MemoryAuthoritativeResolutionResult =
-        resolveMemory(candidate, memory.inspect(candidate.recordId))
+        when (val inspected = memory.inspectResult(candidate.recordId)) {
+            PersistentMemoryInspectResult.Missing -> MemoryAuthoritativeResolutionResult.Stale
+            is PersistentMemoryInspectResult.Found -> resolveMemory(candidate, inspected.snapshot)
+            PersistentMemoryInspectResult.Corrupt ->
+                throw IllegalStateException("persistent Memory exact read is corrupt")
+            is PersistentMemoryInspectResult.Incompatible ->
+                throw IllegalStateException(inspected.reason)
+            is PersistentMemoryInspectResult.Failed ->
+                throw IllegalStateException(inspected.reason, inspected.throwable)
+        }
 }
 
 class KnowledgeCompositionAuthoritativeResolver(
@@ -163,7 +174,16 @@ class PersistentKnowledgeCompositionAuthoritativeResolver(
     override fun resolveExact(
         candidate: KnowledgeRelevanceCandidate
     ): KnowledgeAuthoritativeResolutionResult =
-        resolveKnowledge(candidate, knowledge.inspect(candidate.itemId))
+        when (val inspected = knowledge.inspectResult(candidate.itemId)) {
+            PersistentKnowledgeInspectResult.Missing -> KnowledgeAuthoritativeResolutionResult.Stale
+            is PersistentKnowledgeInspectResult.Found -> resolveKnowledge(candidate, inspected.snapshot)
+            PersistentKnowledgeInspectResult.Corrupt ->
+                throw IllegalStateException("persistent Knowledge exact read is corrupt")
+            is PersistentKnowledgeInspectResult.Incompatible ->
+                throw IllegalStateException(inspected.reason)
+            is PersistentKnowledgeInspectResult.Failed ->
+                throw IllegalStateException(inspected.reason, inspected.throwable)
+        }
 }
 
 private fun resolveMemory(

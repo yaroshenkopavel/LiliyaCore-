@@ -1,0 +1,253 @@
+package pro.liliya.core.asf
+
+import java.nio.charset.StandardCharsets
+
+@JvmInline
+value class AgentTeamCompositionPolicyVersion(val value: String) {
+    init {
+        require(value.isNotBlank()) { "team composition policy version must not be blank" }
+        require(value.toByteArray(StandardCharsets.UTF_8).size <= 128) {
+            "team composition policy version exceeds bounded size"
+        }
+    }
+}
+
+@JvmInline
+value class AgentTeamCompositionDecisionId(val value: String) {
+    init {
+        require(value.matches(Regex("asf-team-composition-[0-9a-f]{64}"))) {
+            "team composition decision id must use canonical sha256 identity"
+        }
+    }
+}
+
+data class AgentTeamTaskShape(
+    val deterministicResolutionAvailable: Boolean,
+    val workerRequirements: List<AgentWorkerRequirement>
+) {
+    init {
+        require(workerRequirements.none { it == AgentWorkerRequirement.DETERMINISTIC_CHECK }) {
+            "deterministic check must be represented by deterministicResolutionAvailable"
+        }
+        require(workerRequirements.distinct().size == workerRequirements.size) {
+            "team worker requirements must be unique"
+        }
+        require(workerRequirements == workerRequirements.sortedBy { it.ordinal }) {
+            "team worker requirements must use canonical order"
+        }
+        require(!deterministicResolutionAvailable || workerRequirements.isEmpty()) {
+            "deterministic resolution cannot request a worker team"
+        }
+        require(deterministicResolutionAvailable || workerRequirements.isNotEmpty()) {
+            "team task shape must have a deterministic path or worker requirement"
+        }
+    }
+
+    companion object {
+        fun deterministic() = AgentTeamTaskShape(
+            deterministicResolutionAvailable = true,
+            workerRequirements = emptyList()
+        )
+
+        fun workers(requirements: Collection<AgentWorkerRequirement>): AgentTeamTaskShape {
+            require(requirements.none { it == AgentWorkerRequirement.DETERMINISTIC_CHECK }) {
+                "worker task shape must not mix deterministic check with worker requirements"
+            }
+            return AgentTeamTaskShape(
+                deterministicResolutionAvailable = false,
+                workerRequirements = requirements
+                    .distinct()
+                    .sortedBy { it.ordinal }
+            )
+        }
+    }
+}
+
+data class AgentTeamWorkerCandidate(
+    val workerClass: AgentWorkerClass,
+    val blueprint: AgentBlueprintReference,
+    val cognitiveScope: AgentCognitiveScope,
+    val budget: AgentWorkBudget,
+    val runtime: AgentWorkerRuntimeDescriptor
+) {
+    init {
+        if (workerClass == AgentWorkerClass.NANO) {
+            require(budget.maxDescendants == 0) {
+                "NANO team candidate descendants must be zero"
+            }
+        }
+    }
+}
+
+data class AgentTeamCapacityEnvelope(
+    val allowedWorkerClasses: Set<AgentWorkerClass>,
+    val maxWorkers: Int
+) {
+    init {
+        require(maxWorkers > 0) { "team capacity maxWorkers must be positive" }
+        require(maxWorkers <= AgentFactoryBounds.PROTOTYPE.maxAgentsPerRootTask) {
+            "team capacity exceeds prototype root population bound"
+        }
+        require(allowedWorkerClasses.isNotEmpty()) {
+            "team capacity must allow at least one worker class"
+        }
+    }
+
+    companion object {
+        fun full(aggregateBudget: AgentAggregateBudget) = AgentTeamCapacityEnvelope(
+            allowedWorkerClasses = AgentWorkerClass.entries.toSet(),
+            maxWorkers = aggregateBudget.maxAgents
+        )
+    }
+}
+
+data class AgentTeamCompositionRequest(
+    val rootTaskId: AgentRootTaskId,
+    val policyVersion: AgentTeamCompositionPolicyVersion,
+    val taskShape: AgentTeamTaskShape,
+    val aggregateBudget: AgentAggregateBudget,
+    val capacity: AgentTeamCapacityEnvelope,
+    val inputReferences: List<String>,
+    val candidates: List<AgentTeamWorkerCandidate>
+) {
+    init {
+        require(inputReferences.isNotEmpty()) {
+            "team composition request requires input provenance"
+        }
+        require(inputReferences.size <= 64) {
+            "team composition request has too many input references"
+        }
+        inputReferences.forEach {
+            require(it.isNotBlank()) { "team composition input reference must not be blank" }
+            require(it.toByteArray(StandardCharsets.UTF_8).size <= 256) {
+                "team composition input reference exceeds bounded size"
+            }
+        }
+        require(inputReferences.distinct().size == inputReferences.size) {
+            "team composition input references must be unique"
+        }
+        require(inputReferences == inputReferences.sorted()) {
+            "team composition input references must use canonical order"
+        }
+        require(candidates.map { it.workerClass }.distinct().size == candidates.size) {
+            "team composition may contain at most one candidate per worker class"
+        }
+        require(capacity.maxWorkers <= aggregateBudget.maxAgents) {
+            "team capacity cannot exceed aggregate worker budget"
+        }
+    }
+
+    companion object {
+        fun create(
+            rootTaskId: AgentRootTaskId,
+            policyVersion: AgentTeamCompositionPolicyVersion,
+            taskShape: AgentTeamTaskShape,
+            aggregateBudget: AgentAggregateBudget,
+            capacity: AgentTeamCapacityEnvelope = AgentTeamCapacityEnvelope.full(aggregateBudget),
+            inputReferences: Collection<String>,
+            candidates: Collection<AgentTeamWorkerCandidate>
+        ) = AgentTeamCompositionRequest(
+            rootTaskId = rootTaskId,
+            policyVersion = policyVersion,
+            taskShape = taskShape,
+            aggregateBudget = aggregateBudget,
+            capacity = capacity,
+            inputReferences = inputReferences.sorted(),
+            candidates = candidates.sortedBy { it.workerClass.order }
+        )
+    }
+}
+
+enum class AgentTeamTemplateKind {
+    SINGLE_WORKER,
+    ROOT_REVIEW_FAN_OUT
+}
+
+data class AgentTeamRequirementAssignment(
+    val requirement: AgentWorkerRequirement,
+    val workerClass: AgentWorkerClass,
+    val stepId: AgentCoordinatorStepId
+) {
+    init {
+        require(requirement != AgentWorkerRequirement.DETERMINISTIC_CHECK) {
+            "deterministic checks cannot be assigned to an agent worker"
+        }
+    }
+}
+
+enum class AgentTeamCompositionRejection {
+    NO_SUITABLE_WORKER,
+    CAPACITY_RESTRICTED,
+    AGGREGATE_BUDGET_EXCEEDED,
+    ROOT_DESCENDANT_BUDGET_EXCEEDED,
+    ROOT_SCOPE_TOO_NARROW,
+    DIRECT_CHILD_LIMIT
+}
+
+sealed interface AgentTeamCompositionDecision {
+    data class DeterministicFallback(
+        val decisionId: AgentTeamCompositionDecisionId,
+        val rootTaskId: AgentRootTaskId,
+        val policyVersion: AgentTeamCompositionPolicyVersion,
+        val inputReferences: List<String>
+    ) : AgentTeamCompositionDecision
+
+    data class Composed(
+        val plan: AgentTeamCompositionPlan
+    ) : AgentTeamCompositionDecision
+
+    data class Rejected(
+        val reason: AgentTeamCompositionRejection
+    ) : AgentTeamCompositionDecision
+}
+
+data class AgentTeamCompositionPlan(
+    val decisionId: AgentTeamCompositionDecisionId,
+    val policyVersion: AgentTeamCompositionPolicyVersion,
+    val inputReferences: List<String>,
+    val selectedRequirements: List<AgentWorkerRequirement>,
+    val selectedWorkerClasses: List<AgentWorkerClass>,
+    val assignments: List<AgentTeamRequirementAssignment>,
+    val templateKind: AgentTeamTemplateKind,
+    val coordinatorPlan: AgentCoordinatorPlan
+) {
+    init {
+        require(inputReferences.isNotEmpty()) {
+            "team composition plan requires input provenance"
+        }
+        require(selectedRequirements.isNotEmpty()) {
+            "team composition plan requires worker requirements"
+        }
+        require(selectedWorkerClasses.isNotEmpty()) {
+            "team composition plan requires at least one worker"
+        }
+        require(selectedWorkerClasses.distinct().size == selectedWorkerClasses.size) {
+            "team composition plan worker classes must be unique"
+        }
+        require(assignments.size == selectedRequirements.size) {
+            "team composition plan must assign every worker requirement exactly once"
+        }
+        require(assignments.map { it.requirement } == selectedRequirements) {
+            "team composition assignments must preserve canonical requirement order"
+        }
+        require(assignments.all { it.workerClass in selectedWorkerClasses }) {
+            "team composition assignment must reference a selected worker class"
+        }
+        require(selectedWorkerClasses == selectedWorkerClasses.sortedByDescending { it.order }) {
+            "team composition plan must list root-first worker classes"
+        }
+        require(coordinatorPlan.steps.size == selectedWorkerClasses.size) {
+            "team composition plan worker count must match coordinator steps"
+        }
+        val coordinatorStepIds = coordinatorPlan.steps.map { it.id }.toSet()
+        require(assignments.all { it.stepId in coordinatorStepIds }) {
+            "team composition assignment must reference a coordinator step"
+        }
+        require(
+            (selectedWorkerClasses.size == 1 && templateKind == AgentTeamTemplateKind.SINGLE_WORKER) ||
+                (selectedWorkerClasses.size > 1 && templateKind == AgentTeamTemplateKind.ROOT_REVIEW_FAN_OUT)
+        ) {
+            "team composition template must match selected worker count"
+        }
+    }
+}

@@ -45,7 +45,7 @@ dependencies {
     androidTestImplementation(project(":android-offline-semantic-provider"))
     androidTestImplementation(project(":android-protected-model-staging"))
     androidTestImplementation(project(":protected-model-packager"))
-    androidTestImplementation("androidx.test.ext:junit:1.2.1")
-    androidTestImplementation("androidx.test:runner:1.6.2")
-    androidTestImplementation("org.bouncycastle:bcprov-jdk18on:1.81")
+    androidTestImplementation("androidx.test.ext:junit:1.3.0")
+    androidTestImplementation("androidx.test:runner:1.7.0")
+    androidTestImplementation("org.bouncycastle:bcprov-jdk18on:1.86")
 }

@@ -24,6 +24,7 @@ class OfflineSemanticProviderRealModelInstrumentedTest {
         withFixture { fixture, root, selection ->
             val tokenizerFixture = File(root, selection.identity.tokenizerFileName)
             val environment = OrtEnvironment.getEnvironment()
+            environment.setTelemetry(false)
             val tokenizerOptions = OrtSession.SessionOptions().apply {
                 registerCustomOpLibrary(OrtxPackage.getLibraryPath())
             }

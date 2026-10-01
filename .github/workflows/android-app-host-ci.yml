@@ -72,6 +72,10 @@ jobs:
         with:
           gradle-version: '9.6.1'
 
+      - name: Configure hosted CI Gradle/Kotlin memory
+        shell: bash
+        run: bash .github/ci/configure-gradle-memory.sh
+
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
         with:
@@ -94,6 +98,8 @@ jobs:
             :core:test \
             :android-app:assembleDebug \
             :android-app:assembleRelease \
+            --max-workers=2 \
+            -Pkotlin.daemon.jvmargs=-Xmx1536m \
             --console=plain
 
       - name: Guard release APK from cold-start test payloads
@@ -208,6 +214,10 @@ jobs:
         with:
           gradle-version: '9.6.1'
 
+      - name: Configure hosted CI Gradle/Kotlin memory
+        shell: bash
+        run: bash .github/ci/configure-gradle-memory.sh
+
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
         with:
@@ -231,7 +241,13 @@ jobs:
       - name: Compile cold-start instrumentation
         env:
           LILIYA_LLAMA_ALLOW_X86_64_API35_TRANSLATION: "1"
-        run: gradle :android-app:assembleDebug :android-app:assembleDebugAndroidTest --console=plain
+        run: >-
+          gradle
+          :android-app:assembleDebug
+          :android-app:assembleDebugAndroidTest
+          --max-workers=2
+          -Pkotlin.daemon.jvmargs=-Xmx1536m
+          --console=plain
 
       - name: Run First Working Liliya cold-start instrumentation
         uses: ReactiveCircus/android-emulator-runner@v2
@@ -244,7 +260,7 @@ jobs:
           profile: pixel_6
           disable-animations: true
           script: |
-            bash -lc 'set -o pipefail; gradle :android-app:connectedDebugAndroidTest --console=plain 2>&1 | tee "$RUNNER_TEMP/development-first-working-liliya-cold-start.log"'
+            bash -lc 'set -o pipefail; gradle :android-app:connectedDebugAndroidTest --max-workers=2 -Pkotlin.daemon.jvmargs=-Xmx1536m --console=plain 2>&1 | tee "$RUNNER_TEMP/development-first-working-liliya-cold-start.log"'
 
       - name: Upload cold-start instrumentation diagnostics
         if: always()

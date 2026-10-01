@@ -5,6 +5,10 @@ import pro.liliya.core.cognitive.KnowledgeRelevanceDiscoveryPort
 import pro.liliya.core.cognitive.MemoryRelevanceDiscoveryPort
 import pro.liliya.core.knowledge.KnowledgeItemSnapshot
 import pro.liliya.core.memory.MemoryRecordSnapshot
+import pro.liliya.core.semantic.EncryptedPersistentSemanticClaimRepository
+import pro.liliya.core.semantic.SemanticClaimSourceCheckpoint
+import pro.liliya.core.semantic.SemanticClaimVectorDiscoveryPort
+import pro.liliya.core.semantic.SemanticClaimVectorProviderResult
 
 /**
  * Narrow public Android production boundary for Offline Semantic Provider v0.1.
@@ -182,6 +186,138 @@ class AndroidOfflineSemanticProviderAssembly internal constructor(
         }
     }
 
+    internal fun restoreCheckpoint(
+        seeds: List<SemanticIndexSeed>
+    ): AndroidOfflineSemanticProviderRebuildResult {
+        synchronized(this) {
+            if (publicState != AndroidOfflineSemanticProviderState.LOADED &&
+                publicState != AndroidOfflineSemanticProviderState.READY
+            ) {
+                return AndroidOfflineSemanticProviderRebuildResult.NotLoaded
+            }
+            publicState = AndroidOfflineSemanticProviderState.REBUILDING
+        }
+
+        val result = provider.restoreCheckpoint(seeds)
+        synchronized(this) {
+            return when (result) {
+                is OfflineSemanticRebuildResult.Published -> {
+                    publicState = AndroidOfflineSemanticProviderState.READY
+                    AndroidOfflineSemanticProviderRebuildResult.Ready(result.entryCount)
+                }
+                OfflineSemanticRebuildResult.Busy -> {
+                    publicState = AndroidOfflineSemanticProviderState.LOADED
+                    AndroidOfflineSemanticProviderRebuildResult.Busy
+                }
+                OfflineSemanticRebuildResult.NotReady,
+                OfflineSemanticRebuildResult.ResourceRejected,
+                OfflineSemanticRebuildResult.EmbeddingRejected,
+                OfflineSemanticRebuildResult.EmbeddingFailed,
+                OfflineSemanticRebuildResult.SessionFailed,
+                OfflineSemanticRebuildResult.IndexRejected -> {
+                    publicState = AndroidOfflineSemanticProviderState.LOADED
+                    AndroidOfflineSemanticProviderRebuildResult.Failed
+                }
+            }
+        }
+    }
+
+    internal fun embedShardPage(
+        observations: List<SemanticSourceObservation>
+    ): OfflineSemanticShardEmbedResult =
+        provider.embedShardPage(observations)
+
+    internal fun activateShardManifest(
+        store: SemanticShardStore,
+        manifest: SemanticShardManifest
+    ): AndroidOfflineSemanticProviderRebuildResult {
+        synchronized(this) {
+            if (publicState != AndroidOfflineSemanticProviderState.LOADED &&
+                publicState != AndroidOfflineSemanticProviderState.READY
+            ) {
+                return AndroidOfflineSemanticProviderRebuildResult.NotLoaded
+            }
+            publicState = AndroidOfflineSemanticProviderState.REBUILDING
+        }
+
+        val result = provider.activateShardIndex(store, manifest)
+        synchronized(this) {
+            return when (result) {
+                is OfflineSemanticRebuildResult.Published -> {
+                    publicState = AndroidOfflineSemanticProviderState.READY
+                    AndroidOfflineSemanticProviderRebuildResult.Ready(result.entryCount)
+                }
+                OfflineSemanticRebuildResult.Busy -> {
+                    publicState = AndroidOfflineSemanticProviderState.LOADED
+                    AndroidOfflineSemanticProviderRebuildResult.Busy
+                }
+                OfflineSemanticRebuildResult.NotReady,
+                OfflineSemanticRebuildResult.ResourceRejected,
+                OfflineSemanticRebuildResult.EmbeddingRejected,
+                OfflineSemanticRebuildResult.EmbeddingFailed,
+                OfflineSemanticRebuildResult.SessionFailed,
+                OfflineSemanticRebuildResult.IndexRejected -> {
+                    publicState = AndroidOfflineSemanticProviderState.LOADED
+                    AndroidOfflineSemanticProviderRebuildResult.Failed
+                }
+            }
+        }
+    }
+
+    internal fun activateShardManifestV3(
+        shardStore: SemanticShardStore,
+        manifestStore: SemanticShardManifestV3Store,
+        root: SemanticShardManifestRootV3
+    ): AndroidOfflineSemanticProviderRebuildResult {
+        synchronized(this) {
+            if (publicState != AndroidOfflineSemanticProviderState.LOADED &&
+                publicState != AndroidOfflineSemanticProviderState.READY
+            ) {
+                return AndroidOfflineSemanticProviderRebuildResult.NotLoaded
+            }
+            publicState = AndroidOfflineSemanticProviderState.REBUILDING
+        }
+
+        val result = provider.activateShardIndexV3(shardStore, manifestStore, root)
+        synchronized(this) {
+            return when (result) {
+                is OfflineSemanticRebuildResult.Published -> {
+                    publicState = AndroidOfflineSemanticProviderState.READY
+                    AndroidOfflineSemanticProviderRebuildResult.Ready(result.entryCount)
+                }
+                OfflineSemanticRebuildResult.Busy -> {
+                    publicState = AndroidOfflineSemanticProviderState.LOADED
+                    AndroidOfflineSemanticProviderRebuildResult.Busy
+                }
+                OfflineSemanticRebuildResult.NotReady,
+                OfflineSemanticRebuildResult.ResourceRejected,
+                OfflineSemanticRebuildResult.EmbeddingRejected,
+                OfflineSemanticRebuildResult.EmbeddingFailed,
+                OfflineSemanticRebuildResult.SessionFailed,
+                OfflineSemanticRebuildResult.IndexRejected -> {
+                    publicState = AndroidOfflineSemanticProviderState.LOADED
+                    AndroidOfflineSemanticProviderRebuildResult.Failed
+                }
+            }
+        }
+    }
+
+    internal fun persistShardManifest(
+        authoritative: SemanticAuthoritativeMetadataCheckpoint
+    ): Boolean? {
+        synchronized(this) {
+            if (publicState != AndroidOfflineSemanticProviderState.READY) return false
+        }
+        return provider.persistShardManifest(authoritative)
+    }
+
+    internal fun checkpointSeeds(): List<SemanticIndexSeed>? {
+        synchronized(this) {
+            if (publicState != AndroidOfflineSemanticProviderState.READY) return null
+        }
+        return provider.checkpointSeeds()
+    }
+
     internal fun synchronizeAdd(
         observation: SemanticSourceObservation
     ): AndroidOfflineSemanticMutationApplyResult {
@@ -201,6 +337,7 @@ class AndroidOfflineSemanticProviderAssembly internal constructor(
                 markProviderFailed()
                 AndroidOfflineSemanticMutationApplyResult.RebuildRequired
             }
+            OfflineSemanticAddResult.IndexFailed,
             OfflineSemanticAddResult.Busy,
             OfflineSemanticAddResult.NotReady,
             OfflineSemanticAddResult.ResourceRejected,
@@ -231,6 +368,7 @@ class AndroidOfflineSemanticProviderAssembly internal constructor(
                 markProviderFailed()
                 AndroidOfflineSemanticMutationApplyResult.RebuildRequired
             }
+            OfflineSemanticReplaceResult.IndexFailed,
             OfflineSemanticReplaceResult.Busy,
             OfflineSemanticReplaceResult.NotReady,
             OfflineSemanticReplaceResult.ResourceRejected,
@@ -256,12 +394,98 @@ class AndroidOfflineSemanticProviderAssembly internal constructor(
         return when (provider.remove(source)) {
             OfflineSemanticRemoveResult.Removed ->
                 AndroidOfflineSemanticMutationApplyResult.Applied
+            OfflineSemanticRemoveResult.IndexFailed,
             OfflineSemanticRemoveResult.Busy,
             OfflineSemanticRemoveResult.NotReady,
             OfflineSemanticRemoveResult.StaleOrMissing -> {
                 markRebuildRequired()
                 AndroidOfflineSemanticMutationApplyResult.RebuildRequired
             }
+        }
+    }
+
+    fun semanticClaimVectorDiscovery(
+        storage: AndroidOfflineSemanticShardStorage
+    ): SemanticClaimVectorDiscoveryPort {
+        val adapter = OfflineSemanticClaimVectorDiscoveryAdapter(
+            OfflineSemanticClaimVectorProjectionDiscovery.fromProvider(
+                provider = provider,
+                storage = storage
+            )
+        )
+        return SemanticClaimVectorDiscoveryPort { text, maxCandidates ->
+            val operational = synchronized(this) {
+                publicState == AndroidOfflineSemanticProviderState.LOADED ||
+                    publicState == AndroidOfflineSemanticProviderState.READY
+            }
+            if (!operational) {
+                SemanticClaimVectorProviderResult.Unavailable(
+                    "offline semantic provider state is not available for claim vector discovery"
+                )
+            } else {
+                adapter.discover(text, maxCandidates)
+            }
+        }
+    }
+
+    fun rebuildSemanticClaimVectors(
+        repository: EncryptedPersistentSemanticClaimRepository,
+        storage: AndroidOfflineSemanticShardStorage,
+        indexGeneration: Long
+    ): AndroidOfflineSemanticClaimVectorRebuildResult {
+        val previous = synchronized(this) {
+            when (publicState) {
+                AndroidOfflineSemanticProviderState.REBUILDING ->
+                    return AndroidOfflineSemanticClaimVectorRebuildResult.Busy
+                AndroidOfflineSemanticProviderState.LOADED,
+                AndroidOfflineSemanticProviderState.READY -> {
+                    val before = publicState
+                    publicState = AndroidOfflineSemanticProviderState.REBUILDING
+                    before
+                }
+                else -> return AndroidOfflineSemanticClaimVectorRebuildResult.NotReady(publicState)
+            }
+        }
+
+        val rebuilt = try {
+            SemanticClaimVectorProjectionRebuilder.fromRepository(
+                repository = repository,
+                provider = provider,
+                storage = storage
+            ).rebuild(indexGeneration)
+        } catch (failure: Exception) {
+            SemanticClaimVectorProjectionRebuildResult.Failed(
+                "semantic claim vector rebuild threw",
+                failure
+            )
+        }
+
+        synchronized(this) {
+            publicState = if (provider.lifecycle() == OfflineSemanticProviderLifecycle.FAILED) {
+                AndroidOfflineSemanticProviderState.FAILED
+            } else {
+                previous
+            }
+        }
+
+        return when (rebuilt) {
+            is SemanticClaimVectorProjectionRebuildResult.Complete ->
+                AndroidOfflineSemanticClaimVectorRebuildResult.Ready(
+                    source = rebuilt.source,
+                    indexGeneration = rebuilt.indexGeneration,
+                    shardCount = rebuilt.shardCount,
+                    indexedEntryCount = rebuilt.indexedEntryCount
+                )
+            is SemanticClaimVectorProjectionRebuildResult.SourceDrift ->
+                AndroidOfflineSemanticClaimVectorRebuildResult.SourceDrift(
+                    started = rebuilt.started,
+                    ended = rebuilt.ended
+                )
+            is SemanticClaimVectorProjectionRebuildResult.Failed ->
+                AndroidOfflineSemanticClaimVectorRebuildResult.Failed(
+                    rebuilt.reason,
+                    rebuilt.throwable
+                )
         }
     }
 
@@ -360,6 +584,38 @@ sealed interface AndroidOfflineSemanticProviderRebuildResult {
     data object Failed : AndroidOfflineSemanticProviderRebuildResult
 }
 
+sealed interface AndroidOfflineSemanticClaimVectorRebuildResult {
+    data class Ready(
+        val source: SemanticClaimSourceCheckpoint,
+        val indexGeneration: Long,
+        val shardCount: Long,
+        val indexedEntryCount: Long
+    ) : AndroidOfflineSemanticClaimVectorRebuildResult {
+        init {
+            require(indexGeneration > 0L)
+            require(shardCount >= 0L)
+            require(indexedEntryCount >= 0L)
+        }
+    }
+
+    data class SourceDrift(
+        val started: SemanticClaimSourceCheckpoint,
+        val ended: SemanticClaimSourceCheckpoint
+    ) : AndroidOfflineSemanticClaimVectorRebuildResult
+
+    data object Busy : AndroidOfflineSemanticClaimVectorRebuildResult
+
+    data class NotReady(
+        val state: AndroidOfflineSemanticProviderState
+    ) : AndroidOfflineSemanticClaimVectorRebuildResult
+
+    data class Failed(
+        val reason: String,
+        val throwable: Throwable? = null
+    ) : AndroidOfflineSemanticClaimVectorRebuildResult {
+        init { require(reason.isNotBlank()) }
+    }
+}
 internal sealed interface AndroidOfflineSemanticMutationApplyResult {
     data object Applied : AndroidOfflineSemanticMutationApplyResult
     data object AlreadyApplied : AndroidOfflineSemanticMutationApplyResult

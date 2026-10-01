@@ -10,6 +10,7 @@ import pro.liliya.core.cognitive.CognitiveTimestampSource
 import pro.liliya.core.decision.DecisionComposition
 import pro.liliya.core.foundation.FoundationComposition
 import pro.liliya.core.learning.LearningComposition
+import pro.liliya.core.personality.EncryptedPersistentPersonalityComposition
 import pro.liliya.core.planning.PlanningComposition
 import pro.liliya.core.reasoning.ReasoningComposition
 import pro.liliya.core.reflection.ReflectionComposition
@@ -37,6 +38,58 @@ sealed interface AndroidHeartProductionPersonaRuntimeFactoryCreateResult {
  * only product persona bootstrap and the already-required Cognitive construction policy.
  */
 object AndroidHeartProductionPersonaRuntimeFactory {
+
+    fun createDurable(
+        foundation: FoundationComposition,
+        personaDefinition: AndroidHeartProductionPersonaDefinition,
+        persistentPersonality: EncryptedPersistentPersonalityComposition,
+        scope: CognitiveRuntimeScopeId,
+        materialization: CognitiveMaterializationPort,
+        planning: PlanningComposition,
+        reasoning: ReasoningComposition,
+        decision: DecisionComposition,
+        artifactIds: CognitiveArtifactIdSource,
+        timestamps: CognitiveTimestampSource,
+        outcomeMaterialization: CognitiveOutcomeMaterializationPort,
+        reflection: ReflectionComposition,
+        learning: LearningComposition,
+        limits: CognitiveRuntimeLimits = CognitiveRuntimeLimits(),
+        personaLimits: AndroidHeartProductionPersonaLimits =
+            AndroidHeartProductionPersonaLimits()
+    ): AndroidHeartProductionPersonaRuntimeFactoryCreateResult {
+        val persona = when (
+            val result = AndroidHeartProductionPersonaBootstrap.createDurable(
+                foundation = foundation,
+                definition = personaDefinition,
+                persistentPersonality = persistentPersonality,
+                limits = personaLimits
+            )
+        ) {
+            is AndroidHeartProductionPersonaCreateResult.Ready -> result.composition
+            is AndroidHeartProductionPersonaCreateResult.Rejected ->
+                return AndroidHeartProductionPersonaRuntimeFactoryCreateResult.Rejected(
+                    reason =
+                        AndroidHeartProductionPersonaRuntimeFactoryCreateFailure.PERSONA_REJECTED,
+                    personaFailure = result.reason
+                )
+        }
+
+        return readyFactory(
+            foundation = foundation,
+            persona = persona,
+            scope = scope,
+            materialization = materialization,
+            planning = planning,
+            reasoning = reasoning,
+            decision = decision,
+            artifactIds = artifactIds,
+            timestamps = timestamps,
+            outcomeMaterialization = outcomeMaterialization,
+            reflection = reflection,
+            learning = learning,
+            limits = limits
+        )
+    }
 
     fun create(
         foundation: FoundationComposition,
@@ -71,6 +124,38 @@ object AndroidHeartProductionPersonaRuntimeFactory {
                 )
         }
 
+        return readyFactory(
+            foundation = foundation,
+            persona = persona,
+            scope = scope,
+            materialization = materialization,
+            planning = planning,
+            reasoning = reasoning,
+            decision = decision,
+            artifactIds = artifactIds,
+            timestamps = timestamps,
+            outcomeMaterialization = outcomeMaterialization,
+            reflection = reflection,
+            learning = learning,
+            limits = limits
+        )
+    }
+
+    private fun readyFactory(
+        foundation: FoundationComposition,
+        persona: AndroidHeartProductionPersonaComposition,
+        scope: CognitiveRuntimeScopeId,
+        materialization: CognitiveMaterializationPort,
+        planning: PlanningComposition,
+        reasoning: ReasoningComposition,
+        decision: DecisionComposition,
+        artifactIds: CognitiveArtifactIdSource,
+        timestamps: CognitiveTimestampSource,
+        outcomeMaterialization: CognitiveOutcomeMaterializationPort,
+        reflection: ReflectionComposition,
+        learning: LearningComposition,
+        limits: CognitiveRuntimeLimits
+    ): AndroidHeartProductionPersonaRuntimeFactoryCreateResult {
         val factory = AndroidHeartCognitiveRuntimeFactory {
                 memoryRetrieval,
                 knowledgeRetrieval,
@@ -103,4 +188,5 @@ object AndroidHeartProductionPersonaRuntimeFactory {
             factory = factory
         )
     }
+
 }
