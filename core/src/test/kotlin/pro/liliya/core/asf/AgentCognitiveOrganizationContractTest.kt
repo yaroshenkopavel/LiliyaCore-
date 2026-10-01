@@ -202,6 +202,59 @@ class AgentCognitiveOrganizationContractTest {
     }
 
     @Test
+    fun graph_mutation_budget_fails_closed_when_exhausted() {
+        val plan = plan()
+        val nanoStep = stepFor(plan, AgentWorkerClass.NANO)
+        val organization = AgentCognitiveOrganization.fromComposition(
+            plan = plan,
+            createdAt = now,
+            expiresAt = expires,
+            bounds = AgentCognitiveGraphBounds(
+                maxNodes = 32,
+                maxEdges = 64,
+                maxDepth = 8,
+                maxClusters = 8,
+                maxMutations = 1
+            )
+        )
+
+        val onceMutated = organization.markWorkerTerminal(nanoStep.id)
+
+        assertEquals(1, onceMutated.metrics().mutationCount)
+        assertFailsWith<IllegalArgumentException> {
+            onceMutated.contractTerminalBranch(nanoStep.id)
+        }
+    }
+
+    @Test
+    fun terminal_collapse_remains_available_after_mutation_budget_is_exhausted() {
+        val plan = plan()
+        val nanoStep = stepFor(plan, AgentWorkerClass.NANO)
+        val organization = AgentCognitiveOrganization.fromComposition(
+            plan = plan,
+            createdAt = now,
+            expiresAt = expires,
+            bounds = AgentCognitiveGraphBounds(
+                maxNodes = 32,
+                maxEdges = 64,
+                maxDepth = 8,
+                maxClusters = 8,
+                maxMutations = 1
+            )
+        ).markWorkerTerminal(nanoStep.id)
+
+        val collapsed = organization.collapse(
+            terminalAt = now.plusSeconds(60),
+            auditReferences = listOf("audit:forced-disposal")
+        )
+
+        assertEquals(AgentCognitiveOrganizationState.COLLAPSED, collapsed.state)
+        assertTrue(collapsed.nodes.isEmpty())
+        assertTrue(collapsed.edges.isEmpty())
+        assertEquals(1, collapsed.metrics().mutationCount)
+    }
+
+    @Test
     fun recovery_is_paused_and_cannot_replay_or_mutate_automatically() {
         val active = AgentCognitiveOrganization.fromComposition(
             plan(), now, expires
