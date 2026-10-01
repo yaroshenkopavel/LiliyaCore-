@@ -3,7 +3,6 @@ package pro.liliya.app
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import java.net.URL
-import java.util.Base64
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import org.junit.Test
@@ -42,7 +41,9 @@ class PhysicalLaptopProductAuthAuthenticationInstrumentedTest {
             instrumentation.targetContext.applicationContext as LiliyaApplication
 
         val endpoint = URL(required(args.getString(ARG_ENDPOINT)))
-        val caBytes = Base64.getDecoder().decode(required(args.getString(ARG_CA_BASE64)))
+        val caBytes = instrumentation.context.assets.open("licensing-ca.crt").use {
+            it.readBytes()
+        }
         val tlsTrust = try {
             LicenseHttpTlsTrust.ofCertificate(caBytes)
         } finally {
@@ -96,6 +97,5 @@ class PhysicalLaptopProductAuthAuthenticationInstrumentedTest {
 
     private companion object {
         const val ARG_ENDPOINT = "liveLicenseEndpoint"
-        const val ARG_CA_BASE64 = "liveCaBase64"
     }
 }
