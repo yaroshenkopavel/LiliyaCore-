@@ -486,7 +486,7 @@ jobs:
           /system/bin/app_process -Djava.class.path="$native_dex" /system/bin --nice-name=rish rikka.shizuku.shell.ShizukuShellLoader "\$@"
           EOF
           chmod 700 "$native_rish"
-          test ! -w "$native_dex"
+          test "$(stat -c '%a' "$native_dex")" = "400"
 
           HOME="$termux_home" \
           PATH="$termux_prefix/bin:/system/bin:/system/xbin" \
