@@ -1,5 +1,6 @@
 package pro.liliya.core.licensetransport
 
+import java.io.ByteArrayInputStream
 import java.io.IOException
 import java.net.ConnectException
 import java.net.HttpURLConnection
@@ -7,13 +8,20 @@ import java.net.NoRouteToHostException
 import java.net.SocketTimeoutException
 import java.net.URL
 import java.net.UnknownHostException
+import java.security.GeneralSecurityException
+import java.security.KeyStore
+import java.security.cert.CertificateFactory
+import javax.net.ssl.HttpsURLConnection
+import javax.net.ssl.SSLContext
 import javax.net.ssl.SSLException
+import javax.net.ssl.TrustManagerFactory
 
 data class LicenseHttpTransportConfig(
     val endpoint: URL,
     val connectTimeoutMillis: Int,
     val readTimeoutMillis: Int,
-    val developmentAllowInsecureHttp: Boolean = false
+    val developmentAllowInsecureHttp: Boolean = false,
+    val tlsTrust: LicenseHttpTlsTrust? = null
 ) {
     init {
         require(connectTimeoutMillis > 0) {
@@ -28,6 +36,9 @@ data class LicenseHttpTransportConfig(
         ) {
             "license transport endpoint must use HTTPS unless development HTTP is explicitly enabled"
         }
+        require(tlsTrust == null || endpoint.protocol == "https") {
+            "explicit license TLS trust requires an HTTPS endpoint"
+        }
     }
 
     val attemptLimit: Int = 1
@@ -38,7 +49,8 @@ data class LicenseHttpTransportConfig(
             ",connectTimeoutMillis=" + connectTimeoutMillis +
             ",readTimeoutMillis=" + readTimeoutMillis +
             ",attemptLimit=" + attemptLimit +
-            ",developmentAllowInsecureHttp=" + developmentAllowInsecureHttp + ")"
+            ",developmentAllowInsecureHttp=" + developmentAllowInsecureHttp +
+            ",explicitTlsTrust=" + (tlsTrust?.certificateCount ?: 0) + ")"
 }
 
 data class LicenseHttpEngineRequest(
@@ -46,14 +58,16 @@ data class LicenseHttpEngineRequest(
     val connectTimeoutMillis: Int,
     val readTimeoutMillis: Int,
     val body: ByteArray,
-    val authorizationBearer: ByteArray? = null
+    val authorizationBearer: ByteArray? = null,
+    val tlsTrust: LicenseHttpTlsTrust? = null
 ) {
     override fun toString(): String =
         "LicenseHttpEngineRequest(endpoint=" +
             endpoint.protocol + "://" + endpoint.host + "/<redacted-path>" +
             ",connectTimeoutMillis=" + connectTimeoutMillis +
             ",readTimeoutMillis=" + readTimeoutMillis +
-            ",body=<redacted>,authorizationBearer=<redacted>)"
+            ",body=<redacted>,authorizationBearer=<redacted>" +
+            ",explicitTlsTrust=" + (tlsTrust?.certificateCount ?: 0) + ")"
 }
 
 data class LicenseHttpEngineResponse(
@@ -97,6 +111,13 @@ class UrlConnectionLicenseHttpEngine : LicenseHttpEngine {
             activeConnection.connectTimeout = request.connectTimeoutMillis
             activeConnection.readTimeout = request.readTimeoutMillis
             activeConnection.instanceFollowRedirects = false
+            request.tlsTrust?.let { trust ->
+                val httpsConnection = activeConnection as? HttpsURLConnection
+                    ?: return LicenseHttpEngineResult.Failed(
+                        LicenseClientTransportFailure.TLS_FAILURE
+                    )
+                httpsConnection.sslSocketFactory = explicitTlsSocketFactory(trust)
+            }
             activeConnection.doOutput = true
             activeConnection.setRequestProperty("Content-Type", "application/json")
             activeConnection.setRequestProperty("Accept", "application/json")
@@ -155,6 +176,11 @@ class UrlConnectionLicenseHttpEngine : LicenseHttpEngine {
                 cancellation,
                 LicenseClientTransportFailure.TLS_FAILURE
             )
+        } catch (_: GeneralSecurityException) {
+            failureUnlessCancelled(
+                cancellation,
+                LicenseClientTransportFailure.TLS_FAILURE
+            )
         } catch (_: UnknownHostException) {
             failureUnlessCancelled(
                 cancellation,
@@ -187,6 +213,30 @@ class UrlConnectionLicenseHttpEngine : LicenseHttpEngine {
             connection?.disconnect()
         }
     }
+
+    private fun explicitTlsSocketFactory(
+        trust: LicenseHttpTlsTrust
+    ) = SSLContext.getInstance("TLS").apply {
+        val certificateFactory = CertificateFactory.getInstance("X.509")
+        val keyStore = KeyStore.getInstance(KeyStore.getDefaultType()).apply {
+            load(null, null)
+        }
+        trust.copyCertificates().forEachIndexed { index, certificateBytes ->
+            val certificate = ByteArrayInputStream(certificateBytes).use { input ->
+                certificateFactory.generateCertificate(input)
+            }
+            keyStore.setCertificateEntry(
+                "liliya-license-http-trust-$index",
+                certificate
+            )
+        }
+        val trustManagerFactory = TrustManagerFactory.getInstance(
+            TrustManagerFactory.getDefaultAlgorithm()
+        ).apply {
+            init(keyStore)
+        }
+        init(null, trustManagerFactory.trustManagers, null)
+    }.socketFactory
 
     private fun failureUnlessCancelled(
         cancellation: LicenseTransportCancellation,
@@ -260,7 +310,8 @@ class LicenseHttpTransportClient(
                     connectTimeoutMillis = config.connectTimeoutMillis,
                     readTimeoutMillis = config.readTimeoutMillis,
                     body = body,
-                    authorizationBearer = bearer
+                    authorizationBearer = bearer,
+                    tlsTrust = config.tlsTrust
                 ),
                 cancellation
             )
