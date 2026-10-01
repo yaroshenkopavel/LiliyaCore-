@@ -24,6 +24,7 @@ class AgentWorkerSpecializationEvidence private constructor(
     val taskClass: AgentWorkerRequirement,
     val profile: AgentWorkerSpecializationProfile,
     val evaluationReference: String,
+    val baselineEvaluationReference: String,
     val comparisonToBaseline: AgentBlueprintEvaluationComparison,
     val observedAt: Instant,
     val provenanceReferences: List<String>
@@ -37,6 +38,15 @@ class AgentWorkerSpecializationEvidence private constructor(
         }
         require(evaluationReference.toByteArray(StandardCharsets.UTF_8).size <= 256) {
             "specialization evaluation reference exceeds bounded size"
+        }
+        require(baselineEvaluationReference.isNotBlank()) {
+            "specialization baseline evaluation reference must not be blank"
+        }
+        require(baselineEvaluationReference.toByteArray(StandardCharsets.UTF_8).size <= 256) {
+            "specialization baseline evaluation reference exceeds bounded size"
+        }
+        require(evaluationReference != baselineEvaluationReference) {
+            "candidate and baseline evaluation references must differ"
         }
         require(provenanceReferences.isNotEmpty()) {
             "specialization evidence requires provenance"
@@ -53,21 +63,33 @@ class AgentWorkerSpecializationEvidence private constructor(
         require(provenanceReferences == provenanceReferences.distinct().sorted()) {
             "specialization provenance references must be unique and canonical"
         }
+        require(evaluationReference in provenanceReferences) {
+            "specialization provenance must include candidate evaluation reference"
+        }
+        require(baselineEvaluationReference in provenanceReferences) {
+            "specialization provenance must include baseline evaluation reference"
+        }
     }
 
     companion object {
         fun fromCoreEvaluation(
             taskClass: AgentWorkerRequirement,
             profile: AgentWorkerSpecializationProfile,
-            evaluationReference: String,
-            comparisonToBaseline: AgentBlueprintEvaluationComparison,
+            baselineEvaluationReference: String,
+            baselineEvaluation: AgentBlueprintEvaluationVector,
+            candidateEvaluationReference: String,
+            candidateEvaluation: AgentBlueprintEvaluationVector,
             observedAt: Instant,
             provenanceReferences: Collection<String>
         ) = AgentWorkerSpecializationEvidence(
             taskClass = taskClass,
             profile = profile,
-            evaluationReference = evaluationReference,
-            comparisonToBaseline = comparisonToBaseline,
+            evaluationReference = candidateEvaluationReference,
+            baselineEvaluationReference = baselineEvaluationReference,
+            comparisonToBaseline = AgentBlueprintEvaluationComparator.compare(
+                baseline = baselineEvaluation,
+                candidate = candidateEvaluation
+            ),
             observedAt = observedAt,
             provenanceReferences = provenanceReferences.distinct().sorted()
         )
@@ -142,6 +164,9 @@ data class AgentWorkerSpecializationSignal(
     val evidenceReferences: List<String>,
     val provenanceReferences: List<String>
 ) {
+    val coverageCount: Int
+        get() = evidenceCount
+
     val advisoryOnly: Boolean
         get() = true
 }
@@ -298,7 +323,10 @@ object AgentWorkerSpecializationAdvisor {
             weightedBaselineDelta = delta,
             evidenceCount = bounded.size,
             latestObservedAt = bounded.maxOfOrNull { it.observedAt },
-            evidenceReferences = bounded.map { it.evaluationReference }.sorted(),
+            evidenceReferences = bounded
+                .flatMap { listOf(it.baselineEvaluationReference, it.evaluationReference) }
+                .distinct()
+                .sorted(),
             provenanceReferences = bounded
                 .flatMap { it.provenanceReferences }
                 .distinct()
