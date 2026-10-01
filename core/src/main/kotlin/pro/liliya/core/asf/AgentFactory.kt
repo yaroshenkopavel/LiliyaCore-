@@ -29,7 +29,8 @@ class AgentFactory(
         inputReferences: Collection<String>,
         cancellationRequested: () -> Boolean = { false },
         parentScope: AgentCognitiveScope? = null,
-        parentRemainingBudget: AgentWorkBudget? = null
+        parentRemainingBudget: AgentWorkBudget? = null,
+        workerRuntime: AgentWorkerRuntimeDescriptor? = null
     ): AgentFactoryResult {
         val blueprint = registry.resolve(request.blueprint)
         val decision = admissionPolicy.evaluate(
@@ -96,7 +97,8 @@ class AgentFactory(
                 budget = request.budget,
                 workspace = workspace,
                 startedAt = admittedAt,
-                expiresAt = expiresAt
+                expiresAt = expiresAt,
+                workerRuntime = workerRuntime
             )
 
             val outcome = try {

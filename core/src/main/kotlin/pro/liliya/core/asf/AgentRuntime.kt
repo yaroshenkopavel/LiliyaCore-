@@ -74,7 +74,8 @@ data class AgentRuntimeContext(
     val budget: AgentWorkBudget,
     val workspace: AgentWorkspace,
     val startedAt: Instant,
-    val expiresAt: Instant
+    val expiresAt: Instant,
+    val workerRuntime: AgentWorkerRuntimeDescriptor? = null
 )
 
 sealed interface AgentRuntimeOutcome {
