@@ -439,7 +439,7 @@ class AgentCognitiveOrganization private constructor(
                 edges = canonicalEdges(edges),
                 provenanceReferences = (
                     plan.inputReferences +
-                        "composition-decision:" + plan.decisionId.value
+                        ("composition-decision:" + plan.decisionId.value)
                     ).distinct().sorted()
             )
         }
@@ -462,7 +462,7 @@ class AgentCognitiveOrganization private constructor(
                 edges = snapshot.edges,
                 provenanceReferences = (
                     snapshot.provenanceReferences +
-                        "recovery:" + recoveryReference
+                        ("recovery:" + recoveryReference)
                     ).distinct().sorted()
             )
         }
