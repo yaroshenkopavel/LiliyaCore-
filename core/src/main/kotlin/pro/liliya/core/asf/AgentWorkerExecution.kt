@@ -74,7 +74,8 @@ class AgentWorkerFactory(
                         inputReferences = inputReferences,
                         cancellationRequested = cancellationRequested,
                         parentScope = parentScope,
-                        parentRemainingBudget = parentRemainingBudget
+                        parentRemainingBudget = parentRemainingBudget,
+                        workerRuntime = runtime
                     )
                 )
         }
