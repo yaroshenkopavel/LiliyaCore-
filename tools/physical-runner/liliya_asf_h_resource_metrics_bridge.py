@@ -192,6 +192,101 @@ def peak_metric(samples: list[dict[str, object]], key: str) -> int | None:
     return max(values) if values else None
 
 
+def run_fixed_instrumentation_with_samples(
+    mode: str,
+    started_epoch: float,
+) -> tuple[int, str, list[dict[str, object]]]:
+    suffix = "full" if mode == MODE_FULL else "hierarchical"
+    output_path = f"/data/local/tmp/liliya_asf_h_{suffix}.instrumentation.out"
+    command = (
+        f"rm -f {output_path}; "
+        "am instrument -w -r "
+        f"-e class {TEST_CLASS} "
+        f"-e asf_h_mode {mode} "
+        f"{TEST_PACKAGE}/{RUNNER} >{output_path} 2>&1 & "
+        "p=$!; i=0; "
+        "while kill -0 \"$p\" 2>/dev/null; do "
+        "echo __ASF_H_MEM_SAMPLE_BEGIN__:$i; "
+        f"dumpsys meminfo {APP_PACKAGE} "
+        "| grep -E 'TOTAL PSS|TOTAL RSS|No process found' | head -1 || true; "
+        "echo __ASF_H_MEM_SAMPLE_END__:$i; "
+        "i=$((i+1)); "
+        f"sleep {SAMPLE_INTERVAL_SECONDS}; "
+        "done; "
+        "wait \"$p\"; rc=$?; "
+        "echo __ASF_H_INSTRUMENTATION_EXIT__:$rc; "
+        "echo __ASF_H_INSTRUMENTATION_OUTPUT_BEGIN__; "
+        f"cat {output_path}; "
+        "echo __ASF_H_INSTRUMENTATION_OUTPUT_END__; "
+        "exit 0"
+    )
+    completed = run_rish(
+        command,
+        timeout=INSTRUMENTATION_TIMEOUT_SECONDS + 60,
+    )
+    if completed.returncode != 0:
+        raise RuntimeError(
+            f"fixed instrumentation shell failed for {mode}: {completed.returncode}"
+        )
+
+    samples: list[dict[str, object]] = []
+    instrumentation_exit: int | None = None
+    instrumentation_lines: list[str] = []
+    current_sample_index: int | None = None
+    current_sample_lines: list[str] = []
+    in_instrumentation_output = False
+
+    for line in completed.stdout.splitlines():
+        if line.startswith("__ASF_H_MEM_SAMPLE_BEGIN__:"):
+            current_sample_index = int(line.rsplit(":", 1)[1])
+            current_sample_lines = []
+            continue
+        if line.startswith("__ASF_H_MEM_SAMPLE_END__:"):
+            if current_sample_index is not None:
+                raw_memory = "\n".join(current_sample_lines).strip()
+                parsed_memory = parse_meminfo(raw_memory)
+                samples.append(
+                    {
+                        "index": current_sample_index,
+                        "epochSeconds": (
+                            started_epoch
+                            + current_sample_index * SAMPLE_INTERVAL_SECONDS
+                        ),
+                        "memory": {
+                            **parsed_memory,
+                            "exit": 0,
+                            "raw": bounded_raw(raw_memory),
+                        },
+                    }
+                )
+            current_sample_index = None
+            current_sample_lines = []
+            continue
+        if line.startswith("__ASF_H_INSTRUMENTATION_EXIT__:"):
+            instrumentation_exit = int(line.rsplit(":", 1)[1])
+            continue
+        if line == "__ASF_H_INSTRUMENTATION_OUTPUT_BEGIN__":
+            in_instrumentation_output = True
+            continue
+        if line == "__ASF_H_INSTRUMENTATION_OUTPUT_END__":
+            in_instrumentation_output = False
+            continue
+        if current_sample_index is not None:
+            current_sample_lines.append(line)
+            continue
+        if in_instrumentation_output:
+            instrumentation_lines.append(line)
+
+    if instrumentation_exit is None:
+        raise RuntimeError(f"instrumentation exit marker missing for {mode}")
+
+    return (
+        instrumentation_exit,
+        "\n".join(instrumentation_lines).strip(),
+        samples,
+    )
+
+
 def read_fixed_summary(mode: str) -> dict[str, object]:
     path = SUMMARY_FILES[mode]
     completed = run_rish(f"run-as {APP_PACKAGE} cat {path}", timeout=30)
@@ -220,53 +315,17 @@ def run_mode(mode: str) -> dict[str, object]:
     thermal_before = diagnostic("dumpsys thermalservice", timeout=30)
     started_epoch = time.time()
 
-    command = (
-        "am instrument -w -r "
-        f"-e class {TEST_CLASS} "
-        f"-e asf_h_mode {mode} "
-        f"{TEST_PACKAGE}/{RUNNER}"
+    instrumentation_exit, output, samples = run_fixed_instrumentation_with_samples(
+        mode,
+        started_epoch,
     )
-
-    process = subprocess.Popen(
-        [str(RISH), "-c", command],
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-    )
-
-    samples: list[dict[str, object]] = []
-    timed_out = False
-    sample_index = 0
-    deadline = time.monotonic() + INSTRUMENTATION_TIMEOUT_SECONDS
-
-    while process.poll() is None:
-        if time.monotonic() >= deadline:
-            timed_out = True
-            process.kill()
-            break
-        samples.append(
-            take_sample(
-                sample_index,
-                include_thermal=(sample_index % THERMAL_SAMPLE_EVERY == 0),
-            )
-        )
-        sample_index += 1
-        time.sleep(SAMPLE_INTERVAL_SECONDS)
-
-    try:
-        output, _ = process.communicate(timeout=30)
-    except subprocess.TimeoutExpired:
-        process.kill()
-        output, _ = process.communicate()
-        timed_out = True
 
     ended_epoch = time.time()
     battery_after_raw = diagnostic("dumpsys battery", timeout=30)
     thermal_after = diagnostic("dumpsys thermalservice", timeout=30)
 
     instrumentation_ok = (
-        not timed_out
-        and process.returncode == 0
+        instrumentation_exit == 0
         and "INSTRUMENTATION_CODE: -1" in output
         and "FAILURES!!!" not in output
         and "INSTRUMENTATION_FAILED" not in output
@@ -278,8 +337,8 @@ def run_mode(mode: str) -> dict[str, object]:
     return {
         "mode": mode,
         "instrumentationPassed": instrumentation_ok,
-        "instrumentationExit": process.returncode,
-        "instrumentationTimedOut": timed_out,
+        "instrumentationExit": instrumentation_exit,
+        "instrumentationTimedOut": False,
         "instrumentationOutput": bounded_raw(output),
         "startedEpochSeconds": started_epoch,
         "endedEpochSeconds": ended_epoch,
