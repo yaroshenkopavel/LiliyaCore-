@@ -67,6 +67,7 @@ class AgentMetacognitiveFactoryControllerContractTest {
         assertNull(decision.nextBudget)
         assertNull(decision.nextCapacity)
         assertFalse(decision.requiresFreshAdmission)
+        assertNull(decision.simplificationTarget)
     }
 
     @Test
@@ -96,6 +97,11 @@ class AgentMetacognitiveFactoryControllerContractTest {
         assertTrue(next.maxArtifacts < budget.maxArtifacts)
         assertTrue(next.maxAgents < budget.maxAgents)
         assertFalse(decision.requiresFreshAdmission)
+        assertEquals(
+            AgentFactoryControlSimplificationTarget.SINGLE_WORKER,
+            decision.simplificationTarget
+        )
+        assertEquals(1, assertNotNull(decision.nextCapacity).maxWorkers)
     }
 
     @Test
@@ -112,6 +118,7 @@ class AgentMetacognitiveFactoryControllerContractTest {
         assertTrue(decision.requiresFreshAdmission)
         assertNotNull(decision.nextBudget)
         assertNotNull(decision.nextCapacity)
+        assertNull(decision.simplificationTarget)
     }
 
     @Test
@@ -139,6 +146,74 @@ class AgentMetacognitiveFactoryControllerContractTest {
     }
 
     @Test
+    fun oscillating_signals_are_bounded_by_the_global_control_decision_limit() {
+        val controller = AgentMetacognitiveFactoryController(
+            AgentFactoryControlPolicy(
+                maxRecompositions = 8,
+                maxControlDecisions = 4
+            )
+        )
+
+        assertEquals(
+            AgentFactoryControlDecisionKind.SIMPLIFY,
+            controller.decide(
+                observation(
+                    lowValue = 3,
+                    controlDecisionCount = 0
+                )
+            ).kind
+        )
+        assertEquals(
+            AgentFactoryControlDecisionKind.RECOMPOSE,
+            controller.decide(
+                observation(
+                    contradiction = 3,
+                    recompositionCount = 1,
+                    controlDecisionCount = 1
+                )
+            ).kind
+        )
+        assertEquals(
+            AgentFactoryControlDecisionKind.SIMPLIFY,
+            controller.decide(
+                observation(
+                    lowValue = 3,
+                    controlDecisionCount = 2
+                )
+            ).kind
+        )
+
+        val terminal = controller.decide(
+            observation(
+                contradiction = 3,
+                recompositionCount = 2,
+                controlDecisionCount = 4
+            )
+        )
+        assertEquals(AgentFactoryControlDecisionKind.ABANDON, terminal.kind)
+        assertEquals(AgentFactoryControlReason.CONTROL_DECISION_LIMIT, terminal.reason)
+    }
+
+    @Test
+    fun deterministic_simplification_is_explicit_and_creates_no_worker_capacity() {
+        val decision = AgentMetacognitiveFactoryController().decide(
+            observation(
+                lowValue = 2,
+                deterministicResolutionAvailable = true
+            )
+        )
+
+        assertEquals(AgentFactoryControlDecisionKind.SIMPLIFY, decision.kind)
+        assertEquals(
+            AgentFactoryControlSimplificationTarget.DETERMINISTIC_FALLBACK,
+            decision.simplificationTarget
+        )
+        assertNull(decision.nextCapacity)
+        assertNotNull(decision.nextBudget)
+        assertFalse(decision.requiresFreshAdmission)
+    }
+
+    @Test
     fun self_justifying_continuation_is_not_allowed_when_no_requirements_remain() {
         val decision = AgentMetacognitiveFactoryController().decide(
             observation(remainingRequirements = emptyList())
@@ -163,11 +238,15 @@ class AgentMetacognitiveFactoryControllerContractTest {
 
         assertEquals(AgentFactoryControlDecisionKind.SIMPLIFY, decision.kind)
         val capacity = assertNotNull(decision.nextCapacity)
+        assertEquals(
+            AgentFactoryControlSimplificationTarget.SINGLE_WORKER,
+            decision.simplificationTarget
+        )
         assertTrue(AgentWorkerClass.FULL !in capacity.allowedWorkerClasses)
-        assertTrue(capacity.allowedWorkerClasses.all {
-            it in setOf(AgentWorkerClass.NANO, AgentWorkerClass.MICRO)
-        })
-        assertTrue(capacity.maxWorkers <= 2)
+        assertEquals(1, capacity.allowedWorkerClasses.size)
+        assertTrue(capacity.allowedWorkerClasses.single() in
+            setOf(AgentWorkerClass.NANO, AgentWorkerClass.MICRO))
+        assertEquals(1, capacity.maxWorkers)
     }
 
     @Test
@@ -252,7 +331,9 @@ class AgentMetacognitiveFactoryControllerContractTest {
         pressure: AgentFactoryControlPressure = AgentFactoryControlPressure.NONE,
         lowValue: Int = 0,
         contradiction: Int = 0,
-        recompositionCount: Int = 0
+        recompositionCount: Int = 0,
+        controlDecisionCount: Int = 0,
+        deterministicResolutionAvailable: Boolean = false
     ) = AgentFactoryControlObservation(
         rootTaskId = rootTask,
         observedAt = observedAt,
@@ -267,6 +348,8 @@ class AgentMetacognitiveFactoryControllerContractTest {
         consecutiveLowValueSteps = lowValue,
         repeatedContradictionCount = contradiction,
         recompositionCount = recompositionCount,
+        controlDecisionCount = controlDecisionCount,
+        deterministicResolutionAvailable = deterministicResolutionAvailable,
         observationReferences = listOf("evidence:controller")
     )
 
@@ -279,5 +362,6 @@ class AgentMetacognitiveFactoryControllerContractTest {
         assertNull(decision.nextBudget)
         assertNull(decision.nextCapacity)
         assertFalse(decision.requiresFreshAdmission)
+        assertNull(decision.simplificationTarget)
     }
 }
