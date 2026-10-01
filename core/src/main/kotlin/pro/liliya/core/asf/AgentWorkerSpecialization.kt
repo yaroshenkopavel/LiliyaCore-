@@ -364,3 +364,97 @@ object AgentWorkerSpecializationAdvisor {
             AgentWorkerSpecializationNoRecommendationReason.NO_POSITIVE_BASELINE_EVIDENCE
     }
 }
+
+
+enum class AgentWorkerSpecializationSelectionSource {
+    BASELINE,
+    SPECIALIZATION
+}
+
+enum class AgentWorkerSpecializationSelectionRejection {
+    INCOMPATIBLE_BASELINE
+}
+
+sealed interface AgentWorkerSpecializationSelection {
+    data class Selected(
+        val candidate: AgentTeamWorkerCandidate,
+        val source: AgentWorkerSpecializationSelectionSource,
+        val evidenceReferences: List<String>
+    ) : AgentWorkerSpecializationSelection
+
+    data class Rejected(
+        val reason: AgentWorkerSpecializationSelectionRejection
+    ) : AgentWorkerSpecializationSelection
+}
+
+object AgentWorkerSpecializationCandidateSelector {
+    fun select(
+        taskClass: AgentWorkerRequirement,
+        baseline: AgentTeamWorkerCandidate,
+        alternatives: Collection<AgentTeamWorkerCandidate>,
+        evidence: AgentWorkerSpecializationEvidenceSet,
+        now: Instant,
+        policy: AgentWorkerSpecializationPolicy = AgentWorkerSpecializationPolicy()
+    ): AgentWorkerSpecializationSelection {
+        val baselineCompatible = when (
+            AgentWorkerRouter.route(taskClass, setOf(baseline.workerClass))
+        ) {
+            is AgentWorkerRoutingDecision.Worker -> true
+            AgentWorkerRoutingDecision.DeterministicCheck,
+            AgentWorkerRoutingDecision.Declined -> false
+        }
+        if (!baselineCompatible) {
+            return AgentWorkerSpecializationSelection.Rejected(
+                AgentWorkerSpecializationSelectionRejection.INCOMPATIBLE_BASELINE
+            )
+        }
+
+        val sameClassAlternatives = alternatives
+            .filter { it.workerClass == baseline.workerClass }
+        val candidates = (listOf(baseline) + sameClassAlternatives)
+            .distinctBy { it.specializationProfile().canonicalKey }
+            .sortedBy { it.specializationProfile().canonicalKey }
+
+        val decision = AgentWorkerSpecializationAdvisor.advise(
+            taskClass = taskClass,
+            eligibleProfiles = candidates.map { it.specializationProfile() },
+            evidence = evidence,
+            now = now,
+            policy = policy
+        )
+        val recommended = decision as? AgentWorkerSpecializationDecision.Recommended
+            ?: return baselineSelection(baseline)
+
+        val selected = candidates.firstOrNull {
+            it.specializationProfile().canonicalKey == recommended.profile.canonicalKey
+        } ?: return baselineSelection(baseline)
+
+        if (!selected.budget.isWithin(baseline.budget)) {
+            return baselineSelection(baseline)
+        }
+        if (!selected.cognitiveScope.isWithin(baseline.cognitiveScope)) {
+            return baselineSelection(baseline)
+        }
+
+        return AgentWorkerSpecializationSelection.Selected(
+            candidate = selected,
+            source = AgentWorkerSpecializationSelectionSource.SPECIALIZATION,
+            evidenceReferences = recommended.signal.evidenceReferences
+        )
+    }
+
+    private fun baselineSelection(
+        baseline: AgentTeamWorkerCandidate
+    ) = AgentWorkerSpecializationSelection.Selected(
+        candidate = baseline,
+        source = AgentWorkerSpecializationSelectionSource.BASELINE,
+        evidenceReferences = emptyList()
+    )
+}
+
+fun AgentTeamWorkerCandidate.specializationProfile() =
+    AgentWorkerSpecializationProfile(
+        workerClass = workerClass,
+        blueprint = blueprint,
+        runtime = runtime
+    )
