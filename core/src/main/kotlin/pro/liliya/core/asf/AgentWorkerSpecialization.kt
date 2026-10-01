@@ -20,7 +20,7 @@ data class AgentWorkerSpecializationProfile(
         ).joinToString("|")
 }
 
-data class AgentWorkerSpecializationEvidence private constructor(
+class AgentWorkerSpecializationEvidence private constructor(
     val taskClass: AgentWorkerRequirement,
     val profile: AgentWorkerSpecializationProfile,
     val evaluationReference: String,
