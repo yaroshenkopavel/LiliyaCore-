@@ -23,6 +23,8 @@ data class AgentFactoryControlObservation(
     val consecutiveLowValueSteps: Int,
     val repeatedContradictionCount: Int,
     val recompositionCount: Int,
+    val controlDecisionCount: Int,
+    val deterministicResolutionAvailable: Boolean,
     val observationReferences: List<String>
 ) {
     init {
@@ -38,6 +40,7 @@ data class AgentFactoryControlObservation(
         require(consecutiveLowValueSteps >= 0)
         require(repeatedContradictionCount >= 0)
         require(recompositionCount >= 0)
+        require(controlDecisionCount >= 0)
         require(observationReferences.isNotEmpty()) {
             "factory control observation requires provenance"
         }
@@ -56,11 +59,13 @@ data class AgentFactoryControlObservation(
 
 data class AgentFactoryControlPolicy(
     val maxRecompositions: Int = 2,
+    val maxControlDecisions: Int = 8,
     val lowValueSimplifyThreshold: Int = 2,
     val contradictionRecomposeThreshold: Int = 2
 ) {
     init {
         require(maxRecompositions in 0..8)
+        require(maxControlDecisions in 1..32)
         require(lowValueSimplifyThreshold > 0)
         require(contradictionRecomposeThreshold > 0)
     }
@@ -74,6 +79,11 @@ enum class AgentFactoryControlDecisionKind {
     ABANDON
 }
 
+enum class AgentFactoryControlSimplificationTarget {
+    DETERMINISTIC_FALLBACK,
+    SINGLE_WORKER
+}
+
 enum class AgentFactoryControlReason {
     CANCELLED,
     EXPIRED,
@@ -81,6 +91,7 @@ enum class AgentFactoryControlReason {
     BUDGET_EXHAUSTED,
     CRITICAL_PRESSURE,
     RECOMPOSITION_LIMIT,
+    CONTROL_DECISION_LIMIT,
     LOW_VALUE_BRANCH,
     REPEATED_CONTRADICTION,
     NO_REMAINING_REQUIREMENTS,
@@ -92,6 +103,7 @@ data class AgentFactoryControlDecision(
     val reason: AgentFactoryControlReason,
     val nextBudget: AgentAggregateBudget?,
     val nextCapacity: AgentTeamCapacityEnvelope?,
+    val simplificationTarget: AgentFactoryControlSimplificationTarget?,
     val requiresFreshAdmission: Boolean,
     val observationReferences: List<String>
 ) {
@@ -101,22 +113,31 @@ data class AgentFactoryControlDecision(
             AgentFactoryControlDecisionKind.RECOMPOSE -> {
                 require(nextBudget != null)
                 require(nextCapacity != null)
+                require(simplificationTarget == null)
                 require(requiresFreshAdmission)
             }
             AgentFactoryControlDecisionKind.SIMPLIFY -> {
                 require(nextBudget != null)
-                require(nextCapacity != null)
+                require(simplificationTarget != null)
+                if (simplificationTarget == AgentFactoryControlSimplificationTarget.SINGLE_WORKER) {
+                    require(nextCapacity != null)
+                    require(nextCapacity.maxWorkers == 1)
+                } else {
+                    require(nextCapacity == null)
+                }
                 require(!requiresFreshAdmission)
             }
             AgentFactoryControlDecisionKind.CONTINUE -> {
                 require(nextBudget != null)
                 require(nextCapacity != null)
+                require(simplificationTarget == null)
                 require(!requiresFreshAdmission)
             }
             AgentFactoryControlDecisionKind.STOP,
             AgentFactoryControlDecisionKind.ABANDON -> {
                 require(nextBudget == null)
                 require(nextCapacity == null)
+                require(simplificationTarget == null)
                 require(!requiresFreshAdmission)
             }
         }
@@ -129,6 +150,7 @@ data class AgentFactoryControlAuditRecord(
     val kind: AgentFactoryControlDecisionKind,
     val reason: AgentFactoryControlReason,
     val recompositionCount: Int,
+    val controlDecisionCount: Int,
     val observationReferences: List<String>
 )
 
@@ -149,6 +171,7 @@ class AgentMetacognitiveFactoryController(
                 kind = decision.kind,
                 reason = decision.reason,
                 recompositionCount = observation.recompositionCount,
+                controlDecisionCount = observation.controlDecisionCount,
                 observationReferences = observation.observationReferences
             )
         )
@@ -158,6 +181,13 @@ class AgentMetacognitiveFactoryController(
     private fun decideInternal(
         observation: AgentFactoryControlObservation
     ): AgentFactoryControlDecision {
+        if (observation.controlDecisionCount >= policy.maxControlDecisions) {
+            return terminal(
+                observation,
+                AgentFactoryControlDecisionKind.ABANDON,
+                AgentFactoryControlReason.CONTROL_DECISION_LIMIT
+            )
+        }
         if (observation.cancelled) {
             return terminal(observation, AgentFactoryControlDecisionKind.STOP, AgentFactoryControlReason.CANCELLED)
         }
@@ -196,6 +226,7 @@ class AgentMetacognitiveFactoryController(
                 reason = AgentFactoryControlReason.REPEATED_CONTRADICTION,
                 nextBudget = remaining,
                 nextCapacity = capacity,
+                simplificationTarget = null,
                 requiresFreshAdmission = true,
                 observationReferences = observation.observationReferences
             )
@@ -205,11 +236,23 @@ class AgentMetacognitiveFactoryController(
             observation.pressure == AgentFactoryControlPressure.ELEVATED ||
             observation.consecutiveLowValueSteps >= policy.lowValueSimplifyThreshold
         ) {
+            val target = if (observation.deterministicResolutionAvailable) {
+                AgentFactoryControlSimplificationTarget.DETERMINISTIC_FALLBACK
+            } else {
+                AgentFactoryControlSimplificationTarget.SINGLE_WORKER
+            }
             return AgentFactoryControlDecision(
                 kind = AgentFactoryControlDecisionKind.SIMPLIFY,
                 reason = AgentFactoryControlReason.LOW_VALUE_BRANCH,
                 nextBudget = remaining,
-                nextCapacity = reducedCapacity(observation, remaining),
+                nextCapacity = if (
+                    target == AgentFactoryControlSimplificationTarget.SINGLE_WORKER
+                ) {
+                    singleWorkerCapacity(observation, remaining)
+                } else {
+                    null
+                },
+                simplificationTarget = target,
                 requiresFreshAdmission = false,
                 observationReferences = observation.observationReferences
             )
@@ -220,6 +263,7 @@ class AgentMetacognitiveFactoryController(
             reason = AgentFactoryControlReason.CONTINUE_WITHIN_BOUNDS,
             nextBudget = remaining,
             nextCapacity = currentOrReducedCapacity(observation, remaining),
+            simplificationTarget = null,
             requiresFreshAdmission = false,
             observationReferences = observation.observationReferences
         )
@@ -254,6 +298,21 @@ class AgentMetacognitiveFactoryController(
         )
     }
 
+    private fun singleWorkerCapacity(
+        observation: AgentFactoryControlObservation,
+        budget: AgentAggregateBudget
+    ): AgentTeamCapacityEnvelope {
+        val active = observation.activeWorkerClasses
+        require(active.isNotEmpty()) {
+            "single-worker simplification requires an already active worker class"
+        }
+        val selected = active.minBy { it.order }
+        return AgentTeamCapacityEnvelope(
+            allowedWorkerClasses = setOf(selected),
+            maxWorkers = 1.coerceAtMost(budget.maxAgents)
+        )
+    }
+
     private fun reducedCapacity(
         observation: AgentFactoryControlObservation,
         budget: AgentAggregateBudget
@@ -269,7 +328,9 @@ class AgentMetacognitiveFactoryController(
                 }
             }
             .toSet()
-            .ifEmpty { setOf(AgentWorkerClass.NANO) }
+        require(allowed.isNotEmpty()) {
+            "recomposition cannot invent a worker class under pressure"
+        }
         return AgentTeamCapacityEnvelope(
             allowedWorkerClasses = allowed,
             maxWorkers = minOf(budget.maxAgents, allowed.size)
@@ -298,6 +359,7 @@ class AgentMetacognitiveFactoryController(
         reason = reason,
         nextBudget = null,
         nextCapacity = null,
+        simplificationTarget = null,
         requiresFreshAdmission = false,
         observationReferences = observation.observationReferences
     )
