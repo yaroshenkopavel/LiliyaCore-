@@ -323,7 +323,7 @@ class AgentWorkerSpecializationContractTest {
             selected.source
         )
         assertEquals(specialized.blueprint, selected.candidate.blueprint)
-        assertEquals(3, selected.evidenceReferences.size)
+        assertEquals(6, selected.evidenceReferences.size)
     }
 
     @Test
@@ -515,17 +515,87 @@ class AgentWorkerSpecializationContractTest {
         reference: String,
         observedAt: Instant,
         comparison: AgentBlueprintEvaluationComparison
-    ) = AgentWorkerSpecializationEvidence.fromCoreEvaluation(
-        taskClass = AgentWorkerRequirement.NARROW_MULTI_STEP,
-        profile = profile,
-        evaluationReference = reference,
-        comparisonToBaseline = comparison,
-        observedAt = observedAt,
-        provenanceReferences = listOf(
-            "asf-evaluation:$reference",
-            "asf-root:root-asf-j"
+    ): AgentWorkerSpecializationEvidence {
+        val (baseline, candidate) = evaluationVectors(comparison)
+        val baselineReference = "asf-evaluation:baseline:$reference"
+        val candidateReference = "asf-evaluation:candidate:$reference"
+        return AgentWorkerSpecializationEvidence.fromCoreEvaluation(
+            taskClass = AgentWorkerRequirement.NARROW_MULTI_STEP,
+            profile = profile,
+            baselineEvaluationReference = baselineReference,
+            baselineEvaluation = baseline,
+            candidateEvaluationReference = candidateReference,
+            candidateEvaluation = candidate,
+            observedAt = observedAt,
+            provenanceReferences = listOf(
+                baselineReference,
+                candidateReference,
+                "asf-root:root-asf-j"
+            )
         )
-    )
+    }
+
+    private fun evaluationVectors(
+        comparison: AgentBlueprintEvaluationComparison
+    ): Pair<AgentBlueprintEvaluationVector, AgentBlueprintEvaluationVector> {
+        fun booleanPair(
+            relation: AgentBlueprintEvaluationRelation
+        ): Pair<Boolean, Boolean> = when (relation) {
+            AgentBlueprintEvaluationRelation.BETTER -> false to true
+            AgentBlueprintEvaluationRelation.WORSE -> true to false
+            AgentBlueprintEvaluationRelation.EQUAL -> true to true
+        }
+
+        fun intPair(
+            relation: AgentBlueprintEvaluationRelation,
+            baseline: Int = 10
+        ): Pair<Int, Int> = when (relation) {
+            AgentBlueprintEvaluationRelation.BETTER -> baseline to (baseline - 1)
+            AgentBlueprintEvaluationRelation.WORSE -> baseline to (baseline + 1)
+            AgentBlueprintEvaluationRelation.EQUAL -> baseline to baseline
+        }
+
+        fun longPair(
+            relation: AgentBlueprintEvaluationRelation,
+            baseline: Long = 100L
+        ): Pair<Long, Long> = when (relation) {
+            AgentBlueprintEvaluationRelation.BETTER -> baseline to (baseline - 1L)
+            AgentBlueprintEvaluationRelation.WORSE -> baseline to (baseline + 1L)
+            AgentBlueprintEvaluationRelation.EQUAL -> baseline to baseline
+        }
+
+        val completion = booleanPair(comparison.completion)
+        val challenged = intPair(comparison.challengedFindings)
+        val unresolved = intPair(comparison.unresolvedConflicts)
+        val wallClock = longPair(comparison.wallClock)
+        val inference = longPair(comparison.inference)
+        val context = intPair(comparison.context, 100)
+        val artifacts = intPair(comparison.artifacts)
+        val retries = intPair(comparison.retries)
+        val cancellations = intPair(comparison.cancellations)
+
+        return AgentBlueprintEvaluationVector(
+            completed = completion.first,
+            challengedFindings = challenged.first,
+            unresolvedConflictFindings = unresolved.first,
+            wallClockMillis = wallClock.first,
+            inferenceUnits = inference.first,
+            contextBytes = context.first,
+            artifactCount = artifacts.first,
+            retryCount = retries.first,
+            cancellationCount = cancellations.first
+        ) to AgentBlueprintEvaluationVector(
+            completed = completion.second,
+            challengedFindings = challenged.second,
+            unresolvedConflictFindings = unresolved.second,
+            wallClockMillis = wallClock.second,
+            inferenceUnits = inference.second,
+            contextBytes = context.second,
+            artifactCount = artifacts.second,
+            retryCount = retries.second,
+            cancellationCount = cancellations.second
+        )
+    }
 
     private fun positiveComparison() = comparison(
         completion = AgentBlueprintEvaluationRelation.BETTER
