@@ -252,6 +252,22 @@ class AgentCognitiveOrganization private constructor(
         require(worker.terminal) {
             "only terminal worker branches may be contracted"
         }
+        val liveWorkerDependents = edges
+            .filter {
+                it.from == worker.id &&
+                    it.kind == AgentCognitiveGraphEdgeKind.DEPENDS_ON
+            }
+            .map { it.to }
+            .filter { dependentId ->
+                nodes.any {
+                    it.id == dependentId &&
+                        it.kind == AgentCognitiveGraphNodeKind.WORKER
+                }
+            }
+        require(liveWorkerDependents.isEmpty()) {
+            "worker branch cannot contract while dependent workers remain"
+        }
+
         val producedArtifacts = edges
             .filter {
                 it.from == worker.id &&
@@ -357,6 +373,26 @@ class AgentCognitiveOrganization private constructor(
         edges = edges,
         provenanceReferences = provenanceReferences
     )
+
+    fun experimentAgainst(
+        plan: AgentTeamCompositionPlan
+    ): AgentCognitiveOrganizationExperimentResult {
+        require(plan.coordinatorPlan.rootTaskId == rootTaskId) {
+            "controlled experiment must use the same root task"
+        }
+        val baselineWorkers = plan.coordinatorPlan.steps.size
+        val activeWorkers = nodes.count {
+            it.kind == AgentCognitiveGraphNodeKind.WORKER
+        }
+        return AgentCognitiveOrganizationExperimentResult(
+            baselineStaticWorkerCount = baselineWorkers,
+            dynamicWorkerNodeCount = activeWorkers,
+            workerSurfaceReduction = baselineWorkers - activeWorkers,
+            dynamicNodeCount = nodes.size,
+            dynamicEdgeCount = edges.size,
+            preservedProvenanceReferenceCount = provenanceReferences.size
+        )
+    }
 
     companion object {
         fun fromComposition(
@@ -506,5 +542,25 @@ class AgentCognitiveOrganization private constructor(
                 }
             return nodes.maxOf { depth(it.id) }
         }
+    }
+}
+
+
+data class AgentCognitiveOrganizationExperimentResult(
+    val baselineStaticWorkerCount: Int,
+    val dynamicWorkerNodeCount: Int,
+    val workerSurfaceReduction: Int,
+    val dynamicNodeCount: Int,
+    val dynamicEdgeCount: Int,
+    val preservedProvenanceReferenceCount: Int
+) {
+    init {
+        require(baselineStaticWorkerCount > 0)
+        require(dynamicWorkerNodeCount >= 0)
+        require(workerSurfaceReduction ==
+            baselineStaticWorkerCount - dynamicWorkerNodeCount)
+        require(dynamicNodeCount >= dynamicWorkerNodeCount)
+        require(dynamicEdgeCount >= 0)
+        require(preservedProvenanceReferenceCount > 0)
     }
 }
