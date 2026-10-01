@@ -186,7 +186,7 @@ class AgentHeterogeneousRuntimeFabricContractTest {
                         completed(
                             it,
                             "rerank-result",
-                            AgentRuntimeUsage(10, 50, 12, 4, 1)
+                            AgentRuntimeUsage(10, 50, 12, 1, 1)
                         )
                     }
                 )
