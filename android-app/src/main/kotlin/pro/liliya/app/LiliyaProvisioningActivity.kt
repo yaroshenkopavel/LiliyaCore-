@@ -126,7 +126,7 @@ class LiliyaProvisioningActivity : Activity() {
             addView(status)
 
             activationCode = EditText(this@LiliyaProvisioningActivity).apply {
-                hint = "Код активации"
+                hint = "Код активации или замены устройства"
                 inputType = InputType.TYPE_CLASS_TEXT or
                     InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
                 isSingleLine = true
@@ -196,8 +196,12 @@ class LiliyaProvisioningActivity : Activity() {
                         when (result.reason) {
                             "INVALID_CODE" -> "Код активации недействителен"
                             "EXPIRED_CODE" -> "Срок действия кода активации истёк"
-                            "CODE_EXHAUSTED" -> "Код активации уже использован"
-                            else -> "Код активации отклонён"
+                            "CODE_EXHAUSTED" -> "Код уже использован"
+                            "DEVICE_LIMIT_REACHED" ->
+                                "Старое устройство ещё активно"
+                            "ENTITLEMENT_UNAVAILABLE" ->
+                                "Лицензия недоступна для замены устройства"
+                            else -> "Код отклонён"
                         }
                     )
 

@@ -89,11 +89,44 @@ class LiliyaApplication : Application() {
     ): ProductionAndroidActivationTaskRequestResult =
         activationTask.request(
             activate = {
-                ProductionAndroidActivationFirstRun.activate(
-                    context = this,
-                    activationCode = activationCode,
-                    localModelFile = ProductionAndroidLocalModelSelection.current()
-                )
+                if (activationCode.startsWith("LDR1.")) {
+                    when (
+                        val result = ProductionAndroidDeviceRebindFirstRun.rebind(
+                            context = this,
+                            rebindCode = activationCode,
+                            localModelFile =
+                                ProductionAndroidLocalModelSelection.current()
+                        )
+                    ) {
+                        ProductionAndroidDeviceRebindResult.ProfileRequired ->
+                            ProductionAndroidActivationResult.ProfileRequired
+
+                        is ProductionAndroidDeviceRebindResult.Rejected ->
+                            ProductionAndroidActivationResult.Rejected(
+                                result.reason
+                            )
+
+                        is ProductionAndroidDeviceRebindResult.TransportFailed ->
+                            ProductionAndroidActivationResult.TransportFailed(
+                                result.reason
+                            )
+
+                        is ProductionAndroidDeviceRebindResult.FirstRun ->
+                            ProductionAndroidActivationResult.FirstRun(
+                                result.result
+                            )
+
+                        ProductionAndroidDeviceRebindResult.Failed ->
+                            ProductionAndroidActivationResult.Failed
+                    }
+                } else {
+                    ProductionAndroidActivationFirstRun.activate(
+                        context = this,
+                        activationCode = activationCode,
+                        localModelFile =
+                            ProductionAndroidLocalModelSelection.current()
+                    )
+                }
             },
             listener = listener
         )
