@@ -1,47 +1,39 @@
 package pro.liliya.core.licensetransport
 
 import java.net.URL
+import java.util.Base64
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
-import kotlin.test.assertTrue
 
 class ActivationRedemptionHttpClientContractTest {
     @Test
-    fun activation_request_uses_dedicated_path_and_zeroizes_bearer_copy() {
-        var capturedBearer: ByteArray? = null
+    fun fresh_install_activation_uses_dedicated_path_without_product_auth_and_returns_license() {
         var capturedPath: String? = null
+        var capturedBearer: ByteArray? = byteArrayOf(1)
         val engine = LicenseHttpEngine { request, _ ->
-            capturedBearer = request.authorizationBearer
             capturedPath = request.endpoint.path
+            capturedBearer = request.authorizationBearer
             LicenseHttpEngineResult.Response(
                 LicenseHttpEngineResponse(
                     status = 200,
-                    body = """{"wireVersion":1,"kind":"activated","subject":"liliya-subject-v1:test"}"""
-                        .encodeToByteArray()
+                    body = activatedBody()
                 )
             )
         }
-        val credential = LicenseHttpBearerCredential.of("product-auth".encodeToByteArray())
 
-        try {
-            val result = client(engine).redeem(
-                ActivationRedemptionHttpRequest(
-                    activationCode = "LAC1.example",
-                    attemptId = "attempt-1"
-                ),
-                credential
+        val result = client(engine).redeem(
+            ActivationRedemptionHttpRequest(
+                activationCode = "LAC1.example",
+                attemptId = "attempt-1"
             )
+        )
 
-            assertEquals(
-                "liliya-subject-v1:test",
-                assertIs<ActivationRedemptionHttpResult.Activated>(result).subject
-            )
-            assertEquals("/v1/activation/redeem", capturedPath)
-            assertTrue(capturedBearer?.all { it == 0.toByte() } == true)
-        } finally {
-            credential.close()
-        }
+        val activated = assertIs<ActivationRedemptionHttpResult.Activated>(result)
+        assertEquals("liliya-subject-v1:test", activated.subject)
+        assertEquals("license-key-v1", activated.license.signingKeyId.value)
+        assertEquals("/v1/activation/redeem", capturedPath)
+        assertEquals(null, capturedBearer)
     }
 
     @Test
@@ -55,47 +47,54 @@ class ActivationRedemptionHttpClientContractTest {
                 )
             )
         }
-        val credential = LicenseHttpBearerCredential.of("product-auth".encodeToByteArray())
 
-        try {
-            val result = client(engine).redeem(
-                ActivationRedemptionHttpRequest("LAC1.example", "attempt-2"),
-                credential
-            )
-            assertEquals(
-                "CODE_EXHAUSTED",
-                assertIs<ActivationRedemptionHttpResult.Rejected>(result).reason
-            )
-        } finally {
-            credential.close()
-        }
+        val result = client(engine).redeem(
+            ActivationRedemptionHttpRequest("LAC1.example", "attempt-2")
+        )
+
+        assertEquals(
+            "CODE_EXHAUSTED",
+            assertIs<ActivationRedemptionHttpResult.Rejected>(result).reason
+        )
     }
 
     @Test
-    fun malformed_success_response_fails_closed() {
+    fun malformed_or_incomplete_signed_license_fails_closed() {
         val engine = LicenseHttpEngine { _, _ ->
             LicenseHttpEngineResult.Response(
                 LicenseHttpEngineResponse(
                     status = 200,
-                    body = """{"wireVersion":1,"kind":"activated","subject":""}"""
+                    body = """{"wireVersion":1,"kind":"activated","subject":"x"}"""
                         .encodeToByteArray()
                 )
             )
         }
-        val credential = LicenseHttpBearerCredential.of("product-auth".encodeToByteArray())
 
-        try {
-            val result = client(engine).redeem(
-                ActivationRedemptionHttpRequest("LAC1.example", "attempt-3"),
-                credential
-            )
-            assertEquals(
-                LicenseClientTransportFailure.PROTOCOL_FAILURE,
-                assertIs<ActivationRedemptionHttpResult.Failed>(result).reason
-            )
-        } finally {
-            credential.close()
-        }
+        val result = client(engine).redeem(
+            ActivationRedemptionHttpRequest("LAC1.example", "attempt-3")
+        )
+
+        assertEquals(
+            LicenseClientTransportFailure.PROTOCOL_FAILURE,
+            assertIs<ActivationRedemptionHttpResult.Failed>(result).reason
+        )
+    }
+
+    private fun activatedBody(): ByteArray {
+        val payload = Base64.getEncoder().encodeToString("payload".encodeToByteArray())
+        val signature = Base64.getEncoder().encodeToString("signature".encodeToByteArray())
+        return """
+            {
+              "wireVersion":1,
+              "kind":"activated",
+              "subject":"liliya-subject-v1:test",
+              "schemaVersion":1,
+              "algorithm":"ECDSA_P256_SHA256",
+              "keyReference":"license-key-v1",
+              "payloadBase64":"$payload",
+              "signatureBase64":"$signature"
+            }
+        """.trimIndent().encodeToByteArray()
     }
 
     private fun client(engine: LicenseHttpEngine) =
