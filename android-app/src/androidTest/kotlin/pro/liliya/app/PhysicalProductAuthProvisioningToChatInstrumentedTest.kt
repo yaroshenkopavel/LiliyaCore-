@@ -13,22 +13,22 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.test.assertContentEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * Physical-acceptance-only bridge through the real Product Auth provisioning gate.
+ * Regression guard for the legacy Product Auth provisioning boundary after Activation Code
+ * bootstrap became the fresh-install user path.
  *
- * This test owns a temporary LPAUTH1 fixture and installs only an explicit test first-run
- * configuration marker. No production secret, deployment profile, trust key, Authority grant, or
- * release bypass is introduced. The separate First Working Liliya cold-start contract remains the
- * authoritative proof for real runtime READY and the first chat turn.
+ * Product Auth may still be provisioned for protected post-activation licensing requests, but
+ * possession of Product Auth alone must never bypass Activation Code redemption or open runtime.
  */
 @RunWith(AndroidJUnit4::class)
 class PhysicalProductAuthProvisioningToChatInstrumentedTest {
     @Test
-    fun temporary_lpauth1_fixture_unlocks_provisioning_and_opens_real_chat_activity() {
+    fun temporary_lpauth1_fixture_does_not_bypass_activation_or_open_chat_activity() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val application = instrumentation.targetContext.applicationContext as LiliyaApplication
         val store = ProductionAndroidProductAuthEncryptedStore.create(application)
@@ -79,19 +79,6 @@ class PhysicalProductAuthProvisioningToChatInstrumentedTest {
                 opened.fill(0)
             }
 
-            assertTrue(
-                application.configureFirstRunAcquisition(
-                    ProductionAndroidFirstRunConfiguration(
-                        licenseAcquisition = ProductionAndroidFirstRunLicenseAcquisitionPort {
-                            error("physical provisioning UI fixture must not acquire a License")
-                        },
-                        productInput = ProductionAndroidFirstRunProductInputPort { _, _ ->
-                            error("physical provisioning UI fixture must not assemble product input")
-                        }
-                    )
-                )
-            )
-
             val launchOutput = ParcelFileDescriptor.AutoCloseInputStream(
                 instrumentation.uiAutomation.executeShellCommand(
                     "am start -n pro.liliya.app/.LiliyaProvisioningActivity"
@@ -101,9 +88,9 @@ class PhysicalProductAuthProvisioningToChatInstrumentedTest {
                 !launchOutput.contains("Error:"),
                 "Product Auth provisioning launch failed: ${launchOutput.trim()}"
             )
-            assertTrue(
-                openedChat.await(10, TimeUnit.SECONDS),
-                "Product Auth provisioning did not open LiliyaActivity"
+            assertFalse(
+                openedChat.await(1, TimeUnit.SECONDS),
+                "Product Auth alone must not bypass Activation Code bootstrap"
             )
             instrumentation.waitForIdleSync()
         } finally {

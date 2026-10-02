@@ -40,14 +40,21 @@ internal data class ProductionAndroidFirstRunProductInputTemplate(
     val semanticDirectoryName: String,
     val cognitiveStorageDirectoryName: String? = null
 ) {
-    fun productInputPort(): ProductionAndroidFirstRunProductInputPort =
+    fun productInputPort(
+        requiredDeviceBindingReference: String? = null
+    ): ProductionAndroidFirstRunProductInputPort =
         ProductionAndroidFirstRunProductInputPort { envelope, localModelFile ->
-            create(envelope, localModelFile)
+            create(
+                envelope = envelope,
+                localModelFile = localModelFile,
+                requiredDeviceBindingReference = requiredDeviceBindingReference
+            )
         }
 
     internal fun create(
         envelope: LicenseSignedEnvelope,
-        localModelFile: File
+        localModelFile: File,
+        requiredDeviceBindingReference: String? = null
     ): AndroidProductRuntimeFirstRunProductInput =
         AndroidProductRuntimeFirstRunProductInput(
             context = context,
@@ -56,7 +63,9 @@ internal data class ProductionAndroidFirstRunProductInputTemplate(
             licenseTrustKeys = licenseTrustKeys,
             licenseEnvelope = envelope,
             authorityPlan = authorityPlan,
-            admission = admission,
+            admission = admission.copy(
+                requiredDeviceBindingReference = requiredDeviceBindingReference
+            ),
             keyChoice = keyChoice,
             localModelFile = localModelFile,
             protectedModelBudgets = protectedModelBudgets,

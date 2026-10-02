@@ -32,6 +32,7 @@ repositories {
 
 dependencies {
     implementation(project(":android-runtime"))
+    implementation(project(":android-device-key"))
     implementation(project(":license-transport-client"))
 
     testImplementation(kotlin("test"))

@@ -11,9 +11,11 @@ class ActivationRedemptionHttpClientContractTest {
     fun fresh_install_activation_uses_dedicated_path_without_product_auth_and_returns_license() {
         var capturedPath: String? = null
         var capturedBearer: ByteArray? = byteArrayOf(1)
+        var capturedBody: String? = null
         val engine = LicenseHttpEngine { request, _ ->
             capturedPath = request.endpoint.path
             capturedBearer = request.authorizationBearer
+            capturedBody = request.body.toString(Charsets.UTF_8)
             LicenseHttpEngineResult.Response(
                 LicenseHttpEngineResponse(
                     status = 200,
@@ -25,7 +27,9 @@ class ActivationRedemptionHttpClientContractTest {
         val result = client(engine).redeem(
             ActivationRedemptionHttpRequest(
                 activationCode = "LAC1.example",
-                attemptId = "attempt-1"
+                attemptId = "attempt-1",
+                installationId = "installation-A",
+                deviceKeyFingerprint = "sha256:device-A"
             )
         )
 
@@ -34,6 +38,12 @@ class ActivationRedemptionHttpClientContractTest {
         assertEquals("license-key-v1", activated.license.signingKeyId.value)
         assertEquals("/v1/activation/redeem", capturedPath)
         assertEquals(null, capturedBearer)
+        kotlin.test.assertTrue(
+            capturedBody.orEmpty().contains("\"installationId\":\"installation-A\"")
+        )
+        kotlin.test.assertTrue(
+            capturedBody.orEmpty().contains("\"deviceKeyFingerprint\":\"sha256:device-A\"")
+        )
     }
 
     @Test
@@ -49,7 +59,12 @@ class ActivationRedemptionHttpClientContractTest {
         }
 
         val result = client(engine).redeem(
-            ActivationRedemptionHttpRequest("LAC1.example", "attempt-2")
+            ActivationRedemptionHttpRequest(
+                "LAC1.example",
+                "attempt-2",
+                "installation-A",
+                "sha256:device-A"
+            )
         )
 
         assertEquals(
@@ -71,7 +86,12 @@ class ActivationRedemptionHttpClientContractTest {
         }
 
         val result = client(engine).redeem(
-            ActivationRedemptionHttpRequest("LAC1.example", "attempt-3")
+            ActivationRedemptionHttpRequest(
+                "LAC1.example",
+                "attempt-3",
+                "installation-A",
+                "sha256:device-A"
+            )
         )
 
         assertEquals(

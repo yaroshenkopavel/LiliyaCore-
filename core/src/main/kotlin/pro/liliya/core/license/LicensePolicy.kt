@@ -15,7 +15,8 @@ class LicensePolicyContext(
     val now: Instant,
     val minimumRevocationEpoch: LicenseRevocationEpoch = LicenseRevocationEpoch(0),
     val minimumReplaySequence: LicenseReplaySequence? = null,
-    val suspiciousTimeOrReplayState: Boolean = false
+    val suspiciousTimeOrReplayState: Boolean = false,
+    val requiredDeviceBindingReference: LicenseDeviceBindingReference? = null
 )
 
 class LicenseDecisionReceipt internal constructor(
@@ -51,6 +52,7 @@ enum class LicenseDenialReason {
     EXPIRED,
     OFFLINE_LEASE_EXPIRED,
     STALE_REVOCATION_EPOCH,
+    DEVICE_BINDING_MISMATCH,
     REPLAY_SEQUENCE_MISSING,
     STALE_REPLAY_SEQUENCE,
     SUSPICIOUS_TIME_OR_REPLAY_STATE
@@ -90,6 +92,13 @@ class LicensePolicy {
         }
         if (entitlement.revocationEpoch.value < context.minimumRevocationEpoch.value) {
             return denied(LicenseDenialReason.STALE_REVOCATION_EPOCH)
+        }
+        val requiredBinding = context.requiredDeviceBindingReference
+        if (
+            requiredBinding != null &&
+            entitlement.deviceBindingReference != requiredBinding
+        ) {
+            return denied(LicenseDenialReason.DEVICE_BINDING_MISMATCH)
         }
 
         val minimumReplay = context.minimumReplaySequence

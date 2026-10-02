@@ -5,6 +5,7 @@ import pro.liliya.core.authority.AuthorityPrincipal
 import pro.liliya.core.authority.AuthorityScope
 import pro.liliya.core.authority.CapabilityId
 import pro.liliya.core.license.LicenseAuthorityRequest
+import pro.liliya.core.license.LicenseDeviceBindingReference
 import pro.liliya.core.license.LicenseFeature
 import pro.liliya.core.license.LicensePolicyContext
 import pro.liliya.core.license.LicensePolicyRequest
@@ -21,6 +22,7 @@ data class AndroidProductRuntimeStartupAdmissionInput(
     val minimumRevocationEpoch: Long,
     val minimumReplaySequence: Long?,
     val suspiciousTimeOrReplayState: Boolean,
+    val requiredDeviceBindingReference: String? = null,
     val principal: String,
     val capability: String,
     val authorityScope: String
@@ -66,7 +68,10 @@ object AndroidProductRuntimeStartupAdmissionInputFactory {
                             LicenseRevocationEpoch(input.minimumRevocationEpoch),
                         minimumReplaySequence =
                             input.minimumReplaySequence?.let(::LicenseReplaySequence),
-                        suspiciousTimeOrReplayState = input.suspiciousTimeOrReplayState
+                        suspiciousTimeOrReplayState = input.suspiciousTimeOrReplayState,
+                        requiredDeviceBindingReference =
+                            input.requiredDeviceBindingReference
+                                ?.let(::LicenseDeviceBindingReference)
                     ),
                     authorityRequest = LicenseAuthorityRequest(
                         principal = AuthorityPrincipal(input.principal),

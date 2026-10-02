@@ -41,7 +41,8 @@ class LicenseVerificationContractTest {
         features: Set<LicenseFeature> = linkedSetOf(
             LicenseFeature("memory.protected"),
             LicenseFeature("model.local")
-        )
+        ),
+        deviceBindingReference: LicenseDeviceBindingReference? = null
     ) = LicenseEntitlement(
         id = LicenseId("license-verified-1"),
         subject = LicenseSubject("private-subject-reference"),
@@ -54,7 +55,8 @@ class LicenseVerificationContractTest {
         expiresAt = issuedAt.plusSeconds(86_400),
         offlineLeaseUntil = issuedAt.plusSeconds(43_200),
         revocationEpoch = LicenseRevocationEpoch(4),
-        replaySequence = LicenseReplaySequence(19)
+        replaySequence = LicenseReplaySequence(19),
+        deviceBindingReference = deviceBindingReference
     )
 
     private fun composition(
@@ -115,6 +117,32 @@ class LicenseVerificationContractTest {
             LicenseEntitlementCanonicalCodec.decode(encodedFirst)
         )
         assertEquals(first, decoded.entitlement)
+    }
+
+    @Test
+    fun canonical_codec_round_trips_optional_device_binding_extension_without_changing_legacy_payload() {
+        val legacy = entitlement()
+        val bound = entitlement(
+            deviceBindingReference =
+                LicenseDeviceBindingReference("device-binding-v1:test-reference")
+        )
+
+        val legacyEncoded = LicenseEntitlementCanonicalCodec.encode(legacy)
+        val boundEncoded = LicenseEntitlementCanonicalCodec.encode(bound)
+
+        assertTrue(boundEncoded.copyBytes().size > legacyEncoded.copyBytes().size)
+        assertEquals(
+            null,
+            assertIs<LicenseEntitlementDecodeResult.Decoded>(
+                LicenseEntitlementCanonicalCodec.decode(legacyEncoded)
+            ).entitlement.deviceBindingReference
+        )
+        assertEquals(
+            bound.deviceBindingReference,
+            assertIs<LicenseEntitlementDecodeResult.Decoded>(
+                LicenseEntitlementCanonicalCodec.decode(boundEncoded)
+            ).entitlement.deviceBindingReference
+        )
     }
 
     @Test

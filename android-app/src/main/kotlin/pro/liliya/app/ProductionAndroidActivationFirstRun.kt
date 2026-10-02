@@ -2,6 +2,9 @@ package pro.liliya.app
 
 import android.content.Context
 import java.io.File
+import pro.liliya.android.devicekey.AndroidActivationDeviceBindingProvider
+import pro.liliya.android.devicekey.AndroidActivationDeviceBindingResult
+import pro.liliya.core.license.LicenseDeviceBindingReferenceFactory
 import pro.liliya.core.licensetransport.ActivationRedemptionHttpClient
 import pro.liliya.core.licensetransport.ActivationRedemptionHttpRequest
 import pro.liliya.core.licensetransport.ActivationRedemptionHttpResult
@@ -45,11 +48,29 @@ internal object ProductionAndroidActivationFirstRun {
             return ProductionAndroidActivationResult.Failed
         }
 
+        val deviceBinding = try {
+            when (
+                val result = AndroidActivationDeviceBindingProvider(context).loadOrCreate()
+            ) {
+                is AndroidActivationDeviceBindingResult.Ready -> result.binding
+                is AndroidActivationDeviceBindingResult.Rejected ->
+                    return ProductionAndroidActivationResult.Rejected(
+                        "DEVICE_BINDING_REJECTED"
+                    )
+                AndroidActivationDeviceBindingResult.MalformedLocalState ->
+                    return ProductionAndroidActivationResult.Failed
+            }
+        } catch (_: Throwable) {
+            return ProductionAndroidActivationResult.Failed
+        }
+
         val redemption = try {
             ActivationRedemptionHttpClient(profile.transport).redeem(
                 ActivationRedemptionHttpRequest(
                     activationCode = activationCode,
-                    attemptId = attemptId
+                    attemptId = attemptId,
+                    installationId = deviceBinding.installationId,
+                    deviceKeyFingerprint = deviceBinding.deviceKeyFingerprint
                 )
             )
         } catch (_: Throwable) {
@@ -71,7 +92,13 @@ internal object ProductionAndroidActivationFirstRun {
                             redemption.license
                         )
                     },
-                    productInput = profile.productInputTemplate.productInputPort()
+                    productInput = profile.productInputTemplate.productInputPort(
+                        requiredDeviceBindingReference =
+                            LicenseDeviceBindingReferenceFactory.create(
+                                installationId = deviceBinding.installationId,
+                                deviceKeyFingerprint = deviceBinding.deviceKeyFingerprint
+                            ).value
+                    )
                 )
                 ProductionAndroidActivationResult.FirstRun(firstRun)
             }

@@ -12,15 +12,20 @@ import pro.liliya.core.license.LicenseVersion
 
 data class ActivationRedemptionHttpRequest(
     val activationCode: String,
-    val attemptId: String
+    val attemptId: String,
+    val installationId: String,
+    val deviceKeyFingerprint: String
 ) {
     init {
         require(activationCode.isNotBlank())
         require(attemptId.isNotBlank())
+        require(installationId.isNotBlank())
+        require(deviceKeyFingerprint.isNotBlank())
     }
 
     override fun toString(): String =
-        "ActivationRedemptionHttpRequest(activationCode=<redacted>,attemptId=<redacted>)"
+        "ActivationRedemptionHttpRequest(activationCode=<redacted>,attemptId=<redacted>," +
+            "installationId=<redacted>,deviceKeyFingerprint=<redacted>)"
 }
 
 sealed interface ActivationRedemptionHttpResult {
@@ -60,6 +65,8 @@ class ActivationRedemptionHttpClient(
             root.put("wireVersion", 1)
             root.put("activationCode", request.activationCode)
             root.put("attemptId", request.attemptId)
+            root.put("installationId", request.installationId)
+            root.put("deviceKeyFingerprint", request.deviceKeyFingerprint)
             json.writeValueAsBytes(root)
         } catch (_: Throwable) {
             return ActivationRedemptionHttpResult.Failed(

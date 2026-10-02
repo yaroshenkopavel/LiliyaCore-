@@ -56,6 +56,12 @@ value class LicenseReplaySequence(val value: Long) {
     override fun toString(): String = value.toString()
 }
 
+@JvmInline
+value class LicenseDeviceBindingReference(val value: String) {
+    init { require(value.isNotBlank()) { "device binding reference must not be blank" } }
+    override fun toString(): String = "LicenseDeviceBindingReference([redacted])"
+}
+
 class LicenseEntitlement(
     val id: LicenseId,
     val subject: LicenseSubject,
@@ -68,7 +74,8 @@ class LicenseEntitlement(
     val expiresAt: Instant?,
     val offlineLeaseUntil: Instant?,
     val revocationEpoch: LicenseRevocationEpoch,
-    val replaySequence: LicenseReplaySequence?
+    val replaySequence: LicenseReplaySequence?,
+    val deviceBindingReference: LicenseDeviceBindingReference? = null
 ) {
     val features: Set<LicenseFeature> = features.toSet()
 
@@ -98,7 +105,8 @@ class LicenseEntitlement(
             expiresAt == other.expiresAt &&
             offlineLeaseUntil == other.offlineLeaseUntil &&
             revocationEpoch == other.revocationEpoch &&
-            replaySequence == other.replaySequence
+            replaySequence == other.replaySequence &&
+            deviceBindingReference == other.deviceBindingReference
 
     override fun hashCode(): Int {
         var result = id.hashCode()
@@ -113,13 +121,14 @@ class LicenseEntitlement(
         result = 31 * result + (offlineLeaseUntil?.hashCode() ?: 0)
         result = 31 * result + revocationEpoch.hashCode()
         result = 31 * result + (replaySequence?.hashCode() ?: 0)
+        result = 31 * result + (deviceBindingReference?.hashCode() ?: 0)
         return result
     }
 
     override fun toString(): String =
         "LicenseEntitlement(id=$id, productId=$productId, featureCount=${features.size}, " +
             "version=$version, signingKeyId=$signingKeyId, revocationEpoch=$revocationEpoch, " +
-            "replaySequence=$replaySequence)"
+            "replaySequence=$replaySequence, deviceBindingReference=$deviceBindingReference)"
 }
 
 data class LicenseSnapshot(

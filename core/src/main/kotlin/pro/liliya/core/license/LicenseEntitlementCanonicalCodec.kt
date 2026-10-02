@@ -15,6 +15,7 @@ sealed interface LicenseEntitlementDecodeResult {
 
 object LicenseEntitlementCanonicalCodec {
     private const val MAGIC = 0x4C494331
+    private const val DEVICE_BINDING_EXTENSION_MAGIC = 0x44425631
 
     fun encode(entitlement: LicenseEntitlement): LicenseCanonicalPayload =
         LicenseCanonicalPayload.of(
@@ -36,6 +37,10 @@ object LicenseEntitlementCanonicalCodec {
                     data.writeLong(entitlement.revocationEpoch.value)
                     data.writeBoolean(entitlement.replaySequence != null)
                     entitlement.replaySequence?.let { data.writeLong(it.value) }
+                    entitlement.deviceBindingReference?.let {
+                        data.writeInt(DEVICE_BINDING_EXTENSION_MAGIC)
+                        data.writeString(it.value)
+                    }
                 }
                 output.toByteArray()
             }
@@ -75,6 +80,14 @@ object LicenseEntitlementCanonicalCodec {
                     LicenseReplaySequence(data.readLong())
                 } else {
                     null
+                },
+                deviceBindingReference = if (input.available() == 0) {
+                    null
+                } else {
+                    if (data.readInt() != DEVICE_BINDING_EXTENSION_MAGIC) {
+                        return LicenseEntitlementDecodeResult.Corrupt
+                    }
+                    LicenseDeviceBindingReference(data.readString(input))
                 }
             )
             if (input.available() != 0) return LicenseEntitlementDecodeResult.Corrupt

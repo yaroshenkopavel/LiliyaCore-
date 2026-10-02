@@ -41,7 +41,8 @@ class LicensePolicyContractTest {
         expiresAt: Instant? = now.plusSeconds(3_600),
         offlineLeaseUntil: Instant? = now.plusSeconds(1_800),
         revocationEpoch: LicenseRevocationEpoch = LicenseRevocationEpoch(5),
-        replaySequence: LicenseReplaySequence? = LicenseReplaySequence(20)
+        replaySequence: LicenseReplaySequence? = LicenseReplaySequence(20),
+        deviceBindingReference: LicenseDeviceBindingReference? = null
     ) = LicenseEntitlement(
         id = LicenseId("license-policy-1"),
         subject = subject,
@@ -54,7 +55,8 @@ class LicensePolicyContractTest {
         expiresAt = expiresAt,
         offlineLeaseUntil = offlineLeaseUntil,
         revocationEpoch = revocationEpoch,
-        replaySequence = replaySequence
+        replaySequence = replaySequence,
+        deviceBindingReference = deviceBindingReference
     )
 
     private fun verified(entitlement: LicenseEntitlement): LicenseVerificationResult.Verified {
@@ -85,12 +87,14 @@ class LicensePolicyContractTest {
         current: Instant = now,
         minimumRevocationEpoch: LicenseRevocationEpoch = LicenseRevocationEpoch(5),
         minimumReplaySequence: LicenseReplaySequence? = LicenseReplaySequence(20),
-        suspicious: Boolean = false
+        suspicious: Boolean = false,
+        requiredDeviceBindingReference: LicenseDeviceBindingReference? = null
     ) = LicensePolicyContext(
         now = current,
         minimumRevocationEpoch = minimumRevocationEpoch,
         minimumReplaySequence = minimumReplaySequence,
-        suspiciousTimeOrReplayState = suspicious
+        suspiciousTimeOrReplayState = suspicious,
+        requiredDeviceBindingReference = requiredDeviceBindingReference
     )
 
     @Test
@@ -104,6 +108,37 @@ class LicensePolicyContractTest {
         assertEquals(LicenseFeature("model.local"), decision.receipt.feature)
         assertEquals(now, decision.receipt.evaluatedAt)
         assertFalse(decision.receipt.toString().contains("private-policy-subject"))
+    }
+
+    @Test
+    fun exact_device_binding_is_entitled_but_mismatch_fails_closed() {
+        val policy = LicensePolicy()
+        val binding = LicenseDeviceBindingReference("device-binding-v1:expected")
+        val evidence = verified(
+            entitlement(deviceBindingReference = binding)
+        )
+
+        assertIs<LicenseDecision.Entitled>(
+            policy.evaluate(
+                evidence,
+                request(),
+                context(requiredDeviceBindingReference = binding)
+            )
+        )
+
+        assertEquals(
+            LicenseDenialReason.DEVICE_BINDING_MISMATCH,
+            assertIs<LicenseDecision.Denied>(
+                policy.evaluate(
+                    evidence,
+                    request(),
+                    context(
+                        requiredDeviceBindingReference =
+                            LicenseDeviceBindingReference("device-binding-v1:other")
+                    )
+                )
+            ).reason
+        )
     }
 
     @Test
