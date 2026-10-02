@@ -25,6 +25,9 @@ class LiliyaApplication : Application() {
     @Volatile
     private var firstRunAcquisitionTask = ProductionAndroidFirstRunAcquisitionTask()
 
+    @Volatile
+    private var activationTask = ProductionAndroidActivationTask()
+
     override fun onCreate() {
         super.onCreate()
         ProductionAndroidLocalModelSelection.restore(File(filesDir, "models"))
@@ -79,6 +82,28 @@ class LiliyaApplication : Application() {
 
     internal fun consumeFirstRunAcquisition(requestId: Long): Boolean =
         firstRunAcquisitionTask.consume(requestId)
+
+    internal fun requestActivation(
+        activationCode: String,
+        listener: (ProductionAndroidActivationTaskSnapshot.Completed) -> Unit
+    ): ProductionAndroidActivationTaskRequestResult =
+        activationTask.request(
+            activate = {
+                ProductionAndroidActivationFirstRun.activate(
+                    context = this,
+                    activationCode = activationCode,
+                    localModelFile = ProductionAndroidLocalModelSelection.current()
+                )
+            },
+            listener = listener
+        )
+
+    internal fun observeActivation(
+        listener: (ProductionAndroidActivationTaskSnapshot.Completed) -> Unit
+    ): ProductionAndroidActivationTaskSnapshot = activationTask.observe(listener)
+
+    internal fun consumeActivation(requestId: Long): Boolean =
+        activationTask.consume(requestId)
 
     fun provisionRuntime(
         ports: AndroidProductRuntimeStartupProvisioningPorts
@@ -184,6 +209,15 @@ class LiliyaApplication : Application() {
     ): ProductionAndroidFirstRunAcquisitionTask {
         val previous = firstRunAcquisitionTask
         firstRunAcquisitionTask = replacement
+        return previous
+    }
+
+    @Synchronized
+    internal fun replaceActivationTaskForTests(
+        replacement: ProductionAndroidActivationTask
+    ): ProductionAndroidActivationTask {
+        val previous = activationTask
+        activationTask = replacement
         return previous
     }
 

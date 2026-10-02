@@ -7,20 +7,25 @@ import android.os.Bundle
 import android.view.Gravity
 import android.view.View
 import android.view.WindowInsets
+import android.text.InputType
 import android.widget.Button
+import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
 
 /**
- * Minimal launcher-side provisioning surface for Product Auth.
+ * Launcher-side fresh-install activation surface.
  *
- * This Activity owns only the picker and status UI. URI/plaintext credential ownership never
- * survives the Activity result callback: the selected URI is handed directly to the
- * Application-scoped import task, while the bounded importer and encrypted store own the secret
- * path. Runtime/chat ownership stays in [LiliyaActivity].
+ * The normal user path accepts only an Activation Code. The code remains process-memory input for
+ * one Application-scoped activation task and is cleared from the visible field after success.
+ * The legacy Product Auth picker remains hidden for bounded acceptance/backward-compatibility
+ * coverage and is not part of fresh-install activation. Runtime/chat ownership stays in
+ * [LiliyaActivity].
  */
 class LiliyaProvisioningActivity : Activity() {
     private lateinit var status: TextView
+    private lateinit var activationCode: EditText
+    private lateinit var activateProduct: Button
     private lateinit var selectCredential: Button
     private var stateSaved = false
 
@@ -33,14 +38,14 @@ class LiliyaProvisioningActivity : Activity() {
         val content = buildContent()
         setContentView(content)
         content.requestApplyInsets()
-        restoreImportState()
+        restoreActivationState()
     }
 
     override fun onStart() {
         super.onStart()
         val restoredAfterSavedState = stateSaved
         stateSaved = false
-        if (restoredAfterSavedState) restoreImportState()
+        if (restoredAfterSavedState) restoreActivationState()
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -109,7 +114,7 @@ class LiliyaProvisioningActivity : Activity() {
             }
 
             addView(TextView(this@LiliyaProvisioningActivity).apply {
-                text = "Liliya — подготовка доступа"
+                text = "Liliya — активация"
                 textSize = 22f
                 gravity = Gravity.CENTER_HORIZONTAL
             })
@@ -120,12 +125,143 @@ class LiliyaProvisioningActivity : Activity() {
             }
             addView(status)
 
+            activationCode = EditText(this@LiliyaProvisioningActivity).apply {
+                hint = "Код активации"
+                inputType = InputType.TYPE_CLASS_TEXT or
+                    InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+                isSingleLine = true
+            }
+            addView(activationCode)
+
+            activateProduct = Button(this@LiliyaProvisioningActivity).apply {
+                text = "Активировать"
+                setOnClickListener { beginActivation() }
+            }
+            addView(activateProduct)
+
             selectCredential = Button(this@LiliyaProvisioningActivity).apply {
                 text = "Импортировать доступ продукта"
+                visibility = View.GONE
                 setOnClickListener { launchProductAuthPicker() }
             }
             addView(selectCredential)
         }
+    }
+
+    private fun beginActivation() {
+        val code = activationCode.text?.toString()?.trim().orEmpty()
+        if (code.isBlank()) {
+            renderReadyForActivation("Введите код активации")
+            return
+        }
+
+        renderActivationInFlight()
+        when (
+            app.requestActivation(
+                activationCode = code,
+                listener = ::deliverActivationCompletion
+            )
+        ) {
+            is ProductionAndroidActivationTaskRequestResult.Started -> Unit
+            ProductionAndroidActivationTaskRequestResult.Busy -> restoreActivationState()
+        }
+    }
+
+    private fun restoreActivationState() {
+        when (val snapshot = app.observeActivation(::deliverActivationCompletion)) {
+            ProductionAndroidActivationTaskSnapshot.Idle ->
+                renderReadyForActivation("Введите код активации")
+            is ProductionAndroidActivationTaskSnapshot.InFlight ->
+                renderActivationInFlight()
+            is ProductionAndroidActivationTaskSnapshot.Completed ->
+                deliverActivationCompletion(snapshot)
+        }
+    }
+
+    private fun deliverActivationCompletion(
+        completed: ProductionAndroidActivationTaskSnapshot.Completed
+    ) {
+        runOnUiThread {
+            if (isFinishing || isDestroyed || isChangingConfigurations || stateSaved) {
+                return@runOnUiThread
+            }
+            if (!app.consumeActivation(completed.requestId)) return@runOnUiThread
+
+            when (val result = completed.result) {
+                ProductionAndroidActivationResult.ProfileRequired ->
+                    renderReadyForActivation("Профиль активации не настроен")
+
+                is ProductionAndroidActivationResult.Rejected ->
+                    renderReadyForActivation(
+                        when (result.reason) {
+                            "INVALID_CODE" -> "Код активации недействителен"
+                            "EXPIRED_CODE" -> "Срок действия кода активации истёк"
+                            "CODE_EXHAUSTED" -> "Код активации уже использован"
+                            else -> "Код активации отклонён"
+                        }
+                    )
+
+                is ProductionAndroidActivationResult.TransportFailed ->
+                    renderReadyForActivation("Не удалось связаться с сервером активации")
+
+                ProductionAndroidActivationResult.Failed ->
+                    renderReadyForActivation("Не удалось выполнить активацию")
+
+                is ProductionAndroidActivationResult.FirstRun -> {
+                    when (result.result) {
+                        is ProductionAndroidFirstRunAcquisitionResult.Installed,
+                        ProductionAndroidFirstRunAcquisitionResult.AlreadyConfigured -> {
+                            activationCode.setText("")
+                            openRuntimeHost()
+                        }
+
+                        ProductionAndroidFirstRunAcquisitionResult.LocalModelRequired ->
+                            renderReadyForActivation(
+                                "Код принят. Для завершения требуется локальная модель"
+                            )
+
+                        ProductionAndroidFirstRunAcquisitionResult.HostConfigurationRequired ->
+                            renderReadyForActivation("Требуется конфигурация продукта")
+
+                        ProductionAndroidFirstRunAcquisitionResult.TrustVerificationRejected ->
+                            renderReadyForActivation(
+                                "Полученная лицензия не прошла проверку подписи"
+                            )
+
+                        is ProductionAndroidFirstRunAcquisitionResult.AuthorityRejected ->
+                            renderReadyForActivation(
+                                "Лицензия получена, но запуск не разрешён политикой"
+                            )
+
+                        is ProductionAndroidFirstRunAcquisitionResult.ProductInputRejected ->
+                            renderReadyForActivation(
+                                "Лицензия получена, но конфигурация продукта отклонена"
+                            )
+
+                        is ProductionAndroidFirstRunAcquisitionResult.LicenseServiceRejected,
+                        is ProductionAndroidFirstRunAcquisitionResult.LicenseAcquisitionFailed,
+                        ProductionAndroidFirstRunAcquisitionResult.Failed ->
+                            renderReadyForActivation("Не удалось завершить активацию")
+                    }
+                }
+            }
+        }
+    }
+
+    private fun renderReadyForActivation(message: String) {
+        status.text = message
+        activationCode.isEnabled = true
+        activationCode.visibility = View.VISIBLE
+        activateProduct.isEnabled = true
+        activateProduct.visibility = View.VISIBLE
+        selectCredential.visibility = View.GONE
+    }
+
+    private fun renderActivationInFlight() {
+        status.text = "Проверка кода и получение лицензии…"
+        activationCode.isEnabled = false
+        activateProduct.isEnabled = false
+        selectCredential.visibility = View.GONE
     }
 
     private fun restoreImportState() {
