@@ -3,6 +3,7 @@ package pro.liliya.app
 import android.content.Context
 import java.util.UUID
 import pro.liliya.android.runtime.AndroidProductRuntimeStartupRequestSourceInput
+import pro.liliya.core.foundation.FoundationComposition
 import pro.liliya.core.license.JcaEcdsaP256LicenseServiceProofVerifier
 import pro.liliya.core.license.LicensePolicyContext
 import pro.liliya.core.license.LicenseReplaySequence
@@ -19,6 +20,7 @@ import pro.liliya.core.license.LicenseServiceRequestId
 import pro.liliya.core.license.LicenseServiceSecurityScope
 import pro.liliya.core.license.LicenseServiceTrustedKeyResolver
 import pro.liliya.core.license.LicenseServiceTrustedVerificationKey
+import pro.liliya.core.license.LicenseVerificationResult
 import pro.liliya.core.licensetransport.LicenseHttpTransportConfig
 import pro.liliya.core.licensetransport.ServiceStateHttpClient
 import pro.liliya.core.licensetransport.ServiceStateHttpRequest
@@ -73,6 +75,17 @@ internal enum class ProductionAndroidLicenseServiceSecuritySyncFailure {
     EVIDENCE_REJECTED
 }
 
+internal sealed interface ProductionAndroidLicenseServiceSecuritySyncCoreResult {
+    data class Ready(
+        val context: LicensePolicyContext,
+        val contact: ProductionAndroidLicenseServiceSecuritySyncContact
+    ) : ProductionAndroidLicenseServiceSecuritySyncCoreResult
+
+    data class Rejected(
+        val reason: ProductionAndroidLicenseServiceSecuritySyncFailure
+    ) : ProductionAndroidLicenseServiceSecuritySyncCoreResult
+}
+
 internal sealed interface ProductionAndroidLicenseServiceSecuritySyncResult {
     data class Ready(
         val input: AndroidProductRuntimeStartupRequestSourceInput,
@@ -96,27 +109,51 @@ internal object ProductionAndroidLicenseServiceSecuritySync {
     fun refresh(
         context: Context,
         input: AndroidProductRuntimeStartupRequestSourceInput
-    ): ProductionAndroidLicenseServiceSecuritySyncResult {
+    ): ProductionAndroidLicenseServiceSecuritySyncResult =
+        when (
+            val core = refreshCore(
+                context = context,
+                foundation = input.foundation,
+                verifiedLicense = input.verifiedLicense,
+                currentPolicyContext = input.licensePolicyContext
+            )
+        ) {
+            is ProductionAndroidLicenseServiceSecuritySyncCoreResult.Ready ->
+                ProductionAndroidLicenseServiceSecuritySyncResult.Ready(
+                    input = input.copy(licensePolicyContext = core.context),
+                    contact = core.contact
+                )
+
+            is ProductionAndroidLicenseServiceSecuritySyncCoreResult.Rejected ->
+                ProductionAndroidLicenseServiceSecuritySyncResult.Rejected(core.reason)
+        }
+
+    internal fun refreshCore(
+        context: Context,
+        foundation: FoundationComposition,
+        verifiedLicense: LicenseVerificationResult.Verified,
+        currentPolicyContext: LicensePolicyContext
+    ): ProductionAndroidLicenseServiceSecuritySyncCoreResult {
         val profile = try {
             ProductionAndroidLicenseServiceSecuritySyncProfileSourceOwner.current()?.load()
         } catch (_: Throwable) {
-            return ProductionAndroidLicenseServiceSecuritySyncResult.Rejected(
+            return ProductionAndroidLicenseServiceSecuritySyncCoreResult.Rejected(
                 ProductionAndroidLicenseServiceSecuritySyncFailure.PROFILE_INVALID
             )
         }
 
         val scope = LicenseServiceSecurityScope(
-            productId = input.verifiedLicense.entitlement.productId,
-            subject = input.verifiedLicense.entitlement.subject
+            productId = verifiedLicense.entitlement.productId,
+            subject = verifiedLicense.entitlement.subject
         )
         val coordinator = try {
             coordinator(
                 context = context,
-                input = input,
+                foundation = foundation,
                 profile = profile
             )
         } catch (_: Throwable) {
-            return ProductionAndroidLicenseServiceSecuritySyncResult.Rejected(
+            return ProductionAndroidLicenseServiceSecuritySyncCoreResult.Rejected(
                 ProductionAndroidLicenseServiceSecuritySyncFailure.DURABLE_STATE_REJECTED
             )
         }
@@ -126,19 +163,22 @@ internal object ProductionAndroidLicenseServiceSecuritySync {
             is LicenseServiceDurableInitializationResult.Restored,
             is LicenseServiceDurableInitializationResult.AlreadyInitialized -> Unit
             is LicenseServiceDurableInitializationResult.Rejected ->
-                return ProductionAndroidLicenseServiceSecuritySyncResult.Rejected(
+                return ProductionAndroidLicenseServiceSecuritySyncCoreResult.Rejected(
                     ProductionAndroidLicenseServiceSecuritySyncFailure.DURABLE_STATE_REJECTED
                 )
         }
 
-        var effective = mergeDurableContext(input, coordinator, scope)
-            ?: return ProductionAndroidLicenseServiceSecuritySyncResult.Rejected(
-                ProductionAndroidLicenseServiceSecuritySyncFailure.DURABLE_STATE_REJECTED
-            )
+        var effective = mergeDurableContext(
+            current = currentPolicyContext,
+            coordinator = coordinator,
+            scope = scope
+        ) ?: return ProductionAndroidLicenseServiceSecuritySyncCoreResult.Rejected(
+            ProductionAndroidLicenseServiceSecuritySyncFailure.DURABLE_STATE_REJECTED
+        )
 
         if (profile == null) {
-            return ProductionAndroidLicenseServiceSecuritySyncResult.Ready(
-                input = effective,
+            return ProductionAndroidLicenseServiceSecuritySyncCoreResult.Ready(
+                context = effective,
                 contact = ProductionAndroidLicenseServiceSecuritySyncContact.NOT_CONFIGURED
             )
         }
@@ -148,16 +188,16 @@ internal object ProductionAndroidLicenseServiceSecuritySync {
                 ProductionAndroidProductAuthEncryptedStore.create(context)
             )
         } catch (_: Throwable) {
-            return ProductionAndroidLicenseServiceSecuritySyncResult.Ready(
-                input = effective,
+            return ProductionAndroidLicenseServiceSecuritySyncCoreResult.Ready(
+                context = effective,
                 contact = ProductionAndroidLicenseServiceSecuritySyncContact.TRANSPORT_UNAVAILABLE
             )
         }
         val credential = try {
             credentialFactory.create()
         } catch (_: Throwable) {
-            return ProductionAndroidLicenseServiceSecuritySyncResult.Ready(
-                input = effective,
+            return ProductionAndroidLicenseServiceSecuritySyncCoreResult.Ready(
+                context = effective,
                 contact = ProductionAndroidLicenseServiceSecuritySyncContact.TRANSPORT_UNAVAILABLE
             )
         }
@@ -183,13 +223,13 @@ internal object ProductionAndroidLicenseServiceSecuritySync {
 
         val contact = when (response) {
             is ServiceStateHttpResult.Failed ->
-                return ProductionAndroidLicenseServiceSecuritySyncResult.Ready(
-                    input = effective,
+                return ProductionAndroidLicenseServiceSecuritySyncCoreResult.Ready(
+                    context = effective,
                     contact = ProductionAndroidLicenseServiceSecuritySyncContact.TRANSPORT_UNAVAILABLE
                 )
 
             is ServiceStateHttpResult.ServiceRejected ->
-                return ProductionAndroidLicenseServiceSecuritySyncResult.Rejected(
+                return ProductionAndroidLicenseServiceSecuritySyncCoreResult.Rejected(
                     ProductionAndroidLicenseServiceSecuritySyncFailure.SERVICE_REJECTED
                 )
 
@@ -201,35 +241,39 @@ internal object ProductionAndroidLicenseServiceSecuritySync {
                         ProductionAndroidLicenseServiceSecuritySyncContact.VERIFIED_UNCHANGED
                     is LicenseServiceDurableStateAcceptanceResult.VerificationRejected,
                     is LicenseServiceDurableStateAcceptanceResult.StateRejected ->
-                        return ProductionAndroidLicenseServiceSecuritySyncResult.Rejected(
+                        return ProductionAndroidLicenseServiceSecuritySyncCoreResult.Rejected(
                             ProductionAndroidLicenseServiceSecuritySyncFailure.EVIDENCE_REJECTED
                         )
                     is LicenseServiceDurableStateAcceptanceResult.DurableRejected ->
-                        return ProductionAndroidLicenseServiceSecuritySyncResult.Rejected(
+                        return ProductionAndroidLicenseServiceSecuritySyncCoreResult.Rejected(
                             ProductionAndroidLicenseServiceSecuritySyncFailure.DURABLE_STATE_REJECTED
                         )
                 }
         }
 
-        effective = mergeDurableContext(effective, coordinator, scope)
-            ?: return ProductionAndroidLicenseServiceSecuritySyncResult.Rejected(
-                ProductionAndroidLicenseServiceSecuritySyncFailure.DURABLE_STATE_REJECTED
-            )
-        return ProductionAndroidLicenseServiceSecuritySyncResult.Ready(
-            input = effective,
+        effective = mergeDurableContext(
+            current = effective,
+            coordinator = coordinator,
+            scope = scope
+        ) ?: return ProductionAndroidLicenseServiceSecuritySyncCoreResult.Rejected(
+            ProductionAndroidLicenseServiceSecuritySyncFailure.DURABLE_STATE_REJECTED
+        )
+
+        return ProductionAndroidLicenseServiceSecuritySyncCoreResult.Ready(
+            context = effective,
             contact = contact
         )
     }
 
     private fun coordinator(
         context: Context,
-        input: AndroidProductRuntimeStartupRequestSourceInput,
+        foundation: FoundationComposition,
         profile: ProductionAndroidLicenseServiceSecuritySyncProfile?
     ): LicenseServiceDurableStateCoordinator {
         val storeId = LicenseServiceDurableStoreId(STORE_ID)
         val trusted = profile?.trustedServiceStateKey
         return LicenseServiceDurableStateCoordinator(
-            foundation = input.foundation,
+            foundation = foundation,
             storeId = storeId,
             supportedProtocolVersion = LicenseServiceProtocolVersion(PROTOCOL_VERSION),
             supportedPurposes = setOf(LicenseServiceEvidencePurpose.SECURITY_STATE),
@@ -249,43 +293,39 @@ internal object ProductionAndroidLicenseServiceSecuritySync {
     }
 
     private fun mergeDurableContext(
-        input: AndroidProductRuntimeStartupRequestSourceInput,
+        current: LicensePolicyContext,
         coordinator: LicenseServiceDurableStateCoordinator,
         scope: LicenseServiceSecurityScope
-    ): AndroidProductRuntimeStartupRequestSourceInput? {
-        val current = input.licensePolicyContext
-        return when (
+    ): LicensePolicyContext? =
+        when (
             val durable = coordinator.policyContext(
                 scope = scope,
                 now = current.now,
                 suspiciousTimeOrReplayState = current.suspiciousTimeOrReplayState
             )
         ) {
-            LicenseServiceDurablePolicyContextResult.Missing -> input
+            LicenseServiceDurablePolicyContextResult.Missing -> current
 
             is LicenseServiceDurablePolicyContextResult.Available -> {
                 val context = durable.context
-                input.copy(
-                    licensePolicyContext = LicensePolicyContext(
-                        now = current.now,
-                        minimumRevocationEpoch = maxRevocation(
-                            current.minimumRevocationEpoch,
-                            context.minimumRevocationEpoch
-                        ),
-                        minimumReplaySequence = maxReplay(
-                            current.minimumReplaySequence,
-                            context.minimumReplaySequence
-                        ),
-                        suspiciousTimeOrReplayState =
-                            current.suspiciousTimeOrReplayState ||
-                                context.suspiciousTimeOrReplayState,
-                        requiredDeviceBindingReference =
-                            current.requiredDeviceBindingReference
-                    )
+                LicensePolicyContext(
+                    now = current.now,
+                    minimumRevocationEpoch = maxRevocation(
+                        current.minimumRevocationEpoch,
+                        context.minimumRevocationEpoch
+                    ),
+                    minimumReplaySequence = maxReplay(
+                        current.minimumReplaySequence,
+                        context.minimumReplaySequence
+                    ),
+                    suspiciousTimeOrReplayState =
+                        current.suspiciousTimeOrReplayState ||
+                            context.suspiciousTimeOrReplayState,
+                    requiredDeviceBindingReference =
+                        current.requiredDeviceBindingReference
                 )
             }
         }
-    }
 
     private fun maxRevocation(
         current: LicenseRevocationEpoch,
