@@ -31,12 +31,26 @@ internal fun interface ProductionAndroidRuntimeStartupRequestSourcePort {
 object ProductionAndroidRuntimeStartupSourceInstall {
     fun prepareAndInstall(
         input: AndroidProductRuntimeStartupRequestSourceInput
-    ): ProductionAndroidRuntimeStartupSourceInstallResult =
-        prepareAndInstall(
+    ): ProductionAndroidRuntimeStartupSourceInstallResult {
+        val refreshed = when (
+            val result = ProductionAndroidLicenseServiceSecuritySync.refresh(
+                context = input.context.applicationContext,
+                input = input
+            )
+        ) {
+            is ProductionAndroidLicenseServiceSecuritySyncResult.Ready -> result.input
+            is ProductionAndroidLicenseServiceSecuritySyncResult.Rejected ->
+                return ProductionAndroidRuntimeStartupSourceInstallResult.SourceRejected(
+                    AndroidProductRuntimeStartupRequestSourceFailure.INTERNAL_FAILURE
+                )
+        }
+
+        return prepareAndInstall(
             ProductionAndroidRuntimeStartupRequestSourcePort {
-                AndroidProductRuntimeStartupRequestSource.create(input)
+                AndroidProductRuntimeStartupRequestSource.create(refreshed)
             }
         )
+    }
 
     internal fun prepareAndInstall(
         sourcePort: ProductionAndroidRuntimeStartupRequestSourcePort
