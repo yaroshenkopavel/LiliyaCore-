@@ -2,7 +2,10 @@ package pro.liliya.app
 
 import java.net.URL
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertSame
+import kotlin.test.assertTrue
 import org.junit.After
 import org.junit.Test
 import pro.liliya.core.license.LicenseProductId
@@ -21,6 +24,7 @@ class LiliyaApplicationAuthenticatedFirstRunProductConfigurationContractTest {
     @After
     fun cleanup() {
         ProductionAndroidFirstRunConfigurationOwner.clearForTests()
+        ProductionAndroidFirstRunProductProfileSourceOwner.clearForTests()
     }
 
     @Test
@@ -65,6 +69,27 @@ class LiliyaApplicationAuthenticatedFirstRunProductConfigurationContractTest {
         assertIs<ProductionAndroidFirstRunConfiguration>(ProductionAndroidFirstRunConfigurationOwner.current())
         assertEquals(0, credentialCalls)
         assertEquals(0, engineCalls)
+    }
+
+    @Test
+    fun application_bridge_installs_explicit_product_profile_source_once_without_loading_it() {
+        var loads = 0
+        val application = allocateWithoutConstructor<LiliyaApplication>()
+        val source = ProductionAndroidFirstRunProductProfileSource {
+            loads += 1
+            error("profile source must not load during installation")
+        }
+        val replacement = ProductionAndroidFirstRunProductProfileSource {
+            error("replacement source must not be installed or loaded")
+        }
+
+        assertTrue(application.configureFirstRunProductProfile(source))
+        assertSame(source, ProductionAndroidFirstRunProductProfileSourceOwner.current())
+        assertEquals(0, loads)
+
+        assertFalse(application.configureFirstRunProductProfile(replacement))
+        assertSame(source, ProductionAndroidFirstRunProductProfileSourceOwner.current())
+        assertEquals(0, loads)
     }
 
     private inline fun <reified T> allocateWithoutConstructor(): T {

@@ -45,6 +45,10 @@ class LiliyaApplication : Application() {
         configuration: ProductionAndroidFirstRunConfiguration
     ): Boolean = ProductionAndroidFirstRunConfigurationOwner.install(configuration)
 
+    internal fun configureFirstRunProductProfile(
+        source: ProductionAndroidFirstRunProductProfileSource
+    ): Boolean = ProductionAndroidFirstRunProductProfileSourceOwner.install(source)
+
     internal fun configureAuthenticatedFirstRunProduct(
         input: ProductionAndroidFirstRunAuthenticatedProductConfigurationInput
     ): ProductionAndroidFirstRunAuthenticatedProductConfigurationInstallResult =
