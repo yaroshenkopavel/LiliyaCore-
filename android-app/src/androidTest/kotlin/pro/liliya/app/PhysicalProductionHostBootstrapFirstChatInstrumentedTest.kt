@@ -1,5 +1,11 @@
 package pro.liliya.app
 
+import android.content.Intent
+import android.view.View
+import android.view.ViewGroup
+import android.widget.Button
+import android.widget.EditText
+import android.widget.TextView
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
@@ -488,6 +494,9 @@ class PhysicalProductionHostBootstrapFirstChatInstrumentedTest {
             }
             assertTrue(chat.reply.isNotBlank())
             assertTrue(chat.reply.length <= MAX_OUTPUT_CHARS)
+
+            val uiTranscriptChars = exerciseRealChatSurface(instrumentation)
+
             instrumentation.sendStatus(2, android.os.Bundle().apply {
                 putString("hostBootstrap.realSignedLicense", "true")
                 putString("hostBootstrap.deviceBound", "true")
@@ -499,6 +508,9 @@ class PhysicalProductionHostBootstrapFirstChatInstrumentedTest {
                 putString("hostBootstrap.qwenRevision", QWEN_REVISION)
                 putString("hostBootstrap.chatCompleted", "true")
                 putString("hostBootstrap.chatReplyChars", chat.reply.length.toString())
+                putString("hostBootstrap.uiSurfaceReady", "true")
+                putString("hostBootstrap.uiChatCompleted", "true")
+                putString("hostBootstrap.uiTranscriptChars", uiTranscriptChars.toString())
                 putString("hostBootstrap.implicitAuthorityMinted", "false")
             })
             println("LILIYA_PHYSICAL_PRODUCTION_HOSTBOOTSTRAP_FIRST_CHAT=PASS")
@@ -532,6 +544,128 @@ class PhysicalProductionHostBootstrapFirstChatInstrumentedTest {
             modelDekRoot.deleteRecursively()
             cognitiveStorageRoot.deleteRecursively()
         }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun exerciseRealChatSurface(
+        instrumentation: android.app.Instrumentation
+    ): Int {
+        val activity = instrumentation.startActivitySync(
+            Intent(instrumentation.targetContext, LiliyaActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+        ) as LiliyaActivity
+
+        try {
+            assertTrue(
+                waitForUi(instrumentation, 30_000L) {
+                    containsExactText(activity.window.decorView, "Готова")
+                },
+                "production chat surface did not reach visible READY"
+            )
+
+            var userOnlyTranscriptChars = 0
+            instrumentation.runOnMainSync {
+                val root = activity.window.decorView
+                val input = findEditTextByHint(root, "Сообщение")
+                    ?: error("production chat input missing")
+                val send = findButtonByText(root, "Отправить")
+                    ?: error("production chat send button missing")
+                assertTrue(input.isEnabled, "chat input must be enabled only at READY")
+                assertTrue(send.isEnabled, "chat send must be enabled only at READY")
+                input.setText(UI_CHAT_MESSAGE)
+                assertTrue(send.performClick(), "production chat send click rejected")
+                val transcript = findTextContaining(root, UI_CHAT_MESSAGE)
+                    ?: error("user turn not visible after production send")
+                userOnlyTranscriptChars = transcript.length
+            }
+
+            assertTrue(userOnlyTranscriptChars > UI_CHAT_MESSAGE.length)
+            assertTrue(
+                waitForUi(instrumentation, 120_000L) {
+                    val root = activity.window.decorView
+                    val transcript = findTextContaining(root, UI_CHAT_MESSAGE)
+                    containsExactText(root, "Готова") &&
+                        transcript != null &&
+                        transcript.length > userOnlyTranscriptChars
+                },
+                "production chat UI did not render completed response"
+            )
+
+            var finalTranscriptChars = 0
+            instrumentation.runOnMainSync {
+                val transcript = findTextContaining(
+                    activity.window.decorView,
+                    UI_CHAT_MESSAGE
+                ) ?: error("completed production transcript missing")
+                finalTranscriptChars = transcript.length
+            }
+            assertTrue(finalTranscriptChars > userOnlyTranscriptChars)
+            return finalTranscriptChars
+        } finally {
+            instrumentation.runOnMainSync {
+                if (!activity.isFinishing && !activity.isDestroyed) activity.finish()
+            }
+            instrumentation.waitForIdleSync()
+        }
+    }
+
+    private fun waitForUi(
+        instrumentation: android.app.Instrumentation,
+        timeoutMillis: Long,
+        predicate: () -> Boolean
+    ): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMillis
+        while (System.currentTimeMillis() < deadline) {
+            var matched = false
+            instrumentation.runOnMainSync { matched = predicate() }
+            if (matched) return true
+            Thread.sleep(100L)
+        }
+        return false
+    }
+
+    private fun containsExactText(view: View, expected: String): Boolean {
+        if (view is TextView && view.text?.toString() == expected) return true
+        if (view is ViewGroup) {
+            for (index in 0 until view.childCount) {
+                if (containsExactText(view.getChildAt(index), expected)) return true
+            }
+        }
+        return false
+    }
+
+    private fun findEditTextByHint(view: View, hint: String): EditText? {
+        if (view is EditText && view.hint?.toString() == hint) return view
+        if (view is ViewGroup) {
+            for (index in 0 until view.childCount) {
+                findEditTextByHint(view.getChildAt(index), hint)?.let { return it }
+            }
+        }
+        return null
+    }
+
+    private fun findButtonByText(view: View, text: String): Button? {
+        if (view is Button && view.text?.toString() == text) return view
+        if (view is ViewGroup) {
+            for (index in 0 until view.childCount) {
+                findButtonByText(view.getChildAt(index), text)?.let { return it }
+            }
+        }
+        return null
+    }
+
+    private fun findTextContaining(view: View, text: String): String? {
+        if (view is TextView) {
+            val value = view.text?.toString().orEmpty()
+            if (value.contains(text)) return value
+        }
+        if (view is ViewGroup) {
+            for (index in 0 until view.childCount) {
+                findTextContaining(view.getChildAt(index), text)?.let { return it }
+            }
+        }
+        return null
     }
 
     private fun generationRejectionReason(fixtureRoot: File): String? {
@@ -881,6 +1015,7 @@ class PhysicalProductionHostBootstrapFirstChatInstrumentedTest {
         const val SEGMENT_BYTES = 4 * 1024 * 1024
         const val MAX_PROMPT_CHARS = 8_192
         const val MAX_OUTPUT_CHARS = 2_048
+        const val UI_CHAT_MESSAGE = "Hello from physical Liliya UI /no_think"
         val GENERATION_REJECTION_REASON = Regex("(?:^|,)rejectionReason=([^,\\t]+)")
         val FIXTURE_TIME: Instant = Instant.parse("2026-10-03T00:00:00Z")
     }
