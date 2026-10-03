@@ -50,6 +50,11 @@ class LiliyaApplication : Application() {
     ): ProductionAndroidFirstRunAuthenticatedProductConfigurationInstallResult =
         ProductionAndroidFirstRunAuthenticatedProductConfigurationInstall.prepareAndInstall(input)
 
+    internal fun configureLicenseServiceSecuritySync(
+        source: ProductionAndroidLicenseServiceSecuritySyncProfileSource
+    ): Boolean =
+        ProductionAndroidLicenseServiceSecuritySyncProfileSourceOwner.install(source)
+
     internal fun hasFirstRunAcquisitionConfiguration(): Boolean =
         ProductionAndroidFirstRunConfigurationOwner.current() != null
 
