@@ -1,16 +1,27 @@
 package pro.liliya.app
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import java.net.URL
 import java.time.Instant
+import java.util.Base64
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
+import pro.liliya.android.devicekey.AndroidActivationDeviceBindingProvider
+import pro.liliya.android.devicekey.AndroidActivationDeviceBindingResult
 import pro.liliya.android.runtime.AndroidProductRuntimeAdmissionFailure
 import pro.liliya.android.runtime.AndroidProductRuntimeAdmissionGate
 import pro.liliya.android.runtime.AndroidProductRuntimeAdmissionResult
 import pro.liliya.android.runtime.AndroidProductRuntimeStartupActiveDekPort
 import pro.liliya.android.runtime.AndroidProductRuntimeStartupAdmissionPort
+import pro.liliya.android.runtime.AndroidProductRuntimeStartupAuthorityAssemblyResult
+import pro.liliya.android.runtime.AndroidProductRuntimeStartupAuthorityGrantAssembly
+import pro.liliya.android.runtime.AndroidProductRuntimeStartupAuthorityPlan
 import pro.liliya.android.runtime.AndroidProductRuntimeStartupModelPort
 import pro.liliya.android.runtime.AndroidProductRuntimeStartupPreparationResult
 import pro.liliya.android.runtime.AndroidProductRuntimeStartupPreparedInputsPort
@@ -24,56 +35,140 @@ import pro.liliya.core.authority.AuthorityPrincipal
 import pro.liliya.core.authority.AuthorityScope
 import pro.liliya.core.authority.CapabilityAuthorityComposition
 import pro.liliya.core.authority.CapabilityId
-import pro.liliya.core.authority.CapabilityOwnershipResult
 import pro.liliya.core.authority.DirectAuthorityGrant
-import pro.liliya.core.authority.DirectAuthorityGrantOwnershipResult
 import pro.liliya.core.capability.CapabilityDescriptor
 import pro.liliya.core.capability.CapabilityProviderId
 import pro.liliya.core.diagnostics.DiagnosticRecorder
 import pro.liliya.core.diagnostics.InMemoryDiagnosticSink
 import pro.liliya.core.foundation.FoundationComposition
+import pro.liliya.core.license.JcaEcdsaP256LicenseSignatureVerifier
 import pro.liliya.core.license.LicenseAlgorithm
 import pro.liliya.core.license.LicenseAuthorityComposition
 import pro.liliya.core.license.LicenseAuthorityRequest
-import pro.liliya.core.license.LicenseDigestTestVerifier
-import pro.liliya.core.license.LicenseEntitlement
-import pro.liliya.core.license.LicenseEntitlementCanonicalCodec
-import pro.liliya.core.license.LicenseFeature
-import pro.liliya.core.license.LicenseId
+import pro.liliya.core.license.LicenseDeviceBindingReferenceFactory
 import pro.liliya.core.license.LicenseKeyId
 import pro.liliya.core.license.LicensePolicyContext
 import pro.liliya.core.license.LicensePolicyRequest
 import pro.liliya.core.license.LicenseProductId
-import pro.liliya.core.license.LicenseReplaySequence
-import pro.liliya.core.license.LicenseRevocationEpoch
-import pro.liliya.core.license.LicenseSignedEnvelope
-import pro.liliya.core.license.LicenseSubject
 import pro.liliya.core.license.LicenseTrustedKeyResolver
 import pro.liliya.core.license.LicenseTrustedVerificationKey
 import pro.liliya.core.license.LicenseVerificationResult
 import pro.liliya.core.license.LicenseVerifier
 import pro.liliya.core.license.LicenseVersion
+import pro.liliya.core.licensetransport.ActivationRedemptionHttpClient
+import pro.liliya.core.licensetransport.ActivationRedemptionHttpRequest
+import pro.liliya.core.licensetransport.ActivationRedemptionHttpResult
+import pro.liliya.core.licensetransport.LicenseHttpTlsTrust
+import pro.liliya.core.licensetransport.LicenseHttpTransportConfig
 import pro.liliya.core.logging.CorrelationIdGenerator
 import pro.liliya.core.logging.InMemoryLogWriter
 import pro.liliya.core.logging.StructuredLogger
 import pro.liliya.core.observability.LoggerProvider
 
+/**
+ * Physical production Authority/admission acceptance.
+ *
+ * Fresh one-shot Activation Code -> real private-CA Licensing Service -> real ECDSA signed,
+ * one-device-bound unlimited-offline License -> explicit startup Authority plan ->
+ * fail-closed denial before grant -> admission after exact grant.
+ *
+ * This test intentionally never starts DEK, semantic, model or Execution.
+ */
 @RunWith(AndroidJUnit4::class)
 class PhysicalProductionAuthorityAdmissionInstrumentedTest {
 
     @Test
-    fun authority_denial_stops_provisioning_and_explicit_grant_admits_without_execution() {
+    fun real_signed_license_denies_without_authority_then_admits_exact_explicit_grant_without_execution() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val args = InstrumentationRegistry.getArguments()
+        val context = instrumentation.targetContext.applicationContext
+
+        val endpoint = URL(required(args.getString(ARG_ENDPOINT)))
+        assertEquals("https", endpoint.protocol)
+
+        val caBytes = Base64.getDecoder().decode(required(args.getString(ARG_CA_BASE64)))
+        val tlsTrust = try {
+            LicenseHttpTlsTrust.ofCertificate(caBytes)
+        } finally {
+            caBytes.fill(0)
+        }
+
+        val binding = assertIs<AndroidActivationDeviceBindingResult.Ready>(
+            AndroidActivationDeviceBindingProvider(context).loadOrCreate()
+        ).binding
+        val expectedBinding = LicenseDeviceBindingReferenceFactory.create(
+            installationId = binding.installationId,
+            deviceKeyFingerprint = binding.deviceKeyFingerprint
+        )
+
+        val activationCodeFile = java.io.File(context.filesDir, ACTIVATION_CODE_FILE)
+        assertTrue(activationCodeFile.isFile)
+        val activationCode = activationCodeFile.readText(Charsets.UTF_8).trim()
+        assertTrue(activationCode.isNotBlank())
+        assertTrue(activationCodeFile.delete())
+        assertTrue(!activationCodeFile.exists())
+
+        val redemption = ActivationRedemptionHttpClient(
+            LicenseHttpTransportConfig(
+                endpoint = endpoint,
+                connectTimeoutMillis = 10_000,
+                readTimeoutMillis = 60_000,
+                developmentAllowInsecureHttp = false,
+                tlsTrust = tlsTrust
+            )
+        ).redeem(
+            ActivationRedemptionHttpRequest(
+                activationCode = activationCode,
+                attemptId = ProductionAndroidActivationAttemptIdentity.loadOrCreate(context),
+                installationId = binding.installationId,
+                deviceKeyFingerprint = binding.deviceKeyFingerprint
+            )
+        )
+
+        val activated = assertIs<ActivationRedemptionHttpResult.Activated>(redemption)
+        val publicKey = Base64.getDecoder().decode(
+            required(args.getString(ARG_LICENSE_KEY_BASE64))
+        )
+        val trusted = try {
+            LicenseTrustedVerificationKey.of(
+                keyId = activated.license.signingKeyId,
+                algorithm = LicenseAlgorithm(ALGORITHM),
+                material = publicKey
+            )
+        } finally {
+            publicKey.fill(0)
+        }
+
+        val verified = assertIs<LicenseVerificationResult.Verified>(
+            LicenseVerifier(
+                supportedSchemaVersion = LicenseVersion(1),
+                supportedAlgorithms = setOf(LicenseAlgorithm(ALGORITHM)),
+                trustedKeys = LicenseTrustedKeyResolver { requested: LicenseKeyId ->
+                    trusted.takeIf { it.keyId == requested }
+                },
+                signatureVerifier = JcaEcdsaP256LicenseSignatureVerifier
+            ).verify(activated.license)
+        )
+
+        assertEquals(LicenseProductId(required(args.getString(ARG_PRODUCT))), verified.entitlement.productId)
+        assertEquals(activated.subject, verified.entitlement.subject.value)
+        assertEquals(expectedBinding, assertNotNull(verified.entitlement.deviceBindingReference))
+        assertNull(verified.entitlement.expiresAt)
+        assertNull(verified.entitlement.offlineLeaseUntil)
+        assertTrue(verified.entitlement.features.any { it.value == GRANTED_CAPABILITY })
+
         val foundation = foundation()
+        val policyNow = Instant.now()
         val capabilityAuthority = CapabilityAuthorityComposition(
             foundation = foundation,
-            now = { NOW }
+            now = { policyNow }
         )
         val authorityManager = AuthorityManager(
             policy = AuthorityPolicy { request ->
                 capabilityAuthority.authorize(
                     request = request,
                     context = foundation.rootContext(
-                        operation = "physical-authority-admission",
+                        operation = "physical-production-authority-admission",
                         component = "PhysicalProductionAuthorityAdmissionInstrumentedTest"
                     )
                 )
@@ -84,21 +179,22 @@ class PhysicalProductionAuthorityAdmissionInstrumentedTest {
             foundation = foundation,
             authorityManager = authorityManager
         )
-        val verified = verifiedLicense()
+
+        val feature = verified.entitlement.features.first { it.value == GRANTED_CAPABILITY }
+        val principal = AuthorityPrincipal(PRINCIPAL)
+        val grantedCapability = CapabilityId(GRANTED_CAPABILITY)
+        val deniedCapability = CapabilityId(DENIED_CAPABILITY)
+        val scope = AuthorityScope.GLOBAL
         val licenseRequest = LicensePolicyRequest(
-            productId = PRODUCT_ID,
-            feature = FEATURE,
-            subject = SUBJECT
+            productId = verified.entitlement.productId,
+            feature = feature,
+            subject = verified.entitlement.subject
         )
         val policyContext = LicensePolicyContext(
-            now = NOW,
-            minimumRevocationEpoch = LicenseRevocationEpoch(0),
-            minimumReplaySequence = LicenseReplaySequence(1)
-        )
-        val authorityRequest = LicenseAuthorityRequest(
-            principal = PRINCIPAL,
-            capability = CAPABILITY,
-            scope = SCOPE
+            now = policyNow,
+            minimumRevocationEpoch = verified.entitlement.revocationEpoch,
+            minimumReplaySequence = verified.entitlement.replaySequence,
+            requiredDeviceBindingReference = expectedBinding
         )
 
         val denied = assertIs<AndroidProductRuntimeAdmissionResult.Rejected>(
@@ -107,7 +203,11 @@ class PhysicalProductionAuthorityAdmissionInstrumentedTest {
                 verified = verified,
                 licenseRequest = licenseRequest,
                 policyContext = policyContext,
-                authorityRequest = authorityRequest
+                authorityRequest = LicenseAuthorityRequest(
+                    principal = principal,
+                    capability = grantedCapability,
+                    scope = scope
+                )
             )
         )
         assertEquals(AndroidProductRuntimeAdmissionFailure.AUTHORITY_DENIED, denied.reason)
@@ -121,7 +221,11 @@ class PhysicalProductionAuthorityAdmissionInstrumentedTest {
                         verified = verified,
                         licenseRequest = licenseRequest,
                         policyContext = policyContext,
-                        authorityRequest = authorityRequest
+                        authorityRequest = LicenseAuthorityRequest(
+                            principal = principal,
+                            capability = grantedCapability,
+                            scope = scope
+                        )
                     )
                 },
                 activeDek = AndroidProductRuntimeStartupActiveDekPort {
@@ -145,24 +249,26 @@ class PhysicalProductionAuthorityAdmissionInstrumentedTest {
         assertIs<AndroidProductRuntimeStartupProvisioningResult.AdmissionRejected>(provisioning)
         assertEquals(0, postAdmissionCalls)
 
-        val capabilityOwnership = assertIs<CapabilityOwnershipResult.Registered>(
-            capabilityAuthority.registerCapability(
-                CapabilityDescriptor(
-                    id = CAPABILITY,
-                    providerId = CapabilityProviderId("physical-production-authority")
+        val installed = assertIs<AndroidProductRuntimeStartupAuthorityAssemblyResult.Ready>(
+            AndroidProductRuntimeStartupAuthorityGrantAssembly.install(
+                authority = capabilityAuthority,
+                plan = AndroidProductRuntimeStartupAuthorityPlan(
+                    capabilities = listOf(
+                        CapabilityDescriptor(
+                            id = grantedCapability,
+                            providerId = CapabilityProviderId(PROVIDER)
+                        )
+                    ),
+                    directGrants = listOf(
+                        DirectAuthorityGrant(
+                            principal = principal,
+                            capability = grantedCapability,
+                            scope = scope
+                        )
+                    )
                 )
             )
-        ).ownership
-        val grantOwnership = assertIs<DirectAuthorityGrantOwnershipResult.Registered>(
-            capabilityAuthority.registerDirectGrant(
-                DirectAuthorityGrant(
-                    principal = PRINCIPAL,
-                    capability = CAPABILITY,
-                    scope = SCOPE,
-                    expiresAt = NOW.plusSeconds(3600)
-                )
-            )
-        ).ownership
+        )
 
         try {
             assertIs<AndroidProductRuntimeAdmissionResult.Admitted>(
@@ -171,63 +277,46 @@ class PhysicalProductionAuthorityAdmissionInstrumentedTest {
                     verified = verified,
                     licenseRequest = licenseRequest,
                     policyContext = policyContext,
-                    authorityRequest = authorityRequest
+                    authorityRequest = LicenseAuthorityRequest(
+                        principal = principal,
+                        capability = grantedCapability,
+                        scope = scope
+                    )
                 )
             )
 
+            val negative = assertIs<AndroidProductRuntimeAdmissionResult.Rejected>(
+                AndroidProductRuntimeAdmissionGate.admit(
+                    composition = licenseAuthority,
+                    verified = verified,
+                    licenseRequest = licenseRequest,
+                    policyContext = policyContext,
+                    authorityRequest = LicenseAuthorityRequest(
+                        principal = principal,
+                        capability = deniedCapability,
+                        scope = scope
+                    )
+                )
+            )
+            assertEquals(AndroidProductRuntimeAdmissionFailure.AUTHORITY_DENIED, negative.reason)
+
             println(
                 "LILIYA_PRODUCTION_AUTHORITY_ADMISSION=" +
-                    "{\"authorityDeniedWithoutGrant\":true," +
+                    "{\"https\":true," +
+                    "\"realSignedLicense\":true," +
+                    "\"oneDeviceBinding\":true," +
+                    "\"unlimitedOffline\":true," +
+                    "\"authorityDeniedWithoutGrant\":true," +
                     "\"provisioningStoppedBeforeDekSemanticModel\":true," +
-                    "\"explicitGrantAdmitted\":true," +
+                    "\"explicitAuthorityPlanInstalled\":true," +
+                    "\"grantedCapabilityAdmitted\":true," +
+                    "\"ungrantedCapabilityDenied\":true," +
                     "\"authorityExecutionStarted\":false}"
             )
         } finally {
-            grantOwnership.revoke()
-            capabilityOwnership.unregister()
+            installed.ownership.directGrants.asReversed().forEach { runCatching { it.revoke() } }
+            installed.ownership.capabilities.asReversed().forEach { runCatching { it.unregister() } }
         }
-    }
-
-    private fun verifiedLicense(): LicenseVerificationResult.Verified {
-        val algorithm = LicenseAlgorithm("TEST-SHA256")
-        val keyId = LicenseKeyId("physical-authority-test-key")
-        val key = LicenseTrustedVerificationKey.of(
-            keyId = keyId,
-            algorithm = algorithm,
-            material = byteArrayOf(11, 22, 33, 44, 55, 66, 77, 88)
-        )
-        val entitlement = LicenseEntitlement(
-            id = LicenseId("physical-authority-test-license"),
-            subject = SUBJECT,
-            productId = PRODUCT_ID,
-            features = setOf(FEATURE),
-            version = LicenseVersion(1),
-            signingKeyId = keyId,
-            issuedAt = NOW.minusSeconds(120),
-            notBefore = NOW.minusSeconds(60),
-            expiresAt = null,
-            offlineLeaseUntil = null,
-            revocationEpoch = LicenseRevocationEpoch(0),
-            replaySequence = LicenseReplaySequence(1)
-        )
-        val payload = LicenseEntitlementCanonicalCodec.encode(entitlement)
-        val envelope = LicenseSignedEnvelope(
-            schemaVersion = LicenseVersion(1),
-            algorithm = algorithm,
-            signingKeyId = keyId,
-            payload = payload,
-            signature = LicenseDigestTestVerifier.signForTest(key, payload)
-        )
-        return assertIs(
-            LicenseVerifier(
-                supportedSchemaVersion = LicenseVersion(1),
-                supportedAlgorithms = setOf(algorithm),
-                trustedKeys = LicenseTrustedKeyResolver { requested ->
-                    key.takeIf { it.keyId == requested }
-                },
-                signatureVerifier = LicenseDigestTestVerifier
-            ).verify(envelope)
-        )
     }
 
     private fun foundation(): FoundationComposition {
@@ -240,18 +329,25 @@ class PhysicalProductionAuthorityAdmissionInstrumentedTest {
                 StructuredLogger(context, logs)
             },
             correlationIds = CorrelationIdGenerator {
-                "physical-authority-admission-" + (++next)
+                "physical-production-authority-" + (++next)
             }
         )
     }
 
-    companion object {
-        private val NOW = Instant.parse("2026-10-03T19:00:00Z")
-        private val PRODUCT_ID = LicenseProductId("liliya-pro")
-        private val FEATURE = LicenseFeature("model.local")
-        private val SUBJECT = LicenseSubject("physical-authority-test-subject")
-        private val PRINCIPAL = AuthorityPrincipal("liliya-product-runtime")
-        private val CAPABILITY = CapabilityId("runtime.start")
-        private val SCOPE = AuthorityScope.GLOBAL
+    private fun required(value: String?): String =
+        value?.takeIf { it.isNotBlank() }
+            ?: error("missing physical production Authority/admission argument")
+
+    private companion object {
+        const val ARG_ENDPOINT = "activationEndpoint"
+        const val ARG_CA_BASE64 = "activationCaBase64"
+        const val ARG_LICENSE_KEY_BASE64 = "activationLicenseKeyDerBase64"
+        const val ARG_PRODUCT = "activationProductId"
+        const val ACTIVATION_CODE_FILE = "physical-activation-code.once"
+        const val ALGORITHM = "ECDSA-P256-SHA256"
+        const val PRINCIPAL = "liliya-product-runtime"
+        const val GRANTED_CAPABILITY = "model.local"
+        const val DENIED_CAPABILITY = "runtime.ungranted"
+        const val PROVIDER = "production-physical-authority-acceptance"
     }
 }
