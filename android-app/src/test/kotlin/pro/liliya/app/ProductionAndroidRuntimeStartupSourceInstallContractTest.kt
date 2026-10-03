@@ -47,6 +47,45 @@ class ProductionAndroidRuntimeStartupSourceInstallContractTest {
     }
 
     @Test
+    fun accepted_security_sync_continues_to_startup_source() {
+        var sourceCalls = 0
+
+        val result = ProductionAndroidRuntimeStartupSourceInstall.prepareAndInstallAfterSecuritySync(
+            syncAccepted = true,
+            sourcePort = ProductionAndroidRuntimeStartupRequestSourcePort {
+                sourceCalls += 1
+                AndroidProductRuntimeStartupRequestSourceResult.Rejected(
+                    AndroidProductRuntimeStartupRequestSourceFailure.COGNITIVE_STORAGE_CORRUPT
+                )
+            }
+        )
+
+        val rejected = assertIs<ProductionAndroidRuntimeStartupSourceInstallResult.SourceRejected>(result)
+        assertEquals(
+            AndroidProductRuntimeStartupRequestSourceFailure.COGNITIVE_STORAGE_CORRUPT,
+            rejected.reason
+        )
+        assertEquals(1, sourceCalls)
+    }
+
+    @Test
+    fun rejected_security_sync_stops_before_startup_source() {
+        var sourceCalls = 0
+
+        val result = ProductionAndroidRuntimeStartupSourceInstall.prepareAndInstallAfterSecuritySync(
+            syncAccepted = false,
+            sourcePort = ProductionAndroidRuntimeStartupRequestSourcePort {
+                sourceCalls += 1
+                error("must not source after rejected security sync")
+            }
+        )
+
+        val rejected = assertIs<ProductionAndroidRuntimeStartupSourceInstallResult.SourceRejected>(result)
+        assertEquals(AndroidProductRuntimeStartupRequestSourceFailure.INTERNAL_FAILURE, rejected.reason)
+        assertEquals(0, sourceCalls)
+    }
+
+    @Test
     fun existing_configuration_blocks_source_before_any_work() {
         val exact = ProductionAndroidRuntimeWiringSources(
             admission = { error("must not execute") },

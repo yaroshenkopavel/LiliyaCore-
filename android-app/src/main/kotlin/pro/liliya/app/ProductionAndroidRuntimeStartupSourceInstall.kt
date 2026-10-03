@@ -21,6 +21,12 @@ internal fun interface ProductionAndroidRuntimeStartupRequestSourcePort {
     fun create(): AndroidProductRuntimeStartupRequestSourceResult
 }
 
+internal fun interface ProductionAndroidLicenseServiceSecuritySyncPort {
+    fun refresh(
+        input: AndroidProductRuntimeStartupRequestSourceInput
+    ): ProductionAndroidLicenseServiceSecuritySyncResult
+}
+
 /**
  * App entry from explicit startup-source inputs into the existing request/composition/install path.
  *
@@ -31,26 +37,48 @@ internal fun interface ProductionAndroidRuntimeStartupRequestSourcePort {
 object ProductionAndroidRuntimeStartupSourceInstall {
     fun prepareAndInstall(
         input: AndroidProductRuntimeStartupRequestSourceInput
-    ): ProductionAndroidRuntimeStartupSourceInstallResult {
-        val refreshed = when (
-            val result = ProductionAndroidLicenseServiceSecuritySync.refresh(
-                context = input.context.applicationContext,
-                input = input
-            )
-        ) {
-            is ProductionAndroidLicenseServiceSecuritySyncResult.Ready -> result.input
-            is ProductionAndroidLicenseServiceSecuritySyncResult.Rejected ->
-                return ProductionAndroidRuntimeStartupSourceInstallResult.SourceRejected(
-                    AndroidProductRuntimeStartupRequestSourceFailure.INTERNAL_FAILURE
+    ): ProductionAndroidRuntimeStartupSourceInstallResult =
+        prepareAndInstall(
+            input = input,
+            syncPort = ProductionAndroidLicenseServiceSecuritySyncPort { exact ->
+                ProductionAndroidLicenseServiceSecuritySync.refresh(
+                    context = exact.context.applicationContext,
+                    input = exact
                 )
-        }
+            }
+        )
 
-        return prepareAndInstall(
-            ProductionAndroidRuntimeStartupRequestSourcePort {
-                AndroidProductRuntimeStartupRequestSource.create(refreshed)
+    internal fun prepareAndInstall(
+        input: AndroidProductRuntimeStartupRequestSourceInput,
+        syncPort: ProductionAndroidLicenseServiceSecuritySyncPort
+    ): ProductionAndroidRuntimeStartupSourceInstallResult {
+        val result = syncPort.refresh(input)
+        val ready = result as? ProductionAndroidLicenseServiceSecuritySyncResult.Ready
+        return prepareAndInstallAfterSecuritySync(
+            syncAccepted = ready != null,
+            sourcePort = ProductionAndroidRuntimeStartupRequestSourcePort {
+                if (ready == null) {
+                    AndroidProductRuntimeStartupRequestSourceResult.Rejected(
+                        AndroidProductRuntimeStartupRequestSourceFailure.INTERNAL_FAILURE
+                    )
+                } else {
+                    AndroidProductRuntimeStartupRequestSource.create(ready.input)
+                }
             }
         )
     }
+
+    internal fun prepareAndInstallAfterSecuritySync(
+        syncAccepted: Boolean,
+        sourcePort: ProductionAndroidRuntimeStartupRequestSourcePort
+    ): ProductionAndroidRuntimeStartupSourceInstallResult =
+        if (syncAccepted) {
+            prepareAndInstall(sourcePort)
+        } else {
+            ProductionAndroidRuntimeStartupSourceInstallResult.SourceRejected(
+                AndroidProductRuntimeStartupRequestSourceFailure.INTERNAL_FAILURE
+            )
+        }
 
     internal fun prepareAndInstall(
         sourcePort: ProductionAndroidRuntimeStartupRequestSourcePort
