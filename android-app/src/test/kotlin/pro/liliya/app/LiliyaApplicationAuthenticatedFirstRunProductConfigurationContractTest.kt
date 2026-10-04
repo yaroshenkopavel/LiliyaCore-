@@ -84,11 +84,13 @@ class LiliyaApplicationAuthenticatedFirstRunProductConfigurationContractTest {
         }
 
         assertTrue(application.configureFirstRunProductProfile(source))
-        assertSame(source, ProductionAndroidFirstRunProductProfileSourceOwner.current())
+        val installed = ProductionAndroidFirstRunProductProfileSourceOwner.current()
+        assertTrue(installed is ProductionAndroidDurableFirstRunProductProfileSource)
+        assertTrue(installed !== source)
         assertEquals(0, loads)
 
         assertFalse(application.configureFirstRunProductProfile(replacement))
-        assertSame(source, ProductionAndroidFirstRunProductProfileSourceOwner.current())
+        assertSame(installed, ProductionAndroidFirstRunProductProfileSourceOwner.current())
         assertEquals(0, loads)
     }
 
