@@ -4,17 +4,12 @@ import android.app.Instrumentation
 import android.content.Intent
 
 internal object PhysicalInstrumentedActivityLaunch {
-    fun launchLiliyaActivity(
+    fun launchProvisioningActivity(
         instrumentation: Instrumentation,
         timeoutMillis: Long = 15_000L
-    ): LiliyaActivity {
-        val launcherMonitor = instrumentation.addMonitor(
+    ): LiliyaProvisioningActivity {
+        val monitor = instrumentation.addMonitor(
             LiliyaProvisioningActivity::class.java.name,
-            null,
-            false
-        )
-        val runtimeMonitor = instrumentation.addMonitor(
-            LiliyaActivity::class.java.name,
             null,
             false
         )
@@ -24,9 +19,21 @@ internal object PhysicalInstrumentedActivityLaunch {
         )
         shellLaunch.close()
 
-        val launcher = launcherMonitor.waitForActivityWithTimeout(timeoutMillis)
+        return monitor.waitForActivityWithTimeout(timeoutMillis)
             as? LiliyaProvisioningActivity
             ?: error("physical instrumented launcher did not launch")
+    }
+
+    fun launchLiliyaActivity(
+        instrumentation: Instrumentation,
+        timeoutMillis: Long = 15_000L
+    ): LiliyaActivity {
+        val runtimeMonitor = instrumentation.addMonitor(
+            LiliyaActivity::class.java.name,
+            null,
+            false
+        )
+        val launcher = launchProvisioningActivity(instrumentation, timeoutMillis)
 
         instrumentation.runOnMainSync {
             launcher.startActivity(
