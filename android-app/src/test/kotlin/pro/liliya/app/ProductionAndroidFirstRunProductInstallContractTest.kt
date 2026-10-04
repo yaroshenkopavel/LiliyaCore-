@@ -72,6 +72,15 @@ class ProductionAndroidFirstRunProductInstallContractTest {
     }
 
     @Test
+    fun durable_license_rejection_is_preserved() {
+        val result = ProductionAndroidFirstRunProductInstall.mapInstallResult(
+            ProductionAndroidRuntimeStartupInputAssemblyInstallResult.DurableCommitRejected
+        )
+
+        assertIs<ProductionAndroidFirstRunProductInstallResult.DurableLicenseRejected>(result)
+    }
+
+    @Test
     fun failed_install_is_preserved() {
         val result = ProductionAndroidFirstRunProductInstall.mapInstallResult(
             ProductionAndroidRuntimeStartupInputAssemblyInstallResult.Failed

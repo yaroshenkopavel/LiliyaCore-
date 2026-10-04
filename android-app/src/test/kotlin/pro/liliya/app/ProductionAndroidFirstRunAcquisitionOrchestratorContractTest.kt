@@ -169,6 +169,16 @@ class ProductionAndroidFirstRunAcquisitionOrchestratorContractTest {
     }
 
     @Test
+    fun durable_license_rejection_is_preserved() = withModel { model ->
+        val result = signedInstallResult(
+            model,
+            ProductionAndroidFirstRunProductInstallResult.DurableLicenseRejected
+        )
+
+        assertIs<ProductionAndroidFirstRunAcquisitionResult.DurableLicenseRejected>(result)
+    }
+
+    @Test
     fun unexpected_acquisition_or_install_exception_fails_closed() = withModel { model ->
         val acquisitionFailure = ProductionAndroidFirstRunAcquisitionOrchestrator.prepareAndInstall(
             localModelFile = model,

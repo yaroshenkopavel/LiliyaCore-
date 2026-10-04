@@ -23,6 +23,7 @@ sealed interface ProductionAndroidFirstRunProductInstallResult {
         val reason: AndroidProductRuntimeStartupAuthorityAssemblyFailure
     ) : ProductionAndroidFirstRunProductInstallResult
 
+    data object DurableLicenseRejected : ProductionAndroidFirstRunProductInstallResult
     data object Failed : ProductionAndroidFirstRunProductInstallResult
 }
 
@@ -57,6 +58,33 @@ object ProductionAndroidFirstRunProductInstall {
                 ProductionAndroidRuntimeStartupInputAssemblyInstall.prepareAndInstall(it)
             }
         )
+
+    internal fun prepareAndInstallDurably(
+        input: AndroidProductRuntimeFirstRunProductInput
+    ): ProductionAndroidFirstRunProductInstallResult {
+        val store = ProductionAndroidActivatedLicenseEncryptedStore.create(input.context)
+        return prepareAndInstall(
+            resolvePort = ProductionAndroidFirstRunProductResolvePort {
+                AndroidProductRuntimeFirstRunProductInputFactory.create(input)
+            },
+            installPort = ProductionAndroidFirstRunStartupInstallPort { assemblyInput ->
+                ProductionAndroidRuntimeStartupInputAssemblyInstall.prepareAndInstall(
+                    input = assemblyInput,
+                    readyCommit = ProductionAndroidRuntimeStartupReadyCommitPort { ownership ->
+                        when (
+                            store.store(
+                                ownership.sourceInput.verifiedLicense.envelope
+                            )
+                        ) {
+                            ProductionAndroidActivatedLicenseStoreResult.Stored -> true
+                            ProductionAndroidActivatedLicenseStoreResult.Rejected,
+                            ProductionAndroidActivatedLicenseStoreResult.Failed -> false
+                        }
+                    }
+                )
+            }
+        )
+    }
 
     internal fun prepareAndInstall(
         resolvePort: ProductionAndroidFirstRunProductResolvePort,
@@ -101,6 +129,8 @@ object ProductionAndroidFirstRunProductInstall {
                 ProductionAndroidFirstRunProductInstallResult.AuthorityRejected(
                     result.reason
                 )
+            ProductionAndroidRuntimeStartupInputAssemblyInstallResult.DurableCommitRejected ->
+                ProductionAndroidFirstRunProductInstallResult.DurableLicenseRejected
             ProductionAndroidRuntimeStartupInputAssemblyInstallResult.Failed ->
                 ProductionAndroidFirstRunProductInstallResult.Failed
         }

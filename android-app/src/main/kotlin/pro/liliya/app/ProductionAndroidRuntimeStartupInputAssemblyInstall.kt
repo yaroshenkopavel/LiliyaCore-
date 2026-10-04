@@ -19,11 +19,17 @@ sealed interface ProductionAndroidRuntimeStartupInputAssemblyInstallResult {
         val reason: AndroidProductRuntimeStartupAuthorityAssemblyFailure
     ) : ProductionAndroidRuntimeStartupInputAssemblyInstallResult
 
+    data object DurableCommitRejected : ProductionAndroidRuntimeStartupInputAssemblyInstallResult
+
     data object Failed : ProductionAndroidRuntimeStartupInputAssemblyInstallResult
 }
 
 internal fun interface ProductionAndroidRuntimeStartupInputAssemblyPort {
     fun assemble(): AndroidProductRuntimeStartupInputAssemblyResult
+}
+
+internal fun interface ProductionAndroidRuntimeStartupReadyCommitPort {
+    fun commit(ownership: AndroidProductRuntimeStartupInputOwnership): Boolean
 }
 
 /**
@@ -32,6 +38,10 @@ internal fun interface ProductionAndroidRuntimeStartupInputAssemblyPort {
  * Assembly Install != Trust Authority.
  * Assembly Install != Capability Grant Authority.
  * Assembly Install != Retry/Recovery.
+ *
+ * An optional ready-commit runs only after Trust + Authority assembly is accepted and before the
+ * startup input becomes installed. A rejected commit releases the exact Authority ownership and
+ * leaves startup configuration absent.
  */
 object ProductionAndroidRuntimeStartupInputAssemblyInstall {
     @Volatile
@@ -41,14 +51,28 @@ object ProductionAndroidRuntimeStartupInputAssemblyInstall {
         input: AndroidProductRuntimeStartupInputAssemblyInput
     ): ProductionAndroidRuntimeStartupInputAssemblyInstallResult =
         prepareAndInstall(
-            ProductionAndroidRuntimeStartupInputAssemblyPort {
+            assemblyPort = ProductionAndroidRuntimeStartupInputAssemblyPort {
                 AndroidProductRuntimeStartupInputAssembly.create(input)
-            }
+            },
+            readyCommit = ProductionAndroidRuntimeStartupReadyCommitPort { true }
+        )
+
+    internal fun prepareAndInstall(
+        input: AndroidProductRuntimeStartupInputAssemblyInput,
+        readyCommit: ProductionAndroidRuntimeStartupReadyCommitPort
+    ): ProductionAndroidRuntimeStartupInputAssemblyInstallResult =
+        prepareAndInstall(
+            assemblyPort = ProductionAndroidRuntimeStartupInputAssemblyPort {
+                AndroidProductRuntimeStartupInputAssembly.create(input)
+            },
+            readyCommit = readyCommit
         )
 
     @Synchronized
     internal fun prepareAndInstall(
-        assemblyPort: ProductionAndroidRuntimeStartupInputAssemblyPort
+        assemblyPort: ProductionAndroidRuntimeStartupInputAssemblyPort,
+        readyCommit: ProductionAndroidRuntimeStartupReadyCommitPort =
+            ProductionAndroidRuntimeStartupReadyCommitPort { true }
     ): ProductionAndroidRuntimeStartupInputAssemblyInstallResult {
         installedOwnership?.let {
             return ProductionAndroidRuntimeStartupInputAssemblyInstallResult.AlreadyConfigured
@@ -66,6 +90,17 @@ object ProductionAndroidRuntimeStartupInputAssemblyInstall {
         return when (assembled) {
             is AndroidProductRuntimeStartupInputAssemblyResult.Ready -> {
                 val ownership = assembled.ownership
+                val committed = try {
+                    readyCommit.commit(ownership)
+                } catch (_: Exception) {
+                    false
+                }
+                if (!committed) {
+                    ownership.releaseAuthorityOwnership()
+                    return ProductionAndroidRuntimeStartupInputAssemblyInstallResult
+                        .DurableCommitRejected
+                }
+
                 if (ProductionAndroidRuntimeStartupInputConfiguration.install(ownership.sourceInput)) {
                     installedOwnership = ownership
                     ProductionAndroidRuntimeStartupInputAssemblyInstallResult.Installed(ownership)

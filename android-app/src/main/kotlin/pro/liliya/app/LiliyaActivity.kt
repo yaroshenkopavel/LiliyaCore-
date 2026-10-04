@@ -483,6 +483,10 @@ class LiliyaActivity : Activity() {
                 renderState(ProductionAndroidAppRuntimeState.CONFIGURATION_REQUIRED)
                 status.text = "Полномочия запуска отклонены"
             }
+            ProductionAndroidFirstRunAcquisitionResult.DurableLicenseRejected -> {
+                renderState(ProductionAndroidAppRuntimeState.CONFIGURATION_REQUIRED)
+                status.text = "Не удалось безопасно сохранить лицензию"
+            }
             ProductionAndroidFirstRunAcquisitionResult.Failed -> {
                 renderState(ProductionAndroidAppRuntimeState.CONFIGURATION_REQUIRED)
                 status.text = "Внутренняя ошибка подготовки запуска"

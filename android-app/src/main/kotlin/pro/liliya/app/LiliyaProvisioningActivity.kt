@@ -246,6 +246,11 @@ class LiliyaProvisioningActivity : Activity() {
                                 "Лицензия получена, но конфигурация продукта отклонена"
                             )
 
+                        ProductionAndroidFirstRunAcquisitionResult.DurableLicenseRejected ->
+                            renderReadyForActivation(
+                                "Не удалось безопасно сохранить лицензию"
+                            )
+
                         is ProductionAndroidFirstRunAcquisitionResult.LicenseServiceRejected,
                         is ProductionAndroidFirstRunAcquisitionResult.LicenseAcquisitionFailed,
                         ProductionAndroidFirstRunAcquisitionResult.Failed ->

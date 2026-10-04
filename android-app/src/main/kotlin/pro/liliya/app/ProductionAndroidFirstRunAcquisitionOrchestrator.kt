@@ -36,6 +36,7 @@ sealed interface ProductionAndroidFirstRunAcquisitionResult {
         val reason: AndroidProductRuntimeStartupAuthorityAssemblyFailure
     ) : ProductionAndroidFirstRunAcquisitionResult
 
+    data object DurableLicenseRejected : ProductionAndroidFirstRunAcquisitionResult
     data object Failed : ProductionAndroidFirstRunAcquisitionResult
 }
 
@@ -82,7 +83,7 @@ object ProductionAndroidFirstRunAcquisitionOrchestrator {
             licenseAcquisition = licenseAcquisition,
             signedInstall = ProductionAndroidFirstRunSignedInstallPort { envelope, model ->
                 val input = productInput.create(envelope, model)
-                ProductionAndroidFirstRunProductInstall.prepareAndInstall(input)
+                ProductionAndroidFirstRunProductInstall.prepareAndInstallDurably(input)
             }
         )
 
@@ -135,6 +136,8 @@ object ProductionAndroidFirstRunAcquisitionOrchestrator {
                 ProductionAndroidFirstRunAcquisitionResult.TrustVerificationRejected
             is ProductionAndroidFirstRunProductInstallResult.AuthorityRejected ->
                 ProductionAndroidFirstRunAcquisitionResult.AuthorityRejected(installed.reason)
+            ProductionAndroidFirstRunProductInstallResult.DurableLicenseRejected ->
+                ProductionAndroidFirstRunAcquisitionResult.DurableLicenseRejected
             ProductionAndroidFirstRunProductInstallResult.Failed ->
                 ProductionAndroidFirstRunAcquisitionResult.Failed
         }
