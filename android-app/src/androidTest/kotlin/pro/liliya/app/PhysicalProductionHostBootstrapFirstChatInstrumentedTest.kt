@@ -551,6 +551,7 @@ class PhysicalProductionHostBootstrapFirstChatInstrumentedTest {
         launch.close()
         val activity = monitor.waitForActivityWithTimeout(30_000L) as? LiliyaActivity
             ?: error("production LiliyaActivity did not launch")
+        var recreatedActivity: LiliyaActivity? = null
 
         try {
             assertTrue(
@@ -611,9 +612,41 @@ class PhysicalProductionHostBootstrapFirstChatInstrumentedTest {
                 finalTranscriptChars = transcript.length
             }
             assertTrue(finalTranscriptChars > userOnlyTranscriptChars)
+
+            val recreationMonitor = instrumentation.addMonitor(
+                LiliyaActivity::class.java.name,
+                null,
+                false
+            )
+            instrumentation.runOnMainSync { activity.recreate() }
+            val recreated = recreationMonitor.waitForActivityWithTimeout(30_000L)
+                as? LiliyaActivity
+                ?: error("production READY LiliyaActivity did not recreate")
+            recreatedActivity = recreated
+
+            assertTrue(
+                waitForUi(instrumentation, 30_000L) {
+                    val root = recreated.window.decorView
+                    val transcript = findTextContaining(root, UI_CHAT_MESSAGE)
+                    val input = findEditTextByHint(root, "Сообщение")
+                    val send = findButtonByText(root, "Отправить")
+                    containsExactText(root, "Готова") &&
+                        transcript != null &&
+                        transcript.length >= finalTranscriptChars &&
+                        input?.isEnabled == true &&
+                        send?.isEnabled == true
+                },
+                "recreated production chat surface did not restore READY state"
+            )
+            instrumentation.sendStatus(2, android.os.Bundle().apply {
+                putString("hostBootstrap.uiReadyRecreated", "true")
+            })
             return finalTranscriptChars
         } finally {
             instrumentation.runOnMainSync {
+                recreatedActivity?.let {
+                    if (!it.isFinishing && !it.isDestroyed) it.finish()
+                }
                 if (!activity.isFinishing && !activity.isDestroyed) activity.finish()
             }
             instrumentation.waitForIdleSync()
