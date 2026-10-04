@@ -556,7 +556,7 @@ class PhysicalProductionHostBootstrapFirstChatInstrumentedTest {
             false
         )
         val launch = instrumentation.uiAutomation.executeShellCommand(
-            "am start -W -n ${instrumentation.targetContext.packageName}/.LiliyaActivity"
+            "am start -W -n ${instrumentation.targetContext.packageName}/.LiliyaProvisioningActivity"
         )
         launch.close()
         val activity = monitor.waitForActivityWithTimeout(30_000L) as? LiliyaActivity

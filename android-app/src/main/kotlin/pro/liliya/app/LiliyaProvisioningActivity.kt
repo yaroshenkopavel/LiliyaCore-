@@ -168,6 +168,10 @@ class LiliyaProvisioningActivity : Activity() {
     }
 
     private fun restoreActivationState() {
+        if (app.hasFirstRunAcquisitionConfiguration()) {
+            openRuntimeHost()
+            return
+        }
         when (val snapshot = app.observeActivation(::deliverActivationCompletion)) {
             ProductionAndroidActivationTaskSnapshot.Idle ->
                 renderReadyForActivation("Введите код активации")
