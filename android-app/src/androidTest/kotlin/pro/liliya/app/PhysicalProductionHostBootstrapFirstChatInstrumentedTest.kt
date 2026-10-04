@@ -550,11 +550,17 @@ class PhysicalProductionHostBootstrapFirstChatInstrumentedTest {
     private fun exerciseRealChatSurface(
         instrumentation: android.app.Instrumentation
     ): Int {
-        val activity = instrumentation.startActivitySync(
-            Intent(instrumentation.targetContext, LiliyaActivity::class.java).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-        ) as LiliyaActivity
+        val monitor = instrumentation.addMonitor(
+            LiliyaActivity::class.java.name,
+            null,
+            false
+        )
+        val launch = instrumentation.uiAutomation.executeShellCommand(
+            "am start -W -n ${instrumentation.targetContext.packageName}/.LiliyaActivity"
+        )
+        launch.close()
+        val activity = monitor.waitForActivityWithTimeout(30_000L) as? LiliyaActivity
+            ?: error("production LiliyaActivity did not launch")
 
         try {
             assertTrue(
