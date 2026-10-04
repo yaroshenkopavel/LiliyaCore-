@@ -25,6 +25,7 @@ class LiliyaApplicationAuthenticatedFirstRunProductConfigurationContractTest {
     fun cleanup() {
         ProductionAndroidFirstRunConfigurationOwner.clearForTests()
         ProductionAndroidFirstRunProductProfileSourceOwner.clearForTests()
+        ProductionAndroidActivationProfileSourceOwner.clearForTests()
     }
 
     @Test
@@ -91,6 +92,29 @@ class LiliyaApplicationAuthenticatedFirstRunProductConfigurationContractTest {
 
         assertFalse(application.configureFirstRunProductProfile(replacement))
         assertSame(installed, ProductionAndroidFirstRunProductProfileSourceOwner.current())
+        assertEquals(0, loads)
+    }
+
+    @Test
+    fun application_bridge_installs_activation_profile_source_once_without_loading_it() {
+        var loads = 0
+        val application = allocateWithoutConstructor<LiliyaApplication>()
+        val source = ProductionAndroidActivationProfileSource {
+            loads += 1
+            error("activation profile source must not load during installation")
+        }
+        val replacement = ProductionAndroidActivationProfileSource {
+            error("replacement activation source must not be installed or loaded")
+        }
+
+        assertTrue(application.configureActivationProfile(source))
+        val installed = ProductionAndroidActivationProfileSourceOwner.current()
+        assertTrue(installed is ProductionAndroidDurableActivationProfileSource)
+        assertTrue(installed !== source)
+        assertEquals(0, loads)
+
+        assertFalse(application.configureActivationProfile(replacement))
+        assertSame(installed, ProductionAndroidActivationProfileSourceOwner.current())
         assertEquals(0, loads)
     }
 

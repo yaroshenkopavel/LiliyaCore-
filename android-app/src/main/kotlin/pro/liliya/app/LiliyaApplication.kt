@@ -54,6 +54,15 @@ class LiliyaApplication : Application() {
         )
     )
 
+    internal fun configureActivationProfile(
+        source: ProductionAndroidActivationProfileSource
+    ): Boolean = ProductionAndroidActivationProfileSourceOwner.install(
+        ProductionAndroidDurableActivationProfileSource(
+            context = this,
+            delegate = source
+        )
+    )
+
     internal fun configureAuthenticatedFirstRunProduct(
         input: ProductionAndroidFirstRunAuthenticatedProductConfigurationInput
     ): ProductionAndroidFirstRunAuthenticatedProductConfigurationInstallResult =
