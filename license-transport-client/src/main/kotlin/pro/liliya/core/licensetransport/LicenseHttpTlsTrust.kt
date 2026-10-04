@@ -20,7 +20,7 @@ class LicenseHttpTlsTrust private constructor(
     val certificateCount: Int
         get() = certificates.size
 
-    internal fun copyCertificates(): List<ByteArray> =
+    fun copyCertificates(): List<ByteArray> =
         certificates.map { it.copyOf() }
 
     override fun toString(): String =
