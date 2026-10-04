@@ -82,11 +82,9 @@ class LiliyaActivitySavedStateChatTerminalInstrumentedTest {
         var firstForCleanup: LiliyaActivity? = null
         var recreatedForCleanup: LiliyaActivity? = null
         try {
-            val launched = instrumentation.startActivitySync(
-                Intent(instrumentation.targetContext, LiliyaActivity::class.java).apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-            ) as LiliyaActivity
+            val launched = PhysicalInstrumentedActivityLaunch.launchLiliyaActivity(
+                instrumentation
+            )
             firstForCleanup = launched
             instrumentation.waitForIdleSync()
 
