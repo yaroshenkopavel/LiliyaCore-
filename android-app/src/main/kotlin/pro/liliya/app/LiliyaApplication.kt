@@ -65,6 +65,9 @@ class LiliyaApplication : Application() {
     internal fun hasRuntimeStartupConfiguration(): Boolean =
         ProductionAndroidRuntimeStartupInputConfiguration.current() != null
 
+    internal fun activatedLicenseState(): ProductionAndroidActivatedLicenseState =
+        ProductionAndroidActivatedLicenseStateResolver.resolve(this)
+
     internal fun acquireAndConfigureFirstRun(): ProductionAndroidFirstRunAcquisitionResult =
         ProductionAndroidFirstRunConfiguredAcquisition.prepareAndInstall(
             localModelFile = ProductionAndroidLocalModelSelection.current()

@@ -174,7 +174,18 @@ class LiliyaProvisioningActivity : Activity() {
         }
         when (val snapshot = app.observeActivation(::deliverActivationCompletion)) {
             ProductionAndroidActivationTaskSnapshot.Idle ->
-                renderReadyForActivation("Введите код активации")
+                when (app.activatedLicenseState()) {
+                    ProductionAndroidActivatedLicenseState.MISSING ->
+                        renderReadyForActivation("Введите код активации")
+                    ProductionAndroidActivatedLicenseState.AVAILABLE ->
+                        renderColdResumeBlocked(
+                            "Лицензия сохранена. Требуется восстановление профиля продукта"
+                        )
+                    ProductionAndroidActivatedLicenseState.REJECTED ->
+                        renderColdResumeBlocked(
+                            "Сохранённое состояние лицензии повреждено"
+                        )
+                }
             is ProductionAndroidActivationTaskSnapshot.InFlight ->
                 renderActivationInFlight()
             is ProductionAndroidActivationTaskSnapshot.Completed ->
@@ -267,6 +278,17 @@ class LiliyaProvisioningActivity : Activity() {
         activationCode.visibility = View.VISIBLE
         activateProduct.isEnabled = true
         activateProduct.visibility = View.VISIBLE
+        selectCredential.visibility = View.GONE
+    }
+
+    private fun renderColdResumeBlocked(message: String) {
+        status.text = message
+        activationCode.setText("")
+        activationCode.isEnabled = false
+        activationCode.visibility = View.GONE
+        activateProduct.isEnabled = false
+        activateProduct.visibility = View.GONE
+        selectCredential.isEnabled = false
         selectCredential.visibility = View.GONE
     }
 
