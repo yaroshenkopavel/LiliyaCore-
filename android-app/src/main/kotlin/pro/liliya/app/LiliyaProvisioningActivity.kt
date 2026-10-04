@@ -168,7 +168,7 @@ class LiliyaProvisioningActivity : Activity() {
     }
 
     private fun restoreActivationState() {
-        if (app.hasFirstRunAcquisitionConfiguration()) {
+        if (app.hasRuntimeStartupConfiguration()) {
             openRuntimeHost()
             return
         }
@@ -303,7 +303,10 @@ class LiliyaProvisioningActivity : Activity() {
     }
 
     private fun openRuntimeIfProductConfigured() {
-        if (app.hasFirstRunAcquisitionConfiguration()) {
+        if (
+            app.hasRuntimeStartupConfiguration() ||
+            app.hasFirstRunAcquisitionConfiguration()
+        ) {
             openRuntimeHost()
             return
         }

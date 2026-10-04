@@ -196,6 +196,7 @@ class PhysicalProductionHostBootstrapFirstChatInstrumentedTest {
         ).generateKeyPair()
         var modelDekAssembly: pro.liliya.android.runtime.AndroidProductRuntimeProtectedModelDekAssembly? = null
         var modelDekProtectorDescriptor: pro.liliya.core.protectedmodel.ProtectedModelKeyProtectorDescriptor? = null
+        var fullAcceptancePassed = false
 
         try {
             provisionSemanticBundle(targetContext, testContext)
@@ -514,6 +515,7 @@ class PhysicalProductionHostBootstrapFirstChatInstrumentedTest {
                 putString("hostBootstrap.implicitAuthorityMinted", "false")
             })
             println("LILIYA_PHYSICAL_PRODUCTION_HOSTBOOTSTRAP_FIRST_CHAT=PASS")
+            fullAcceptancePassed = true
         } finally {
             val exactDekAssembly = modelDekAssembly
             val exactProtector = modelDekProtectorDescriptor
@@ -535,8 +537,10 @@ class PhysicalProductionHostBootstrapFirstChatInstrumentedTest {
             require(cognitiveCleanup == "ABSENT" || cognitiveCleanup == "RETIRED") {
                 "physical production cognitive protector final cleanup rejected"
             }
-            require(modelSource.delete() || !modelSource.exists()) {
-                "physical production raw Qwen cleanup rejected"
+            if (fullAcceptancePassed) {
+                require(modelSource.delete() || !modelSource.exists()) {
+                    "physical production raw Qwen cleanup rejected"
+                }
             }
             fixtureRoot.deleteRecursively()
             semanticRoot.deleteRecursively()
