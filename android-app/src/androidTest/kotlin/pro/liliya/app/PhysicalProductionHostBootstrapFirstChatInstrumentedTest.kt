@@ -482,20 +482,6 @@ class PhysicalProductionHostBootstrapFirstChatInstrumentedTest {
             val startup = assertIs<ProductionAndroidAppStartupOutcome.Runtime>(startupOutcome)
             assertEquals(ProductionAndroidAppRuntimeState.READY, startup.state)
 
-            val chatResult = application.runtimeOwner.send("Hello Liliya /no_think")
-            val chat = when (chatResult) {
-                is ProductChatResult.Completed -> chatResult
-                is ProductChatResult.Rejected -> {
-                    val generationReason = generationRejectionReason(fixtureRoot)
-                    error(
-                        "Cold-start chat rejected: " + chatResult.reason +
-                            generationReason?.let { " / $it" }.orEmpty()
-                    )
-                }
-            }
-            assertTrue(chat.reply.isNotBlank())
-            assertTrue(chat.reply.length <= MAX_OUTPUT_CHARS)
-
             val uiTranscriptChars = exerciseRealChatSurface(instrumentation)
 
             instrumentation.sendStatus(2, android.os.Bundle().apply {
@@ -508,7 +494,7 @@ class PhysicalProductionHostBootstrapFirstChatInstrumentedTest {
                 putString("hostBootstrap.qwenSha256", QWEN_SHA256)
                 putString("hostBootstrap.qwenRevision", QWEN_REVISION)
                 putString("hostBootstrap.chatCompleted", "true")
-                putString("hostBootstrap.chatReplyChars", chat.reply.length.toString())
+                putString("hostBootstrap.chatPath", "UI")
                 putString("hostBootstrap.uiSurfaceReady", "true")
                 putString("hostBootstrap.uiChatCompleted", "true")
                 putString("hostBootstrap.uiTranscriptChars", uiTranscriptChars.toString())
