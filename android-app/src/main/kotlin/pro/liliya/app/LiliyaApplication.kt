@@ -64,6 +64,21 @@ class LiliyaApplication : Application() {
     ): Boolean =
         ProductionAndroidLicenseServiceSecuritySyncProfileSourceOwner.install(source)
 
+    internal fun configureOfflineResumePolicy(
+        policy: ProductionAndroidOfflineResumeProcessPolicy
+    ): Boolean = ProductionAndroidOfflineResumePolicyOwner.install(
+        ProductionAndroidOfflineResumeDefaultProductInputFactory.create(
+            context = this,
+            policy = policy
+        )
+    )
+
+    internal fun hasOfflineResumePolicy(): Boolean =
+        ProductionAndroidOfflineResumePolicyOwner.current() != null
+
+    internal fun attemptOfflineResume(): ProductionAndroidOfflineResumeBootstrapResult =
+        ProductionAndroidOfflineResumeBootstrap.prepareAndInstall(this)
+
     internal fun hasFirstRunAcquisitionConfiguration(): Boolean =
         ProductionAndroidFirstRunConfigurationOwner.current() != null
 
