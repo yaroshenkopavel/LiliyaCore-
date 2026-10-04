@@ -61,13 +61,20 @@ class LiliyaActivity : Activity() {
 
     override fun onStart() {
         super.onStart()
-        val restoreAfterSavedState = stateSaved
+        restoreAfterSavedStateIfNeeded()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        restoreAfterSavedStateIfNeeded()
+    }
+
+    private fun restoreAfterSavedStateIfNeeded() {
+        if (!stateSaved || !::conversation.isInitialized || !::input.isInitialized) return
         stateSaved = false
-        if (restoreAfterSavedState && ::conversation.isInitialized && ::input.isInitialized) {
-            restoreApplicationChatState()
-            restoreLocalModelImportState()
-            restoreFirstRunAcquisitionState()
-        }
+        restoreApplicationChatState()
+        restoreLocalModelImportState()
+        restoreFirstRunAcquisitionState()
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
