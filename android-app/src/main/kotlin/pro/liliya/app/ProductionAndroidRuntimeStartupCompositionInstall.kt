@@ -22,9 +22,19 @@ object ProductionAndroidRuntimeStartupCompositionInstall {
         request: AndroidProductRuntimeStartupCompositionRequest
     ): ProductionAndroidRuntimeStartupInstallResult =
         prepareAndInstall(
+            request = request,
+            readyCommit = ProductionAndroidRuntimeStartupProvisioningReadyCommitPort { true }
+        )
+
+    internal fun prepareAndInstall(
+        request: AndroidProductRuntimeStartupCompositionRequest,
+        readyCommit: ProductionAndroidRuntimeStartupProvisioningReadyCommitPort
+    ): ProductionAndroidRuntimeStartupInstallResult =
+        prepareAndInstall(
             ProductionAndroidRuntimeStartupCompositionInstallPort {
                 ProductionAndroidRuntimeStartupInstall.prepareAndInstall(
-                    AndroidProductRuntimeStartupPortsComposition.create(request)
+                    ports = AndroidProductRuntimeStartupPortsComposition.create(request),
+                    readyCommit = readyCommit
                 )
             }
         )

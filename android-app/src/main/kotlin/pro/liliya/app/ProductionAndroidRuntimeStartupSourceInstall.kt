@@ -27,6 +27,13 @@ internal fun interface ProductionAndroidLicenseServiceSecuritySyncPort {
     ): ProductionAndroidLicenseServiceSecuritySyncResult
 }
 
+internal fun interface ProductionAndroidOfflineResumeMetadataCommitPort {
+    fun commit(
+        input: AndroidProductRuntimeStartupRequestSourceInput,
+        ready: AndroidProductRuntimeStartupProvisioningResult.Ready
+    ): Boolean
+}
+
 /**
  * App entry from explicit startup-source inputs into the existing request/composition/install path.
  *
@@ -45,12 +52,33 @@ object ProductionAndroidRuntimeStartupSourceInstall {
                     context = exact.context.applicationContext,
                     input = exact
                 )
+            },
+            metadataCommit = ProductionAndroidOfflineResumeMetadataCommitPort { exact, ready ->
+                val metadata = ProductionAndroidOfflineResumeMetadata(
+                    activeDek = ready.inputs.activeDek,
+                    memoryStoreId = exact.preparedInputOwners.memoryStoreId,
+                    knowledgeStoreId = exact.preparedInputOwners.knowledgeStoreId,
+                    learningMutationStoreId = exact.preparedInputOwners.learningMutationStoreId,
+                    cognitiveStorageDirectoryName = exact.cognitiveStorageDirectoryName,
+                    semanticDirectoryName = exact.semanticDirectoryName
+                )
+                when (
+                    ProductionAndroidOfflineResumeMetadataEncryptedStore
+                        .create(exact.context.applicationContext)
+                        .store(metadata)
+                ) {
+                    ProductionAndroidOfflineResumeMetadataStoreResult.Stored -> true
+                    ProductionAndroidOfflineResumeMetadataStoreResult.Rejected,
+                    ProductionAndroidOfflineResumeMetadataStoreResult.Failed -> false
+                }
             }
         )
 
     internal fun prepareAndInstall(
         input: AndroidProductRuntimeStartupRequestSourceInput,
-        syncPort: ProductionAndroidLicenseServiceSecuritySyncPort
+        syncPort: ProductionAndroidLicenseServiceSecuritySyncPort,
+        metadataCommit: ProductionAndroidOfflineResumeMetadataCommitPort =
+            ProductionAndroidOfflineResumeMetadataCommitPort { _, _ -> true }
     ): ProductionAndroidRuntimeStartupSourceInstallResult {
         val result = syncPort.refresh(input)
         val ready = result as? ProductionAndroidLicenseServiceSecuritySyncResult.Ready
@@ -64,16 +92,21 @@ object ProductionAndroidRuntimeStartupSourceInstall {
                 } else {
                     AndroidProductRuntimeStartupRequestSource.create(ready.input)
                 }
+            },
+            readyCommit = ProductionAndroidRuntimeStartupProvisioningReadyCommitPort { provisioned ->
+                ready != null && metadataCommit.commit(ready.input, provisioned)
             }
         )
     }
 
     internal fun prepareAndInstallAfterSecuritySync(
         syncAccepted: Boolean,
-        sourcePort: ProductionAndroidRuntimeStartupRequestSourcePort
+        sourcePort: ProductionAndroidRuntimeStartupRequestSourcePort,
+        readyCommit: ProductionAndroidRuntimeStartupProvisioningReadyCommitPort =
+            ProductionAndroidRuntimeStartupProvisioningReadyCommitPort { true }
     ): ProductionAndroidRuntimeStartupSourceInstallResult =
         if (syncAccepted) {
-            prepareAndInstall(sourcePort)
+            prepareAndInstall(sourcePort, readyCommit)
         } else {
             ProductionAndroidRuntimeStartupSourceInstallResult.SourceRejected(
                 AndroidProductRuntimeStartupRequestSourceFailure.INTERNAL_FAILURE
@@ -81,7 +114,9 @@ object ProductionAndroidRuntimeStartupSourceInstall {
         }
 
     internal fun prepareAndInstall(
-        sourcePort: ProductionAndroidRuntimeStartupRequestSourcePort
+        sourcePort: ProductionAndroidRuntimeStartupRequestSourcePort,
+        readyCommit: ProductionAndroidRuntimeStartupProvisioningReadyCommitPort =
+            ProductionAndroidRuntimeStartupProvisioningReadyCommitPort { true }
     ): ProductionAndroidRuntimeStartupSourceInstallResult {
         if (ProductionAndroidRuntimeConfiguration.current() != null) {
             return ProductionAndroidRuntimeStartupSourceInstallResult.AlreadyConfigured
@@ -99,7 +134,8 @@ object ProductionAndroidRuntimeStartupSourceInstall {
             is AndroidProductRuntimeStartupRequestSourceResult.Ready ->
                 when (
                     val installed = ProductionAndroidRuntimeStartupCompositionInstall.prepareAndInstall(
-                        sourced.request
+                        request = sourced.request,
+                        readyCommit = readyCommit
                     )
                 ) {
                     ProductionAndroidRuntimeStartupInstallResult.Installed ->
