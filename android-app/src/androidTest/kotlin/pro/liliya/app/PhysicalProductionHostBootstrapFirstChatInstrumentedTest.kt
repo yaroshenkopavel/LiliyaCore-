@@ -14,9 +14,13 @@ import java.io.FileInputStream
 import java.net.URL
 import java.security.MessageDigest
 import java.util.Base64
+import java.security.KeyFactory
+import java.security.KeyPair
 import java.security.KeyPairGenerator
 import java.security.Signature
 import java.security.spec.ECGenParameterSpec
+import java.security.spec.PKCS8EncodedKeySpec
+import java.security.spec.X509EncodedKeySpec
 import java.time.Instant
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.assertEquals
@@ -152,6 +156,9 @@ class PhysicalProductionHostBootstrapFirstChatInstrumentedTest {
         val targetContext = instrumentation.targetContext.applicationContext
         val testContext = instrumentation.context
         val arguments = InstrumentationRegistry.getArguments()
+        val preserveOfflineResumeBaseline =
+            arguments.getString(ARG_PRESERVE_OFFLINE_RESUME_BASELINE)
+                ?.toBooleanStrictOrNull() ?: false
         val application = targetContext as LiliyaApplication
         val fixtureRoot = File(targetContext.filesDir, "physical-production-hostbootstrap-cold-start")
         val semanticRoot = File(
@@ -159,17 +166,38 @@ class PhysicalProductionHostBootstrapFirstChatInstrumentedTest {
             AndroidOfflineSemanticArtifactProvisioner.DEFAULT_DIRECTORY
         )
         val stagingRoot = File(targetContext.filesDir, "large-protected-model-staging-v1")
-        val runId = System.currentTimeMillis().toString()
+        val runId = if (preserveOfflineResumeBaseline) {
+            "offline-resume-baseline"
+        } else {
+            System.currentTimeMillis().toString()
+        }
         val modelDekDirectory = "physical-production-hostbootstrap-model-dek"
         val modelDekRoot = File(targetContext.filesDir, modelDekDirectory)
         val modelDekProtectorId =
-            "physical-production-hostbootstrap-model-dek-protector-" + runId
+            if (preserveOfflineResumeBaseline) {
+                OFFLINE_RESUME_MODEL_DEK_PROTECTOR_ID
+            } else {
+                "physical-production-hostbootstrap-model-dek-protector-" + runId
+            }
         val cognitiveStorageDirectoryName =
-            "physical-production-hostbootstrap-cognitive-" + runId
+            if (preserveOfflineResumeBaseline) {
+                OFFLINE_RESUME_COGNITIVE_DIRECTORY
+            } else {
+                "physical-production-hostbootstrap-cognitive-" + runId
+            }
         val cognitiveStorageRoot = File(targetContext.filesDir, cognitiveStorageDirectoryName)
-        val cognitiveDekId = "physical-production-hostbootstrap-cognitive-dek-" + runId
+        val cognitiveDekId =
+            if (preserveOfflineResumeBaseline) {
+                OFFLINE_RESUME_COGNITIVE_DEK_ID
+            } else {
+                "physical-production-hostbootstrap-cognitive-dek-" + runId
+            }
         val cognitiveProtectorId =
-            "physical-production-hostbootstrap-cognitive-protector-" + runId
+            if (preserveOfflineResumeBaseline) {
+                OFFLINE_RESUME_COGNITIVE_PROTECTOR_ID
+            } else {
+                "physical-production-hostbootstrap-cognitive-protector-" + runId
+            }
         fixtureRoot.deleteRecursively()
         semanticRoot.deleteRecursively()
         stagingRoot.deleteRecursively()
@@ -190,10 +218,14 @@ class PhysicalProductionHostBootstrapFirstChatInstrumentedTest {
         val modelDekBytes = ByteArray(32) { index -> (index * 7 + 11).toByte() }
         val modelSignerId = ProtectedModelSignerId("physical-production-hostbootstrap-model-signer")
         val modelSignerProvider = BouncyCastleProvider()
-        val modelSigner = KeyPairGenerator.getInstance(
-            "Ed25519",
-            modelSignerProvider
-        ).generateKeyPair()
+        val modelSigner = if (preserveOfflineResumeBaseline) {
+            offlineResumeModelSignerKeyPair(modelSignerProvider)
+        } else {
+            KeyPairGenerator.getInstance(
+                "Ed25519",
+                modelSignerProvider
+            ).generateKeyPair()
+        }
         var modelDekAssembly: pro.liliya.android.runtime.AndroidProductRuntimeProtectedModelDekAssembly? = null
         var modelDekProtectorDescriptor: pro.liliya.core.protectedmodel.ProtectedModelKeyProtectorDescriptor? = null
         var fullAcceptancePassed = false
@@ -236,6 +268,19 @@ class PhysicalProductionHostBootstrapFirstChatInstrumentedTest {
                     )
                 )
             )
+
+            val runtimeModelFile = if (preserveOfflineResumeBaseline) {
+                val modelDirectory = File(targetContext.filesDir, "models")
+                modelDirectory.deleteRecursively()
+                assertIs<ProductionAndroidLocalModelSelectionResult.Selected>(
+                    ProductionAndroidLocalModelSelection.importSelected(
+                        directory = modelDirectory,
+                        openInput = { protectedPackage.inputStream() }
+                    )
+                ).file
+            } else {
+                protectedPackage
+            }
 
             val fixtureFoundation = foundation()
             val signerTrust = AndroidProductRuntimeProtectedModelSignerTrust.create(
@@ -427,7 +472,7 @@ class PhysicalProductionHostBootstrapFirstChatInstrumentedTest {
                     protectorGeneration = 1,
                     security = AndroidProductRuntimeFirstRunKeySecurity.SOFTWARE
                 ),
-                localModelFile = protectedPackage,
+                localModelFile = runtimeModelFile,
                 protectedModelBudgets = AndroidProductRuntimeProtectedModelBudgetInput(
                     maxTotalPlaintextBytes = resourceBudgets.maxTotalPlaintextBytes,
                     maxTotalCiphertextBodyBytes = resourceBudgets.maxTotalCiphertextBodyBytes,
@@ -472,9 +517,49 @@ class PhysicalProductionHostBootstrapFirstChatInstrumentedTest {
                 )
             )
 
-            assertIs<ProductionAndroidFirstRunProductInstallResult.Installed>(
+            if (preserveOfflineResumeBaseline) {
+                val caBytes = Base64.getDecoder().decode(
+                    requiredArgument(arguments.getString(ARG_CA_BASE64))
+                )
+                try {
+                    assertIs<ProductionAndroidOfflineDeploymentProfileStoreResult.Stored>(
+                        ProductionAndroidOfflineDeploymentProfileEncryptedStore
+                            .create(targetContext)
+                            .store(
+                                ProductionAndroidOfflineDeploymentProfile(
+                                    productId = licenseMaterial.productId,
+                                    endpoint = requiredArgument(
+                                        arguments.getString(ARG_ENDPOINT)
+                                    ),
+                                    connectTimeoutMillis = 10_000,
+                                    readTimeoutMillis = 60_000,
+                                    tlsCertificates = listOf(caBytes),
+                                    supportedLicenseSchemaVersion = 1,
+                                    licenseTrustKeys = listOf(
+                                        ProductionAndroidOfflineDeploymentLicenseTrustKey(
+                                            keyId = licenseMaterial.keyId.value,
+                                            material = licenseMaterial.publicKey
+                                        )
+                                    ),
+                                    semanticDirectoryName =
+                                        AndroidOfflineSemanticArtifactProvisioner.DEFAULT_DIRECTORY,
+                                    cognitiveStorageDirectoryName =
+                                        cognitiveStorageDirectoryName
+                                )
+                            )
+                    )
+                } finally {
+                    caBytes.fill(0)
+                }
+            }
+
+            val installed = if (preserveOfflineResumeBaseline) {
+                ProductionAndroidFirstRunProductInstall.prepareAndInstallDurably(input)
+            } else {
                 application.configureFirstRun(input)
-            )
+            }
+            assertIs<ProductionAndroidFirstRunProductInstallResult.Installed>(installed)
+
             val startupOutcome = application.startApplicationRuntime()
             if (startupOutcome is ProductionAndroidAppStartupOutcome.ProvisioningRejected) {
                 error("Cold-start provisioning rejected: " + startupOutcome.result)
@@ -505,22 +590,39 @@ class PhysicalProductionHostBootstrapFirstChatInstrumentedTest {
         } finally {
             val exactDekAssembly = modelDekAssembly
             val exactProtector = modelDekProtectorDescriptor
-            if (exactDekAssembly != null && exactProtector != null) {
+            if (
+                !preserveOfflineResumeBaseline &&
+                exactDekAssembly != null &&
+                exactProtector != null
+            ) {
                 runCatching { exactDekAssembly.keyProtector.retire(exactProtector) }
             }
             modelDekBytes.fill(0)
             application.runtimeOwner.close()
-            val cognitiveCleanup = runCatching {
-                PhysicalAcceptanceCognitiveProtectorCleanup.retireExactIfPresent(
-                    targetContext,
-                    cognitiveProtectorId,
-                    1L
-                )
-            }.getOrElse { "CLEANUP_EXCEPTION" }
+
+            val cognitiveCleanup = if (preserveOfflineResumeBaseline) {
+                "PRESERVED"
+            } else {
+                runCatching {
+                    PhysicalAcceptanceCognitiveProtectorCleanup.retireExactIfPresent(
+                        targetContext,
+                        cognitiveProtectorId,
+                        1L
+                    )
+                }.getOrElse { "CLEANUP_EXCEPTION" }
+            }
             instrumentation.sendStatus(2, android.os.Bundle().apply {
                 putString("hostBootstrap.cognitiveProtectorCleanup", cognitiveCleanup)
+                putString(
+                    "hostBootstrap.offlineResumeBaselinePreserved",
+                    preserveOfflineResumeBaseline.toString()
+                )
             })
-            require(cognitiveCleanup == "ABSENT" || cognitiveCleanup == "RETIRED") {
+            require(
+                cognitiveCleanup == "ABSENT" ||
+                    cognitiveCleanup == "RETIRED" ||
+                    cognitiveCleanup == "PRESERVED"
+            ) {
                 "physical production cognitive protector final cleanup rejected"
             }
             if (fullAcceptancePassed) {
@@ -528,11 +630,14 @@ class PhysicalProductionHostBootstrapFirstChatInstrumentedTest {
                     "physical production raw Qwen cleanup rejected"
                 }
             }
+
             fixtureRoot.deleteRecursively()
-            semanticRoot.deleteRecursively()
             stagingRoot.deleteRecursively()
-            modelDekRoot.deleteRecursively()
-            cognitiveStorageRoot.deleteRecursively()
+            if (!preserveOfflineResumeBaseline) {
+                semanticRoot.deleteRecursively()
+                modelDekRoot.deleteRecursively()
+                cognitiveStorageRoot.deleteRecursively()
+            }
         }
     }
 
@@ -983,6 +1088,31 @@ class PhysicalProductionHostBootstrapFirstChatInstrumentedTest {
         )
     }
 
+    private fun offlineResumeModelSignerKeyPair(
+        provider: BouncyCastleProvider
+    ): KeyPair {
+        val keyFactory = KeyFactory.getInstance("Ed25519", provider)
+        val privateKeyBytes = Base64.getDecoder().decode(
+            OFFLINE_RESUME_MODEL_SIGNER_PRIVATE_KEY_PKCS8_BASE64
+        )
+        val publicKeyBytes = Base64.getDecoder().decode(
+            OFFLINE_RESUME_MODEL_SIGNER_PUBLIC_KEY_X509_BASE64
+        )
+        return try {
+            KeyPair(
+                keyFactory.generatePublic(
+                    X509EncodedKeySpec(publicKeyBytes)
+                ),
+                keyFactory.generatePrivate(
+                    PKCS8EncodedKeySpec(privateKeyBytes)
+                )
+            )
+        } finally {
+            privateKeyBytes.fill(0)
+            publicKeyBytes.fill(0)
+        }
+    }
+
     private fun requiredArgument(value: String?): String =
         value?.takeIf { it.isNotBlank() }
             ?: error("missing physical production HostBootstrap argument")
@@ -1042,7 +1172,22 @@ class PhysicalProductionHostBootstrapFirstChatInstrumentedTest {
         const val ARG_CA_BASE64 = "activationCaBase64"
         const val ARG_LICENSE_KEY_BASE64 = "activationLicenseKeyDerBase64"
         const val ARG_PRODUCT = "activationProductId"
+        const val ARG_PRESERVE_OFFLINE_RESUME_BASELINE =
+            "preserveOfflineResumeBaseline"
         const val ACTIVATION_CODE_FILE = "physical-activation-code.once"
+
+        const val OFFLINE_RESUME_MODEL_DEK_PROTECTOR_ID =
+            "physical-offline-resume-model-dek-protector"
+        const val OFFLINE_RESUME_COGNITIVE_DIRECTORY =
+            "physical-offline-resume-cognitive"
+        const val OFFLINE_RESUME_COGNITIVE_DEK_ID =
+            "physical-offline-resume-cognitive-dek"
+        const val OFFLINE_RESUME_COGNITIVE_PROTECTOR_ID =
+            "physical-offline-resume-cognitive-protector"
+        const val OFFLINE_RESUME_MODEL_SIGNER_PRIVATE_KEY_PKCS8_BASE64 =
+            "MC4CAQAwBQYDK2VwBCIEINqvJt3k48ugJmxUatdOfRc7Pz0McVLztyrqNH1BypHG"
+        const val OFFLINE_RESUME_MODEL_SIGNER_PUBLIC_KEY_X509_BASE64 =
+            "MCowBQYDK2VwAyEAe1hVxYk+lojmHmH/9Ix8A76lVPquVk7nOj4h77dpZIk="
         const val ALGORITHM = "ECDSA-P256-SHA256"
         const val GRANTED_CAPABILITY = "model.local"
 
