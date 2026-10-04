@@ -577,14 +577,28 @@ class PhysicalProductionHostBootstrapFirstChatInstrumentedTest {
             }
 
             assertTrue(userOnlyTranscriptChars > UI_CHAT_MESSAGE.length)
+            val uiCompleted = waitForUi(instrumentation, 240_000L) {
+                val root = activity.window.decorView
+                val transcript = findTextContaining(root, UI_CHAT_MESSAGE)
+                containsExactText(root, "Готова") &&
+                    transcript != null &&
+                    transcript.length > userOnlyTranscriptChars
+            }
+            if (!uiCompleted) {
+                val chatState = when (
+                    (activity.application as LiliyaApplication)
+                        .observeApplicationChat { }
+                ) {
+                    ProductionAndroidAppChatTaskSnapshot.Idle -> "IDLE"
+                    is ProductionAndroidAppChatTaskSnapshot.InFlight -> "IN_FLIGHT"
+                    is ProductionAndroidAppChatTaskSnapshot.Completed -> "COMPLETED"
+                }
+                instrumentation.sendStatus(2, android.os.Bundle().apply {
+                    putString("hostBootstrap.uiChatStateAtTimeout", chatState)
+                })
+            }
             assertTrue(
-                waitForUi(instrumentation, 120_000L) {
-                    val root = activity.window.decorView
-                    val transcript = findTextContaining(root, UI_CHAT_MESSAGE)
-                    containsExactText(root, "Готова") &&
-                        transcript != null &&
-                        transcript.length > userOnlyTranscriptChars
-                },
+                uiCompleted,
                 "production chat UI did not render completed response"
             )
 
