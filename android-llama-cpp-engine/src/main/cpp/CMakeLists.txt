@@ -20,15 +20,18 @@ include(FetchContent)
 # Reviewed upstream checkpoint. Never replace this with a floating branch or tag.
 set(LILIYA_LLAMA_CPP_COMMIT "0f3a71be15af836d277c9f918adfafb45732677e")
 
-# A local source override is a speed optimization only. It must be the exact reviewed commit and
-# must not contain tracked modifications; otherwise fail closed instead of compiling unreviewed
-# native code.
-if(DEFINED FETCHCONTENT_SOURCE_DIR_LLAMA_CPP AND
-   NOT "${FETCHCONTENT_SOURCE_DIR_LLAMA_CPP}" STREQUAL "")
-    find_program(LILIYA_GIT_EXECUTABLE git REQUIRED)
+# Native-source caching is a speed optimization only. Any already-present source must be the exact
+# reviewed commit and must not contain tracked modifications; otherwise fail closed before CMake
+# evaluates upstream source.
+find_program(LILIYA_GIT_EXECUTABLE git REQUIRED)
+
+function(liliya_validate_llama_source source_dir source_label)
+    if(NOT EXISTS "${source_dir}/.git")
+        message(FATAL_ERROR "${source_label} is not a git checkout")
+    endif()
+
     execute_process(
-        COMMAND "${LILIYA_GIT_EXECUTABLE}" -C
-                "${FETCHCONTENT_SOURCE_DIR_LLAMA_CPP}" rev-parse HEAD
+        COMMAND "${LILIYA_GIT_EXECUTABLE}" -C "${source_dir}" rev-parse HEAD
         RESULT_VARIABLE LILIYA_LLAMA_GIT_RESULT
         OUTPUT_VARIABLE LILIYA_LLAMA_GIT_HEAD
         OUTPUT_STRIP_TRAILING_WHITESPACE
@@ -37,13 +40,12 @@ if(DEFINED FETCHCONTENT_SOURCE_DIR_LLAMA_CPP AND
     if(NOT LILIYA_LLAMA_GIT_RESULT EQUAL 0 OR
        NOT LILIYA_LLAMA_GIT_HEAD STREQUAL LILIYA_LLAMA_CPP_COMMIT)
         message(FATAL_ERROR
-            "Local llama.cpp override is not the reviewed commit ${LILIYA_LLAMA_CPP_COMMIT}"
+            "${source_label} is not the reviewed commit ${LILIYA_LLAMA_CPP_COMMIT}"
         )
     endif()
 
     execute_process(
-        COMMAND "${LILIYA_GIT_EXECUTABLE}" -C
-                "${FETCHCONTENT_SOURCE_DIR_LLAMA_CPP}"
+        COMMAND "${LILIYA_GIT_EXECUTABLE}" -C "${source_dir}"
                 status --porcelain --untracked-files=no
         RESULT_VARIABLE LILIYA_LLAMA_STATUS_RESULT
         OUTPUT_VARIABLE LILIYA_LLAMA_TRACKED_STATUS
@@ -52,10 +54,22 @@ if(DEFINED FETCHCONTENT_SOURCE_DIR_LLAMA_CPP AND
     )
     if(NOT LILIYA_LLAMA_STATUS_RESULT EQUAL 0 OR
        NOT LILIYA_LLAMA_TRACKED_STATUS STREQUAL "")
-        message(FATAL_ERROR
-            "Local llama.cpp override has tracked modifications"
-        )
+        message(FATAL_ERROR "${source_label} has tracked modifications")
     endif()
+endfunction()
+
+if(DEFINED FETCHCONTENT_SOURCE_DIR_LLAMA_CPP AND
+   NOT "${FETCHCONTENT_SOURCE_DIR_LLAMA_CPP}" STREQUAL "")
+    liliya_validate_llama_source(
+        "${FETCHCONTENT_SOURCE_DIR_LLAMA_CPP}"
+        "Local llama.cpp override"
+    )
+elseif(DEFINED FETCHCONTENT_BASE_DIR AND
+       EXISTS "${FETCHCONTENT_BASE_DIR}/llama_cpp-src/.git")
+    liliya_validate_llama_source(
+        "${FETCHCONTENT_BASE_DIR}/llama_cpp-src"
+        "Cached llama.cpp source"
+    )
 endif()
 
 FetchContent_Declare(
@@ -67,6 +81,10 @@ FetchContent_Declare(
 )
 
 FetchContent_MakeAvailable(llama_cpp)
+
+# Validate a freshly populated source too. Existing caches are validated above before upstream
+# CMake is evaluated; this second check closes the first-population path.
+liliya_validate_llama_source("${llama_cpp_SOURCE_DIR}" "Resolved llama.cpp source")
 
 add_library(
     liliya-llama-jni
