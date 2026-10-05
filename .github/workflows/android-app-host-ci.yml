@@ -78,6 +78,13 @@ jobs:
         with:
           gradle-version: '9.6.1'
 
+      - name: Cache reviewed llama.cpp source
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.GRADLE_USER_HOME }}/caches/liliya-cmake-fetchcontent/*/llama_cpp-src
+          key: liliya-llama-src-${{ runner.os }}-${{ hashFiles('android-llama-cpp-engine/src/main/cpp/CMakeLists.txt') }}
+
+
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
         with:
@@ -213,6 +220,13 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.6.1'
+
+      - name: Cache reviewed llama.cpp source
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.GRADLE_USER_HOME }}/caches/liliya-cmake-fetchcontent/*/llama_cpp-src
+          key: liliya-llama-src-${{ runner.os }}-${{ hashFiles('android-llama-cpp-engine/src/main/cpp/CMakeLists.txt') }}
+
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
