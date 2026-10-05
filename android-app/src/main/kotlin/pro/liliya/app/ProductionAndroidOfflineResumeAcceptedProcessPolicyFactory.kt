@@ -2,7 +2,6 @@ package pro.liliya.app
 
 import android.content.Context
 import java.time.Instant
-import java.util.Base64
 import java.util.concurrent.atomic.AtomicInteger
 import pro.liliya.android.llamacppengine.AndroidLlamaCppCognitiveModelAssembly
 import pro.liliya.android.llamacppengine.LlamaCppEnginePolicy
@@ -84,35 +83,34 @@ import pro.liliya.core.runtime.hardening.RuntimeModelSessionId
 internal object ProductionAndroidOfflineResumeAcceptedProcessPolicyFactory {
     fun create(
         context: Context,
-        trust: AndroidProductRuntimeStartupTrustOwnership
+        trust: AndroidProductRuntimeStartupTrustOwnership,
+        deploymentProfile: ProductionAndroidOfflineDeploymentProfile
     ): ProductionAndroidOfflineResumeProcessPolicy? = try {
+        if (
+            deploymentProfile.offlineResumePolicyId != ACCEPTED_POLICY_ID ||
+            deploymentProfile.offlineResumePolicyVersion != ACCEPTED_POLICY_VERSION
+        ) return null
         val foundation = trust.foundation
         val model = ProtectedModelReference(
             ProtectedModelPackageId(MODEL_PACKAGE_ID),
             ProtectedModelGeneration(1)
         )
 
-        val signerPublicKey = Base64.getDecoder().decode(
-            MODEL_SIGNER_PUBLIC_KEY_X509_BASE64
-        )
-        val signerResolver = try {
-            when (
-                val signerTrust = AndroidProductRuntimeProtectedModelSignerTrust.create(
-                    listOf(
-                        AndroidProductRuntimeProtectedModelSignerTrustKey(
-                            signerId = MODEL_SIGNER_ID,
-                            material = signerPublicKey
-                        )
-                    )
-                )
-            ) {
-                is AndroidProductRuntimeProtectedModelSignerTrustResult.Ready ->
-                    signerTrust.resolver
-                AndroidProductRuntimeProtectedModelSignerTrustResult.Rejected ->
-                    return null
-            }
-        } finally {
-            signerPublicKey.fill(0)
+        val signerTrustKeys = deploymentProfile.copyModelSignerTrustKeys().map { key ->
+            AndroidProductRuntimeProtectedModelSignerTrustKey(
+                signerId = key.signerId,
+                material = key.copyMaterial()
+            )
+        }
+        val signerResolver = when (
+            val signerTrust = AndroidProductRuntimeProtectedModelSignerTrust.create(
+                signerTrustKeys
+            )
+        ) {
+            is AndroidProductRuntimeProtectedModelSignerTrustResult.Ready ->
+                signerTrust.resolver
+            AndroidProductRuntimeProtectedModelSignerTrustResult.Rejected ->
+                return null
         }
 
         val modelDekAssembly = when (
@@ -361,8 +359,6 @@ internal object ProductionAndroidOfflineResumeAcceptedProcessPolicyFactory {
     private const val PROVIDER_ID = "physical-production-hostbootstrap-fixture"
     private const val MODEL_PACKAGE_ID =
             "physical-production-hostbootstrap-qwen3-1.7b-q4km"
-    private const val MODEL_SIGNER_ID =
-            "physical-production-hostbootstrap-model-signer"
     private const val MODEL_DEK_DIRECTORY =
             "physical-production-hostbootstrap-model-dek"
     private const val RUNTIME_SCOPE =
@@ -371,8 +367,8 @@ internal object ProductionAndroidOfflineResumeAcceptedProcessPolicyFactory {
             "physical-production-hostbootstrap-learning-disabled"
     private const val LEARNING_POLICY_RULE =
             "learning disabled until a separately accepted product policy gate"
-    private const val MODEL_SIGNER_PUBLIC_KEY_X509_BASE64 =
-            "MCowBQYDK2VwAyEAe1hVxYk+lojmHmH/9Ix8A76lVPquVk7nOj4h77dpZIk="
+    private const val ACCEPTED_POLICY_ID = "liliya-android-offline-resume-v1"
+    private const val ACCEPTED_POLICY_VERSION = 1L
 
     private const val QWEN_BYTES = 1_282_439_264L
     private const val QWEN_CONTAINER_BYTES = QWEN_BYTES + 128L * 1024L * 1024L
@@ -416,7 +412,8 @@ internal object ProductionAndroidOfflineResumeAcceptedProductInputFactory {
 
         val policy = ProductionAndroidOfflineResumeAcceptedProcessPolicyFactory.create(
             context = context.applicationContext,
-            trust = trust
+            trust = trust,
+            deploymentProfile = material.deploymentProfile
         ) ?: return null
 
         return when (
