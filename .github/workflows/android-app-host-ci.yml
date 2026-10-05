@@ -246,7 +246,7 @@ jobs:
           profile: pixel_6
           disable-animations: true
           script: |
-            bash -lc 'set -o pipefail; gradle :android-app:connectedDebugAndroidTest --console=plain 2>&1 | tee "$RUNNER_TEMP/development-first-working-liliya-cold-start.log"'
+            bash -lc 'set -o pipefail; gradle :android-app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=pro.liliya.app.DevelopmentFirstWorkingLiliyaColdStartInstrumentedTest --console=plain 2>&1 | tee "$RUNNER_TEMP/development-first-working-liliya-cold-start.log"'
 
       - name: Upload cold-start instrumentation diagnostics
         if: always()
