@@ -20,6 +20,44 @@ include(FetchContent)
 # Reviewed upstream checkpoint. Never replace this with a floating branch or tag.
 set(LILIYA_LLAMA_CPP_COMMIT "0f3a71be15af836d277c9f918adfafb45732677e")
 
+# A local source override is a speed optimization only. It must be the exact reviewed commit and
+# must not contain tracked modifications; otherwise fail closed instead of compiling unreviewed
+# native code.
+if(DEFINED FETCHCONTENT_SOURCE_DIR_LLAMA_CPP AND
+   NOT "${FETCHCONTENT_SOURCE_DIR_LLAMA_CPP}" STREQUAL "")
+    find_program(LILIYA_GIT_EXECUTABLE git REQUIRED)
+    execute_process(
+        COMMAND "${LILIYA_GIT_EXECUTABLE}" -C
+                "${FETCHCONTENT_SOURCE_DIR_LLAMA_CPP}" rev-parse HEAD
+        RESULT_VARIABLE LILIYA_LLAMA_GIT_RESULT
+        OUTPUT_VARIABLE LILIYA_LLAMA_GIT_HEAD
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+    )
+    if(NOT LILIYA_LLAMA_GIT_RESULT EQUAL 0 OR
+       NOT LILIYA_LLAMA_GIT_HEAD STREQUAL LILIYA_LLAMA_CPP_COMMIT)
+        message(FATAL_ERROR
+            "Local llama.cpp override is not the reviewed commit ${LILIYA_LLAMA_CPP_COMMIT}"
+        )
+    endif()
+
+    execute_process(
+        COMMAND "${LILIYA_GIT_EXECUTABLE}" -C
+                "${FETCHCONTENT_SOURCE_DIR_LLAMA_CPP}"
+                status --porcelain --untracked-files=no
+        RESULT_VARIABLE LILIYA_LLAMA_STATUS_RESULT
+        OUTPUT_VARIABLE LILIYA_LLAMA_TRACKED_STATUS
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+    )
+    if(NOT LILIYA_LLAMA_STATUS_RESULT EQUAL 0 OR
+       NOT LILIYA_LLAMA_TRACKED_STATUS STREQUAL "")
+        message(FATAL_ERROR
+            "Local llama.cpp override has tracked modifications"
+        )
+    endif()
+endif()
+
 FetchContent_Declare(
     llama_cpp
     GIT_REPOSITORY https://github.com/ggml-org/llama.cpp.git
