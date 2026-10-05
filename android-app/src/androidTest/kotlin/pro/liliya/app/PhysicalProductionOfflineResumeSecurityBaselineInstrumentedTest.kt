@@ -130,6 +130,14 @@ class PhysicalProductionOfflineResumeSecurityBaselineInstrumentedTest {
                             material = publicKey
                         )
                     ),
+                    offlineResumePolicyId = "security-only-baseline-v1",
+                    offlineResumePolicyVersion = 1,
+                    modelSignerTrustKeys = listOf(
+                        ProductionAndroidOfflineDeploymentModelSignerTrustKey(
+                            signerId = "security-only-placeholder",
+                            material = byteArrayOf(1)
+                        )
+                    ),
                     semanticDirectoryName = SEMANTIC_DIRECTORY,
                     cognitiveStorageDirectoryName = COGNITIVE_DIRECTORY
                 )
