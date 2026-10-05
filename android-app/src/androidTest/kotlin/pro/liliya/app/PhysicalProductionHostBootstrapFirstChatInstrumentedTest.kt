@@ -198,6 +198,29 @@ class PhysicalProductionHostBootstrapFirstChatInstrumentedTest {
             } else {
                 "physical-production-hostbootstrap-cognitive-protector-" + runId
             }
+
+        if (preserveOfflineResumeBaseline) {
+            val modelCleanup =
+                PhysicalAcceptanceCognitiveProtectorCleanup.retireProtectedModelExactIfPresent(
+                    targetContext,
+                    modelDekProtectorId,
+                    1L
+                )
+            require(modelCleanup == "ABSENT" || modelCleanup == "RETIRED") {
+                "physical production model protector pre-cleanup rejected: $modelCleanup"
+            }
+
+            val cognitiveCleanup =
+                PhysicalAcceptanceCognitiveProtectorCleanup.retireExactIfPresent(
+                    targetContext,
+                    cognitiveProtectorId,
+                    1L
+                )
+            require(cognitiveCleanup == "ABSENT" || cognitiveCleanup == "RETIRED") {
+                "physical production cognitive protector pre-cleanup rejected: $cognitiveCleanup"
+            }
+        }
+
         fixtureRoot.deleteRecursively()
         semanticRoot.deleteRecursively()
         stagingRoot.deleteRecursively()
