@@ -355,35 +355,32 @@ internal object ProductionAndroidOfflineResumeAcceptedProcessPolicyFactory {
         maxLearningProposalChars = 64
     )
 
-    private companion object {
-        const val FEATURE = "model.local"
-        const val PRINCIPAL = "liliya-product-runtime"
-        const val CAPABILITY = "model.local"
-        const val PROVIDER_ID = "physical-production-hostbootstrap-fixture"
-        const val MODEL_PACKAGE_ID =
+    private const val FEATURE = "model.local"
+    private const val PRINCIPAL = "liliya-product-runtime"
+    private const val CAPABILITY = "model.local"
+    private const val PROVIDER_ID = "physical-production-hostbootstrap-fixture"
+    private const val MODEL_PACKAGE_ID =
             "physical-production-hostbootstrap-qwen3-1.7b-q4km"
-        const val MODEL_SIGNER_ID =
+    private const val MODEL_SIGNER_ID =
             "physical-production-hostbootstrap-model-signer"
-        const val MODEL_DEK_DIRECTORY =
+    private const val MODEL_DEK_DIRECTORY =
             "physical-production-hostbootstrap-model-dek"
-        const val RUNTIME_SCOPE =
+    private const val RUNTIME_SCOPE =
             "physical-production-hostbootstrap-runtime"
-        const val LEARNING_POLICY_ID =
+    private const val LEARNING_POLICY_ID =
             "physical-production-hostbootstrap-learning-disabled"
-        const val LEARNING_POLICY_RULE =
+    private const val LEARNING_POLICY_RULE =
             "learning disabled until a separately accepted product policy gate"
-        const val MODEL_SIGNER_PUBLIC_KEY_X509_BASE64 =
+    private const val MODEL_SIGNER_PUBLIC_KEY_X509_BASE64 =
             "MCowBQYDK2VwAyEAe1hVxYk+lojmHmH/9Ix8A76lVPquVk7nOj4h77dpZIk="
 
-        const val QWEN_BYTES = 1_282_439_264L
-        const val QWEN_CONTAINER_BYTES = QWEN_BYTES + 128L * 1024L * 1024L
-        const val SEGMENT_BYTES = 4 * 1024 * 1024
-        const val MAX_PROMPT_CHARS = 8_192
-        const val MAX_OUTPUT_CHARS = 2_048
-        val ACCEPTED_IDENTITY_TIME: Instant = Instant.parse("2026-10-03T00:00:00Z")
-    }
+    private const val QWEN_BYTES = 1_282_439_264L
+    private const val QWEN_CONTAINER_BYTES = QWEN_BYTES + 128L * 1024L * 1024L
+    private const val SEGMENT_BYTES = 4 * 1024 * 1024
+    private const val MAX_PROMPT_CHARS = 8_192
+    private const val MAX_OUTPUT_CHARS = 2_048
+    private val ACCEPTED_IDENTITY_TIME: Instant = Instant.parse("2026-10-03T00:00:00Z")
 }
-
 
 /**
  * Lightweight process-local factory installed by the application on demand.
