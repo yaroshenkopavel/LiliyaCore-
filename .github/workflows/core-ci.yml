@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - foundation/**
+      - reconciliation/product-core-next-2026-10-05
   pull_request:
     branches:
       - main
