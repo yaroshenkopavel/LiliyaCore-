@@ -37,7 +37,7 @@ class LiliyaProvisioningActivityColdResumeLicenseInstrumentedTest {
             assertColdResumeUi(
                 instrumentation = instrumentation,
                 expectedStatus =
-                    "Лицензия сохранена. Требуется восстановление профиля продукта"
+                    "Сохранённое состояние запуска недоступно"
             )
 
             val published = store.publishedFileForTest()

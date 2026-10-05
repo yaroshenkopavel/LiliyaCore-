@@ -178,9 +178,7 @@ class LiliyaProvisioningActivity : Activity() {
                     ProductionAndroidActivatedLicenseState.MISSING ->
                         renderReadyForActivation("Введите код активации")
                     ProductionAndroidActivatedLicenseState.AVAILABLE ->
-                        renderColdResumeBlocked(
-                            "Лицензия сохранена. Требуется восстановление профиля продукта"
-                        )
+                        attemptOfflineResumeFromLauncher()
                     ProductionAndroidActivatedLicenseState.REJECTED ->
                         renderColdResumeBlocked(
                             "Сохранённое состояние лицензии повреждено"
@@ -269,6 +267,33 @@ class LiliyaProvisioningActivity : Activity() {
                     }
                 }
             }
+        }
+    }
+
+    private fun attemptOfflineResumeFromLauncher() {
+        when (val result = app.attemptOfflineResume()) {
+            is ProductionAndroidOfflineResumeBootstrapResult.Ready ->
+                openRuntimeHost()
+
+            is ProductionAndroidOfflineResumeBootstrapResult.Rejected ->
+                when (result.reason) {
+                    ProductionAndroidOfflineResumeBootstrapFailure.POLICY_REQUIRED ->
+                        renderColdResumeBlocked(
+                            "Лицензия сохранена. Требуется восстановление профиля продукта"
+                        )
+
+                    ProductionAndroidOfflineResumeBootstrapFailure.MATERIAL_REJECTED ->
+                        renderColdResumeBlocked(
+                            "Сохранённое состояние запуска недоступно"
+                        )
+
+                    ProductionAndroidOfflineResumeBootstrapFailure.INPUT_REJECTED,
+                    ProductionAndroidOfflineResumeBootstrapFailure.INSTALL_REJECTED,
+                    ProductionAndroidOfflineResumeBootstrapFailure.FAILED ->
+                        renderColdResumeBlocked(
+                            "Не удалось безопасно восстановить офлайн-запуск"
+                        )
+                }
         }
     }
 

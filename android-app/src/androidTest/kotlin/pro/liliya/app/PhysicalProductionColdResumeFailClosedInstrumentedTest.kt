@@ -48,7 +48,12 @@ class PhysicalProductionColdResumeFailClosedInstrumentedTest {
             ProductionAndroidActivatedLicenseState.MISSING ->
                 "Введите код активации"
             ProductionAndroidActivatedLicenseState.AVAILABLE ->
-                "Лицензия сохранена. Требуется восстановление профиля продукта"
+                when (ProductionAndroidOfflineResumeMaterialLoader.load(application)) {
+                    is ProductionAndroidOfflineResumeMaterialLoadResult.Ready ->
+                        "Лицензия сохранена. Требуется восстановление профиля продукта"
+                    is ProductionAndroidOfflineResumeMaterialLoadResult.Rejected ->
+                        "Сохранённое состояние запуска недоступно"
+                }
             ProductionAndroidActivatedLicenseState.REJECTED ->
                 "Сохранённое состояние лицензии повреждено"
         }

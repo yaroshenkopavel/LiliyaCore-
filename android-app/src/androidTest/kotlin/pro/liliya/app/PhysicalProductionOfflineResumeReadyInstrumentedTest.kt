@@ -270,6 +270,126 @@ class PhysicalProductionOfflineResumeReadyInstrumentedTest {
         }
     }
 
+    internal fun createOfflineResumeProcessPolicy(
+        context: android.content.Context
+    ): ProductionAndroidOfflineResumeProcessPolicy {
+        val foundation = foundation()
+        val model = ProtectedModelReference(
+            ProtectedModelPackageId(MODEL_PACKAGE_ID),
+            ProtectedModelGeneration(1)
+        )
+        val signerPublicKey = Base64.getDecoder().decode(
+            MODEL_SIGNER_PUBLIC_KEY_X509_BASE64
+        )
+        val signerResolver = try {
+            val signerTrust = AndroidProductRuntimeProtectedModelSignerTrust.create(
+                listOf(
+                    AndroidProductRuntimeProtectedModelSignerTrustKey(
+                        signerId = MODEL_SIGNER_ID,
+                        material = signerPublicKey
+                    )
+                )
+            )
+            assertIs<AndroidProductRuntimeProtectedModelSignerTrustResult.Ready>(
+                signerTrust
+            ).resolver
+        } finally {
+            signerPublicKey.fill(0)
+        }
+
+        val modelDekAssembly = assertIs<
+            pro.liliya.android.runtime.AndroidProductRuntimeProtectedModelDekOpenResult.Ready
+        >(
+            pro.liliya.android.runtime.AndroidProductRuntimeProtectedModelDekAssembly.open(
+                context = context,
+                foundation = foundation,
+                directoryName = MODEL_DEK_DIRECTORY
+            )
+        ).assembly
+
+        val protectedOwnership = ProtectedModelRuntimeOwnership().also {
+            it.replaceTarget(model)
+        }
+        val llamaAssembly = llamaAssembly(
+            context = context,
+            foundation = foundation,
+            protectedOwnership = protectedOwnership
+        )
+        val staging = AndroidProductRuntimeProtectedModelStagingProvisioningFactory.create(
+            llamaAssembly = llamaAssembly,
+            signerResolver = signerResolver,
+            packageBudgets = packageBudgets(),
+            dekResolver = modelDekAssembly.store
+        )
+
+        val limits = firstWorkingCognitiveLimits()
+        val structural = assertIs<AndroidProductRuntimeCognitiveStructuralOwnersResult.Ready>(
+            AndroidProductRuntimeCognitiveStructuralOwnersFactory.create(limits)
+        ).owners
+        val learningDisabled = AndroidProductRuntimeFirstWorkingLearningDisabled.create()
+        val policies = LearningPolicyComposition(foundation)
+        val installedPolicy = assertIs<LearningPolicyInstallResult.Installed>(
+            policies.install(
+                LearningPolicy(
+                    id = LearningPolicyId(LEARNING_POLICY_ID),
+                    rule = LEARNING_POLICY_RULE,
+                    createdAt = FIXTURE_TIME
+                )
+            )
+        ).ownership
+
+        val principal = AuthorityPrincipal(PRINCIPAL)
+        val capability = CapabilityId(CAPABILITY)
+        return ProductionAndroidOfflineResumeProcessPolicy(
+            admission = ProductionAndroidOfflineResumeAdmissionPolicy(
+                feature = FEATURE,
+                principal = principal.value,
+                capability = capability.value,
+                authorityScope = AuthorityScope.GLOBAL.value
+            ),
+            authorityPlan = AndroidProductRuntimeStartupAuthorityPlan(
+                capabilities = listOf(
+                    CapabilityDescriptor(
+                        id = capability,
+                        providerId = CapabilityProviderId(PROVIDER_ID)
+                    )
+                ),
+                directGrants = listOf(
+                    DirectAuthorityGrant(
+                        principal = principal,
+                        capability = capability,
+                        scope = AuthorityScope.GLOBAL
+                    )
+                )
+            ),
+            protectedModelBudgets = protectedModelBudgetInput(),
+            staging = staging,
+            preparedInputOwners = AndroidProductRuntimeStartupPreparedInputOwnerTemplate(
+                memoryStoreId = PersistentStoreId("offline-resume-placeholder-memory"),
+                knowledgeStoreId = PersistentStoreId("offline-resume-placeholder-knowledge"),
+                llamaAssembly = llamaAssembly,
+                maxCandidatesPerSource = limits.maxRetrievalResults,
+                personaDefinition = personaDefinition(),
+                scope = CognitiveRuntimeScopeId(RUNTIME_SCOPE),
+                cognitiveMaterialization = structural.cognitiveMaterialization,
+                outcomeMaterialization = structural.outcomeMaterialization,
+                policies = policies,
+                policyReference = LearningPolicyReference(
+                    installedPolicy.policy.id,
+                    installedPolicy.generation
+                ),
+                principal = principal,
+                governance = learningDisabled.governance,
+                learningMaterialization = learningDisabled.learningMaterialization,
+                learningMutationStoreId =
+                    PersistentStoreId("offline-resume-placeholder-learning"),
+                artifactIds = structural.artifactIds,
+                timestamps = structural.timestamps,
+                limits = limits
+            )
+        )
+    }
+
     private fun foundation(): FoundationComposition {
         val logs = InMemoryLogWriter()
         val correlations = AtomicInteger(0)
