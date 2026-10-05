@@ -65,7 +65,7 @@ if(DEFINED FETCHCONTENT_SOURCE_DIR_LLAMA_CPP AND
         "Local llama.cpp override"
     )
 elseif(DEFINED FETCHCONTENT_BASE_DIR AND
-       EXISTS "${FETCHCONTENT_BASE_DIR}/llama_cpp-src/.git")
+       EXISTS "${FETCHCONTENT_BASE_DIR}/llama_cpp-src")
     liliya_validate_llama_source(
         "${FETCHCONTENT_BASE_DIR}/llama_cpp-src"
         "Cached llama.cpp source"
