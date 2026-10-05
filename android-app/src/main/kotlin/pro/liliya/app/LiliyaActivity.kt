@@ -20,6 +20,7 @@ class LiliyaActivity : Activity() {
     private var modelImportInFlight = false
     private var firstRunAcquisitionInFlight = false
     private var stateSaved = false
+    private var renderedTerminalChatRequestId: Long? = null
 
     private lateinit var status: TextView
     private lateinit var transcript: TextView
@@ -35,6 +36,7 @@ class LiliyaActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         conversation = restoreConversation(savedInstanceState)
+        renderedTerminalChatRequestId = restoreRenderedTerminalChatRequestId(savedInstanceState)
         val restoredDraft = restoreInputDraft(savedInstanceState)
         val restoredPendingRetry = restorePendingRetry(savedInstanceState)
         setContentView(buildContent())
@@ -108,6 +110,9 @@ class LiliyaActivity : Activity() {
             if (draft.isNotEmpty()) {
                 outState.putString(INPUT_DRAFT_STATE, draft)
             }
+        }
+        renderedTerminalChatRequestId?.let {
+            outState.putLong(RENDERED_TERMINAL_CHAT_REQUEST_ID_STATE, it)
         }
         if (requestInFlight && pending != null) {
             val retry = ProductConversationPendingRetryState.snapshotWithinBudget(
@@ -271,6 +276,13 @@ class LiliyaActivity : Activity() {
             maxUtf8Bytes = INPUT_DRAFT_SAVED_STATE_MAX_UTF8_BYTES
         )
 
+    private fun restoreRenderedTerminalChatRequestId(state: Bundle?): Long? {
+        if (state == null || !state.containsKey(RENDERED_TERMINAL_CHAT_REQUEST_ID_STATE)) {
+            return null
+        }
+        return state.getLong(RENDERED_TERMINAL_CHAT_REQUEST_ID_STATE).takeIf { it > 0L }
+    }
+
     private fun restoreApplicationChatState(): ProductionAndroidAppChatTaskSnapshot {
         val snapshot = app.observeApplicationChat(::deliverApplicationChatCompletion)
         when (snapshot) {
@@ -278,8 +290,16 @@ class LiliyaActivity : Activity() {
             is ProductionAndroidAppChatTaskSnapshot.InFlight ->
                 restorePendingChat(snapshot.message)
             is ProductionAndroidAppChatTaskSnapshot.Completed -> {
-                restorePendingChat(snapshot.message)
-                deliverApplicationChatCompletion(snapshot)
+                if (renderedTerminalChatRequestId == snapshot.requestId) {
+                    requestInFlight = false
+                    pendingUserMessage = null
+                    if (!stateSaved && app.consumeApplicationChat(snapshot.requestId)) {
+                        renderedTerminalChatRequestId = null
+                    }
+                } else {
+                    restorePendingChat(snapshot.message)
+                    deliverApplicationChatCompletion(snapshot)
+                }
             }
         }
         return snapshot
@@ -302,11 +322,21 @@ class LiliyaActivity : Activity() {
         completed: ProductionAndroidAppChatTaskSnapshot.Completed
     ) {
         runOnUiThread {
-            if (isFinishing || isDestroyed || isChangingConfigurations || stateSaved) {
+            if (isFinishing || isDestroyed || isChangingConfigurations) {
+                return@runOnUiThread
+            }
+            if (stateSaved) {
+                if (renderedTerminalChatRequestId != completed.requestId) {
+                    applyApplicationChatCompletion(completed)
+                    renderedTerminalChatRequestId = completed.requestId
+                }
                 return@runOnUiThread
             }
             if (!app.consumeApplicationChat(completed.requestId)) return@runOnUiThread
-            applyApplicationChatCompletion(completed)
+            if (renderedTerminalChatRequestId != completed.requestId) {
+                applyApplicationChatCompletion(completed)
+            }
+            renderedTerminalChatRequestId = null
         }
     }
 
@@ -655,6 +685,8 @@ class LiliyaActivity : Activity() {
         const val TRANSCRIPT_MESSAGES_STATE = "liliya.transcript.messages"
         const val INPUT_DRAFT_STATE = "liliya.input.draft"
         const val PENDING_CHAT_RETRY_STATE = "liliya.input.pending-chat-retry"
+        const val RENDERED_TERMINAL_CHAT_REQUEST_ID_STATE =
+            "liliya.chat.rendered-terminal-request-id"
         const val TRANSCRIPT_SAVED_STATE_MAX_ENTRIES = 64
         const val TRANSCRIPT_SAVED_STATE_MAX_UTF8_BYTES = 48 * 1024
         const val INPUT_DRAFT_SAVED_STATE_MAX_UTF8_BYTES = 8 * 1024
