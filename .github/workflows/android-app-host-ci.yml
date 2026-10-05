@@ -151,13 +151,20 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
+      - name: Resolve live semantic provenance artifact
+        id: semantic-provenance
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash .github/scripts/resolve-semantic-provenance-run.sh
+
       - name: Download exact semantic provenance bundle
         uses: actions/download-artifact@v4
         with:
           name: semantic-onnx-provenance
           path: ${{ runner.temp }}/semantic-onnx-download
           repository: ${{ github.repository }}
-          run-id: '33981322350'
+          run-id: ${{ steps.semantic-provenance.outputs.run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Verify and stage exact semantic test assets
