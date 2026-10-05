@@ -85,8 +85,21 @@ class LiliyaApplication : Application() {
     internal fun hasOfflineResumePolicy(): Boolean =
         ProductionAndroidOfflineResumePolicyOwner.current() != null
 
-    internal fun attemptOfflineResume(): ProductionAndroidOfflineResumeBootstrapResult =
-        ProductionAndroidOfflineResumeBootstrap.prepareAndInstall(this)
+    internal fun attemptOfflineResume(): ProductionAndroidOfflineResumeBootstrapResult {
+        ensureProductionOfflineResumePolicy()
+        return ProductionAndroidOfflineResumeBootstrap.prepareAndInstall(this)
+    }
+
+    private fun ensureProductionOfflineResumePolicy(): Boolean {
+        if (ProductionAndroidOfflineResumePolicyOwner.current() != null) return true
+        return try {
+            ProductionAndroidOfflineResumePolicyOwner.install(
+                ProductionAndroidOfflineResumeAcceptedProductInputFactory.create(this)
+            ) || ProductionAndroidOfflineResumePolicyOwner.current() != null
+        } catch (_: Throwable) {
+            false
+        }
+    }
 
     internal fun hasFirstRunAcquisitionConfiguration(): Boolean =
         ProductionAndroidFirstRunConfigurationOwner.current() != null
