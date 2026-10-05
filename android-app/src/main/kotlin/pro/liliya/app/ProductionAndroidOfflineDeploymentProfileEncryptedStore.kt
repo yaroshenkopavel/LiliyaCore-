@@ -30,6 +30,14 @@ internal class ProductionAndroidOfflineDeploymentLicenseTrustKey(
     fun copyMaterial(): ByteArray = materialBytes.copyOf()
 }
 
+internal class ProductionAndroidOfflineDeploymentModelSignerTrustKey(
+    val signerId: String,
+    material: ByteArray
+) {
+    private val materialBytes = material.copyOf()
+    fun copyMaterial(): ByteArray = materialBytes.copyOf()
+}
+
 internal class ProductionAndroidOfflineDeploymentProfile(
     val productId: String,
     val endpoint: String,
@@ -38,6 +46,9 @@ internal class ProductionAndroidOfflineDeploymentProfile(
     tlsCertificates: List<ByteArray>,
     val supportedLicenseSchemaVersion: Long,
     licenseTrustKeys: List<ProductionAndroidOfflineDeploymentLicenseTrustKey>,
+    val offlineResumePolicyId: String,
+    val offlineResumePolicyVersion: Long,
+    modelSignerTrustKeys: List<ProductionAndroidOfflineDeploymentModelSignerTrustKey>,
     val semanticDirectoryName: String,
     val cognitiveStorageDirectoryName: String?
 ) {
@@ -45,10 +56,17 @@ internal class ProductionAndroidOfflineDeploymentProfile(
     private val trustKeys = licenseTrustKeys.map {
         ProductionAndroidOfflineDeploymentLicenseTrustKey(it.keyId, it.copyMaterial())
     }
+    private val modelSignerKeys = modelSignerTrustKeys.map {
+        ProductionAndroidOfflineDeploymentModelSignerTrustKey(it.signerId, it.copyMaterial())
+    }
 
     fun copyTlsCertificates(): List<ByteArray> = tlsCertificateBytes.map { it.copyOf() }
     fun copyLicenseTrustKeys(): List<ProductionAndroidOfflineDeploymentLicenseTrustKey> =
         trustKeys.map { ProductionAndroidOfflineDeploymentLicenseTrustKey(it.keyId, it.copyMaterial()) }
+    fun copyModelSignerTrustKeys(): List<ProductionAndroidOfflineDeploymentModelSignerTrustKey> =
+        modelSignerKeys.map {
+            ProductionAndroidOfflineDeploymentModelSignerTrustKey(it.signerId, it.copyMaterial())
+        }
 }
 
 internal sealed interface ProductionAndroidOfflineDeploymentProfileStoreResult {
@@ -154,6 +172,9 @@ internal class ProductionAndroidOfflineDeploymentProfileEncryptedStore private c
             profile.connectTimeoutMillis !in 1..MAX_TIMEOUT_MILLIS ||
             profile.readTimeoutMillis !in 1..MAX_TIMEOUT_MILLIS ||
             profile.supportedLicenseSchemaVersion <= 0L ||
+            profile.offlineResumePolicyId.isBlank() ||
+            profile.offlineResumePolicyId.length > MAX_STRING_CHARS ||
+            profile.offlineResumePolicyVersion <= 0L ||
             profile.semanticDirectoryName.isBlank() ||
             profile.semanticDirectoryName.length > MAX_STRING_CHARS ||
             (profile.cognitiveStorageDirectoryName?.length ?: 0) > MAX_STRING_CHARS
@@ -161,7 +182,9 @@ internal class ProductionAndroidOfflineDeploymentProfileEncryptedStore private c
 
         val certs = profile.copyTlsCertificates()
         val keys = profile.copyLicenseTrustKeys()
+        val modelSignerKeys = profile.copyModelSignerTrustKeys()
         if (certs.size > MAX_CERTIFICATES || keys.isEmpty() || keys.size > MAX_TRUST_KEYS) return null
+        if (modelSignerKeys.isEmpty() || modelSignerKeys.size > MAX_MODEL_SIGNER_KEYS) return null
         if (certs.any { it.isEmpty() || it.size > MAX_BLOB_BYTES }) return null
         if (keys.any {
                 it.keyId.isBlank() || it.keyId.length > MAX_STRING_CHARS ||
@@ -169,6 +192,12 @@ internal class ProductionAndroidOfflineDeploymentProfileEncryptedStore private c
             }
         ) return null
         if (keys.map { it.keyId }.toSet().size != keys.size) return null
+        if (modelSignerKeys.any {
+                it.signerId.isBlank() || it.signerId.length > MAX_STRING_CHARS ||
+                    it.copyMaterial().let { bytes -> bytes.isEmpty() || bytes.size > MAX_BLOB_BYTES }
+            }
+        ) return null
+        if (modelSignerKeys.map { it.signerId }.toSet().size != modelSignerKeys.size) return null
 
         ByteArrayOutputStream().use { output ->
             DataOutputStream(output).use { data ->
@@ -179,6 +208,8 @@ internal class ProductionAndroidOfflineDeploymentProfileEncryptedStore private c
                 data.writeInt(profile.connectTimeoutMillis)
                 data.writeInt(profile.readTimeoutMillis)
                 data.writeLong(profile.supportedLicenseSchemaVersion)
+                writeString(data, profile.offlineResumePolicyId)
+                data.writeLong(profile.offlineResumePolicyVersion)
                 writeString(data, profile.semanticDirectoryName)
                 writeString(data, profile.cognitiveStorageDirectoryName.orEmpty())
                 data.writeInt(certs.size)
@@ -186,6 +217,11 @@ internal class ProductionAndroidOfflineDeploymentProfileEncryptedStore private c
                 data.writeInt(keys.size)
                 keys.forEach { key ->
                     writeString(data, key.keyId)
+                    writeBytes(data, key.copyMaterial())
+                }
+                data.writeInt(modelSignerKeys.size)
+                modelSignerKeys.forEach { key ->
+                    writeString(data, key.signerId)
                     writeBytes(data, key.copyMaterial())
                 }
             }
@@ -203,6 +239,8 @@ internal class ProductionAndroidOfflineDeploymentProfileEncryptedStore private c
             val connectTimeout = data.readInt()
             val readTimeout = data.readInt()
             val schema = data.readLong()
+            val policyId = readString(data) ?: return null
+            val policyVersion = data.readLong()
             val semantic = readString(data) ?: return null
             val cognitive = readString(data) ?: return null
 
@@ -220,6 +258,19 @@ internal class ProductionAndroidOfflineDeploymentProfileEncryptedStore private c
                 keys += ProductionAndroidOfflineDeploymentLicenseTrustKey(keyId, material)
                 material.fill(0)
             }
+            val modelSignerKeyCount = data.readInt()
+            if (modelSignerKeyCount !in 1..MAX_MODEL_SIGNER_KEYS) return null
+            val modelSignerKeys =
+                ArrayList<ProductionAndroidOfflineDeploymentModelSignerTrustKey>(modelSignerKeyCount)
+            repeat(modelSignerKeyCount) {
+                val signerId = readString(data) ?: return null
+                val material = readBytes(data) ?: return null
+                modelSignerKeys += ProductionAndroidOfflineDeploymentModelSignerTrustKey(
+                    signerId,
+                    material
+                )
+                material.fill(0)
+            }
             if (data.available() != 0) return null
 
             val profile = ProductionAndroidOfflineDeploymentProfile(
@@ -230,6 +281,9 @@ internal class ProductionAndroidOfflineDeploymentProfileEncryptedStore private c
                 tlsCertificates = certs,
                 supportedLicenseSchemaVersion = schema,
                 licenseTrustKeys = keys,
+                offlineResumePolicyId = policyId,
+                offlineResumePolicyVersion = policyVersion,
+                modelSignerTrustKeys = modelSignerKeys,
                 semanticDirectoryName = semantic,
                 cognitiveStorageDirectoryName = cognitive.ifBlank { null }
             )
@@ -374,7 +428,7 @@ internal class ProductionAndroidOfflineDeploymentProfileEncryptedStore private c
         private const val ANDROID_KEYSTORE = "AndroidKeyStore"
         private const val CIPHER = "AES/GCM/NoPadding"
         private const val INNER_MAGIC = 0x4C4F4450
-        private const val INNER_VERSION = 1
+        private const val INNER_VERSION = 2
         private const val OUTER_MAGIC = 0x4C4F4431
         private const val OUTER_VERSION = 1
         private const val TAG_BITS = 128
@@ -385,6 +439,7 @@ internal class ProductionAndroidOfflineDeploymentProfileEncryptedStore private c
         private const val MAX_TIMEOUT_MILLIS = 300_000
         private const val MAX_CERTIFICATES = 8
         private const val MAX_TRUST_KEYS = 16
+        private const val MAX_MODEL_SIGNER_KEYS = 8
         private const val MAX_BLOB_BYTES = 262_144
         private const val MAX_PLAINTEXT_BYTES = 1_048_576
         private const val MAX_CIPHERTEXT_BYTES = MAX_PLAINTEXT_BYTES + 64
