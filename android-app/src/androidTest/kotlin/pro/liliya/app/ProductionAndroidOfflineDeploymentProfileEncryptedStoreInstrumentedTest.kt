@@ -34,6 +34,14 @@ class ProductionAndroidOfflineDeploymentProfileEncryptedStoreInstrumentedTest {
                     material = byteArrayOf(9, 8, 7, 6)
                 )
             ),
+            offlineResumePolicyId = "liliya-android-offline-resume-v1",
+            offlineResumePolicyVersion = 1,
+            modelSignerTrustKeys = listOf(
+                ProductionAndroidOfflineDeploymentModelSignerTrustKey(
+                    signerId = "model-signer-v1",
+                    material = byteArrayOf(6, 7, 8, 9)
+                )
+            ),
             semanticDirectoryName = "semantic-v1",
             cognitiveStorageDirectoryName = "cognitive-v1"
         )
@@ -55,6 +63,8 @@ class ProductionAndroidOfflineDeploymentProfileEncryptedStoreInstrumentedTest {
                 expected.supportedLicenseSchemaVersion,
                 loaded.supportedLicenseSchemaVersion
             )
+            assertEquals(expected.offlineResumePolicyId, loaded.offlineResumePolicyId)
+            assertEquals(expected.offlineResumePolicyVersion, loaded.offlineResumePolicyVersion)
             assertEquals(expected.semanticDirectoryName, loaded.semanticDirectoryName)
             assertEquals(
                 expected.cognitiveStorageDirectoryName,
@@ -70,6 +80,13 @@ class ProductionAndroidOfflineDeploymentProfileEncryptedStoreInstrumentedTest {
             assertEquals(
                 expectedKey.copyMaterial().toList(),
                 loadedKey.copyMaterial().toList()
+            )
+            val expectedModelKey = expected.copyModelSignerTrustKeys().single()
+            val loadedModelKey = loaded.copyModelSignerTrustKeys().single()
+            assertEquals(expectedModelKey.signerId, loadedModelKey.signerId)
+            assertEquals(
+                expectedModelKey.copyMaterial().toList(),
+                loadedModelKey.copyMaterial().toList()
             )
 
             val file = store.publishedFileForTest()
