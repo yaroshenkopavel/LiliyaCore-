@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+      - feature/259-android-activation-redemption-v1-2026-10-02
+      - fix/259-cold-launch-policy-reconstruction-2026-10-05
     paths:
       - '.github/workflows/android-app-host-ci.yml'
       - 'build.gradle.kts'
