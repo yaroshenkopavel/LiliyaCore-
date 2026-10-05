@@ -21,7 +21,7 @@ else
   )"
 
   run_id="$(
-    python3 - "$artifact_name" <<'PY' <<<"$payload"
+    printf '%s' "$payload" | python3 -c '
 import json
 import sys
 
@@ -44,7 +44,7 @@ if not candidates:
 
 candidates.sort(reverse=True)
 print(candidates[0][1])
-PY
+' "$artifact_name"
   )"
 fi
 
