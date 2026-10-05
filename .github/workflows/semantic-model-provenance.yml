@@ -2,6 +2,8 @@ name: Semantic Model Provenance
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '17 3 1 * *'
   push:
     branches:
       - semantic/**
@@ -95,7 +97,7 @@ jobs:
             ${{ runner.temp }}/semantic-onnx-a/semantic-onnx-provenance.json
             ${{ runner.temp }}/semantic-onnx-pip-freeze.txt
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 90
 
       - name: Export exact reproduced artifact identity
         shell: bash
