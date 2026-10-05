@@ -42,6 +42,14 @@ internal object ProductionAndroidOfflineDeploymentProfileFactory {
                         material = key.copyMaterial()
                     )
                 },
+                offlineResumePolicyId = template.offlineResumePolicyId,
+                offlineResumePolicyVersion = template.offlineResumePolicyVersion,
+                modelSignerTrustKeys = template.offlineResumeModelSignerTrustKeys.map { key ->
+                    ProductionAndroidOfflineDeploymentModelSignerTrustKey(
+                        signerId = key.signerId,
+                        material = key.copyMaterial()
+                    )
+                },
                 semanticDirectoryName = template.semanticDirectoryName,
                 cognitiveStorageDirectoryName = template.cognitiveStorageDirectoryName
             )
