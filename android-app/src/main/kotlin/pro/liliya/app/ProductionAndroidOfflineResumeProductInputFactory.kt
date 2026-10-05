@@ -207,7 +207,7 @@ internal object ProductionAndroidOfflineResumeDefaultProductInputFactory {
         return ProductionAndroidOfflineResumeProductInputResult.Ready(input)
     }
 
-    private fun buildExactInput(
+    internal fun buildExactInput(
         context: Context,
         material: ProductionAndroidOfflineResumeMaterial,
         policy: ProductionAndroidOfflineResumeProcessPolicy,
