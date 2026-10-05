@@ -541,6 +541,17 @@ class PhysicalProductionHostBootstrapFirstChatInstrumentedTest {
                                             material = licenseMaterial.publicKey
                                         )
                                     ),
+                                    offlineResumePolicyId = "liliya-android-offline-resume-v1",
+                                    offlineResumePolicyVersion = 1,
+                                    modelSignerTrustKeys = listOf(
+                                        ProductionAndroidOfflineDeploymentModelSignerTrustKey(
+                                            signerId =
+                                                "physical-production-hostbootstrap-model-signer",
+                                            material = Base64.getDecoder().decode(
+                                                OFFLINE_RESUME_MODEL_SIGNER_PUBLIC_KEY_X509_BASE64
+                                            )
+                                        )
+                                    ),
                                     semanticDirectoryName =
                                         AndroidOfflineSemanticArtifactProvisioner.DEFAULT_DIRECTORY,
                                     cognitiveStorageDirectoryName =
