@@ -63,9 +63,13 @@ internal data class ProductionAndroidFirstRunProductInputTemplate(
             licenseTrustKeys = licenseTrustKeys,
             licenseEnvelope = envelope,
             authorityPlan = authorityPlan,
-            admission = admission.copy(
-                requiredDeviceBindingReference = requiredDeviceBindingReference
-            ),
+            admission = if (requiredDeviceBindingReference == null) {
+                admission
+            } else {
+                admission.copy(
+                    requiredDeviceBindingReference = requiredDeviceBindingReference
+                )
+            },
             keyChoice = keyChoice,
             localModelFile = localModelFile,
             protectedModelBudgets = protectedModelBudgets,
