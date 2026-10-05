@@ -8,6 +8,7 @@ import pro.liliya.android.runtime.AndroidProductRuntimeLicenseTrustKey
 import pro.liliya.android.runtime.AndroidProductRuntimeObservability
 import pro.liliya.android.runtime.AndroidProductRuntimeProtectedModelBudgetInput
 import pro.liliya.android.runtime.AndroidProductRuntimeProtectedModelStagingProvisioning
+import pro.liliya.android.runtime.AndroidProductRuntimeProtectedModelSignerTrustKey
 import pro.liliya.android.runtime.AndroidProductRuntimeStartupAdmissionInput
 import pro.liliya.android.runtime.AndroidProductRuntimeStartupAuthorityPlan
 import pro.liliya.android.runtime.AndroidProductRuntimeStartupPreparedInputOwnerTemplate
@@ -37,6 +38,9 @@ internal data class ProductionAndroidFirstRunProductInputTemplate(
     val protectedModelBudgets: AndroidProductRuntimeProtectedModelBudgetInput,
     val staging: AndroidProductRuntimeProtectedModelStagingProvisioning,
     val preparedInputOwners: AndroidProductRuntimeStartupPreparedInputOwnerTemplate,
+    val offlineResumePolicyId: String,
+    val offlineResumePolicyVersion: Long,
+    val offlineResumeModelSignerTrustKeys: List<AndroidProductRuntimeProtectedModelSignerTrustKey>,
     val semanticDirectoryName: String,
     val cognitiveStorageDirectoryName: String? = null
 ) {
