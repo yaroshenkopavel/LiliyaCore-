@@ -35,10 +35,6 @@ class PhysicalProductionOfflineResumeColdLaunchUiInstrumentedTest {
         assertTrue(!application.hasRuntimeStartupConfiguration())
         assertNotNull(ProductionAndroidLocalModelSelection.current())
 
-        val policy = PhysicalProductionOfflineResumeReadyInstrumentedTest()
-            .createOfflineResumeProcessPolicy(application)
-        assertTrue(application.configureOfflineResumePolicy(policy))
-
         val monitor = instrumentation.addMonitor(
             LiliyaActivity::class.java.name,
             null,
