@@ -33,6 +33,8 @@ repositories {
 dependencies {
     implementation(project(":android-runtime"))
     implementation(project(":android-device-key"))
+    implementation(project(":android-llama-cpp-engine"))
+    implementation(project(":android-protected-model-staging"))
     implementation(project(":license-transport-client"))
 
     testImplementation(kotlin("test"))
