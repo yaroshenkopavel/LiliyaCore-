@@ -1,5 +1,9 @@
 name: Production Android App Host CI
 
+concurrency:
+  group: production-android-app-host-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
     branches:
