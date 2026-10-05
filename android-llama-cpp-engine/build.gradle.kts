@@ -2,6 +2,11 @@ plugins {
     id("com.android.library")
 }
 
+val llamaCppFetchContentBase =
+    gradle.gradleUserHomeDir
+        .resolve("caches/liliya-cmake-fetchcontent")
+        .absolutePath
+        .replace("\\", "/")
 val llamaCppSourceOverride =
     providers.environmentVariable("LILIYA_LLAMA_CPP_SOURCE_DIR").orNull
 val llamaCppSourceOverrideArgument = llamaCppSourceOverride
@@ -35,6 +40,8 @@ android {
                     "-DGGML_OPENMP=OFF",
                     "-DGGML_CPU_KLEIDIAI=OFF",
                     "-DGGML_BACKEND_DL=OFF",
+                    "-DFETCHCONTENT_BASE_DIR=$llamaCppFetchContentBase",
+                    "-DFETCHCONTENT_UPDATES_DISCONNECTED=ON",
                 )
                 if (llamaCppSourceOverrideArgument != null) {
                     arguments +=
