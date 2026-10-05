@@ -14,6 +14,7 @@ import pro.liliya.android.runtime.AndroidProductRuntimeFirstRunKeySecurity
 import pro.liliya.android.runtime.AndroidProductRuntimeObservability
 import pro.liliya.android.runtime.AndroidProductRuntimeProtectedModelBudgetInput
 import pro.liliya.android.runtime.AndroidProductRuntimeProtectedModelStagingProvisioning
+import pro.liliya.android.runtime.AndroidProductRuntimeProtectedModelSignerTrustKey
 import pro.liliya.android.runtime.AndroidProductRuntimeStartupAdmissionInput
 import pro.liliya.android.runtime.AndroidProductRuntimeStartupAuthorityPlan
 import pro.liliya.android.runtime.AndroidProductRuntimeStartupPreparedInputOwnerTemplate
@@ -43,6 +44,9 @@ class ProductionAndroidFirstRunProductInputTemplateContractTest {
                 "protectedModelBudgets",
                 "staging",
                 "preparedInputOwners",
+                "offlineResumePolicyId",
+                "offlineResumePolicyVersion",
+                "offlineResumeModelSignerTrustKeys",
                 "semanticDirectoryName",
                 "cognitiveStorageDirectoryName"
             ),
@@ -114,6 +118,14 @@ class ProductionAndroidFirstRunProductInputTemplateContractTest {
             protectedModelBudgets = budgets,
             staging = staging,
             preparedInputOwners = preparedOwners,
+            offlineResumePolicyId = "liliya-offline-resume-v1",
+            offlineResumePolicyVersion = 1,
+            offlineResumeModelSignerTrustKeys = listOf(
+                AndroidProductRuntimeProtectedModelSignerTrustKey(
+                    signerId = "model-signer-v1",
+                    material = byteArrayOf(7, 8, 9)
+                )
+            ),
             semanticDirectoryName = "semantic-exact",
             cognitiveStorageDirectoryName = "cognitive-exact"
         )
