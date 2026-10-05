@@ -2,6 +2,12 @@ plugins {
     id("com.android.library")
 }
 
+val llamaCppSourceOverride =
+    providers.environmentVariable("LILIYA_LLAMA_CPP_SOURCE_DIR").orNull
+val llamaCppSourceOverrideArgument = llamaCppSourceOverride
+    ?.takeIf { it.isNotBlank() }
+    ?.let { file(it).absolutePath.replace("\\", "/") }
+
 android {
     namespace = "pro.liliya.android.llamacppengine"
     compileSdk = 35
@@ -30,6 +36,10 @@ android {
                     "-DGGML_CPU_KLEIDIAI=OFF",
                     "-DGGML_BACKEND_DL=OFF",
                 )
+                if (llamaCppSourceOverrideArgument != null) {
+                    arguments +=
+                        "-DFETCHCONTENT_SOURCE_DIR_LLAMA_CPP=$llamaCppSourceOverrideArgument"
+                }
             }
         }
     }
