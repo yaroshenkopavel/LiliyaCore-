@@ -11,6 +11,7 @@ import pro.liliya.android.runtime.AndroidHeartProductionPersonaDefinition
 import pro.liliya.android.runtime.AndroidProductRuntimeCognitiveStructuralOwnersFactory
 import pro.liliya.android.runtime.AndroidProductRuntimeCognitiveStructuralOwnersResult
 import pro.liliya.android.runtime.AndroidProductRuntimeFirstWorkingLearningDisabled
+import pro.liliya.android.runtime.AndroidProductRuntimeFirstRunProductInput
 import pro.liliya.android.runtime.AndroidProductRuntimeProtectedModelBudgetInput
 import pro.liliya.android.runtime.AndroidProductRuntimeProtectedModelSignerTrust
 import pro.liliya.android.runtime.AndroidProductRuntimeProtectedModelSignerTrustKey
@@ -380,5 +381,80 @@ internal object ProductionAndroidOfflineResumeAcceptedProcessPolicyFactory {
         const val MAX_PROMPT_CHARS = 8_192
         const val MAX_OUTPUT_CHARS = 2_048
         val ACCEPTED_IDENTITY_TIME: Instant = Instant.parse("2026-10-03T00:00:00Z")
+    }
+}
+
+
+/**
+ * Lightweight process-local factory installed by the application on demand.
+ *
+ * Installation of this factory is inert. Durable material is not loaded and no trust, Authority or
+ * Execution state is created until [ProductionAndroidOfflineResumeProductInputFactory.create] is
+ * invoked by the normal offline-resume bootstrap.
+ */
+internal object ProductionAndroidOfflineResumeAcceptedProductInputFactory {
+    fun create(
+        context: Context
+    ): ProductionAndroidOfflineResumeProductInputFactory =
+        ProductionAndroidOfflineResumeProductInputFactory { material ->
+            createInput(
+                context = context.applicationContext,
+                material = material
+            )
+        }
+
+    private fun createInput(
+        context: Context,
+        material: ProductionAndroidOfflineResumeMaterial
+    ): AndroidProductRuntimeFirstRunProductInput? {
+        val trust = when (
+            val verified = ProductionAndroidOfflineResumeTrustVerifier.verify(
+                context = context.applicationContext,
+                material = material
+            )
+        ) {
+            is ProductionAndroidOfflineResumeTrustResult.Ready -> verified.ownership
+            is ProductionAndroidOfflineResumeTrustResult.Rejected -> return null
+        }
+
+        val policy = ProductionAndroidOfflineResumeAcceptedProcessPolicyFactory.create(
+            context = context.applicationContext,
+            trust = trust
+        ) ?: return null
+
+        return when (
+            val built = ProductionAndroidOfflineResumeDefaultProductInputFactory.build(
+                material = material,
+                policy = policy,
+                trustPort = ProductionAndroidOfflineResumeTrustPort {
+                    ProductionAndroidOfflineResumeTrustResult.Ready(trust)
+                },
+                admissionPort = ProductionAndroidOfflineResumeAdmissionPort {
+                        exactMaterial,
+                        exactTrust,
+                        admissionPolicy ->
+                    ProductionAndroidOfflineResumeAdmissionBuilder.build(
+                        context = context.applicationContext,
+                        material = exactMaterial,
+                        trust = exactTrust,
+                        policy = admissionPolicy
+                    )
+                },
+                inputBuildPort = ProductionAndroidOfflineResumeInputBuildPort {
+                        exactMaterial,
+                        exactPolicy,
+                        admission ->
+                    ProductionAndroidOfflineResumeDefaultProductInputFactory.buildExactInput(
+                        context = context.applicationContext,
+                        material = exactMaterial,
+                        policy = exactPolicy,
+                        admission = admission
+                    )
+                }
+            )
+        ) {
+            is ProductionAndroidOfflineResumeProductInputResult.Ready -> built.input
+            is ProductionAndroidOfflineResumeProductInputResult.Rejected -> null
+        }
     }
 }
