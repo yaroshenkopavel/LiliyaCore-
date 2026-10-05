@@ -2,9 +2,20 @@ plugins {
     id("com.android.library")
 }
 
+val llamaCppCommit = file("src/main/cpp/CMakeLists.txt").useLines { lines ->
+    lines
+        .map { it.trim() }
+        .first { it.startsWith("set(LILIYA_LLAMA_CPP_COMMIT \"") }
+        .substringAfter('"')
+        .substringBefore('"')
+}.also {
+    require(it.matches(Regex("[0-9a-f]{40}"))) {
+        "LILIYA_LLAMA_CPP_COMMIT must be one exact lowercase SHA-1"
+    }
+}
 val llamaCppFetchContentBase =
     gradle.gradleUserHomeDir
-        .resolve("caches/liliya-cmake-fetchcontent")
+        .resolve("caches/liliya-cmake-fetchcontent/$llamaCppCommit")
         .absolutePath
         .replace("\\", "/")
 val llamaCppSourceOverride =
