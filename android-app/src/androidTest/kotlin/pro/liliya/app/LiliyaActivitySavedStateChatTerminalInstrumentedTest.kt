@@ -24,7 +24,7 @@ import pro.liliya.android.runtime.ProductChatResult
 @RunWith(AndroidJUnit4::class)
 class LiliyaActivitySavedStateChatTerminalInstrumentedTest {
     @Test
-    fun terminal_after_saved_state_is_retained_until_recreated_activity_consumes_it() {
+    fun terminal_after_saved_state_renders_once_and_is_retained_until_recreated_activity_consumes_it() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val application = instrumentation.targetContext.applicationContext as LiliyaApplication
 
@@ -102,7 +102,11 @@ class LiliyaActivitySavedStateChatTerminalInstrumentedTest {
 
             val retained = assertIs<ProductionAndroidAppChatTaskSnapshot.Completed>(chatTask.snapshot())
             assertEquals(started.requestId, retained.requestId)
-            assertTrue(!hasTextContaining(instrumentation, launched, "Saved-state reply"))
+            assertTrue(hasTextContaining(instrumentation, launched, "Saved-state reply"))
+            assertEquals(
+                1,
+                countTextOccurrences(instrumentation, launched, "Saved-state reply")
+            )
 
             instrumentation.runOnMainSync { launched.recreate() }
             assertTrue(recreatedCreated.await(10, TimeUnit.SECONDS))
@@ -113,6 +117,10 @@ class LiliyaActivitySavedStateChatTerminalInstrumentedTest {
             assertTrue(recreated !== launched)
             assertIs<ProductionAndroidAppChatTaskSnapshot.Idle>(chatTask.snapshot())
             assertTrue(hasTextContaining(instrumentation, recreated, "Saved-state reply"))
+            assertEquals(
+                1,
+                countTextOccurrences(instrumentation, recreated, "Saved-state reply")
+            )
         } finally {
             heldStartup.set(null)
             heldChat.set(null)
@@ -155,6 +163,36 @@ class LiliyaActivitySavedStateChatTerminalInstrumentedTest {
             result.set(containsText(activity.window.decorView, expected, exact = false))
         }
         return result.get()
+    }
+
+    private fun countTextOccurrences(
+        instrumentation: android.app.Instrumentation,
+        activity: Activity,
+        expected: String
+    ): Int {
+        val result = AtomicInteger(0)
+        instrumentation.runOnMainSync {
+            result.set(countTextOccurrences(activity.window.decorView, expected))
+        }
+        return result.get()
+    }
+
+    private fun countTextOccurrences(view: View, expected: String): Int {
+        var count = 0
+        if (view is TextView) {
+            val text = view.text?.toString().orEmpty()
+            var index = text.indexOf(expected)
+            while (index >= 0) {
+                count += 1
+                index = text.indexOf(expected, index + expected.length)
+            }
+        }
+        if (view is ViewGroup) {
+            for (childIndex in 0 until view.childCount) {
+                count += countTextOccurrences(view.getChildAt(childIndex), expected)
+            }
+        }
+        return count
     }
 
     private fun containsText(view: View, expected: String, exact: Boolean): Boolean {
