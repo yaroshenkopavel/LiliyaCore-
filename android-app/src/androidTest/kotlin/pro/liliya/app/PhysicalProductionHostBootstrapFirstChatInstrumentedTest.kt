@@ -298,6 +298,7 @@ class PhysicalProductionHostBootstrapFirstChatInstrumentedTest {
                 assertIs<ProductionAndroidLocalModelSelectionResult.Selected>(
                     ProductionAndroidLocalModelSelection.importSelected(
                         directory = modelDirectory,
+                        maxImportBytes = containerBytes,
                         openInput = { protectedPackage.inputStream() }
                     )
                 ).file

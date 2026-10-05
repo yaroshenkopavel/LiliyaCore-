@@ -130,13 +130,18 @@ class AndroidDurablePersistentRecordBackend private constructor(
         }
 
         return try {
-            when (val decoded = AndroidPersistentStateCodec.decode(target.readBytes())) {
-                is AndroidPersistentStateCodec.DecodeResult.Decoded -> {
-                    if (decoded.state.storeId != storeId) PublishedState.Corrupt
-                    else PublishedState.Ready(decoded.revision, decoded.state)
+            val encoded = target.readBytes()
+            try {
+                when (val decoded = AndroidPersistentStateCodec.decode(encoded)) {
+                    is AndroidPersistentStateCodec.DecodeResult.Decoded -> {
+                        if (decoded.state.storeId != storeId) PublishedState.Corrupt
+                        else PublishedState.Ready(decoded.revision, decoded.state)
+                    }
+                    AndroidPersistentStateCodec.DecodeResult.Corrupt -> PublishedState.Corrupt
+                    AndroidPersistentStateCodec.DecodeResult.Incompatible -> PublishedState.Incompatible
                 }
-                AndroidPersistentStateCodec.DecodeResult.Corrupt -> PublishedState.Corrupt
-                AndroidPersistentStateCodec.DecodeResult.Incompatible -> PublishedState.Incompatible
+            } finally {
+                encoded.fill(0)
             }
         } catch (e: IOException) {
             PublishedState.Failed(e)
@@ -289,22 +294,28 @@ internal object AndroidPersistentStateCodec {
                 }
         }
         val body = bodyBuffer.toByteArray()
-        require(body.size.toLong() + HEADER_BYTES + DIGEST_BYTES <= MAX_FILE_BYTES) {
-            "durable persistence encoded state exceeds file limit"
-        }
-        val digest = MessageDigest.getInstance("SHA-256").digest(body)
-        return ByteArrayOutputStream().use { whole ->
-            DataOutputStream(whole).use { out ->
-                out.writeInt(MAGIC)
-                out.writeInt(FORMAT_VERSION)
-                out.writeLong(revision)
-                out.writeInt(body.size)
-                out.write(body)
-                out.write(digest)
+        try {
+            require(body.size.toLong() + HEADER_BYTES + DIGEST_BYTES <= MAX_FILE_BYTES) {
+                "durable persistence encoded state exceeds file limit"
             }
+            val digest = MessageDigest.getInstance("SHA-256").digest(body)
+            try {
+                return ByteArrayOutputStream().use { whole ->
+                    DataOutputStream(whole).use { out ->
+                        out.writeInt(MAGIC)
+                        out.writeInt(FORMAT_VERSION)
+                        out.writeLong(revision)
+                        out.writeInt(body.size)
+                        out.write(body)
+                        out.write(digest)
+                    }
+                    whole.toByteArray()
+                }
+            } finally {
+                digest.fill(0)
+            }
+        } finally {
             body.fill(0)
-            digest.fill(0)
-            whole.toByteArray()
         }
     }
 
@@ -340,8 +351,11 @@ internal object AndroidPersistentStateCodec {
             expectedDigest.fill(0)
             actualDigest.fill(0)
 
-            val state = decodeBody(body) ?: return DecodeResult.Corrupt
-            body.fill(0)
+            val state = try {
+                decodeBody(body)
+            } finally {
+                body.fill(0)
+            } ?: return DecodeResult.Corrupt
             DecodeResult.Decoded(revision, state)
         } catch (_: EOFException) {
             DecodeResult.Corrupt

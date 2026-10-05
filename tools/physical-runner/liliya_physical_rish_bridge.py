@@ -56,6 +56,11 @@ QWEN3_RUSSIAN_CONTEXT_TEST = (
     "pro.liliya.android.semanticprovider."
     "Qwen3RussianQualityContextCandidateInstrumentedTest"
 )
+GOVERNED_LEARNING_SEMANTIC_REBUILD_TEST = (
+    "pro.liliya.android.semanticprovider.host."
+    "AndroidHeartRuntimeColdStartInstrumentedTest#"
+    "product_runtime_assembly_routes_conversation_evidence_to_explicit_governed_learning"
+)
 
 UPLOADS = {
     "/v1/install/app": ("liliya-app-debug.apk", APP_PACKAGE),
@@ -196,6 +201,14 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/v1/instrument/qwen3-russian-context":
             self._instrument(
                 QWEN3_RUSSIAN_CONTEXT_TEST,
+                test_package=SEMANTIC_TEST_PACKAGE,
+                timeout=3600,
+            )
+            return
+
+        if path == "/v1/instrument/governed-learning-semantic-rebuild":
+            self._instrument(
+                GOVERNED_LEARNING_SEMANTIC_REBUILD_TEST,
                 test_package=SEMANTIC_TEST_PACKAGE,
                 timeout=3600,
             )

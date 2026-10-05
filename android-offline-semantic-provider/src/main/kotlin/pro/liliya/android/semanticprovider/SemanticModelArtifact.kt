@@ -2,6 +2,7 @@ package pro.liliya.android.semanticprovider
 
 import java.io.File
 import java.io.FileInputStream
+import java.nio.file.Files
 import java.security.MessageDigest
 
 internal data class SemanticModelArtifactSpec(
@@ -92,6 +93,9 @@ internal class SemanticModelArtifactValidator(
                 return SemanticModelArtifactValidationResult.FileNameMismatch
             }
 
+            if (Files.isSymbolicLink(candidate.toPath())) {
+                return SemanticModelArtifactValidationResult.OutsideAppPrivateRoot
+            }
             val canonicalCandidate = candidate.canonicalFile
             if (!isInsideRoot(canonicalCandidate)) {
                 return SemanticModelArtifactValidationResult.OutsideAppPrivateRoot
@@ -102,10 +106,14 @@ internal class SemanticModelArtifactValidator(
             if (!canonicalCandidate.isFile) {
                 return SemanticModelArtifactValidationResult.NotRegularFile
             }
-            val tokenizerCandidate = File(
+            val tokenizerPath = File(
                 canonicalCandidate.parentFile,
                 trustedIdentity.tokenizerFileName
-            ).canonicalFile
+            )
+            if (Files.isSymbolicLink(tokenizerPath.toPath())) {
+                return SemanticModelArtifactValidationResult.OutsideAppPrivateRoot
+            }
+            val tokenizerCandidate = tokenizerPath.canonicalFile
             if (!isInsideRoot(tokenizerCandidate)) {
                 return SemanticModelArtifactValidationResult.OutsideAppPrivateRoot
             }

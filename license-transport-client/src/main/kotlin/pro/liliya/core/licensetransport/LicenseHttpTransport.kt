@@ -1,7 +1,9 @@
 package pro.liliya.core.licensetransport
 
 import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
 import java.io.IOException
+import java.io.InputStream
 import java.net.ConnectException
 import java.net.HttpURLConnection
 import java.net.NoRouteToHostException
@@ -155,7 +157,14 @@ class UrlConnectionLicenseHttpEngine : LicenseHttpEngine {
             } else {
                 activeConnection.errorStream
             }
-            val body = stream?.use { it.readBytes() } ?: byteArrayOf()
+            val body = try {
+                readLicenseHttpResponseBody(stream)
+            } catch (_: LicenseHttpResponseBodyLimitExceeded) {
+                return failureUnlessCancelled(
+                    cancellation,
+                    LicenseClientTransportFailure.PROTOCOL_FAILURE
+                )
+            }
 
             if (cancellation.isCancelled()) {
                 LicenseHttpEngineResult.Failed(
@@ -249,6 +258,29 @@ class UrlConnectionLicenseHttpEngine : LicenseHttpEngine {
                 reason
             }
         )
+}
+
+internal const val LICENSE_HTTP_MAX_RESPONSE_BYTES: Int = 256 * 1024
+
+internal class LicenseHttpResponseBodyLimitExceeded : IOException()
+
+internal fun readLicenseHttpResponseBody(stream: InputStream?): ByteArray {
+    if (stream == null) return byteArrayOf()
+
+    stream.use { input ->
+        val output = ByteArrayOutputStream()
+        val buffer = ByteArray(8 * 1024)
+        while (true) {
+            val read = input.read(buffer)
+            if (read < 0) break
+            if (read == 0) continue
+            if (output.size() > LICENSE_HTTP_MAX_RESPONSE_BYTES - read) {
+                throw LicenseHttpResponseBodyLimitExceeded()
+            }
+            output.write(buffer, 0, read)
+        }
+        return output.toByteArray()
+    }
 }
 
 class LicenseHttpTransportClient(

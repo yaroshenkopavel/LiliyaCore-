@@ -1,5 +1,7 @@
 package pro.liliya.android.runtime
 
+import pro.liliya.core.cognitive.CognitiveConversationSessionId
+
 enum class AndroidProductRuntimeAdmissionRevalidationFailure {
     LICENSE_DENIED,
     AUTHORITY_DENIED,
@@ -26,6 +28,12 @@ internal interface AndroidProductRuntimeHostSessionBridge {
         maxRetainedCharacters: Int,
         maxMessageCharacters: Int
     ): ProductConversationHost?
+    fun conversation(
+        sessionId: CognitiveConversationSessionId,
+        maxRetainedMessages: Int,
+        maxRetainedCharacters: Int,
+        maxMessageCharacters: Int
+    ): ProductConversationHost? = null
     fun learningFollowUp(): ProductLearningFollowUpHost?
     fun recoverSemantic(): AndroidProductRuntimeSemanticRecoveryResult
     fun close(): HeartRuntimeCloseResult
@@ -63,6 +71,26 @@ class AndroidProductRuntimeHostSession internal constructor(
         } else {
             null
         }
+
+    fun conversation(
+        sessionId: String,
+        maxRetainedMessages: Int,
+        maxRetainedCharacters: Int,
+        maxMessageCharacters: Int
+    ): ProductConversationHost? {
+        if (!active) return null
+        val exactSessionId = try {
+            CognitiveConversationSessionId(sessionId)
+        } catch (_: IllegalArgumentException) {
+            return null
+        }
+        return bridge.conversation(
+            sessionId = exactSessionId,
+            maxRetainedMessages = maxRetainedMessages,
+            maxRetainedCharacters = maxRetainedCharacters,
+            maxMessageCharacters = maxMessageCharacters
+        )
+    }
 
     fun learningFollowUp(): ProductLearningFollowUpHost? =
         if (active) bridge.learningFollowUp() else null

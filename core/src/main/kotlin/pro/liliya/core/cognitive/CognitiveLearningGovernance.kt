@@ -50,7 +50,13 @@ sealed interface CognitiveLearningGovernanceResult {
     }
 }
 
-/** Trusted policy seam. This is not CognitiveInferencePort and carries no Authority handles. */
+/**
+ * Trusted policy seam evaluated before materialization, application intent creation and mutation.
+ *
+ * Poisoning/adversarial-candidate screening belongs on this boundary: a suspicious candidate must
+ * return [CognitiveLearningGovernanceResult.Rejected] before any mutation-capable downstream work.
+ * This is not CognitiveInferencePort and carries no Authority handles.
+ */
 fun interface CognitiveLearningGovernancePort {
     fun evaluate(request: CognitiveLearningGovernanceRequest): CognitiveLearningGovernanceResult
 }

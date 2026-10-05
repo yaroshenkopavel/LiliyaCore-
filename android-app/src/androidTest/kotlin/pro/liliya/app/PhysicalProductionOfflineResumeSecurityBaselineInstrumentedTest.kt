@@ -163,6 +163,7 @@ class PhysicalProductionOfflineResumeSecurityBaselineInstrumentedTest {
 
         val modelSelection = ProductionAndroidLocalModelSelection.importSelected(
             directory = File(context.filesDir, "models"),
+            maxImportBytes = 1_024L,
             openInput = {
                 ByteArrayInputStream("offline-resume-security-placeholder".encodeToByteArray())
             }

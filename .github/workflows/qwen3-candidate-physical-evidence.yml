@@ -170,6 +170,10 @@ jobs:
         with:
           gradle-version: '9.6.1'
 
+      - name: Configure hosted CI Gradle/Kotlin memory
+        shell: bash
+        run: bash .github/ci/configure-gradle-memory.sh
+
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
         with:

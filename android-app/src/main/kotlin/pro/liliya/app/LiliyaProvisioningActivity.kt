@@ -114,7 +114,7 @@ class LiliyaProvisioningActivity : Activity() {
             }
 
             addView(TextView(this@LiliyaProvisioningActivity).apply {
-                text = "Liliya — активация"
+                text = getString(R.string.provisioning_title)
                 textSize = 22f
                 gravity = Gravity.CENTER_HORIZONTAL
             })

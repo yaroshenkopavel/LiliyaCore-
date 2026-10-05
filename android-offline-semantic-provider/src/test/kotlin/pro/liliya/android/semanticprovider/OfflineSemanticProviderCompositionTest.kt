@@ -27,6 +27,30 @@ class OfflineSemanticProviderCompositionTest {
     }
 
     @Test
+    fun shared_claim_embedding_reuses_loaded_session_without_existing_index_publication() {
+        val fakeSession = FakeSession()
+        val provider = provider(fakeSession)
+        assertEquals(OfflineSemanticProviderLoadResult.Ready, provider.load(artifact()))
+
+        val passage = assertIs<OfflineSemanticSharedEmbeddingResult.Embedded>(
+            provider.embedSharedClaimPassage("claim text")
+        )
+        val query = assertIs<OfflineSemanticSharedEmbeddingResult.Embedded>(
+            provider.embedSharedClaimQuery("claim query")
+        )
+        try {
+            assertEquals(
+                listOf("passage: claim text", "query: claim query"),
+                fakeSession.embeddedTexts
+            )
+            assertEquals(OfflineSemanticProviderLifecycle.READY, provider.lifecycle())
+        } finally {
+            passage.vector.clear()
+            query.vector.clear()
+        }
+    }
+
+    @Test
     fun discovery_is_unavailable_until_complete_index_is_published() {
         val provider = provider(FakeSession())
         assertEquals(OfflineSemanticProviderLoadResult.Ready, provider.load(artifact()))

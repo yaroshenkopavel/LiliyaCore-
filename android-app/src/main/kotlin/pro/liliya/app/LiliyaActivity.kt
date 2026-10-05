@@ -29,6 +29,7 @@ class LiliyaActivity : Activity() {
     private lateinit var send: Button
     private lateinit var selectModel: Button
     private lateinit var prepareFirstRun: Button
+    private lateinit var newConversation: Button
 
     private val app: LiliyaApplication
         get() = application as LiliyaApplication
@@ -170,7 +171,7 @@ class LiliyaActivity : Activity() {
         }
 
         root.addView(TextView(this).apply {
-            text = "Liliya"
+            text = getString(R.string.app_name)
             textSize = 24f
             gravity = Gravity.CENTER_HORIZONTAL
         })
@@ -198,6 +199,13 @@ class LiliyaActivity : Activity() {
             setOnClickListener { requestFirstRunAcquisition() }
         }
         root.addView(prepareFirstRun)
+
+        newConversation = Button(this).apply {
+            text = "Новый разговор"
+            visibility = View.GONE
+            setOnClickListener { startNewConversation() }
+        }
+        root.addView(newConversation)
 
         transcript = TextView(this).apply {
             textSize = 16f
@@ -315,6 +323,10 @@ class LiliyaActivity : Activity() {
         input.setSelection(message.length)
         input.isEnabled = false
         send.isEnabled = false
+        if (::newConversation.isInitialized) {
+            newConversation.visibility = View.GONE
+            newConversation.isEnabled = false
+        }
         status.text = "Думаю…"
     }
 
@@ -361,7 +373,7 @@ class LiliyaActivity : Activity() {
                     if (conversation.rollbackLastUser(completed.message)) {
                         renderConversationAndRevealLatest()
                     }
-                    status.text = "Запрос отклонён: ${result.reason.name}"
+                    status.text = getString(R.string.request_rejected_format, result.reason.name)
                 }
             }
             ProductionAndroidAppChatTaskOutcome.Failed -> {
@@ -375,6 +387,8 @@ class LiliyaActivity : Activity() {
         val ready = app.runtimeOwner.state() == ProductionAndroidAppRuntimeState.READY
         input.isEnabled = ready
         send.isEnabled = ready
+        newConversation.visibility = if (ready) View.VISIBLE else View.GONE
+        newConversation.isEnabled = ready && !requestInFlight
     }
 
     private fun restoreLocalModelImportState() {
@@ -413,6 +427,10 @@ class LiliyaActivity : Activity() {
                     renderState(ProductionAndroidAppRuntimeState.CONFIGURATION_REQUIRED)
                     status.text = "Выбранный файл модели пуст"
                 }
+                ProductionAndroidLocalModelSelectionResult.ResourceLimitRejected -> {
+                    renderState(ProductionAndroidAppRuntimeState.CONFIGURATION_REQUIRED)
+                    status.text = getString(R.string.model_import_storage_limit)
+                }
                 ProductionAndroidLocalModelSelectionResult.Failed -> {
                     renderState(ProductionAndroidAppRuntimeState.CONFIGURATION_REQUIRED)
                     status.text = "Не удалось импортировать выбранную модель"
@@ -429,6 +447,10 @@ class LiliyaActivity : Activity() {
         prepareFirstRun.isEnabled = false
         input.isEnabled = false
         send.isEnabled = false
+        if (::newConversation.isInitialized) {
+            newConversation.visibility = View.GONE
+            newConversation.isEnabled = false
+        }
     }
 
     private fun restoreFirstRunAcquisitionState() {
@@ -532,6 +554,10 @@ class LiliyaActivity : Activity() {
         prepareFirstRun.isEnabled = false
         input.isEnabled = false
         send.isEnabled = false
+        if (::newConversation.isInitialized) {
+            newConversation.visibility = View.GONE
+            newConversation.isEnabled = false
+        }
     }
 
     private fun requestApplicationStartup() {
@@ -542,6 +568,31 @@ class LiliyaActivity : Activity() {
                 }
                 renderStartupTaskResult(result)
             }
+        }
+    }
+
+    private fun restoreDurableConversationTranscript(): Boolean {
+        val snapshot = app.currentConversationSnapshot()
+        if (snapshot == null) {
+            conversation = ProductConversationTranscript()
+            renderConversationAndRevealLatest()
+            return false
+        }
+        conversation = ProductConversationTranscript.restore(snapshot)
+        renderConversationAndRevealLatest()
+        return true
+    }
+
+    private fun startNewConversation() {
+        if (requestInFlight || !newConversation.isEnabled) return
+        if (app.startNewConversation()) {
+            conversation = ProductConversationTranscript()
+            pendingUserMessage = null
+            input.text?.clear()
+            renderConversationAndRevealLatest()
+            renderState(ProductionAndroidAppRuntimeState.READY)
+        } else {
+            status.text = "Не удалось начать новый разговор"
         }
     }
 
@@ -584,7 +635,23 @@ class LiliyaActivity : Activity() {
         when (outcome) {
             ProductionAndroidAppStartupOutcome.ConfigurationRequired ->
                 renderState(ProductionAndroidAppRuntimeState.CONFIGURATION_REQUIRED)
-            is ProductionAndroidAppStartupOutcome.Runtime -> renderState(outcome.state)
+            is ProductionAndroidAppStartupOutcome.Runtime -> {
+                if (
+                    outcome.state == ProductionAndroidAppRuntimeState.READY &&
+                    !requestInFlight &&
+                    !restoreDurableConversationTranscript()
+                ) {
+                    status.text = "Не удалось восстановить историю разговора"
+                    selectModel.visibility = View.GONE
+                    prepareFirstRun.visibility = View.GONE
+                    newConversation.visibility = View.GONE
+                    newConversation.isEnabled = false
+                    input.isEnabled = false
+                    send.isEnabled = false
+                    return
+                }
+                renderState(outcome.state)
+            }
             is ProductionAndroidAppStartupOutcome.SourceRejected -> {
                 status.text = "Конфигурация запуска отклонена"
                 selectModel.visibility = View.GONE
@@ -615,6 +682,8 @@ class LiliyaActivity : Activity() {
             status.text = "Думаю…"
             selectModel.visibility = View.GONE
             prepareFirstRun.visibility = View.GONE
+            newConversation.visibility = View.GONE
+            newConversation.isEnabled = false
             input.isEnabled = false
             send.isEnabled = false
             return
@@ -647,6 +716,8 @@ class LiliyaActivity : Activity() {
         prepareFirstRun.isEnabled = prepareFirstRun.visibility == View.VISIBLE
         input.isEnabled = ready
         send.isEnabled = ready
+        newConversation.visibility = if (ready) View.VISIBLE else View.GONE
+        newConversation.isEnabled = ready && !requestInFlight
     }
 
     private fun submit() {
@@ -659,6 +730,10 @@ class LiliyaActivity : Activity() {
         pendingUserMessage = message
         input.isEnabled = false
         send.isEnabled = false
+        if (::newConversation.isInitialized) {
+            newConversation.visibility = View.GONE
+            newConversation.isEnabled = false
+        }
         status.text = "Думаю…"
 
         when (
