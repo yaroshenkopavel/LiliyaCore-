@@ -21,10 +21,12 @@ This historical accepted identity must not be rewritten.
 
 ## Candidate version
 
-The first monotonic successor candidate is:
+The first monotonic successor candidate follows the canonical date/sequence policy:
 
-- versionCode: `2`
+- versionCode: `26100601`
 - versionName: `0.2.0`
+
+`versionCode=YYMMDDRR`, therefore `26100601` is the first release sequence for 2026-10-06.
 
 Canonical source of build version:
 
@@ -32,7 +34,7 @@ Canonical source of build version:
 
 ## Rules
 
-1. `versionCode` is a positive integer and must increase strictly over the last physically accepted release.
+1. `versionCode` is a positive integer using `YYMMDDRR` and must increase strictly over the last physically accepted release.
 2. `versionName` uses numeric `MAJOR.MINOR.PATCH`.
 3. `previousAcceptedVersionCode` and `previousAcceptedVersionName` identify the last physically accepted baseline, not merely the previous Git commit.
 4. Do not advance the previous-accepted fields until the new signed APK has passed update-in-place and physical acceptance.
@@ -58,6 +60,6 @@ Canonical source of build version:
 
 The current transition is therefore:
 
-`1 / 0.1 -> 2 / 0.2.0`
+`1 / 0.1 -> 26100601 / 0.2.0`
 
 Physical update-in-place from the accepted signed version 1 remains required before Issue #587 can be closed.
