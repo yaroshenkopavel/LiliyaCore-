@@ -2,6 +2,8 @@ name: Semantic Model Provenance
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '17 3 1 * *'
   push:
     branches:
       - semantic/**
@@ -95,7 +97,7 @@ jobs:
             ${{ runner.temp }}/semantic-onnx-a/semantic-onnx-provenance.json
             ${{ runner.temp }}/semantic-onnx-pip-freeze.txt
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 90
 
       - name: Export exact reproduced artifact identity
         shell: bash
@@ -151,6 +153,10 @@ jobs:
         with:
           gradle-version: '9.6.1'
 
+      - name: Configure hosted CI Gradle/Kotlin memory
+        shell: bash
+        run: bash .github/ci/configure-gradle-memory.sh
+
       - name: Set up Android SDK for acceptance
         uses: android-actions/setup-android@v4
         with:
@@ -166,7 +172,13 @@ jobs:
           sudo udevadm trigger --name-match=kvm
 
       - name: Compile exact ONNX and full real-engine instrumentation
-        run: gradle :android-offline-semantic-provider:assembleDebug :android-offline-semantic-provider:assembleDebugAndroidTest --console=plain
+        run: >-
+          gradle
+          :android-offline-semantic-provider:assembleDebug
+          :android-offline-semantic-provider:assembleDebugAndroidTest
+          --max-workers=2
+          -Pkotlin.daemon.jvmargs=-Xmx1536m
+          --console=plain
 
       - name: Run exact ONNX real-model Android contracts
         uses: ReactiveCircus/android-emulator-runner@v2.38.0
