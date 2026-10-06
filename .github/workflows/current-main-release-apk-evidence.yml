@@ -1,4 +1,4 @@
-name: Current Main Release APK Evidence
+name: Versioned Successor Release APK Evidence
 
 on:
   workflow_dispatch:
@@ -6,19 +6,19 @@ on:
     branches:
       - main
     paths:
-      - '.github/workflows/current-main-release-apk-evidence.yml'
+      - '.github/workflows/versioned-successor-release-apk-evidence.yml'
 
 permissions:
   contents: read
 
 env:
-  SOURCE_SHA: e542be403a0e8decffccdab5269acf1a24ff6145
-  SOURCE_TREE: 4c1aae9e1c2821ce4fd4d73289777f153ec6010f
+  SOURCE_SHA: d484b2ac07be8650f240fb550f211e34b7718243
+  SOURCE_TREE: 6c1ed58a31b3baf40bc6ec04db45c2fd11fe3809
   LLAMA_CPP_COMMIT: 0f3a71be15af836d277c9f918adfafb45732677e
 
 jobs:
   unsigned-release:
-    name: Build exact current-main unsigned release APK
+    name: Build exact versioned-successor unsigned release APK
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
@@ -188,21 +188,21 @@ jobs:
           native_line="$(grep -m1 '^native-code:' "$badging" || true)"
           test -n "$package_line"
           echo "$package_line" | grep -Fq "name='pro.liliya.app'"
-          echo "$package_line" | grep -Fq "versionCode='1'"
-          echo "$package_line" | grep -Fq "versionName='0.1'"
+          echo "$package_line" | grep -Fq "versionCode='26100601'"
+          echo "$package_line" | grep -Fq "versionName='0.2.0'"
           echo "$native_line" | grep -Fq "'arm64-v8a'"
           if echo "$native_line" | grep -Eq "'armeabi|x86"; then
             echo "unexpected non-arm64 native ABI in release APK: $native_line" >&2
             exit 1
           fi
 
-          TOOLING_SHA="$(cat "$RUNNER_TEMP/evidence-tooling-sha.txt")"           APK_SHA="$sha" APK_SIZE="$size" PACKAGE_LINE="$package_line" NATIVE_LINE="$native_line"           python3 - "$out/current-main-release-apk-manifest.json" <<'PY'
+          TOOLING_SHA="$(cat "$RUNNER_TEMP/evidence-tooling-sha.txt")"           APK_SHA="$sha" APK_SIZE="$size" PACKAGE_LINE="$package_line" NATIVE_LINE="$native_line"           python3 - "$out/versioned-successor-release-apk-manifest.json" <<'PY'
           import json
           import os
           import sys
 
           manifest = {
-              "evidenceClass": "current-main-unsigned-release-apk",
+              "evidenceClass": "versioned-successor-unsigned-release-apk",
               "testedSourceCommit": os.environ["SOURCE_SHA"],
               "testedSourceTree": os.environ["SOURCE_TREE"],
               "evidenceToolingCommit": os.environ["TOOLING_SHA"],
@@ -220,8 +220,8 @@ jobs:
                   "sha256": os.environ["APK_SHA"],
                   "bytes": int(os.environ["APK_SIZE"]),
                   "applicationId": "pro.liliya.app",
-                  "versionCode": 1,
-                  "versionName": "0.1",
+                  "versionCode": 26100601,
+                  "versionName": "0.2.0",
                   "targetAbi": "arm64-v8a",
                   "signingState": "UNSIGNED",
               },
@@ -239,7 +239,7 @@ jobs:
       - name: Upload exact unsigned release evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: current-main-unsigned-release-apk-${{ env.SOURCE_SHA }}
+          name: versioned-successor-unsigned-release-apk-${{ env.SOURCE_SHA }}
           retention-days: 90
           if-no-files-found: error
           path: ${{ runner.temp }}/current-main-release-apk-evidence/**
