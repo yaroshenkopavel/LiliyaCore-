@@ -1,3 +1,21 @@
+import java.util.Properties
+
+val androidVersionProperties = Properties().apply {
+    val versionFile = layout.projectDirectory.file("version.properties").asFile
+    require(versionFile.isFile) { "android-app/version.properties is required" }
+    versionFile.inputStream().use(::load)
+}
+
+val liliyaVersionCode = androidVersionProperties.getProperty("versionCode")
+    ?.toIntOrNull()
+    ?.takeIf { it > 0 }
+    ?: error("versionCode must be a positive integer")
+
+val liliyaVersionName = androidVersionProperties.getProperty("versionName")
+    ?.trim()
+    ?.takeIf { it.matches(Regex("""\d+\.\d+\.\d+""")) }
+    ?: error("versionName must use MAJOR.MINOR.PATCH numeric format")
+
 plugins {
     id("com.android.application")
 }
@@ -10,8 +28,8 @@ android {
         applicationId = "pro.liliya.app"
         minSdk = 29
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1"
+        versionCode = liliyaVersionCode
+        versionName = liliyaVersionName
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         ndk {
