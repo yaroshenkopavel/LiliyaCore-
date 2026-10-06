@@ -3,7 +3,7 @@ import java.util.Properties
 val androidVersionProperties = Properties().apply {
     val versionFile = layout.projectDirectory.file("version.properties").asFile
     require(versionFile.isFile) { "android-app/version.properties is required" }
-    versionFile.inputStream().use(::load)
+    versionFile.inputStream().use { load(it) }
 }
 
 val liliyaVersionCode = androidVersionProperties.getProperty("versionCode")
