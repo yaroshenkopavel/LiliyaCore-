@@ -6,7 +6,7 @@ on:
     branches:
       - main
     paths:
-      - '.github/workflows/versioned-successor-release-apk-evidence.yml'
+      - '.github/workflows/current-main-release-apk-evidence.yml'
 
 permissions:
   contents: read
@@ -171,7 +171,7 @@ jobs:
         run: |
           set -euo pipefail
           apk="android-app/build/outputs/apk/release/android-app-release-unsigned.apk"
-          out="$RUNNER_TEMP/current-main-release-apk-evidence"
+          out="$RUNNER_TEMP/versioned-successor-release-apk-evidence"
           mkdir -p "$out"
 
           cp "$apk" "$out/android-app-release-unsigned.apk"
@@ -242,4 +242,4 @@ jobs:
           name: versioned-successor-unsigned-release-apk-${{ env.SOURCE_SHA }}
           retention-days: 90
           if-no-files-found: error
-          path: ${{ runner.temp }}/current-main-release-apk-evidence/**
+          path: ${{ runner.temp }}/versioned-successor-release-apk-evidence/**
