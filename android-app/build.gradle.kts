@@ -1,3 +1,4 @@
+import java.time.LocalDate
 import java.util.Properties
 
 val androidVersionProperties = Properties().apply {
@@ -6,10 +7,20 @@ val androidVersionProperties = Properties().apply {
     versionFile.inputStream().use { load(it) }
 }
 
-val liliyaVersionCode = androidVersionProperties.getProperty("versionCode")
-    ?.toIntOrNull()
-    ?.takeIf { it > 0 }
-    ?: error("versionCode must be a positive integer")
+val liliyaVersionCodeText = androidVersionProperties.getProperty("versionCode")
+    ?.trim()
+    ?.takeIf { it.matches(Regex("""\d{8}""")) }
+    ?: error("versionCode must use YYMMDDRR")
+
+val versionYear = 2000 + liliyaVersionCodeText.substring(0, 2).toInt()
+val versionMonth = liliyaVersionCodeText.substring(2, 4).toInt()
+val versionDay = liliyaVersionCodeText.substring(4, 6).toInt()
+val versionSequence = liliyaVersionCodeText.substring(6, 8).toInt()
+require(versionSequence in 1..99) { "versionCode RR must be in 01..99" }
+runCatching { LocalDate.of(versionYear, versionMonth, versionDay) }
+    .getOrElse { error("versionCode YYMMDD must be a valid calendar date") }
+
+val liliyaVersionCode = liliyaVersionCodeText.toInt()
 
 val liliyaVersionName = androidVersionProperties.getProperty("versionName")
     ?.trim()
