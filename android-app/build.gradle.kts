@@ -1,3 +1,32 @@
+import java.time.LocalDate
+import java.util.Properties
+
+val androidVersionProperties = Properties().apply {
+    val versionFile = layout.projectDirectory.file("version.properties").asFile
+    require(versionFile.isFile) { "android-app/version.properties is required" }
+    versionFile.inputStream().use { load(it) }
+}
+
+val liliyaVersionCodeText = androidVersionProperties.getProperty("versionCode")
+    ?.trim()
+    ?.takeIf { it.matches(Regex("""\d{8}""")) }
+    ?: error("versionCode must use YYMMDDRR")
+
+val versionYear = 2000 + liliyaVersionCodeText.substring(0, 2).toInt()
+val versionMonth = liliyaVersionCodeText.substring(2, 4).toInt()
+val versionDay = liliyaVersionCodeText.substring(4, 6).toInt()
+val versionSequence = liliyaVersionCodeText.substring(6, 8).toInt()
+require(versionSequence in 1..99) { "versionCode RR must be in 01..99" }
+runCatching { LocalDate.of(versionYear, versionMonth, versionDay) }
+    .getOrElse { error("versionCode YYMMDD must be a valid calendar date") }
+
+val liliyaVersionCode = liliyaVersionCodeText.toInt()
+
+val liliyaVersionName = androidVersionProperties.getProperty("versionName")
+    ?.trim()
+    ?.takeIf { it.matches(Regex("""\d+\.\d+\.\d+""")) }
+    ?: error("versionName must use MAJOR.MINOR.PATCH numeric format")
+
 plugins {
     id("com.android.application")
 }
@@ -10,8 +39,8 @@ android {
         applicationId = "pro.liliya.app"
         minSdk = 29
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1"
+        versionCode = liliyaVersionCode
+        versionName = liliyaVersionName
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         ndk {

@@ -12,6 +12,51 @@ density="$({ adb shell wm density || true; } | tr -d '\r' | awk '
 ')"
 test -n "$density"
 
+capture_liliya_window() {
+  local remote_xml="$1"
+  local local_xml="$2"
+  local orientation="$3"
+  local attempt
+
+  for attempt in 1 2 3; do
+    if ! adb shell uiautomator dump "$remote_xml" >/dev/null; then
+      echo "$orientation: uiautomator dump failed on attempt $attempt" >&2
+      sleep 2
+      continue
+    fi
+    if ! adb pull "$remote_xml" "$local_xml" >/dev/null; then
+      echo "$orientation: failed to pull UI hierarchy on attempt $attempt" >&2
+      sleep 2
+      continue
+    fi
+
+    cp "$local_xml" "$out/${orientation}-attempt-${attempt}.xml"
+
+    if grep -Fq "Liliya — подготовка доступа" "$local_xml"; then
+      return 0
+    fi
+
+    # Hosted Android VMs can transiently surface a Pixel Launcher ANR above the
+    # already-started Liliya Activity. Treat only that known system overlay as
+    # retryable. Any Liliya ANR or other unexpected foreground UI stays fail-closed.
+    if grep -Fq "Pixel Launcher" "$local_xml" &&
+       grep -Fq "responding" "$local_xml"; then
+      echo "$orientation: transient Pixel Launcher ANR overlay; dismissing and retrying ($attempt/3)" >&2
+      adb shell input keyevent KEYCODE_BACK || true
+      adb shell am start -W -n pro.liliya.app/.LiliyaProvisioningActivity         > "$out/recover-${orientation}-${attempt}.txt"
+      sleep 2
+      continue
+    fi
+
+    echo "$orientation: unexpected foreground UI; refusing to hide a real product failure" >&2
+    cat "$local_xml" >&2
+    return 1
+  done
+
+  echo "$orientation: Liliya UI did not become observable after bounded retries" >&2
+  return 1
+}
+
 verify_layout() {
   local xml="$1"
   local orientation="$2"
@@ -71,12 +116,10 @@ adb shell am start -W -n pro.liliya.app/.LiliyaProvisioningActivity > "$out/star
 cat "$out/start-portrait.txt"
 sleep 2
 
-adb shell uiautomator dump /sdcard/liliya-window.xml >/dev/null
-adb pull /sdcard/liliya-window.xml "$out/provisioning-portrait.xml" >/dev/null
+capture_liliya_window /sdcard/liliya-window.xml "$out/provisioning-portrait.xml" portrait
 adb exec-out screencap -p > "$out/provisioning-portrait.png"
 adb shell dumpsys activity activities > "$out/activities-portrait.txt"
 
-grep -Fq "Liliya — подготовка доступа" "$out/provisioning-portrait.xml"
 grep -Fq "Введите код активации" "$out/provisioning-portrait.xml"
 grep -Fq "Код активации или замены устройства" "$out/provisioning-portrait.xml"
 grep -Fq "Активировать" "$out/provisioning-portrait.xml"
@@ -86,12 +129,11 @@ verify_layout "$out/provisioning-portrait.xml" portrait
 adb shell settings put system accelerometer_rotation 0
 adb shell settings put system user_rotation 1
 sleep 2
-adb shell uiautomator dump /sdcard/liliya-window-landscape.xml >/dev/null
-adb pull /sdcard/liliya-window-landscape.xml "$out/provisioning-landscape.xml" >/dev/null
+
+capture_liliya_window /sdcard/liliya-window-landscape.xml "$out/provisioning-landscape.xml" landscape
 adb exec-out screencap -p > "$out/provisioning-landscape.png"
 adb shell dumpsys activity activities > "$out/activities-landscape.txt"
 
-grep -Fq "Liliya — подготовка доступа" "$out/provisioning-landscape.xml"
 grep -Fq "Введите код активации" "$out/provisioning-landscape.xml"
 grep -Fq "Код активации или замены устройства" "$out/provisioning-landscape.xml"
 grep -Fq "Активировать" "$out/provisioning-landscape.xml"
