@@ -77,6 +77,15 @@ jobs:
           set -euo pipefail
           gradle :android-app:assembleRelease             --max-workers=2             -Pkotlin.daemon.jvmargs=-Xmx1536m             --console=plain
 
+      - name: Normalize release native symbols
+        shell: bash
+        env:
+          ANDROID_NDK_ROOT: ${{ env.ANDROID_NDK_ROOT }}
+        run: |
+          set -euo pipefail
+          apk="android-app/build/outputs/apk/release/android-app-release-unsigned.apk"
+          bash .github/scripts/normalize-release-native-symbols.sh "$apk"
+
       - name: Verify release payload boundary
         shell: bash
         run: |
