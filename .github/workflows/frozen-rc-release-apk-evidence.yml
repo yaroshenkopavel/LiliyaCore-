@@ -25,10 +25,10 @@ jobs:
           set -euo pipefail
           printf '%s\n' "${GITHUB_SHA}" > "$RUNNER_TEMP/evidence-tooling-sha.txt"
 
-      - name: Checkout frozen RC implementation
+      - name: Checkout exact frozen RC implementation
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
-          ref: ${{ env.FROZEN_REF }}
+          ref: ${{ env.FROZEN_SHA }}
 
       - name: Verify exact frozen source
         shell: bash
