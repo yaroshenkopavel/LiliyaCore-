@@ -12,8 +12,8 @@ permissions:
   contents: read
 
 env:
-  SOURCE_SHA: 260946d34d058d698d786e6c14b022ede9503035
-  SOURCE_TREE: 5589056a9a959c1b1df0e8001cc91c89ffbace8f
+  SOURCE_SHA: e542be403a0e8decffccdab5269acf1a24ff6145
+  SOURCE_TREE: 4c1aae9e1c2821ce4fd4d73289777f153ec6010f
   LLAMA_CPP_COMMIT: 0f3a71be15af836d277c9f918adfafb45732677e
 
 jobs:
@@ -76,6 +76,69 @@ jobs:
         run: |
           set -euo pipefail
           gradle :android-app:assembleRelease             --max-workers=2             -Pkotlin.daemon.jvmargs=-Xmx1536m             --console=plain
+
+      - name: Normalize release native symbols
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          apk="android-app/build/outputs/apk/release/android-app-release-unsigned.apk"
+          ndk="$ANDROID_HOME/ndk/29.0.13113456"
+          strip="$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip"
+          readelf="$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"
+          zipalign="$ANDROID_HOME/build-tools/35.0.0/zipalign"
+
+          for tool in "$strip" "$readelf" "$zipalign"; do
+            test -x "$tool"
+          done
+          test -f "$apk"
+
+          work="$(mktemp -d)"
+          trap 'rm -rf "$work"' EXIT
+
+          mapfile -t libs < <(
+            unzip -Z1 "$apk" |
+              grep -E '^lib/arm64-v8a/[^/]+[.]so$' |
+              sort
+          )
+          test "${#libs[@]}" -gt 0
+          apk_abs="$(realpath "$apk")"
+
+          for entry in "${libs[@]}"; do
+            src="$work/original/$(basename "$entry")"
+            dst="$work/repack/$entry"
+            mkdir -p "$(dirname "$src")" "$(dirname "$dst")"
+
+            unzip -p "$apk" "$entry" > "$src"
+            cp "$src" "$dst"
+
+            before="$(stat --format=%s "$src")"
+            "$strip" --strip-all "$dst"
+            after="$(stat --format=%s "$dst")"
+
+            if "$readelf" --sections "$dst" | grep -Eq '[.]debug_|[.]symtab'; then
+              echo "native debug/symbol section remains after strip: $entry" >&2
+              exit 1
+            fi
+
+            echo "NATIVE_STRIP entry=$entry before=$before after=$after"
+          done
+
+          for entry in "${libs[@]}"; do
+            zip -dq "$apk_abs" "$entry"
+          done
+
+          (
+            cd "$work/repack"
+            zip -0Xq "$apk_abs" "${libs[@]}"
+          )
+
+          aligned="$work/aligned.apk"
+          "$zipalign" -f -P 16 4 "$apk_abs" "$aligned"
+          cp "$aligned" "$apk_abs"
+
+          "$zipalign" -c -P 16 -v 4 "$apk_abs"
+          echo "NATIVE_RELEASE_NORMALIZATION=PASS"
 
       - name: Verify release payload boundary
         shell: bash
