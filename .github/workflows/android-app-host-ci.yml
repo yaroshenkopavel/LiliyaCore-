@@ -115,6 +115,39 @@ jobs:
             -Pkotlin.daemon.jvmargs=-Xmx1536m \
             --console=plain
 
+      - name: Verify monotonic Android release version
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          props="android-app/version.properties"
+          apk="android-app/build/outputs/apk/release/android-app-release-unsigned.apk"
+          aapt="$ANDROID_HOME/build-tools/35.0.0/aapt"
+
+          test -f "$props"
+          test -f "$apk"
+          test -x "$aapt"
+
+          current_code="$(awk -F= '$1=="versionCode"{print $2}' "$props")"
+          current_name="$(awk -F= '$1=="versionName"{print $2}' "$props")"
+          previous_code="$(awk -F= '$1=="previousAcceptedVersionCode"{print $2}' "$props")"
+          previous_name="$(awk -F= '$1=="previousAcceptedVersionName"{print $2}' "$props")"
+
+          [[ "$current_code" =~ ^[0-9]+$ ]]
+          [[ "$previous_code" =~ ^[0-9]+$ ]]
+          [[ "$current_name" =~ ^[0-9]+[.][0-9]+[.][0-9]+$ ]]
+          test "$current_code" -gt "$previous_code"
+          test "$previous_code" -eq 1
+          test "$previous_name" = "0.1"
+
+          package_line="$("$aapt" dump badging "$apk" | grep -m1 '^package:')"
+          echo "$package_line" | grep -Fq "name='pro.liliya.app'"
+          echo "$package_line" | grep -Fq "versionCode='$current_code'"
+          echo "$package_line" | grep -Fq "versionName='$current_name'"
+
+          echo "ANDROID_VERSION_POLICY=PASS"
+          echo "ANDROID_VERSION_TRANSITION=$previous_code/$previous_name->$current_code/$current_name"
+
       - name: Guard release APK from cold-start test payloads
         shell: bash
         run: |
