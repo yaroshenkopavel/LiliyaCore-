@@ -3,10 +3,8 @@ set -euo pipefail
 
 apk="${1:?usage: normalize-release-native-symbols.sh <unsigned-apk>}"
 ndk="${ANDROID_NDK_ROOT:-${ANDROID_NDK_HOME:-}}"
-
 if [[ -z "$ndk" ]]; then
-  echo "ANDROID_NDK_ROOT/ANDROID_NDK_HOME is required" >&2
-  exit 1
+  ndk="${ANDROID_HOME:?ANDROID_HOME is required}/ndk/29.0.13113456"
 fi
 
 strip="$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip"
