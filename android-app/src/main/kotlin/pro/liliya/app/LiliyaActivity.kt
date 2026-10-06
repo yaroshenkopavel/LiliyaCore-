@@ -17,6 +17,7 @@ class LiliyaActivity : Activity() {
     private lateinit var conversation: ProductConversationTranscript
     private var requestInFlight = false
     private var pendingUserMessage: String? = null
+    private var pendingChatRequestId: Long? = null
     private var modelImportInFlight = false
     private var firstRunAcquisitionInFlight = false
     private var stateSaved = false
@@ -296,16 +297,17 @@ class LiliyaActivity : Activity() {
         when (snapshot) {
             ProductionAndroidAppChatTaskSnapshot.Idle -> Unit
             is ProductionAndroidAppChatTaskSnapshot.InFlight ->
-                restorePendingChat(snapshot.message)
+                restorePendingChat(snapshot.message, snapshot.requestId)
             is ProductionAndroidAppChatTaskSnapshot.Completed -> {
                 if (renderedTerminalChatRequestId == snapshot.requestId) {
                     requestInFlight = false
                     pendingUserMessage = null
+                    pendingChatRequestId = null
                     if (!stateSaved && app.consumeApplicationChat(snapshot.requestId)) {
                         renderedTerminalChatRequestId = null
                     }
                 } else {
-                    restorePendingChat(snapshot.message)
+                    restorePendingChat(snapshot.message, snapshot.requestId)
                     deliverApplicationChatCompletion(snapshot)
                 }
             }
@@ -313,12 +315,13 @@ class LiliyaActivity : Activity() {
         return snapshot
     }
 
-    private fun restorePendingChat(message: String) {
+    private fun restorePendingChat(message: String, requestId: Long) {
         if (conversation.appendUserIfNotLast(message)) {
             renderConversationAndRevealLatest()
         }
         requestInFlight = true
         pendingUserMessage = message
+        pendingChatRequestId = requestId
         input.setText(message)
         input.setSelection(message.length)
         input.isEnabled = false
@@ -337,6 +340,10 @@ class LiliyaActivity : Activity() {
             if (isFinishing || isDestroyed || isChangingConfigurations) {
                 return@runOnUiThread
             }
+            val pendingId = pendingChatRequestId
+            if (pendingId != null && pendingId != completed.requestId) {
+                return@runOnUiThread
+            }
             if (stateSaved) {
                 if (renderedTerminalChatRequestId != completed.requestId) {
                     applyApplicationChatCompletion(completed)
@@ -344,10 +351,10 @@ class LiliyaActivity : Activity() {
                 }
                 return@runOnUiThread
             }
-            if (!app.consumeApplicationChat(completed.requestId)) return@runOnUiThread
             if (renderedTerminalChatRequestId != completed.requestId) {
                 applyApplicationChatCompletion(completed)
             }
+            app.consumeApplicationChat(completed.requestId)
             renderedTerminalChatRequestId = null
         }
     }
@@ -360,6 +367,7 @@ class LiliyaActivity : Activity() {
         }
         requestInFlight = false
         pendingUserMessage = null
+        pendingChatRequestId = null
 
         when (val outcome = completed.outcome) {
             is ProductionAndroidAppChatTaskOutcome.Result -> when (val result = outcome.value) {
@@ -737,15 +745,20 @@ class LiliyaActivity : Activity() {
         status.text = "Думаю…"
 
         when (
-            app.requestApplicationChat(
+            val request = app.requestApplicationChat(
                 message = message,
                 listener = ::deliverApplicationChatCompletion
             )
         ) {
-            is ProductionAndroidAppChatTaskRequestResult.Started -> Unit
+            is ProductionAndroidAppChatTaskRequestResult.Started -> {
+                if (requestInFlight) {
+                    pendingChatRequestId = request.requestId
+                }
+            }
             is ProductionAndroidAppChatTaskRequestResult.Busy -> {
                 requestInFlight = false
                 pendingUserMessage = null
+                pendingChatRequestId = null
                 if (conversation.rollbackLastUser(message)) {
                     renderConversationAndRevealLatest()
                 }
