@@ -133,9 +133,24 @@ jobs:
           previous_code="$(awk -F= '$1=="previousAcceptedVersionCode"{print $2}' "$props")"
           previous_name="$(awk -F= '$1=="previousAcceptedVersionName"{print $2}' "$props")"
 
-          [[ "$current_code" =~ ^[0-9]+$ ]]
+          [[ "$current_code" =~ ^[0-9]{8}$ ]]
           [[ "$previous_code" =~ ^[0-9]+$ ]]
           [[ "$current_name" =~ ^[0-9]+[.][0-9]+[.][0-9]+$ ]]
+
+          python3 - "$current_code" <<'PY'
+          import datetime
+          import sys
+
+          code = sys.argv[1]
+          yy = int(code[0:2])
+          mm = int(code[2:4])
+          dd = int(code[4:6])
+          rr = int(code[6:8])
+          datetime.date(2000 + yy, mm, dd)
+          if not 1 <= rr <= 99:
+              raise SystemExit("versionCode RR must be in 01..99")
+          PY
+
           test "$current_code" -gt "$previous_code"
           test "$previous_code" -eq 1
           test "$previous_name" = "0.1"
