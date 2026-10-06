@@ -83,6 +83,11 @@ jobs:
           set -euo pipefail
           apk="android-app/build/outputs/apk/release/android-app-release-unsigned.apk"
           test -f "$apk"
+
+          zipalign="$ANDROID_HOME/build-tools/35.0.0/zipalign"
+          "$zipalign" -c -P 16 -v 4 "$apk"
+          echo "ZIPALIGN_CHECK=PASS"
+
           listing="$RUNNER_TEMP/android-app-release-files.txt"
           unzip -Z1 "$apk" > "$listing"
 
