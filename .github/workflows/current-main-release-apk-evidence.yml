@@ -79,12 +79,169 @@ jobs:
 
       - name: Normalize release native symbols
         shell: bash
-        env:
-          ANDROID_NDK_ROOT: ${{ env.ANDROID_NDK_ROOT }}
+        run: |
+          set -euo pipefail
+
+          apk="android-app/build/outputs/apk/release/android-app-release-unsigned.apk"
+          ndk="$ANDROID_HOME/ndk/29.0.13113456"
+          strip="$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip"
+          readelf="$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"
+          zipalign="$ANDROID_HOME/build-tools/35.0.0/zipalign"
+
+          for tool in "$strip" "$readelf" "$zipalign"; do
+            test -x "$tool"
+          done
+          test -f "$apk"
+
+          work="$(mktemp -d)"
+          trap 'rm -rf "$work"' EXIT
+
+          mapfile -t libs < <(
+            unzip -Z1 "$apk" |
+              grep -E '^lib/arm64-v8a/[^/]+\\.so      - name: Verify release payload boundary
+        shell: bash
         run: |
           set -euo pipefail
           apk="android-app/build/outputs/apk/release/android-app-release-unsigned.apk"
-          bash .github/scripts/normalize-release-native-symbols.sh "$apk"
+          test -f "$apk"
+
+          zipalign="$ANDROID_HOME/build-tools/35.0.0/zipalign"
+          "$zipalign" -c -P 16 -v 4 "$apk"
+          echo "ZIPALIGN_CHECK=PASS"
+
+          listing="$RUNNER_TEMP/android-app-release-files.txt"
+          unzip -Z1 "$apk" > "$listing"
+
+          if grep -E               'stories15M-q4_0\.gguf|multilingual-e5-small-liliya-v0\.1\.onnx|multilingual-e5-small-tokenizer-v0\.1\.onnx'               "$listing"; then
+            echo "test model asset leaked into production release APK" >&2
+            exit 1
+          fi
+
+          while IFS= read -r dex; do
+            if unzip -p "$apk" "$dex" | strings | grep -Fq                 'pro/liliya/packager/ProtectedModelOfflinePackager'; then
+              echo "offline protected-model packager leaked into production release APK: $dex" >&2
+              exit 1
+            fi
+          done < <(grep -E '^classes([0-9]+)?\.dex$' "$listing")
+
+      - name: Record unsigned release identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="android-app/build/outputs/apk/release/android-app-release-unsigned.apk"
+          out="$RUNNER_TEMP/current-main-release-apk-evidence"
+          mkdir -p "$out"
+
+          cp "$apk" "$out/android-app-release-unsigned.apk"
+          cp "$RUNNER_TEMP/android-app-release-files.txt" "$out/android-app-release-files.txt"
+
+          sha="$(sha256sum "$apk" | awk '{print $1}')"
+          size="$(stat --format=%s "$apk")"
+          aapt="$ANDROID_HOME/build-tools/35.0.0/aapt"
+          badging="$RUNNER_TEMP/android-app-release-badging.txt"
+          "$aapt" dump badging "$apk" > "$badging"
+          cp "$badging" "$out/android-app-release-badging.txt"
+
+          package_line="$(grep -m1 '^package:' "$badging")"
+          native_line="$(grep -m1 '^native-code:' "$badging" || true)"
+          test -n "$package_line"
+          echo "$package_line" | grep -Fq "name='pro.liliya.app'"
+          echo "$package_line" | grep -Fq "versionCode='1'"
+          echo "$package_line" | grep -Fq "versionName='0.1'"
+          echo "$native_line" | grep -Fq "'arm64-v8a'"
+          if echo "$native_line" | grep -Eq "'armeabi|x86"; then
+            echo "unexpected non-arm64 native ABI in release APK: $native_line" >&2
+            exit 1
+          fi
+
+          TOOLING_SHA="$(cat "$RUNNER_TEMP/evidence-tooling-sha.txt")"           APK_SHA="$sha" APK_SIZE="$size" PACKAGE_LINE="$package_line" NATIVE_LINE="$native_line"           python3 - "$out/current-main-release-apk-manifest.json" <<'PY'
+          import json
+          import os
+          import sys
+
+          manifest = {
+              "evidenceClass": "current-main-unsigned-release-apk",
+              "testedSourceCommit": os.environ["SOURCE_SHA"],
+              "testedSourceTree": os.environ["SOURCE_TREE"],
+              "evidenceToolingCommit": os.environ["TOOLING_SHA"],
+              "llamaCppCommit": os.environ["LLAMA_CPP_COMMIT"],
+              "toolchain": {
+                  "java": "17",
+                  "gradle": "9.6.1",
+                  "compileSdk": 35,
+                  "buildTools": "35.0.0",
+                  "ndk": "29.0.13113456",
+                  "cmake": "3.31.6",
+              },
+              "artifact": {
+                  "file": "android-app-release-unsigned.apk",
+                  "sha256": os.environ["APK_SHA"],
+                  "bytes": int(os.environ["APK_SIZE"]),
+                  "applicationId": "pro.liliya.app",
+                  "versionCode": 1,
+                  "versionName": "0.1",
+                  "targetAbi": "arm64-v8a",
+                  "signingState": "UNSIGNED",
+              },
+              "aaptPackageLine": os.environ["PACKAGE_LINE"],
+              "aaptNativeCodeLine": os.environ["NATIVE_LINE"],
+              "privateSigningMaterialPresent": False,
+          }
+          with open(sys.argv[1], "w", encoding="utf-8") as stream:
+              json.dump(manifest, stream, indent=2, sort_keys=True)
+              stream.write("\n")
+          PY
+
+          echo "$sha  android-app-release-unsigned.apk" > "$out/SHA256SUMS"
+
+      - name: Upload exact unsigned release evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: current-main-unsigned-release-apk-${{ env.SOURCE_SHA }}
+          retention-days: 90
+          if-no-files-found: error
+          path: ${{ runner.temp }}/current-main-release-apk-evidence/**
+ |
+              sort
+          )
+          test "${#libs[@]}" -gt 0
+          apk_abs="$(realpath "$apk")"
+
+          for entry in "${libs[@]}"; do
+            src="$work/original/$(basename "$entry")"
+            dst="$work/repack/$entry"
+            mkdir -p "$(dirname "$src")" "$(dirname "$dst")"
+
+            unzip -p "$apk" "$entry" > "$src"
+            cp "$src" "$dst"
+
+            before="$(stat --format=%s "$src")"
+            "$strip" --strip-all "$dst"
+            after="$(stat --format=%s "$dst")"
+
+            if "$readelf" --sections "$dst" | grep -Eq '\\.debug_|\\.symtab'; then
+              echo "native debug/symbol section remains after strip: $entry" >&2
+              exit 1
+            fi
+
+            echo "NATIVE_STRIP entry=$entry before=$before after=$after"
+          done
+
+          for entry in "${libs[@]}"; do
+            zip -dq "$apk_abs" "$entry"
+          done
+
+          (
+            cd "$work/repack"
+            zip -0Xq "$apk_abs" "${libs[@]}"
+          )
+
+          aligned="$work/aligned.apk"
+          "$zipalign" -f -P 16 4 "$apk_abs" "$aligned"
+          cp "$aligned" "$apk_abs"
+
+          "$zipalign" -c -P 16 -v 4 "$apk_abs"
+          echo "NATIVE_RELEASE_NORMALIZATION=PASS"
 
       - name: Verify release payload boundary
         shell: bash
