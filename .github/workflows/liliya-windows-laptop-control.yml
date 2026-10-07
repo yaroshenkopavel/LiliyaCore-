@@ -123,8 +123,7 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          if (Test-Path 'C:\Users\123\AppData\Local\Android\Sdk') {
-            $env:ANDROID_HOME='C:\Users\123\AppData\Local\Android\Sdk'
-            $env:ANDROID_SDK_ROOT=$env:ANDROID_HOME
-          }
-          gradle.bat :core:test --no-daemon --console=plain
+          # Core-only test must not depend on or probe the interactive user's private profile.
+          # The runner service executes as NETWORK SERVICE; probing C:\Users\123 can fail by ACL
+          # before Gradle starts. Configure-on-demand keeps this bounded gate on :core:test.
+          gradle.bat :core:test --configure-on-demand --no-daemon --console=plain
