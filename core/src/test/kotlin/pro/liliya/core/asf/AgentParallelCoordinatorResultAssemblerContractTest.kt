@@ -137,6 +137,82 @@ class AgentParallelCoordinatorResultAssemblerContractTest {
     }
 
     @Test
+    fun late_terminal_after_wave_timeout_is_not_published_into_coordinator_result() {
+        val one = AgentCoordinatorPlan(
+            AgentRootTaskId("parallel-late-root"),
+            listOf(
+                AgentCoordinatorStep.create(
+                    id = AgentCoordinatorStepId("root"),
+                    parentStepId = null,
+                    blueprint = AgentBlueprintReference(blueprint.id, blueprint.version),
+                    cognitiveScope = scope,
+                    budget = childBudget,
+                    inputReferences = listOf("evidence:root")
+                )
+            )
+        )
+        val snapshot = assertIs<AgentParallelAdmissionResult.Ready>(
+            AgentParallelAdmissionReservation.reserve(one)
+        ).snapshot
+        val tasks = AgentParallelFactoryTaskFactory(
+            plan = one,
+            snapshot = snapshot,
+            factory = factory(
+                AgentRuntimeAdapter { context ->
+                    try {
+                        Thread.sleep(10_000)
+                    } catch (_: InterruptedException) {
+                        // Simulate a provider that finishes after Future cancellation.
+                    }
+                    AgentRuntimeOutcome.Completed(
+                        kind = "late-result",
+                        payloadDigest = "sha256:late",
+                        provenanceReferences = context.workspace.inputReferences,
+                        usage = AgentRuntimeUsage(
+                            1, 1, context.workspace.contextBytes, 0, 1
+                        )
+                    )
+                }
+            ),
+            runWindow = AgentCoordinatorRunWindow(now, expires)
+        )
+        val pool = Executors.newFixedThreadPool(1)
+
+        try {
+            val execution = AgentParallelPlanExecutor(
+                AgentParallelWaveExecutor(pool),
+                tasks
+            ).execute(
+                plan = one,
+                aggregateBudget = aggregate,
+                timeoutPerWaveMillis = 25
+            )
+
+            repeat(100) {
+                if (tasks.terminal(AgentCoordinatorStepId("root")) != null) return@repeat
+                Thread.sleep(5)
+            }
+            kotlin.test.assertNotNull(tasks.terminal(AgentCoordinatorStepId("root")))
+
+            val result = AgentParallelCoordinatorResultAssembler.assemble(
+                one,
+                execution,
+                tasks,
+                aggregate
+            )
+
+            assertEquals(AgentParallelPlanExecutionState.TIMED_OUT, execution.state)
+            assertEquals(AgentCoordinatorTerminalState.FAILED, result.state)
+            assertEquals(0, result.completedSteps)
+            assertEquals(0, result.aggregateUsage.agentsStarted)
+            assertEquals(0, result.terminalInstances.size)
+            assertEquals(0, result.artifacts.size)
+        } finally {
+            pool.shutdownNow()
+        }
+    }
+
+    @Test
     fun factory_budget_exhaustion_maps_to_coordinator_budget_exhausted() {
         val one = AgentCoordinatorPlan(
             AgentRootTaskId("parallel-budget-root"),
