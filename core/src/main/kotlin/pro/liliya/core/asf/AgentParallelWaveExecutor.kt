@@ -1,5 +1,6 @@
 package pro.liliya.core.asf
 
+import java.nio.charset.StandardCharsets
 import java.util.concurrent.Callable
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Future
@@ -14,7 +15,18 @@ sealed interface AgentParallelWaveTaskOutcome {
     data class Completed(
         val stepId: AgentCoordinatorStepId,
         val artifactReference: String? = null
-    ) : AgentParallelWaveTaskOutcome
+    ) : AgentParallelWaveTaskOutcome {
+        init {
+            artifactReference?.let {
+                require(it.isNotBlank()) {
+                    "parallel wave artifact reference must not be blank"
+                }
+                require(it.toByteArray(StandardCharsets.UTF_8).size <= 256) {
+                    "parallel wave artifact reference exceeds bounded size"
+                }
+            }
+        }
+    }
 
     data class Failed(
         val stepId: AgentCoordinatorStepId,
@@ -22,7 +34,9 @@ sealed interface AgentParallelWaveTaskOutcome {
     ) : AgentParallelWaveTaskOutcome {
         init {
             require(reason.isNotBlank())
-            require(reason.length <= 4096)
+            require(reason.toByteArray(StandardCharsets.UTF_8).size <= 4096) {
+                "parallel wave failure reason exceeds bounded size"
+            }
         }
     }
 }
@@ -92,11 +106,25 @@ class AgentParallelWaveExecutor(
 
         try {
             wave.stepIds.forEach { stepId ->
-                futures[stepId] = executor.submit(
-                    Callable {
-                        tasks.getValue(stepId).run()
-                    }
-                )
+                val future = try {
+                    executor.submit(
+                        Callable {
+                            tasks.getValue(stepId).run()
+                        }
+                    )
+                } catch (_: Exception) {
+                    cancelAll(futures.values)
+                    return AgentParallelWaveExecutionResult(
+                        state = AgentParallelWaveExecutionState.PARTIAL,
+                        outcomes = listOf(
+                            AgentParallelWaveTaskOutcome.Failed(
+                                stepId = stepId,
+                                reason = "parallel wave task submission failed"
+                            )
+                        )
+                    )
+                }
+                futures[stepId] = future
             }
 
             val outcomes = mutableListOf<AgentParallelWaveTaskOutcome>()
