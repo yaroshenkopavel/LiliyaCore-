@@ -24,6 +24,9 @@ sealed interface AgentParallelAdmissionResult {
 }
 
 enum class AgentParallelAdmissionRejection {
+    ACTIVE_POPULATION_LIMIT,
+    ROOT_POPULATION_LIMIT,
+    RETRY_LIMIT,
     DIRECT_CHILD_LIMIT,
     DESCENDANT_BUDGET_EXCEEDED,
     PARENT_SCOPE_TOO_NARROW,
@@ -43,14 +46,36 @@ object AgentParallelAdmissionReservation {
         plan: AgentCoordinatorPlan,
         bounds: AgentFactoryBounds = AgentFactoryBounds.PROTOTYPE
     ): AgentParallelAdmissionResult {
+        if (plan.steps.size > bounds.maxAgentsPerRootTask) {
+            return AgentParallelAdmissionResult.Rejected(
+                AgentParallelAdmissionRejection.ROOT_POPULATION_LIMIT,
+                plan.steps.last().id
+            )
+        }
+
         val directChildren = plan.steps.associate { it.id to 0 }.toMutableMap()
         val descendants = plan.steps.associate { it.id to 0 }.toMutableMap()
         val depth = LinkedHashMap<AgentCoordinatorStepId, Int>(plan.steps.size)
+        val activeByDepth = mutableMapOf<Int, Int>()
 
         for (step in plan.steps) {
+            if (step.logicalRoleAttempt > bounds.maxRetryPerLogicalRole) {
+                return AgentParallelAdmissionResult.Rejected(
+                    AgentParallelAdmissionRejection.RETRY_LIMIT,
+                    step.id
+                )
+            }
+
             val parentId = step.parentStepId
             if (parentId == null) {
                 depth[step.id] = 0
+                activeByDepth[0] = Math.addExact(activeByDepth[0] ?: 0, 1)
+                if (activeByDepth.getValue(0) > bounds.maxActiveAgents) {
+                    return AgentParallelAdmissionResult.Rejected(
+                        AgentParallelAdmissionRejection.ACTIVE_POPULATION_LIMIT,
+                        step.id
+                    )
+                }
                 continue
             }
 
@@ -64,6 +89,13 @@ object AgentParallelAdmissionReservation {
                 )
             }
             depth[step.id] = stepDepth
+            activeByDepth[stepDepth] = Math.addExact(activeByDepth[stepDepth] ?: 0, 1)
+            if (activeByDepth.getValue(stepDepth) > bounds.maxActiveAgents) {
+                return AgentParallelAdmissionResult.Rejected(
+                    AgentParallelAdmissionRejection.ACTIVE_POPULATION_LIMIT,
+                    step.id
+                )
+            }
 
             if (!step.cognitiveScope.isWithin(parent.cognitiveScope)) {
                 return AgentParallelAdmissionResult.Rejected(
