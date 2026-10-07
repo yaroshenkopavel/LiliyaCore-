@@ -184,6 +184,30 @@ class AndroidProductRuntimeAdvisoryAgentCompositionContractTest {
         )
     }
 
+    @Test
+    fun public_composition_api_contains_no_authority_or_execution_types() {
+        val forbidden = listOf(
+            "AuthorityPrincipal",
+            "CapabilityAuthority",
+            "Execution",
+            "Orchestration",
+            "License"
+        )
+
+        val signatures = AndroidProductRuntimeAdvisoryAgentComposition::class.java.methods
+            .filter { it.declaringClass == AndroidProductRuntimeAdvisoryAgentComposition::class.java }
+            .flatMap { method ->
+                listOf(method.returnType.name) + method.parameterTypes.map { it.name }
+            }
+
+        forbidden.forEach { marker ->
+            kotlin.test.assertFalse(
+                signatures.any { marker in it },
+                "advisory ASF composition must not expose $marker: $signatures"
+            )
+        }
+    }
+
     private fun plan(): AgentCoordinatorPlan =
         AgentCoordinatorPlan(
             rootTaskId = AgentRootTaskId("android-product-advisory-root"),
