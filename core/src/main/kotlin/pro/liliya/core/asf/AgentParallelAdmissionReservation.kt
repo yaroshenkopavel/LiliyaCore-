@@ -3,12 +3,24 @@ package pro.liliya.core.asf
 data class AgentParallelAdmissionSnapshot(
     val directChildrenByStep: Map<AgentCoordinatorStepId, Int>,
     val descendantsByStep: Map<AgentCoordinatorStepId, Int>,
-    val depthByStep: Map<AgentCoordinatorStepId, Int>
+    val depthByStep: Map<AgentCoordinatorStepId, Int>,
+    val priorActiveAgentsByStep: Map<AgentCoordinatorStepId, Int>,
+    val priorAgentsForRootTaskByStep: Map<AgentCoordinatorStepId, Int>,
+    val priorDirectChildrenForParentByStep: Map<AgentCoordinatorStepId, Int>,
+    val parentRemainingDescendantsByStep: Map<AgentCoordinatorStepId, Int>
 ) {
     init {
-        require(directChildrenByStep.values.all { it >= 0 })
-        require(descendantsByStep.values.all { it >= 0 })
-        require(depthByStep.values.all { it >= 0 })
+        listOf(
+            directChildrenByStep,
+            descendantsByStep,
+            depthByStep,
+            priorActiveAgentsByStep,
+            priorAgentsForRootTaskByStep,
+            priorDirectChildrenForParentByStep,
+            parentRemainingDescendantsByStep
+        ).forEach { values ->
+            require(values.values.all { it >= 0 })
+        }
     }
 }
 
@@ -57,8 +69,16 @@ object AgentParallelAdmissionReservation {
         val descendants = plan.steps.associate { it.id to 0 }.toMutableMap()
         val depth = LinkedHashMap<AgentCoordinatorStepId, Int>(plan.steps.size)
         val activeByDepth = mutableMapOf<Int, Int>()
+        val priorActive = mutableMapOf<AgentCoordinatorStepId, Int>()
+        val priorForRoot = mutableMapOf<AgentCoordinatorStepId, Int>()
+        val priorDirectForParent = mutableMapOf<AgentCoordinatorStepId, Int>()
+        val parentRemainingDescendants = mutableMapOf<AgentCoordinatorStepId, Int>()
+        var priorRootAgents = 0
 
         for (step in plan.steps) {
+            priorForRoot[step.id] = priorRootAgents
+            priorRootAgents = Math.addExact(priorRootAgents, 1)
+
             if (step.logicalRoleAttempt > bounds.maxRetryPerLogicalRole) {
                 return AgentParallelAdmissionResult.Rejected(
                     AgentParallelAdmissionRejection.RETRY_LIMIT,
@@ -69,6 +89,9 @@ object AgentParallelAdmissionReservation {
             val parentId = step.parentStepId
             if (parentId == null) {
                 depth[step.id] = 0
+                priorActive[step.id] = activeByDepth[0] ?: 0
+                priorDirectForParent[step.id] = 0
+                parentRemainingDescendants[step.id] = step.budget.maxDescendants
                 activeByDepth[0] = Math.addExact(activeByDepth[0] ?: 0, 1)
                 if (activeByDepth.getValue(0) > bounds.maxActiveAgents) {
                     return AgentParallelAdmissionResult.Rejected(
@@ -89,6 +112,7 @@ object AgentParallelAdmissionReservation {
                 )
             }
             depth[step.id] = stepDepth
+            priorActive[step.id] = activeByDepth[stepDepth] ?: 0
             activeByDepth[stepDepth] = Math.addExact(activeByDepth[stepDepth] ?: 0, 1)
             if (activeByDepth.getValue(stepDepth) > bounds.maxActiveAgents) {
                 return AgentParallelAdmissionResult.Rejected(
@@ -104,13 +128,28 @@ object AgentParallelAdmissionReservation {
                 )
             }
 
-            if (!step.budget.isWithin(parent.budget)) {
+            val priorParentDescendants = descendants.getValue(parentId)
+            val remainingAfterThisChild =
+                parent.budget.maxDescendants - priorParentDescendants - 1
+            if (remainingAfterThisChild < 0) {
+                return AgentParallelAdmissionResult.Rejected(
+                    AgentParallelAdmissionRejection.DESCENDANT_BUDGET_EXCEEDED,
+                    step.id
+                )
+            }
+            parentRemainingDescendants[step.id] = remainingAfterThisChild
+
+            val parentRemainingBudget = parent.budget.copy(
+                maxDescendants = remainingAfterThisChild
+            )
+            if (!step.budget.isWithin(parentRemainingBudget)) {
                 return AgentParallelAdmissionResult.Rejected(
                     AgentParallelAdmissionRejection.CHILD_BUDGET_WIDENING,
                     step.id
                 )
             }
 
+            priorDirectForParent[step.id] = directChildren.getValue(parentId)
             val nextDirect = Math.addExact(directChildren.getValue(parentId), 1)
             if (nextDirect > bounds.maxDirectChildren) {
                 return AgentParallelAdmissionResult.Rejected(
@@ -139,7 +178,13 @@ object AgentParallelAdmissionReservation {
             AgentParallelAdmissionSnapshot(
                 directChildrenByStep = directChildren.toSortedMap(compareBy { it.value }),
                 descendantsByStep = descendants.toSortedMap(compareBy { it.value }),
-                depthByStep = depth.toSortedMap(compareBy { it.value })
+                depthByStep = depth.toSortedMap(compareBy { it.value }),
+                priorActiveAgentsByStep = priorActive.toSortedMap(compareBy { it.value }),
+                priorAgentsForRootTaskByStep = priorForRoot.toSortedMap(compareBy { it.value }),
+                priorDirectChildrenForParentByStep =
+                    priorDirectForParent.toSortedMap(compareBy { it.value }),
+                parentRemainingDescendantsByStep =
+                    parentRemainingDescendants.toSortedMap(compareBy { it.value })
             )
         )
     }
