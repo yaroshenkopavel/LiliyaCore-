@@ -58,7 +58,6 @@ sealed interface AgentParallelScheduleResult {
 
 enum class AgentParallelScheduleRejection {
     PLAN_AGGREGATE_BUDGET_EXCEEDED,
-    WAVE_AGGREGATE_BUDGET_EXCEEDED,
     ARITHMETIC_OVERFLOW
 }
 
@@ -96,11 +95,6 @@ object AgentParallelScheduler {
             grouped.toSortedMap().forEach { (depth, steps) ->
                 val ordered = steps.sortedBy { it.id.value }
                 val reservation = reserve(ordered)
-                if (!reservation.fitsWithin(aggregateBudget)) {
-                    return AgentParallelScheduleResult.Rejected(
-                        AgentParallelScheduleRejection.WAVE_AGGREGATE_BUDGET_EXCEEDED
-                    )
-                }
                 waves += AgentParallelWave(
                     index = depth,
                     stepIds = ordered.map { it.id },
