@@ -61,12 +61,13 @@ class AgentParallelPlanExecutor(
 
         val outcomes = mutableListOf<AgentParallelWaveTaskOutcome>()
         val completedArtifacts = mutableMapOf<AgentCoordinatorStepId, String?>()
+        var completedWaves = 0
 
         for (wave in schedule.waves) {
             if (cancelled()) {
                 return terminal(
                     AgentParallelPlanExecutionState.CANCELLED,
-                    completedArtifacts,
+                    completedWaves,
                     outcomes
                 )
             }
@@ -79,7 +80,7 @@ class AgentParallelPlanExecutor(
                 if (step.includeParentArtifact && parentArtifact == null) {
                     return terminal(
                         AgentParallelPlanExecutionState.PARTIAL,
-                        completedArtifacts,
+                        completedWaves,
                         outcomes
                     )
                 }
@@ -108,23 +109,23 @@ class AgentParallelPlanExecutor(
                     }
 
                     when (result.state) {
-                        AgentParallelWaveExecutionState.COMPLETED -> Unit
+                        AgentParallelWaveExecutionState.COMPLETED -> completedWaves++
                         AgentParallelWaveExecutionState.CANCELLED ->
                             return terminal(
                                 AgentParallelPlanExecutionState.CANCELLED,
-                                completedArtifacts,
+                                completedWaves,
                                 outcomes
                             )
                         AgentParallelWaveExecutionState.TIMED_OUT ->
                             return terminal(
                                 AgentParallelPlanExecutionState.TIMED_OUT,
-                                completedArtifacts,
+                                completedWaves,
                                 outcomes
                             )
                         AgentParallelWaveExecutionState.PARTIAL ->
                             return terminal(
                                 AgentParallelPlanExecutionState.PARTIAL,
-                                completedArtifacts,
+                                completedWaves,
                                 outcomes
                             )
                     }
@@ -134,20 +135,18 @@ class AgentParallelPlanExecutor(
 
         return AgentParallelPlanExecutionResult(
             state = AgentParallelPlanExecutionState.COMPLETED,
-            completedWaves = schedule.waves.size,
+            completedWaves = completedWaves,
             outcomes = outcomes
         )
     }
 
     private fun terminal(
         state: AgentParallelPlanExecutionState,
-        completedArtifacts: Map<AgentCoordinatorStepId, String?>,
+        completedWaves: Int,
         outcomes: List<AgentParallelWaveTaskOutcome>
     ) = AgentParallelPlanExecutionResult(
         state = state,
-        completedWaves = completedArtifacts.keys
-            .mapNotNull { completed -> null }
-            .size,
+        completedWaves = completedWaves,
         outcomes = outcomes
     )
 }
