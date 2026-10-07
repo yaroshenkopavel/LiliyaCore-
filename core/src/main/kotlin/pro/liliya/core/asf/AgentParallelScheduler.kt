@@ -57,6 +57,7 @@ sealed interface AgentParallelScheduleResult {
 }
 
 enum class AgentParallelScheduleRejection {
+    PLAN_AGGREGATE_BUDGET_EXCEEDED,
     WAVE_AGGREGATE_BUDGET_EXCEEDED,
     ARITHMETIC_OVERFLOW
 }
@@ -65,8 +66,8 @@ enum class AgentParallelScheduleRejection {
  * Deterministic dependency-wave scheduler for future concurrent ASF execution.
  *
  * This class does not execute workers. It computes dependency-ready sibling waves and reserves
- * each wave by worker budget ceilings before any future concurrent launch. Actual execution must
- * combine these reservations with already committed aggregate usage.
+ * each wave by worker budget ceilings before any future concurrent launch. The complete plan is
+ * also reserved up front so aggregate ceilings cannot be bypassed across multiple waves.
  */
 object AgentParallelScheduler {
     fun schedule(
@@ -85,6 +86,13 @@ object AgentParallelScheduler {
         val waves = ArrayList<AgentParallelWave>(grouped.size)
 
         return try {
+            val planReservation = reserve(plan.steps)
+            if (!planReservation.fitsWithin(aggregateBudget)) {
+                return AgentParallelScheduleResult.Rejected(
+                    AgentParallelScheduleRejection.PLAN_AGGREGATE_BUDGET_EXCEEDED
+                )
+            }
+
             grouped.toSortedMap().forEach { (depth, steps) ->
                 val ordered = steps.sortedBy { it.id.value }
                 val reservation = reserve(ordered)
