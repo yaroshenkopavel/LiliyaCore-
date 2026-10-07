@@ -48,7 +48,8 @@ class AgentParallelAdmissionReservationContractTest {
                 AgentParallelParentReservation(
                     parentStepId = AgentCoordinatorStepId("root"),
                     directChildren = 2,
-                    totalDescendants = 2
+                    plannedDescendants = 2,
+                    reservedDescendantCapacity = 2
                 )
             ),
             ready.parents
@@ -108,6 +109,39 @@ class AgentParallelAdmissionReservationContractTest {
                 AgentCoordinatorPlan(
                     AgentRootTaskId("reservation-root"),
                     listOf(root, child, grandchild)
+                ),
+                bounds
+            )
+        )
+
+        assertEquals(
+            AgentParallelAdmissionRejection.DESCENDANT_BUDGET_EXCEEDED,
+            rejected.reason
+        )
+    }
+
+    @Test
+    fun sibling_declared_subtree_capacity_is_reserved_before_concurrent_admission() {
+        val constrainedRoot = rootBudget.copy(maxDescendants = 2)
+        val root = step("root", null, constrainedRoot, broadScope)
+        val childWithFutureCapacity = step(
+            "child-a",
+            "root",
+            childBudget.copy(maxDescendants = 1),
+            narrowScope
+        )
+        val sibling = step(
+            "child-b",
+            "root",
+            childBudget,
+            narrowScope
+        )
+
+        val rejected = assertIs<AgentParallelAdmissionReservationResult.Rejected>(
+            AgentParallelAdmissionReservationPlanner.reserve(
+                AgentCoordinatorPlan(
+                    AgentRootTaskId("reserved-subtree-root"),
+                    listOf(root, childWithFutureCapacity, sibling)
                 ),
                 bounds
             )
