@@ -21,8 +21,15 @@ object AgentParallelCoordinatorResultAssembler {
         var budgetExceeded = false
         var sawBudgetTerminal = false
         var sawCancelledTerminal = false
+        val publishedStepIds = execution.outcomes.map { outcome ->
+            when (outcome) {
+                is AgentParallelWaveTaskOutcome.Completed -> outcome.stepId
+                is AgentParallelWaveTaskOutcome.Failed -> outcome.stepId
+            }
+        }.toSet()
 
         for ((step, terminal) in taskFactory.terminalsInPlanOrder()) {
+            if (step.id !in publishedStepIds) continue
             try {
                 usage = usage.startAgent()
                 step.workerClass?.let { workerClass ->
