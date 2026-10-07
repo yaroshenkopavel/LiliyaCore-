@@ -111,7 +111,14 @@ class AgentFactory(
                     ?: DEFAULT_RUNTIME_LOCK_KEY
                 val runtimeLock = runtimeLocks.computeIfAbsent(runtimeKey) { Any() }
                 synchronized(runtimeLock) {
-                    runtimeAdapter.run(context)
+                    if (cancellationRequested() || !now().isBefore(expiresAt)) {
+                        AgentRuntimeOutcome.Failed(
+                            reason = "runtime execution cancelled before adapter entry",
+                            usage = AgentRuntimeUsage(0, 0, 0, 0, 0)
+                        )
+                    } else {
+                        runtimeAdapter.run(context)
+                    }
                 }
             } catch (_: Exception) {
                 instance = instance.transition(AgentLifecycleState.FAILED)
