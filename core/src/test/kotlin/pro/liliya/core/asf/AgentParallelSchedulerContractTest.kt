@@ -88,7 +88,7 @@ class AgentParallelSchedulerContractTest {
     }
 
     @Test
-    fun fanout_is_rejected_before_launch_when_wave_ceiling_exceeds_aggregate_budget() {
+    fun whole_plan_is_rejected_before_launch_when_cumulative_compute_ceiling_exceeds_aggregate_budget() {
         val expensiveChild = childBudget.copy(maxInferenceUnits = 4_000)
         val constrained = aggregate.copy(maxInferenceUnits = 10_000)
         val root = step("root", null, rootBudget)
@@ -107,7 +107,24 @@ class AgentParallelSchedulerContractTest {
         )
 
         assertEquals(
-            AgentParallelScheduleRejection.WAVE_AGGREGATE_BUDGET_EXCEEDED,
+            AgentParallelScheduleRejection.PLAN_AGGREGATE_BUDGET_EXCEEDED,
+            rejected.reason
+        )
+    }
+
+    @Test
+    fun whole_plan_is_rejected_when_cumulative_agent_population_exceeds_aggregate_cap() {
+        val constrained = aggregate.copy(maxAgents = 2)
+
+        val rejected = assertIs<AgentParallelScheduleResult.Rejected>(
+            AgentParallelScheduler.schedule(
+                plan = plan(listOf("a", "b")),
+                aggregateBudget = constrained
+            )
+        )
+
+        assertEquals(
+            AgentParallelScheduleRejection.PLAN_AGGREGATE_BUDGET_EXCEEDED,
             rejected.reason
         )
     }
