@@ -72,6 +72,8 @@ class AndroidProductRuntimeAdvisoryLlmRegistrationContractTest {
             nanoTime = sequenceNanoTime(10_000_000L, 13_000_000L)
         )
 
+        assertEquals(1, registration.maxConcurrentExecutions)
+
         val result = registration.adapter.run(executionRequest(descriptor))
 
         val completed = assertIs<AgentCognitiveRuntimeExecutionResult.Completed>(result)
