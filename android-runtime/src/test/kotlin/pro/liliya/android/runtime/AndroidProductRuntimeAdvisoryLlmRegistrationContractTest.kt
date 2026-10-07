@@ -178,6 +178,32 @@ class AndroidProductRuntimeAdvisoryLlmRegistrationContractTest {
         assertEquals(0, failed.usage.artifactCount)
     }
 
+    @Test
+    fun public_llm_registration_api_contains_no_authority_or_action_execution_types() {
+        val forbidden = listOf(
+            "AuthorityPrincipal",
+            "CapabilityAuthority",
+            "ControlledAutonomyExecution",
+            "GovernedClosedLoopActionGateway",
+            "License"
+        )
+
+        val signatures = AndroidProductRuntimeAdvisoryLlmRegistration::class.java.methods
+            .filter {
+                it.declaringClass == AndroidProductRuntimeAdvisoryLlmRegistration::class.java
+            }
+            .flatMap { method ->
+                listOf(method.returnType.name) + method.parameterTypes.map { it.name }
+            }
+
+        forbidden.forEach { marker ->
+            kotlin.test.assertFalse(
+                signatures.any { marker in it },
+                "advisory LLM registration must not expose $marker: $signatures"
+            )
+        }
+    }
+
     private fun executionRequest(
         runtime: AgentWorkerRuntimeDescriptor
     ): AgentCognitiveRuntimeExecutionRequest {
