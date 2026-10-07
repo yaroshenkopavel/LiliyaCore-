@@ -179,6 +179,36 @@ class AndroidProductRuntimeAssemblyContractTest {
     }
 
     @Test
+    fun advisory_agent_host_is_exposed_only_while_heart_is_ready() {
+        val foundation = foundation()
+        val heart = FakeHeart()
+        val advisory = AndroidProductRuntimeAdvisoryAgentHost(
+            AndroidProductRuntimeAdvisoryAgentRunPort { _, _, _ ->
+                error("advisory host must not execute during readiness gating test")
+            }
+        )
+        val runtime = AndroidProductRuntimeAssembly(
+            heart = heart,
+            learning = LearningComposition(foundation),
+            governedLearningFactory = AndroidProductRuntimeGovernedLearningFactory {
+                readyGoverned(heart)
+            },
+            advisoryAgents = advisory
+        )
+
+        assertNull(runtime.advisoryAgents())
+        assertEquals(AndroidProductRuntimeStartResult.Ready, runtime.start())
+        assertSame(advisory, runtime.advisoryAgents())
+
+        heart.forceState(HeartRuntimeState.FAILED)
+        assertNull(runtime.advisoryAgents())
+
+        runtime.close()
+        assertNull(runtime.advisoryAgents())
+    }
+
+
+    @Test
     fun ready_runtime_exposes_existing_product_surfaces_only_while_heart_is_ready() {
         val foundation = foundation()
         val learning = LearningComposition(foundation)
