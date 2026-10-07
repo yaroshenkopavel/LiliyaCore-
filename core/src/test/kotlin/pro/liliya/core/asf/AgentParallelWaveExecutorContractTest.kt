@@ -128,6 +128,56 @@ class AgentParallelWaveExecutorContractTest {
     }
 
     @Test
+    fun artifact_reference_surface_is_bounded() {
+        kotlin.test.assertFailsWith<IllegalArgumentException> {
+            AgentParallelWaveTaskOutcome.Completed(
+                stepId = stepA,
+                artifactReference = " "
+            )
+        }
+        kotlin.test.assertFailsWith<IllegalArgumentException> {
+            AgentParallelWaveTaskOutcome.Completed(
+                stepId = stepA,
+                artifactReference = "x".repeat(257)
+            )
+        }
+    }
+
+    @Test
+    fun executor_submission_rejection_fails_closed_without_throwing() {
+        val pool = Executors.newFixedThreadPool(1)
+        pool.shutdownNow()
+
+        val result = AgentParallelWaveExecutor(pool).execute(
+            wave = AgentParallelWave(
+                index = 0,
+                stepIds = listOf(stepA),
+                reservation = AgentParallelWaveReservation(
+                    maxWallClockMillis = 1_000,
+                    maxInferenceUnits = 1_000,
+                    maxContextBytes = 1_000,
+                    maxRetrievalItems = 0,
+                    maxArtifacts = 1,
+                    maxAgents = 1
+                )
+            ),
+            tasks = mapOf(
+                stepA to AgentParallelWaveTask {
+                    error("must not run")
+                }
+            ),
+            timeoutMillis = 1_000
+        )
+
+        assertEquals(AgentParallelWaveExecutionState.PARTIAL, result.state)
+        assertEquals(1, result.outcomes.size)
+        assertEquals(
+            "parallel wave task submission failed",
+            (result.outcomes.single() as AgentParallelWaveTaskOutcome.Failed).reason
+        )
+    }
+
+    @Test
     fun cancellation_is_polled_and_fans_out_to_live_tasks() {
         val pool = Executors.newFixedThreadPool(2)
         try {
