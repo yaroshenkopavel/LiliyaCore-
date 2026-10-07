@@ -3,11 +3,14 @@ package pro.liliya.core.asf
 data class AgentParallelParentReservation(
     val parentStepId: AgentCoordinatorStepId,
     val directChildren: Int,
-    val totalDescendants: Int
+    val plannedDescendants: Int,
+    val reservedDescendantCapacity: Int
 ) {
     init {
         require(directChildren >= 0)
-        require(totalDescendants >= directChildren)
+        require(plannedDescendants >= directChildren)
+        require(reservedDescendantCapacity >= directChildren)
+        require(reservedDescendantCapacity >= plannedDescendants)
     }
 }
 
@@ -78,6 +81,7 @@ object AgentParallelAdmissionReservationPlanner {
             val depthByStep = linkedMapOf<AgentCoordinatorStepId, Int>()
             val directChildren = linkedMapOf<AgentCoordinatorStepId, Int>()
             val descendants = linkedMapOf<AgentCoordinatorStepId, Int>()
+            val reservedDescendantCapacity = linkedMapOf<AgentCoordinatorStepId, Int>()
 
             for (step in plan.steps) {
                 val parentId = step.parentStepId
@@ -105,6 +109,14 @@ object AgentParallelAdmissionReservationPlanner {
                         directChildren[parentId] ?: 0,
                         1
                     )
+                    val childSubtreeCapacity = Math.addExact(
+                        1,
+                        step.budget.maxDescendants
+                    )
+                    reservedDescendantCapacity[parentId] = Math.addExact(
+                        reservedDescendantCapacity[parentId] ?: 0,
+                        childSubtreeCapacity
+                    )
 
                     var ancestorId: AgentCoordinatorStepId? = parentId
                     while (ancestorId != null) {
@@ -129,6 +141,12 @@ object AgentParallelAdmissionReservationPlanner {
                     return reject(AgentParallelAdmissionRejection.DESCENDANT_BUDGET_EXCEEDED)
                 }
             }
+            reservedDescendantCapacity.forEach { (parentId, reserved) ->
+                val parent = requireNotNull(plan.step(parentId))
+                if (reserved > parent.budget.maxDescendants) {
+                    return reject(AgentParallelAdmissionRejection.DESCENDANT_BUDGET_EXCEEDED)
+                }
+            }
 
             val maxWaveSize = depthByStep.values
                 .groupingBy { it }
@@ -150,7 +168,9 @@ object AgentParallelAdmissionReservationPlanner {
                     AgentParallelParentReservation(
                         parentStepId = parent.id,
                         directChildren = directChildren[parent.id] ?: 0,
-                        totalDescendants = descendants[parent.id] ?: 0
+                        plannedDescendants = descendants[parent.id] ?: 0,
+                        reservedDescendantCapacity =
+                            reservedDescendantCapacity[parent.id] ?: 0
                     )
                 }
                 .sortedBy { it.parentStepId.value }
