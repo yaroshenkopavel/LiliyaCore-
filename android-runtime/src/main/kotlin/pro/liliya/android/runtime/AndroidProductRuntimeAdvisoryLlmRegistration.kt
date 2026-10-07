@@ -78,6 +78,7 @@ object AndroidProductRuntimeAdvisoryLlmRegistration {
         return AgentCognitiveRuntimeRegistration(
             descriptor = descriptor,
             available = available,
+            maxConcurrentExecutions = 1,
             adapter = AgentCognitiveRuntimeAdapters.llm { request ->
                 val compiled = try {
                     contextCompiler.compile(request)
