@@ -47,7 +47,7 @@ fun interface AndroidProductRuntimeAdvisoryLlmUsageMeter {
     fun measure(
         request: AgentCognitiveRuntimeExecutionRequest,
         compiled: AndroidProductRuntimeAdvisoryLlmCompiledRequest,
-        result: CognitiveInferenceResult,
+        result: CognitiveInferenceResult?,
         elapsedMillis: Long
     ): AgentRuntimeUsage
 }
@@ -86,10 +86,10 @@ object AndroidProductRuntimeAdvisoryLlmRegistration {
                 }
 
                 val started = nanoTime()
-                val result = try {
+                val providerResult = try {
                     inference.infer(compiled.inference)
                 } catch (_: Exception) {
-                    return@llm failed("advisory LLM inference provider failed")
+                    null
                 }
                 val finished = nanoTime()
                 val elapsedMillis = maxOf(0L, (finished - started) / 1_000_000L)
@@ -98,14 +98,21 @@ object AndroidProductRuntimeAdvisoryLlmRegistration {
                     usageMeter.measure(
                         request = request,
                         compiled = compiled,
-                        result = result,
+                        result = providerResult,
                         elapsedMillis = elapsedMillis
                     )
                 } catch (_: Exception) {
                     return@llm failed("advisory LLM usage metering failed")
                 }
 
-                when (result) {
+                if (providerResult == null) {
+                    return@llm AgentCognitiveRuntimeExecutionResult.Failed(
+                        reason = "advisory LLM inference provider failed",
+                        usage = usage
+                    )
+                }
+
+                when (providerResult) {
                     is CognitiveInferenceResult.Succeeded ->
                         AgentCognitiveRuntimeExecutionResult.Completed.create(
                             artifactKind = "llm-advisory",
