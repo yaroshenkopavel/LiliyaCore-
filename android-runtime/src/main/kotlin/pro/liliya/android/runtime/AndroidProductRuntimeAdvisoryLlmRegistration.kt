@@ -108,28 +108,38 @@ object AndroidProductRuntimeAdvisoryLlmRegistration {
                 if (providerResult == null) {
                     return@llm AgentCognitiveRuntimeExecutionResult.Failed(
                         reason = "advisory LLM inference provider failed",
-                        usage = usage
+                        usage = failureUsage(usage)
                     )
                 }
 
                 when (providerResult) {
-                    is CognitiveInferenceResult.Succeeded ->
+                    is CognitiveInferenceResult.Succeeded -> {
+                        if (usage.artifactCount != 1) {
+                            return@llm AgentCognitiveRuntimeExecutionResult.Failed(
+                                reason = "advisory LLM usage metering contract violated",
+                                usage = failureUsage(usage)
+                            )
+                        }
                         AgentCognitiveRuntimeExecutionResult.Completed.create(
                             artifactKind = "llm-advisory",
-                            payloadDigest = sha256(result.output),
+                            payloadDigest = sha256(providerResult.output),
                             sourceReferences = compiled.sourceReferences,
                             usage = usage
                         )
+                    }
 
                     is CognitiveInferenceResult.Rejected ->
                         AgentCognitiveRuntimeExecutionResult.Failed(
-                            reason = "advisory LLM inference rejected: " + result.reason.name,
-                            usage = usage
+                            reason = "advisory LLM inference rejected: " + providerResult.reason.name,
+                            usage = failureUsage(usage)
                         )
                 }
             }
         )
     }
+
+    private fun failureUsage(usage: AgentRuntimeUsage) =
+        usage.copy(artifactCount = 0)
 
     private fun failed(reason: String) =
         AgentCognitiveRuntimeExecutionResult.Failed(
