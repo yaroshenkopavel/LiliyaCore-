@@ -116,9 +116,17 @@ class AndroidProductRuntimeAdvisoryLlmRegistrationContractTest {
                 )
             },
             inference = { throw IllegalStateException("sensitive provider detail") },
-            usageMeter = AndroidProductRuntimeAdvisoryLlmUsageMeter { _, _, _, _ ->
-                error("meter must not run after provider failure")
-            }
+            usageMeter = AndroidProductRuntimeAdvisoryLlmUsageMeter { request, _, result, elapsed ->
+                assertEquals(null, result)
+                AgentRuntimeUsage(
+                    wallClockMillis = elapsed,
+                    inferenceUnits = 5,
+                    contextBytes = request.context.workspace.contextBytes,
+                    retrievalItems = 0,
+                    artifactCount = 0
+                )
+            },
+            nanoTime = sequenceNanoTime(20_000_000L, 24_000_000L)
         )
 
         val failed = assertIs<AgentCognitiveRuntimeExecutionResult.Failed>(
@@ -126,6 +134,8 @@ class AndroidProductRuntimeAdvisoryLlmRegistrationContractTest {
         )
 
         assertEquals("advisory LLM inference provider failed", failed.reason)
+        assertEquals(4, failed.usage.wallClockMillis)
+        assertEquals(5, failed.usage.inferenceUnits)
         assertEquals(0, failed.usage.artifactCount)
     }
 
