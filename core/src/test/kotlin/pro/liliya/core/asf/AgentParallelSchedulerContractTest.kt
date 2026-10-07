@@ -89,13 +89,19 @@ class AgentParallelSchedulerContractTest {
 
     @Test
     fun fanout_is_rejected_before_launch_when_wave_ceiling_exceeds_aggregate_budget() {
-        val constrained = aggregate.copy(
-            maxInferenceUnits = childBudget.maxInferenceUnits
+        val expensiveChild = childBudget.copy(maxInferenceUnits = 4_000)
+        val constrained = aggregate.copy(maxInferenceUnits = 10_000)
+        val root = step("root", null, rootBudget)
+        val plan = AgentCoordinatorPlan(
+            rootTaskId = AgentRootTaskId("parallel-root"),
+            steps = listOf(root) + listOf("a", "b", "c").map { id ->
+                step(id, "root", expensiveChild)
+            }
         )
 
         val rejected = assertIs<AgentParallelScheduleResult.Rejected>(
             AgentParallelScheduler.schedule(
-                plan(listOf("a", "b")),
+                plan,
                 constrained
             )
         )
