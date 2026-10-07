@@ -62,10 +62,22 @@ class AgentParallelCoordinator(
                 )
             }
 
-            val remainingMillis = Duration.between(
-                timeSource(),
-                runWindow.expiresAt
-            ).toMillis()
+            val remainingMillis = try {
+                Duration.between(
+                    timeSource(),
+                    runWindow.expiresAt
+                ).toMillis()
+            } catch (_: Exception) {
+                return terminalForStop(
+                    if (completedSteps == 0) AgentCoordinatorTerminalState.FAILED
+                    else AgentCoordinatorTerminalState.PARTIAL,
+                    artifacts,
+                    terminals,
+                    usage,
+                    workerUsage,
+                    completedSteps
+                )
+            }
             if (remainingMillis <= 0L) {
                 return terminalForStop(
                     if (completedSteps == 0) AgentCoordinatorTerminalState.FAILED
