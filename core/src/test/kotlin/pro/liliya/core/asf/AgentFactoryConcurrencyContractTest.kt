@@ -124,6 +124,68 @@ class AgentFactoryConcurrencyContractTest {
     }
 
     @Test
+    fun cancelled_same_runtime_waiter_never_enters_runtime_adapter_late() {
+        val firstEntered = CountDownLatch(1)
+        val releaseFirst = CountDownLatch(1)
+        val adapterCalls = AtomicInteger(0)
+        val cancelSecond = java.util.concurrent.atomic.AtomicBoolean(false)
+
+        val factory = factory(
+            runtimeAdapter = AgentRuntimeAdapter { context ->
+                val call = adapterCalls.incrementAndGet()
+                if (call == 1) {
+                    firstEntered.countDown()
+                    releaseFirst.await(1, TimeUnit.SECONDS)
+                }
+                completed(context)
+            }
+        )
+        val pool = Executors.newFixedThreadPool(2)
+        try {
+            val first = pool.submit<AgentFactoryResult> {
+                factory.runSingle(
+                    request("queued-first"),
+                    AgentPopulationSnapshot(1, 1, 0),
+                    AgentInstanceGeneration(1),
+                    now,
+                    expires,
+                    listOf("evidence:queued-first"),
+                    workerRuntime = runtimeA
+                )
+            }
+
+            assertTrue(firstEntered.await(1, TimeUnit.SECONDS))
+
+            val second = pool.submit<AgentFactoryResult> {
+                factory.runSingle(
+                    request("queued-second"),
+                    AgentPopulationSnapshot(1, 1, 0),
+                    AgentInstanceGeneration(1),
+                    now,
+                    expires,
+                    listOf("evidence:queued-second"),
+                    cancellationRequested = cancelSecond::get,
+                    workerRuntime = runtimeA
+                )
+            }
+
+            Thread.sleep(30)
+            cancelSecond.set(true)
+            releaseFirst.countDown()
+
+            first.get(2, TimeUnit.SECONDS)
+            val secondResult = second.get(2, TimeUnit.SECONDS)
+            val terminal = secondResult as AgentFactoryResult.Terminal
+
+            assertEquals(1, adapterCalls.get())
+            assertEquals(AgentLifecycleState.CANCELLED, terminal.instance.lifecycle)
+        } finally {
+            releaseFirst.countDown()
+            pool.shutdownNow()
+        }
+    }
+
+    @Test
     fun audit_ledger_append_is_serialized_across_parallel_runtime_identities() {
         val activeAudit = AtomicInteger(0)
         val maxAudit = AtomicInteger(0)
