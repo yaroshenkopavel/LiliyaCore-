@@ -134,8 +134,20 @@ class AgentParallelFactoryTaskFactoryContractTest {
                         AgentWorkerProfile(
                             workerClass = AgentWorkerClass.NANO,
                             budgetCeiling = workerBudget,
-                            maxRetryPerLogicalRole = 0,
+                            maxLogicalRoleRetries = 0,
                             protectedToolViewAllowed = false
+                        ),
+                        AgentWorkerProfile(
+                            workerClass = AgentWorkerClass.MICRO,
+                            budgetCeiling = rootBudget.copy(maxDescendants = 1),
+                            maxLogicalRoleRetries = 1,
+                            protectedToolViewAllowed = false
+                        ),
+                        AgentWorkerProfile(
+                            workerClass = AgentWorkerClass.FULL,
+                            budgetCeiling = rootBudget,
+                            maxLogicalRoleRetries = 1,
+                            protectedToolViewAllowed = true
                         )
                     )
                 )
