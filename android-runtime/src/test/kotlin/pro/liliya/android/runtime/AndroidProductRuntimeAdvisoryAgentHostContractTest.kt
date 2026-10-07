@@ -4,6 +4,7 @@ import java.time.Instant
 import org.junit.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertSame
 import pro.liliya.core.asf.AgentAggregateUsage
 import pro.liliya.core.asf.AgentBlueprintId
@@ -52,6 +53,79 @@ class AndroidProductRuntimeAdvisoryAgentHostContractTest {
         assertSame(expected, host.run(plan, window, cancelled))
         assertSame(plan, receivedPlan)
         assertSame(window, receivedWindow)
+        assertSame(cancelled, receivedCancelled)
+    }
+
+    @Test
+    fun parallel_run_is_unavailable_when_parallel_port_was_not_composed() {
+        val host = AndroidProductRuntimeAdvisoryAgentHost(
+            AndroidProductRuntimeAdvisoryAgentRunPort { _, _, _ ->
+                error("sequential port must not run")
+            }
+        )
+
+        assertNull(
+            host.runParallel(
+                plan = plan(),
+                window = AgentCoordinatorRunWindow(
+                    Instant.parse("2026-10-07T12:00:00Z"),
+                    Instant.parse("2026-10-07T12:01:00Z")
+                ),
+                timeoutPerWaveMillis = 1_000
+            )
+        )
+    }
+
+    @Test
+    fun parallel_run_delegates_exact_plan_window_timeout_and_cancellation() {
+        val plan = plan()
+        val window = AgentCoordinatorRunWindow(
+            admittedAt = Instant.parse("2026-10-07T12:00:00Z"),
+            expiresAt = Instant.parse("2026-10-07T12:01:00Z")
+        )
+        val expected = AgentCoordinatorResult(
+            state = AgentCoordinatorTerminalState.COMPLETED,
+            artifacts = emptyList(),
+            terminalInstances = emptyList(),
+            aggregateUsage = AgentAggregateUsage(),
+            completedSteps = 0
+        )
+        val cancelled = { false }
+
+        var receivedPlan: AgentCoordinatorPlan? = null
+        var receivedWindow: AgentCoordinatorRunWindow? = null
+        var receivedTimeout: Long? = null
+        var receivedCancelled: (() -> Boolean)? = null
+
+        val host = AndroidProductRuntimeAdvisoryAgentHost(
+            runPort = AndroidProductRuntimeAdvisoryAgentRunPort { _, _, _ ->
+                error("sequential port must not run")
+            },
+            parallelRunPort = AndroidProductRuntimeAdvisoryAgentParallelRunPort {
+                    actualPlan,
+                    actualWindow,
+                    actualTimeout,
+                    actualCancelled ->
+                receivedPlan = actualPlan
+                receivedWindow = actualWindow
+                receivedTimeout = actualTimeout
+                receivedCancelled = actualCancelled
+                expected
+            }
+        )
+
+        assertSame(
+            expected,
+            host.runParallel(
+                plan = plan,
+                window = window,
+                timeoutPerWaveMillis = 777,
+                cancelled = cancelled
+            )
+        )
+        assertSame(plan, receivedPlan)
+        assertSame(window, receivedWindow)
+        assertEquals(777, receivedTimeout)
         assertSame(cancelled, receivedCancelled)
     }
 
