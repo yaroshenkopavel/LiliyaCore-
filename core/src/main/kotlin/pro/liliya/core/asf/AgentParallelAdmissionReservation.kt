@@ -57,7 +57,7 @@ object AgentParallelAdmissionReservation {
             val parent = requireNotNull(plan.step(parentId))
             val parentDepth = requireNotNull(depth[parentId])
             val stepDepth = Math.addExact(parentDepth, 1)
-            if (stepDepth > bounds.maxDepth) {
+            if (stepDepth > bounds.maxSpawnDepth) {
                 return AgentParallelAdmissionResult.Rejected(
                     AgentParallelAdmissionRejection.MAX_DEPTH_EXCEEDED,
                     step.id
