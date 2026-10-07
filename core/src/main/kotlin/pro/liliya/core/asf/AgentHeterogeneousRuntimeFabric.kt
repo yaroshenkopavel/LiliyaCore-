@@ -1,6 +1,8 @@
 package pro.liliya.core.asf
 
 import java.nio.charset.StandardCharsets
+import java.util.concurrent.Semaphore
+import java.util.concurrent.TimeUnit
 
 enum class AgentCognitiveRuntimeKind {
     DETERMINISTIC_RULE,
@@ -108,16 +110,25 @@ fun interface AgentCognitiveRuntimeExecutionAdapter {
 data class AgentCognitiveRuntimeRegistration(
     val descriptor: AgentWorkerRuntimeDescriptor,
     val available: () -> Boolean,
-    val adapter: AgentCognitiveRuntimeExecutionAdapter
+    val adapter: AgentCognitiveRuntimeExecutionAdapter,
+    val maxConcurrentExecutions: Int? = null
 ) {
+    init {
+        require(maxConcurrentExecutions == null || maxConcurrentExecutions > 0) {
+            "runtime concurrency limit must be positive"
+        }
+    }
+
     val cognitiveKind: AgentCognitiveRuntimeKind
         get() = descriptor.kind.toCognitiveRuntimeKind()
 }
 
 class AgentHeterogeneousRuntimeFabric(
-    registrations: Collection<AgentCognitiveRuntimeRegistration>
+    registrations: Collection<AgentCognitiveRuntimeRegistration>,
+    private val nanoTime: () -> Long = System::nanoTime
 ) : AgentRuntimeAdapter {
     private val byIdentity: Map<String, AgentCognitiveRuntimeRegistration>
+    private val concurrencyGates: Map<String, Semaphore>
 
     init {
         require(registrations.isNotEmpty()) {
@@ -133,6 +144,12 @@ class AgentHeterogeneousRuntimeFabric(
         byIdentity = registrations.associateBy {
             it.descriptor.canonicalRuntimeIdentity()
         }
+        concurrencyGates = registrations.mapNotNull { registration ->
+            registration.maxConcurrentExecutions?.let { limit ->
+                registration.descriptor.canonicalRuntimeIdentity() to
+                    Semaphore(limit, true)
+            }
+        }.toMap()
     }
 
     override fun run(context: AgentRuntimeContext): AgentRuntimeOutcome {
@@ -162,36 +179,93 @@ class AgentHeterogeneousRuntimeFabric(
             )
         }
 
-        val result = try {
-            registration.adapter.run(
-                AgentCognitiveRuntimeExecutionRequest(
-                    descriptor = descriptor,
-                    context = context
+        val gate = concurrencyGates[descriptor.canonicalRuntimeIdentity()]
+        val waitStarted = nanoTime()
+        val acquired = if (gate == null) {
+            true
+        } else {
+            try {
+                gate.tryAcquire(
+                    context.budget.maxWallClockMillis,
+                    TimeUnit.MILLISECONDS
                 )
-            )
-        } catch (_: Exception) {
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                false
+            }
+        }
+        val waitMillis = if (gate == null) {
+            0L
+        } else {
+            elapsedMillis(waitStarted, nanoTime())
+        }
+
+        if (!acquired) {
             return fail(
-                reason = "heterogeneous worker runtime adapter failed",
-                usage = AgentRuntimeUsage(0, 0, 0, 0, 0)
+                reason = "heterogeneous worker runtime concurrency permit unavailable",
+                usage = AgentRuntimeUsage(waitMillis, 0, 0, 0, 0)
             )
         }
 
-        return when (result) {
-            is AgentCognitiveRuntimeExecutionResult.Failed ->
-                fail(result.reason, result.usage)
-
-            is AgentCognitiveRuntimeExecutionResult.Completed ->
-                AgentRuntimeOutcome.Completed(
-                    kind = result.artifactKind,
-                    payloadDigest = result.payloadDigest,
-                    provenanceReferences = runtimeProvenance(
-                        descriptor = descriptor,
-                        sourceReferences = result.sourceReferences
-                    ),
-                    usage = result.usage
+        try {
+            if (!registration.available()) {
+                return fail(
+                    reason = "heterogeneous worker runtime unavailable",
+                    usage = AgentRuntimeUsage(waitMillis, 0, 0, 0, 0)
                 )
+            }
+
+            val result = try {
+                registration.adapter.run(
+                    AgentCognitiveRuntimeExecutionRequest(
+                        descriptor = descriptor,
+                        context = context
+                    )
+                )
+            } catch (_: Exception) {
+                return fail(
+                    reason = "heterogeneous worker runtime adapter failed",
+                    usage = AgentRuntimeUsage(waitMillis, 0, 0, 0, 0)
+                )
+            }
+
+            return when (result) {
+                is AgentCognitiveRuntimeExecutionResult.Failed ->
+                    fail(result.reason, addWait(result.usage, waitMillis))
+
+                is AgentCognitiveRuntimeExecutionResult.Completed ->
+                    AgentRuntimeOutcome.Completed(
+                        kind = result.artifactKind,
+                        payloadDigest = result.payloadDigest,
+                        provenanceReferences = runtimeProvenance(
+                            descriptor = descriptor,
+                            sourceReferences = result.sourceReferences
+                        ),
+                        usage = addWait(result.usage, waitMillis)
+                    )
+            }
+        } finally {
+            gate?.release()
         }
     }
+
+    private fun elapsedMillis(
+        startedNanos: Long,
+        finishedNanos: Long
+    ): Long =
+        maxOf(0L, (finishedNanos - startedNanos) / 1_000_000L)
+
+    private fun addWait(
+        usage: AgentRuntimeUsage,
+        waitMillis: Long
+    ): AgentRuntimeUsage =
+        usage.copy(
+            wallClockMillis = try {
+                Math.addExact(usage.wallClockMillis, waitMillis)
+            } catch (_: ArithmeticException) {
+                Long.MAX_VALUE
+            }
+        )
 
     private fun fail(
         reason: String,
