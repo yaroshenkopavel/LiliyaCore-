@@ -67,6 +67,38 @@ class AgentParallelAdmissionReservationContractTest {
             ),
             ready.snapshot.depthByStep
         )
+        assertEquals(
+            mapOf(
+                AgentCoordinatorStepId("a") to 1,
+                AgentCoordinatorStepId("b") to 0,
+                AgentCoordinatorStepId("root") to 0
+            ),
+            ready.snapshot.priorActiveAgentsByStep
+        )
+        assertEquals(
+            mapOf(
+                AgentCoordinatorStepId("a") to 2,
+                AgentCoordinatorStepId("b") to 1,
+                AgentCoordinatorStepId("root") to 0
+            ),
+            ready.snapshot.priorAgentsForRootTaskByStep
+        )
+        assertEquals(
+            mapOf(
+                AgentCoordinatorStepId("a") to 1,
+                AgentCoordinatorStepId("b") to 0,
+                AgentCoordinatorStepId("root") to 0
+            ),
+            ready.snapshot.priorDirectChildrenForParentByStep
+        )
+        assertEquals(
+            mapOf(
+                AgentCoordinatorStepId("a") to 2,
+                AgentCoordinatorStepId("b") to 3,
+                AgentCoordinatorStepId("root") to 4
+            ),
+            ready.snapshot.parentRemainingDescendantsByStep
+        )
     }
 
     @Test
