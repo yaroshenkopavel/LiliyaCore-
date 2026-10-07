@@ -65,16 +65,25 @@ There is currently no newer Android release candidate beyond `26100601 / 0.2.0`.
 
 ## CI
 
-`Production Android App Host CI` verifies:
+For the accepted `26100601 / 0.2.0` transition, Production Android App Host CI proved the transition from `1 / 0.1`.
 
-- canonical version fields parse correctly;
-- current `versionCode` is never lower than the accepted baseline;
-- if current equals accepted, `versionName` must also equal the accepted name and CI reports `ACCEPTED_BASELINE`;
-- if current is greater, CI reports `SUCCESSOR_CANDIDATE`;
-- the assembled release APK `aapt badging` exactly matches the canonical current version.
+For the next candidate, CI must fail closed unless:
 
-Current state:
+- current candidate versionCode is strictly greater than `26100601`;
+- `previousAcceptedVersionCode=26100601`;
+- `previousAcceptedVersionName=0.2.0`;
+- assembled APK manifest matches the declared candidate identity;
+- exact release evidence is newly bound to that candidate.
 
-`26100601 / 0.2.0 == accepted 26100601 / 0.2.0`
+## Physical acceptance status
 
-Issue #587 is CLOSED GREEN after production signing and physical update-in-place acceptance.
+Issue #587 is **CLOSED GREEN**.
+
+Accepted evidence:
+
+- source `d484b2ac07be8650f240fb550f211e34b7718243`
+- unsigned APK SHA-256 `01760b3855ca35bd4b4f8762757d232347b1b16c8138b9d1a4796d640eb47972`
+- signed APK SHA-256 `03fb47498a56be0e8f30fec188fe5599f466c2fd3aa8e4404b7f96808076f185`
+- update-in-place preserved application data and completed repeated local inference.
+
+The next versioning PR must treat `26100601 / 0.2.0` as the previous physically accepted baseline.
