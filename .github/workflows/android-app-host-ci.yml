@@ -136,6 +136,7 @@ jobs:
           [[ "$current_code" =~ ^[0-9]{8}$ ]]
           [[ "$previous_code" =~ ^[0-9]+$ ]]
           [[ "$current_name" =~ ^[0-9]+[.][0-9]+[.][0-9]+$ ]]
+          [[ "$previous_name" =~ ^[0-9]+[.][0-9]+[.][0-9]+$ ]]
 
           python3 - "$current_code" <<'PY'
           import datetime
@@ -151,9 +152,13 @@ jobs:
               raise SystemExit("versionCode RR must be in 01..99")
           PY
 
-          test "$current_code" -gt "$previous_code"
-          test "$previous_code" -eq 1
-          test "$previous_name" = "0.1"
+          test "$current_code" -ge "$previous_code"
+          if test "$current_code" -eq "$previous_code"; then
+            test "$current_name" = "$previous_name"
+            version_state="ACCEPTED_BASELINE"
+          else
+            version_state="SUCCESSOR_CANDIDATE"
+          fi
 
           package_line="$("$aapt" dump badging "$apk" | grep -m1 '^package:')"
           echo "$package_line" | grep -Fq "name='pro.liliya.app'"
@@ -161,6 +166,7 @@ jobs:
           echo "$package_line" | grep -Fq "versionName='$current_name'"
 
           echo "ANDROID_VERSION_POLICY=PASS"
+          echo "ANDROID_VERSION_STATE=$version_state"
           echo "ANDROID_VERSION_TRANSITION=$previous_code/$previous_name->$current_code/$current_name"
 
       - name: Guard release APK from cold-start test payloads
