@@ -4,6 +4,7 @@ import java.time.Instant
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -153,6 +154,138 @@ class AgentParallelCoordinatorContractTest {
     }
 
     @Test
+    fun cancellation_during_sibling_wave_does_not_publish_late_child_results() {
+        val childStarted = CountDownLatch(2)
+        val holdChildren = CountDownLatch(1)
+        val cancel = AtomicBoolean(false)
+        val pool = Executors.newFixedThreadPool(2)
+        try {
+            val coordinator = coordinator(
+                pool = pool,
+                adapter = AgentRuntimeAdapter { context ->
+                    if (context.workerRuntime == microRuntime || context.workerRuntime == nanoRuntime) {
+                        childStarted.countDown()
+                        try {
+                            holdChildren.await(1, TimeUnit.SECONDS)
+                        } catch (_: InterruptedException) {
+                            Thread.currentThread().interrupt()
+                        }
+                    }
+                    completed(context)
+                }
+            )
+
+            val canceller = Thread {
+                if (childStarted.await(1, TimeUnit.SECONDS)) {
+                    cancel.set(true)
+                }
+            }.apply { start() }
+
+            val result = coordinator.runParallel(
+                plan = plan(),
+                runWindow = AgentCoordinatorRunWindow(now, expires),
+                cancelled = cancel::get
+            )
+
+            canceller.join(1_000)
+            holdChildren.countDown()
+
+            assertEquals(AgentCoordinatorTerminalState.PARTIAL, result.state)
+            assertEquals(1, result.completedSteps)
+            assertEquals(1, result.terminalInstances.size)
+            assertEquals(1, result.artifacts.size)
+            assertEquals(1, result.aggregateUsage.agentsStarted)
+        } finally {
+            cancel.set(true)
+            holdChildren.countDown()
+            pool.shutdownNow()
+        }
+    }
+
+    @Test
+    fun timeout_during_sibling_wave_does_not_publish_late_child_results() {
+        val childStarted = CountDownLatch(2)
+        val holdChildren = CountDownLatch(1)
+        val pool = Executors.newFixedThreadPool(2)
+        try {
+            val coordinator = coordinator(
+                pool = pool,
+                adapter = AgentRuntimeAdapter { context ->
+                    if (context.workerRuntime == microRuntime || context.workerRuntime == nanoRuntime) {
+                        childStarted.countDown()
+                        try {
+                            holdChildren.await(1, TimeUnit.SECONDS)
+                        } catch (_: InterruptedException) {
+                            Thread.currentThread().interrupt()
+                        }
+                    }
+                    completed(context)
+                },
+                coordinatorTimeSource = { expires.minusMillis(75) }
+            )
+
+            val result = coordinator.runParallel(
+                plan = plan(),
+                runWindow = AgentCoordinatorRunWindow(now, expires)
+            )
+
+            holdChildren.countDown()
+
+            assertEquals(AgentCoordinatorTerminalState.PARTIAL, result.state)
+            assertEquals(1, result.completedSteps)
+            assertEquals(1, result.terminalInstances.size)
+            assertEquals(1, result.artifacts.size)
+            assertEquals(1, result.aggregateUsage.agentsStarted)
+        } finally {
+            holdChildren.countDown()
+            pool.shutdownNow()
+        }
+    }
+
+    @Test
+    fun reverse_sibling_completion_still_publishes_canonical_terminal_order() {
+        val childARelease = CountDownLatch(1)
+        val childBFinished = CountDownLatch(1)
+        val instanceByRuntime = java.util.concurrent.ConcurrentHashMap<String, AgentInstanceId>()
+        val pool = Executors.newFixedThreadPool(2)
+        try {
+            val coordinator = coordinator(
+                pool = pool,
+                adapter = AgentRuntimeAdapter { context ->
+                    val runtime = requireNotNull(context.workerRuntime)
+                    instanceByRuntime[runtime.runtimeId] = context.instanceId
+                    if (runtime == nanoRuntime) {
+                        childBFinished.await(1, TimeUnit.SECONDS)
+                        childARelease.await(1, TimeUnit.SECONDS)
+                    } else if (runtime == microRuntime) {
+                        childBFinished.countDown()
+                    }
+                    completed(context)
+                }
+            )
+
+            val result = coordinator.runParallel(
+                plan = plan(),
+                runWindow = AgentCoordinatorRunWindow(now, expires)
+            )
+            childARelease.countDown()
+
+            assertEquals(AgentCoordinatorTerminalState.COMPLETED, result.state)
+            assertEquals(
+                listOf(
+                    instanceByRuntime.getValue(fullRuntime.runtimeId),
+                    instanceByRuntime.getValue(nanoRuntime.runtimeId),
+                    instanceByRuntime.getValue(microRuntime.runtimeId)
+                ),
+                result.terminalInstances.map { it.id }
+            )
+        } finally {
+            childARelease.countDown()
+            pool.shutdownNow()
+        }
+    }
+
+    @Test
     fun active_population_preflight_rejects_before_any_runtime_call() {
         val runtimeCalls = AtomicInteger(0)
         val pool = Executors.newFixedThreadPool(2)
@@ -244,7 +377,8 @@ class AgentParallelCoordinatorContractTest {
 
     private fun coordinator(
         pool: java.util.concurrent.ExecutorService,
-        adapter: AgentRuntimeAdapter
+        adapter: AgentRuntimeAdapter,
+        coordinatorTimeSource: () -> Instant = { now }
     ): AgentParallelCoordinator {
         val profiles = AgentWorkerProfileSet(
             listOf(
@@ -273,7 +407,7 @@ class AgentParallelCoordinatorContractTest {
                 AgentWorkerAdmissionPolicy(profiles),
                 factory
             ),
-            timeSource = { now }
+            timeSource = coordinatorTimeSource
         )
     }
 }
