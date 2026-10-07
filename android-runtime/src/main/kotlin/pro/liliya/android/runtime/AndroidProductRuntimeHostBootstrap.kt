@@ -51,6 +51,7 @@ data class AndroidProductRuntimeHostPreparedInputs(
     val mutations: EncryptedPersistentLearningApplicationMutationComposition,
     val artifactIds: CognitiveArtifactIdSource,
     val timestamps: CognitiveTimestampSource,
+    val advisoryAgents: AndroidProductRuntimeAdvisoryAgentHost? = null,
     val limits: CognitiveRuntimeLimits = CognitiveRuntimeLimits(),
     val personaLimits: AndroidHeartProductionPersonaLimits =
         AndroidHeartProductionPersonaLimits()
@@ -196,6 +197,7 @@ object AndroidProductRuntimeHostBootstrap {
             mutations = inputs.mutations,
             artifactIds = inputs.artifactIds,
             timestamps = inputs.timestamps,
+            advisoryAgents = inputs.advisoryAgents,
             limits = inputs.limits,
             personaLimits = inputs.personaLimits
         )

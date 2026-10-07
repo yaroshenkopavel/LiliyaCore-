@@ -121,6 +121,7 @@ class AndroidProductRuntimeAssembly internal constructor(
     private val heart: AndroidProductRuntimeHeartBridge,
     private val learning: LearningComposition,
     private val governedLearningFactory: AndroidProductRuntimeGovernedLearningFactory,
+    private val advisoryAgents: AndroidProductRuntimeAdvisoryAgentHost? = null,
     private val durableConversationStoreId: PersistentStoreId? = null,
     private val durableConversationSessionId: CognitiveConversationSessionId? = null,
     private val conversationTimestamps: CognitiveTimestampSource? = null
@@ -241,6 +242,9 @@ class AndroidProductRuntimeAssembly internal constructor(
     fun learningFollowUp(): ProductLearningFollowUpHost? =
         if (heart.state() == HeartRuntimeState.READY) learningFollowUpHost else null
 
+    fun advisoryAgents(): AndroidProductRuntimeAdvisoryAgentHost? =
+        if (heart.state() == HeartRuntimeState.READY) advisoryAgents else null
+
     @Synchronized
     fun recoverSemantic(): AndroidProductRuntimeSemanticRecoveryResult {
         val recovered = try {
@@ -349,6 +353,7 @@ class AndroidProductRuntimeAssembly internal constructor(
             mutations: EncryptedPersistentLearningApplicationMutationComposition,
             artifactIds: CognitiveArtifactIdSource,
             timestamps: CognitiveTimestampSource,
+            advisoryAgents: AndroidProductRuntimeAdvisoryAgentHost? = null,
             limits: CognitiveRuntimeLimits = CognitiveRuntimeLimits(),
             personaLimits: AndroidHeartProductionPersonaLimits =
                 AndroidHeartProductionPersonaLimits(),
@@ -470,6 +475,7 @@ class AndroidProductRuntimeAssembly internal constructor(
                         heart = heartBridge,
                         learning = learning,
                         governedLearningFactory = governedFactory,
+                        advisoryAgents = advisoryAgents,
                         durableConversationStoreId = conversationStoreId,
                         durableConversationSessionId = conversationSessionId,
                         conversationTimestamps = timestamps
