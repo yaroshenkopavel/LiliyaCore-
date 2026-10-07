@@ -1,6 +1,7 @@
 package pro.liliya.core.asf
 
 import java.time.Instant
+import java.util.concurrent.ConcurrentHashMap
 
 sealed interface AgentFactoryResult {
     data class Rejected(val reason: AgentAdmissionRejection) : AgentFactoryResult
@@ -20,6 +21,10 @@ class AgentFactory(
     private val auditLedger: AgentAuditLedger,
     private val timeSource: () -> Instant = { Instant.now() }
 ) {
+    private val auditLock = Any()
+    private val timeLock = Any()
+    private val runtimeLocks = ConcurrentHashMap<String, Any>()
+
     fun runSingle(
         request: AgentSpawnRequest,
         population: AgentPopulationSnapshot,
@@ -57,15 +62,15 @@ class AgentFactory(
         instance = instance.transition(AgentLifecycleState.SPAWNED)
         audit(AgentAuditEventKind.SPAWNED, request, admission, instance, admittedAt)
 
-        if (!expiresAt.isAfter(timeSource())) {
+        if (!expiresAt.isAfter(now())) {
             instance = instance.transition(AgentLifecycleState.EXPIRED)
-            audit(AgentAuditEventKind.EXPIRED, request, admission, instance, timeSource())
+            audit(AgentAuditEventKind.EXPIRED, request, admission, instance, now())
             return AgentFactoryResult.Terminal(instance, null, null, workspaceDisposed = false)
         }
 
         if (cancellationRequested()) {
             instance = instance.transition(AgentLifecycleState.CANCELLED)
-            audit(AgentAuditEventKind.CANCELLED, request, admission, instance, timeSource())
+            audit(AgentAuditEventKind.CANCELLED, request, admission, instance, now())
             return AgentFactoryResult.Terminal(instance, null, null, workspaceDisposed = false)
         }
 
@@ -77,7 +82,7 @@ class AgentFactory(
             )
         } catch (_: IllegalArgumentException) {
             instance = instance.transition(AgentLifecycleState.FAILED)
-            audit(AgentAuditEventKind.FAILED, request, admission, instance, timeSource())
+            audit(AgentAuditEventKind.FAILED, request, admission, instance, now())
             return AgentFactoryResult.Terminal(
                 instance = instance,
                 artifact = null,
@@ -102,10 +107,15 @@ class AgentFactory(
             )
 
             val outcome = try {
-                runtimeAdapter.run(context)
+                val runtimeKey = workerRuntime?.canonicalRuntimeIdentity()
+                    ?: DEFAULT_RUNTIME_LOCK_KEY
+                val runtimeLock = runtimeLocks.computeIfAbsent(runtimeKey) { Any() }
+                synchronized(runtimeLock) {
+                    runtimeAdapter.run(context)
+                }
             } catch (_: Exception) {
                 instance = instance.transition(AgentLifecycleState.FAILED)
-                audit(AgentAuditEventKind.FAILED, request, admission, instance, timeSource())
+                audit(AgentAuditEventKind.FAILED, request, admission, instance, now())
                 return AgentFactoryResult.Terminal(instance, null, null, workspaceDisposed = true)
             }
 
@@ -116,20 +126,20 @@ class AgentFactory(
                     request,
                     admission,
                     instance,
-                    timeSource(),
+                    now(),
                     usage = outcome.usage
                 )
                 return AgentFactoryResult.Terminal(instance, null, outcome.usage, workspaceDisposed = true)
             }
 
-            if (!timeSource().isBefore(expiresAt)) {
+            if (!now().isBefore(expiresAt)) {
                 instance = instance.transition(AgentLifecycleState.EXPIRED)
                 audit(
                     AgentAuditEventKind.EXPIRED,
                     request,
                     admission,
                     instance,
-                    timeSource(),
+                    now(),
                     usage = outcome.usage
                 )
                 return AgentFactoryResult.Terminal(instance, null, outcome.usage, workspaceDisposed = true)
@@ -142,7 +152,7 @@ class AgentFactory(
                     request,
                     admission,
                     instance,
-                    timeSource(),
+                    now(),
                     usage = outcome.usage
                 )
                 return AgentFactoryResult.Terminal(instance, null, outcome.usage, workspaceDisposed = true)
@@ -156,7 +166,7 @@ class AgentFactory(
                         request,
                         admission,
                         instance,
-                        timeSource(),
+                        now(),
                         usage = outcome.usage
                     )
                     AgentFactoryResult.Terminal(instance, null, outcome.usage, workspaceDisposed = true)
@@ -170,7 +180,7 @@ class AgentFactory(
                             kind = outcome.kind,
                             payloadDigest = outcome.payloadDigest,
                             provenanceReferences = outcome.provenanceReferences,
-                            createdAt = timeSource()
+                            createdAt = now()
                         )
                     } catch (_: IllegalArgumentException) {
                         instance = instance.transition(AgentLifecycleState.FAILED)
@@ -179,7 +189,7 @@ class AgentFactory(
                             request,
                             admission,
                             instance,
-                            timeSource(),
+                            now(),
                             usage = outcome.usage
                         )
                         return AgentFactoryResult.Terminal(
@@ -195,7 +205,7 @@ class AgentFactory(
                         request,
                         admission,
                         instance,
-                        timeSource(),
+                        now(),
                         artifactId = artifact.id,
                         usage = outcome.usage
                     )
@@ -204,7 +214,7 @@ class AgentFactory(
             }
         } finally {
             workspace = workspace.dispose()
-            audit(AgentAuditEventKind.WORKSPACE_DISPOSED, request, admission, instance, timeSource())
+            audit(AgentAuditEventKind.WORKSPACE_DISPOSED, request, admission, instance, now())
         }
     }
 
@@ -217,18 +227,29 @@ class AgentFactory(
         artifactId: AgentArtifactId? = null,
         usage: AgentRuntimeUsage? = null
     ) {
-        auditLedger.append(
-            AgentAuditEvent(
-                kind = kind,
-                requestId = request.id,
-                admissionId = admission.id,
-                instanceId = instance.id,
-                generation = instance.generation,
-                rootTaskId = request.provenance.rootTaskId,
-                artifactId = artifactId,
-                usage = usage,
-                occurredAt = at
+        synchronized(auditLock) {
+            auditLedger.append(
+                AgentAuditEvent(
+                    kind = kind,
+                    requestId = request.id,
+                    admissionId = admission.id,
+                    instanceId = instance.id,
+                    generation = instance.generation,
+                    rootTaskId = request.provenance.rootTaskId,
+                    artifactId = artifactId,
+                    usage = usage,
+                    occurredAt = at
+                )
             )
-        )
+        }
+    }
+
+    private fun now(): Instant =
+        synchronized(timeLock) {
+            timeSource()
+        }
+
+    private companion object {
+        const val DEFAULT_RUNTIME_LOCK_KEY = "asf-default-runtime"
     }
 }
