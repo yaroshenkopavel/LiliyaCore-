@@ -84,6 +84,45 @@ class AndroidProductRuntimeAdvisoryLlmRegistrationContractTest {
     }
 
     @Test
+    fun successful_provider_result_fails_closed_when_usage_meter_does_not_count_artifact() {
+        val registration = AndroidProductRuntimeAdvisoryLlmRegistration.create(
+            descriptor = descriptor,
+            available = { true },
+            contextCompiler = {
+                AndroidProductRuntimeAdvisoryLlmCompiledRequest(
+                    inference = CognitiveInferenceRequest(
+                        turn = turn,
+                        input = CognitiveInput("bounded advisory request"),
+                        context = CognitiveContextSnapshot(turn, emptyList())
+                    ),
+                    sourceReferences = listOf("evidence:agent-input")
+                )
+            },
+            inference = {
+                CognitiveInferenceResult.Succeeded(turn, "advisory result")
+            },
+            usageMeter = AndroidProductRuntimeAdvisoryLlmUsageMeter { request, _, _, elapsed ->
+                AgentRuntimeUsage(
+                    wallClockMillis = elapsed,
+                    inferenceUnits = 1,
+                    contextBytes = request.context.workspace.contextBytes,
+                    retrievalItems = 0,
+                    artifactCount = 0
+                )
+            },
+            nanoTime = sequenceNanoTime(30_000_000L, 31_000_000L)
+        )
+
+        val failed = assertIs<AgentCognitiveRuntimeExecutionResult.Failed>(
+            registration.adapter.run(executionRequest(descriptor))
+        )
+
+        assertEquals("advisory LLM usage metering contract violated", failed.reason)
+        assertEquals(0, failed.usage.artifactCount)
+        assertEquals(1, failed.usage.inferenceUnits)
+    }
+
+    @Test
     fun llm_registration_requires_exact_model_identity() {
         val withoutModel = descriptor.copy(modelId = null)
 
