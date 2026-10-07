@@ -1,6 +1,7 @@
 package pro.liliya.android.runtime
 
 import java.time.Instant
+import java.util.concurrent.ExecutorService
 import pro.liliya.core.asf.AgentAdmissionPolicy
 import pro.liliya.core.asf.AgentAggregateBudget
 import pro.liliya.core.asf.AgentAuditLedger
@@ -12,6 +13,8 @@ import pro.liliya.core.asf.AgentCoordinator
 import pro.liliya.core.asf.AgentFactory
 import pro.liliya.core.asf.AgentFactoryBounds
 import pro.liliya.core.asf.AgentHeterogeneousRuntimeFabric
+import pro.liliya.core.asf.AgentParallelCoordinator
+import pro.liliya.core.asf.AgentParallelWaveExecutor
 import pro.liliya.core.asf.AgentWorkBudget
 import pro.liliya.core.asf.AgentWorkerAdmissionPolicy
 import pro.liliya.core.asf.AgentWorkerFactory
@@ -39,6 +42,10 @@ sealed interface AndroidProductRuntimeAdvisoryAgentCompositionResult {
  * This builder only composes the existing bounded ASF policies and runtime adapters. It does not
  * mint Authority, own Execution, authorize tools, or perform autonomous actions. Runtime
  * registrations are exact-identity/fail-closed through AgentHeterogeneousRuntimeFabric.
+ *
+ * Parallel execution is opt-in. When parallelExecutor is supplied, its lifecycle remains owned by
+ * the caller; this composition never shuts down or replaces the provided executor. A null executor
+ * preserves the established sequential product path.
  */
 object AndroidProductRuntimeAdvisoryAgentComposition {
     fun create(
@@ -50,6 +57,7 @@ object AndroidProductRuntimeAdvisoryAgentComposition {
         registrations: Collection<AgentCognitiveRuntimeRegistration>,
         auditLedger: AgentAuditLedger,
         bounds: AgentFactoryBounds = AgentFactoryBounds.PROTOTYPE,
+        parallelExecutor: ExecutorService? = null,
         timeSource: () -> Instant = { Instant.now() }
     ): AndroidProductRuntimeAdvisoryAgentCompositionResult {
         if (blueprints.isEmpty()) {
@@ -81,14 +89,33 @@ object AndroidProductRuntimeAdvisoryAgentComposition {
                 admissionPolicy = AgentWorkerAdmissionPolicy(workerProfiles),
                 delegate = factory
             )
-            val coordinator = AgentCoordinator(
-                factory = factory,
-                aggregateBudget = aggregateBudget,
-                workerFactory = workerFactory
-            )
-            AndroidProductRuntimeAdvisoryAgentCompositionResult.Ready(
+            val host = if (parallelExecutor == null) {
+                val coordinator = AgentCoordinator(
+                    factory = factory,
+                    aggregateBudget = aggregateBudget,
+                    workerFactory = workerFactory
+                )
                 AndroidProductRuntimeAdvisoryAgentHost(coordinator)
-            )
+            } else {
+                val coordinator = AgentParallelCoordinator(
+                    factory = factory,
+                    aggregateBudget = aggregateBudget,
+                    bounds = bounds,
+                    waveExecutor = AgentParallelWaveExecutor(parallelExecutor),
+                    workerFactory = workerFactory,
+                    timeSource = timeSource
+                )
+                AndroidProductRuntimeAdvisoryAgentHost(
+                    AndroidProductRuntimeAdvisoryAgentRunPort { plan, window, cancelled ->
+                        coordinator.runParallel(
+                            plan = plan,
+                            runWindow = window,
+                            cancelled = cancelled
+                        )
+                    }
+                )
+            }
+            AndroidProductRuntimeAdvisoryAgentCompositionResult.Ready(host)
         } catch (_: IllegalArgumentException) {
             rejected(
                 AndroidProductRuntimeAdvisoryAgentCompositionFailure.INVALID_CONFIGURATION
