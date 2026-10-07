@@ -1,0 +1,130 @@
+name: Liliya Windows Laptop Control
+
+on:
+  issue_comment:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      command:
+        description: "Allowed command: health or core-test"
+        required: true
+        type: choice
+        options:
+          - health
+          - core-test
+      ref:
+        description: "Optional repository ref for core-test"
+        required: false
+        default: "main"
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+
+concurrency:
+  group: liliya-windows-laptop-control
+  cancel-in-progress: false
+
+jobs:
+  resolve:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'issue_comment' &&
+       github.event.comment.user.login == 'yaroshenkopavel' &&
+       startsWith(github.event.comment.body, '/liliya-laptop '))
+    runs-on: ubuntu-latest
+    outputs:
+      command: ${{ steps.resolve.outputs.command }}
+      ref: ${{ steps.resolve.outputs.ref }}
+      allowed: ${{ steps.resolve.outputs.allowed }}
+    steps:
+      - id: resolve
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const event = context.eventName;
+            let command;
+            let ref;
+            if (event === 'workflow_dispatch') {
+              command = context.payload.inputs.command;
+              ref = context.payload.inputs.ref || 'main';
+            } else {
+              const body = (context.payload.comment.body || '').trim();
+              const match = body.match(/^\/liliya-laptop\s+(health|core-test)$/);
+              if (!match) {
+                core.setOutput('allowed', 'false');
+                return;
+              }
+              command = match[1];
+              if (context.payload.issue.pull_request) {
+                const pr = await github.rest.pulls.get({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  pull_number: context.payload.issue.number
+                });
+                if (pr.data.head.repo.full_name !== `${context.repo.owner}/${context.repo.repo}`) {
+                  core.setFailed('Refusing to execute code from a fork on the laptop runner.');
+                  return;
+                }
+                ref = pr.data.head.sha;
+              } else {
+                ref = 'main';
+              }
+            }
+            if (!['health', 'core-test'].includes(command)) {
+              core.setOutput('allowed', 'false');
+              return;
+            }
+            core.setOutput('command', command);
+            core.setOutput('ref', ref);
+            core.setOutput('allowed', 'true');
+
+  laptop:
+    needs: resolve
+    if: needs.resolve.outputs.allowed == 'true'
+    runs-on: [self-hosted, Windows, X64, liliya-laptop]
+    timeout-minutes: 30
+    steps:
+      - name: Laptop identity and health
+        if: needs.resolve.outputs.command == 'health'
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Write-Host "LILIYA_LAPTOP_HEALTH=START"
+          Write-Host "COMPUTER=$env:COMPUTERNAME"
+          Write-Host "USER=$env:USERNAME"
+          Write-Host "PS_VERSION=$($PSVersionTable.PSVersion)"
+          Write-Host "JAVA="
+          java -version
+          Write-Host "GIT="
+          git --version
+          Write-Host "GRADLE="
+          gradle --version
+          Write-Host "POSTGRESQL_SERVICES="
+          Get-Service | Where-Object { $_.Name -like 'postgresql*' } |
+            Select-Object Name,Status,StartType | Format-Table -AutoSize
+          Write-Host "PORTS="
+          Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue |
+            Where-Object { $_.LocalPort -in 5432,8200,8443 } |
+            Select-Object LocalAddress,LocalPort,OwningProcess | Format-Table -AutoSize
+          Write-Host "LILIYA_SERVER_EXISTS=$(Test-Path 'C:\LiliyaServer')"
+          Write-Host "LILIYA_LAPTOP_HEALTH=PASS"
+
+      - name: Checkout requested exact ref
+        if: needs.resolve.outputs.command == 'core-test'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.ref }}
+          fetch-depth: 1
+
+      - name: Core targeted test gate
+        if: needs.resolve.outputs.command == 'core-test'
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (Test-Path 'C:\Users\123\AppData\Local\Android\Sdk') {
+            $env:ANDROID_HOME='C:\Users\123\AppData\Local\Android\Sdk'
+            $env:ANDROID_SDK_ROOT=$env:ANDROID_HOME
+          }
+          gradle.bat :core:test --no-daemon --console=plain
