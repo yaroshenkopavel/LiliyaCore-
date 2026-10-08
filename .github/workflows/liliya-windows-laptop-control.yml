@@ -181,8 +181,10 @@ jobs:
           Copy-Item -Path (Join-Path $source '*') -Destination $cmdlineLatest -Recurse -Force
 
           $sdkmanager = Join-Path $cmdlineLatest 'bin\sdkmanager.bat'
-          $licenses = 1..20 | ForEach-Object { 'y' }
-          $licenses | & $sdkmanager --sdk_root=$sdk --licenses | Out-Host
+          $licenseCommand = "(for /l %i in (1,1,32) do @echo y) | `"$sdkmanager`" --sdk_root=`"$sdk`" --licenses"
+          & $env:ComSpec /d /s /c $licenseCommand
+          if ($LASTEXITCODE -ne 0) { throw "ANDROID_SDK_LICENSES_FAILED_$LASTEXITCODE" }
+
           & $sdkmanager --sdk_root=$sdk 'platform-tools' 'platforms;android-35' 'build-tools;35.0.0'
           if ($LASTEXITCODE -ne 0) { throw "ANDROID_SDK_PACKAGES_FAILED_$LASTEXITCODE" }
 
