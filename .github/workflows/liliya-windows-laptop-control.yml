@@ -153,18 +153,42 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Bind pre-provisioned Android SDK for ASF-H USB evidence
+      - name: Provision service-owned Android SDK for ASF-H USB evidence
         if: needs.resolve.outputs.command == 'asf-h-usb-evidence'
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
 
-          $sdk = 'C:\Users\123\AppData\Local\Android\Sdk'
+          $sdk = Join-Path $env:RUNNER_TEMP 'liliya-android-sdk'
+          $zip = Join-Path $env:RUNNER_TEMP 'android-commandlinetools.zip'
+          $unpack = Join-Path $env:RUNNER_TEMP 'android-commandlinetools-unpack'
+          $url = 'https://dl.google.com/android/repository/commandlinetools-win-11076708_latest.zip'
+
+          Remove-Item $sdk -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item $unpack -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path $sdk,$unpack | Out-Null
+
+          Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing
+          if (!(Test-Path $zip)) { throw 'ANDROID_CMDLINE_TOOLS_DOWNLOAD_MISSING' }
+          Expand-Archive -LiteralPath $zip -DestinationPath $unpack -Force
+
+          $cmdlineLatest = Join-Path $sdk 'cmdline-tools\latest'
+          New-Item -ItemType Directory -Force -Path $cmdlineLatest | Out-Null
+          $source = Join-Path $unpack 'cmdline-tools'
+          if (!(Test-Path (Join-Path $source 'bin\sdkmanager.bat'))) {
+            throw 'ANDROID_SDKMANAGER_ARCHIVE_LAYOUT_INVALID'
+          }
+          Copy-Item -Path (Join-Path $source '*') -Destination $cmdlineLatest -Recurse -Force
+
+          $sdkmanager = Join-Path $cmdlineLatest 'bin\sdkmanager.bat'
+          $licenses = 1..20 | ForEach-Object { 'y' }
+          $licenses | & $sdkmanager --sdk_root=$sdk --licenses | Out-Host
+          & $sdkmanager --sdk_root=$sdk 'platform-tools' 'platforms;android-35' 'build-tools;35.0.0'
+          if ($LASTEXITCODE -ne 0) { throw "ANDROID_SDK_PACKAGES_FAILED_$LASTEXITCODE" }
+
           $adb = Join-Path $sdk 'platform-tools\adb.exe'
           $platform = Join-Path $sdk 'platforms\android-35\android.jar'
           $buildTools = Join-Path $sdk 'build-tools\35.0.0\aapt2.exe'
-
-          if (!(Test-Path $sdk)) { throw "ANDROID_SDK_MISSING path=$sdk" }
           if (!(Test-Path $adb)) { throw "ADB_MISSING path=$adb" }
           if (!(Test-Path $platform)) { throw "ANDROID_PLATFORM_35_MISSING path=$platform" }
           if (!(Test-Path $buildTools)) { throw "ANDROID_BUILD_TOOLS_35_MISSING path=$buildTools" }
