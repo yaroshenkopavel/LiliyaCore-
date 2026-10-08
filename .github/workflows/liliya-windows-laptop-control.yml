@@ -84,7 +84,7 @@ jobs:
     needs: resolve
     if: needs.resolve.outputs.allowed == 'true'
     runs-on: [self-hosted, Windows, X64, liliya-laptop]
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - name: Laptop identity and health
         if: needs.resolve.outputs.command == 'health'
@@ -126,4 +126,4 @@ jobs:
           # Core-only test must not depend on or probe the interactive user's private profile.
           # The runner service executes as NETWORK SERVICE; probing C:\Users\123 can fail by ACL
           # before Gradle starts. Configure-on-demand keeps this bounded gate on :core:test.
-          gradle.bat :core:test --configure-on-demand --no-daemon --console=plain
+          gradle.bat :core:test --configure-on-demand --no-daemon --console=plain --info --stacktrace
