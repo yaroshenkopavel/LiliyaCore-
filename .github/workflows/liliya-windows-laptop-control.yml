@@ -232,7 +232,57 @@ jobs:
           '@ | Set-Content -Path (Join-Path $env:GRADLE_USER_HOME 'gradle.properties') -Encoding ASCII
 
           $adb = (Get-Command adb.exe -ErrorAction Stop).Source
-          $deviceLines = @(& $adb devices | Select-Object -Skip 1 | Where-Object { $_ -match '\tdevice })
+          $deviceLines = @(& $adb devices | Select-Object -Skip 1 | Where-Object { $_ -match '\tdevice
+          if ($deviceLines.Count -ne 1) {
+            throw "EXACTLY_ONE_AUTHORIZED_USB_ADB_DEVICE_REQUIRED count=$($deviceLines.Count)"
+          }
+          Write-Host "ASF_H_USB_DEVICE=$($deviceLines[0])"
+
+          gradle.bat :android-app:assembleDebug :android-app:assembleDebugAndroidTest --console=plain
+          if ($LASTEXITCODE -ne 0) { throw "ASF_H_APK_BUILD_FAILED_$LASTEXITCODE" }
+
+          $app = 'android-app\build\outputs\apk\debug\android-app-debug.apk'
+          $test = 'android-app\build\outputs\apk\androidTest\debug\android-app-debug-androidTest.apk'
+          if (!(Test-Path $app) -or !(Test-Path $test)) {
+            throw 'ASF_H_APK_OUTPUT_MISSING'
+          }
+
+          $out = Join-Path $env:RUNNER_TEMP 'asf-h-usb-adb-evidence'
+          & '.\tools\physical-runner\Measure-AsfHUsbAdb.ps1' -Adb $adb -AppApk $app -TestApk $test -OutputDir $out
+          if ($LASTEXITCODE -ne 0) { throw "ASF_H_USB_MEASUREMENT_FAILED_$LASTEXITCODE" }
+
+          $evidence = Join-Path $out 'asf-h-usb-adb-physical-resource-evidence.json'
+          if (!(Test-Path $evidence)) { throw 'ASF_H_USB_EVIDENCE_MISSING' }
+          $raw = Get-Content $evidence -Raw
+          $parsed = $raw | ConvertFrom-Json
+          if ($parsed.sourceCommit -ne $head) {
+            throw "ASF_H_SOURCE_COMMIT_MISMATCH expected=$head actual=$($parsed.sourceCommit)"
+          }
+          if ($parsed.transport -ne 'usb-adb') {
+            throw "ASF_H_TRANSPORT_MISMATCH actual=$($parsed.transport)"
+          }
+          if (@($parsed.results).Count -ne 2) {
+            throw 'ASF_H_RESULT_COUNT_MISMATCH'
+          }
+          if (@($parsed.results | Where-Object { -not $_.instrumentationPassed }).Count -ne 0) {
+            throw 'ASF_H_INSTRUMENTATION_FAILED'
+          }
+
+          $bytes = [Text.Encoding]::UTF8.GetBytes($raw)
+          $base64 = [Convert]::ToBase64String($bytes)
+          Write-Host 'ASF_H_EVIDENCE_JSON_BASE64_BEGIN'
+          Write-Host $base64
+          Write-Host 'ASF_H_EVIDENCE_JSON_BASE64_END'
+          Write-Host 'ASF_H_USB_EVIDENCE=PASS'
+
+      - name: Upload ASF-H USB evidence
+        if: needs.resolve.outputs.command == 'asf-h-usb-evidence' && always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: asf-h-usb-adb-evidence-${{ needs.resolve.outputs.ref }}
+          path: ${{ runner.temp }}\asf-h-usb-adb-evidence
+          if-no-files-found: warn
+ })
           if ($deviceLines.Count -ne 1) {
             throw "EXACTLY_ONE_AUTHORIZED_USB_ADB_DEVICE_REQUIRED count=$($deviceLines.Count)"
           }
