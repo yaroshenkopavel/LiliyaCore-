@@ -6,14 +6,15 @@ on:
   workflow_dispatch:
     inputs:
       command:
-        description: "Allowed command: health or core-test"
+        description: "Allowed command: health, core-test, or asf-h-usb-evidence"
         required: true
         type: choice
         options:
           - health
           - core-test
+          - asf-h-usb-evidence
       ref:
-        description: "Optional repository ref for core-test"
+        description: "Optional repository ref for core-test or asf-h-usb-evidence"
         required: false
         default: "main"
 
@@ -51,7 +52,7 @@ jobs:
               ref = context.payload.inputs.ref || 'main';
             } else {
               const body = (context.payload.comment.body || '').trim();
-              const match = body.match(/^\/liliya-laptop\s+(health|core-test)$/);
+              const match = body.match(/^\/liliya-laptop\s+(health|core-test|asf-h-usb-evidence)$/);
               if (!match) {
                 core.setOutput('allowed', 'false');
                 return;
@@ -72,7 +73,7 @@ jobs:
                 ref = 'main';
               }
             }
-            if (!['health', 'core-test'].includes(command)) {
+            if (!['health', 'core-test', 'asf-h-usb-evidence'].includes(command)) {
               core.setOutput('allowed', 'false');
               return;
             }
@@ -112,7 +113,7 @@ jobs:
           Write-Host "LILIYA_LAPTOP_HEALTH=PASS"
 
       - name: Checkout requested exact ref
-        if: needs.resolve.outputs.command == 'core-test'
+        if: needs.resolve.outputs.command == 'core-test' || needs.resolve.outputs.command == 'asf-h-usb-evidence'
         uses: actions/checkout@v4
         with:
           ref: ${{ needs.resolve.outputs.ref }}
@@ -144,3 +145,97 @@ jobs:
             Format-List
 
           gradle.bat :core:test --configure-on-demand --no-daemon --console=plain --info --stacktrace
+
+      - name: Set up Java 17 for ASF-H USB evidence
+        if: needs.resolve.outputs.command == 'asf-h-usb-evidence'
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK for ASF-H USB evidence
+        if: needs.resolve.outputs.command == 'asf-h-usb-evidence'
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+
+      - name: Install pinned Android toolchain for ASF-H USB evidence
+        if: needs.resolve.outputs.command == 'asf-h-usb-evidence'
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
+
+      - name: Build and measure exact ASF-H USB evidence
+        if: needs.resolve.outputs.command == 'asf-h-usb-evidence'
+        shell: powershell
+        env:
+          EXPECTED_REF: ${{ needs.resolve.outputs.ref }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $head = (git rev-parse HEAD).Trim()
+          if ($head -ne $env:EXPECTED_REF) {
+            throw "EXACT_REF_MISMATCH expected=$env:EXPECTED_REF actual=$head"
+          }
+          Write-Host "ASF_H_EXACT_HEAD=$head"
+
+          $env:GRADLE_USER_HOME = Join-Path $env:RUNNER_TEMP 'liliya-asfh-gradle-user-home'
+          New-Item -ItemType Directory -Force -Path $env:GRADLE_USER_HOME | Out-Null
+          @'
+          org.gradle.jvmargs=-Xmx3072m -XX:MaxMetaspaceSize=512m -Dfile.encoding=UTF-8
+          org.gradle.workers.max=1
+          org.gradle.parallel=false
+          org.gradle.daemon=false
+          kotlin.compiler.execution.strategy=in-process
+          '@ | Set-Content -Path (Join-Path $env:GRADLE_USER_HOME 'gradle.properties') -Encoding ASCII
+
+          $adb = (Get-Command adb.exe -ErrorAction Stop).Source
+          $deviceLines = @(& $adb devices | Select-Object -Skip 1 | Where-Object { $_ -match '\tdevice })
+          if ($deviceLines.Count -ne 1) {
+            throw "EXACTLY_ONE_AUTHORIZED_USB_ADB_DEVICE_REQUIRED count=$($deviceLines.Count)"
+          }
+          Write-Host "ASF_H_USB_DEVICE=$($deviceLines[0])"
+
+          gradle.bat :android-app:assembleDebug :android-app:assembleDebugAndroidTest --console=plain
+          if ($LASTEXITCODE -ne 0) { throw "ASF_H_APK_BUILD_FAILED_$LASTEXITCODE" }
+
+          $app = 'android-app\build\outputs\apk\debug\android-app-debug.apk'
+          $test = 'android-app\build\outputs\apk\androidTest\debug\android-app-debug-androidTest.apk'
+          if (!(Test-Path $app) -or !(Test-Path $test)) {
+            throw 'ASF_H_APK_OUTPUT_MISSING'
+          }
+
+          $out = Join-Path $env:RUNNER_TEMP 'asf-h-usb-adb-evidence'
+          & '.\tools\physical-runner\Measure-AsfHUsbAdb.ps1' -Adb $adb -AppApk $app -TestApk $test -OutputDir $out
+          if ($LASTEXITCODE -ne 0) { throw "ASF_H_USB_MEASUREMENT_FAILED_$LASTEXITCODE" }
+
+          $evidence = Join-Path $out 'asf-h-usb-adb-physical-resource-evidence.json'
+          if (!(Test-Path $evidence)) { throw 'ASF_H_USB_EVIDENCE_MISSING' }
+          $raw = Get-Content $evidence -Raw
+          $parsed = $raw | ConvertFrom-Json
+          if ($parsed.sourceCommit -ne $head) {
+            throw "ASF_H_SOURCE_COMMIT_MISMATCH expected=$head actual=$($parsed.sourceCommit)"
+          }
+          if ($parsed.transport -ne 'usb-adb') {
+            throw "ASF_H_TRANSPORT_MISMATCH actual=$($parsed.transport)"
+          }
+          if (@($parsed.results).Count -ne 2) {
+            throw 'ASF_H_RESULT_COUNT_MISMATCH'
+          }
+          if (@($parsed.results | Where-Object { -not $_.instrumentationPassed }).Count -ne 0) {
+            throw 'ASF_H_INSTRUMENTATION_FAILED'
+          }
+
+          $bytes = [Text.Encoding]::UTF8.GetBytes($raw)
+          $base64 = [Convert]::ToBase64String($bytes)
+          Write-Host 'ASF_H_EVIDENCE_JSON_BASE64_BEGIN'
+          Write-Host $base64
+          Write-Host 'ASF_H_EVIDENCE_JSON_BASE64_END'
+          Write-Host 'ASF_H_USB_EVIDENCE=PASS'
+
+      - name: Upload ASF-H USB evidence
+        if: needs.resolve.outputs.command == 'asf-h-usb-evidence' && always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: asf-h-usb-adb-evidence-${{ needs.resolve.outputs.ref }}
+          path: ${{ runner.temp }}\asf-h-usb-adb-evidence
+          if-no-files-found: warn
