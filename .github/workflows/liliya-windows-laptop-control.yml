@@ -124,6 +124,23 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           # Core-only test must not depend on or probe the interactive user's private profile.
-          # The runner service executes as NETWORK SERVICE; probing C:\Users\123 can fail by ACL
-          # before Gradle starts. Configure-on-demand keeps this bounded gate on :core:test.
+          # The runner service executes as NETWORK SERVICE; probing C:\Users\123 can fail by ACL.
+          # Keep Gradle/Kotlin memory bounded for the 8 GB laptop and avoid a separate Kotlin daemon.
+          $env:GRADLE_USER_HOME = Join-Path $env:RUNNER_TEMP 'liliya-gradle-user-home'
+          New-Item -ItemType Directory -Force -Path $env:GRADLE_USER_HOME | Out-Null
+          @'
+          org.gradle.jvmargs=-Xmx3072m -XX:MaxMetaspaceSize=512m -Dfile.encoding=UTF-8
+          org.gradle.workers.max=1
+          org.gradle.parallel=false
+          org.gradle.daemon=false
+          kotlin.compiler.execution.strategy=in-process
+          '@ | Set-Content -Path (Join-Path $env:GRADLE_USER_HOME 'gradle.properties') -Encoding ASCII
+
+          Write-Host '=== Windows laptop Gradle/Kotlin memory policy ==='
+          Get-Content (Join-Path $env:GRADLE_USER_HOME 'gradle.properties')
+          Write-Host '=== Physical memory ==='
+          Get-CimInstance Win32_OperatingSystem |
+            Select-Object TotalVisibleMemorySize,FreePhysicalMemory |
+            Format-List
+
           gradle.bat :core:test --configure-on-demand --no-daemon --console=plain --info --stacktrace
