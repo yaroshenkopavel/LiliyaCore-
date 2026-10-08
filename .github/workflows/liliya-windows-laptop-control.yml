@@ -181,11 +181,14 @@ jobs:
           Copy-Item -Path (Join-Path $source '*') -Destination $cmdlineLatest -Recurse -Force
 
           $sdkmanager = Join-Path $cmdlineLatest 'bin\sdkmanager.bat'
-          $licenseCmd = '(for /l %i in (1,1,100) do @echo y) | "' + $sdkmanager + '" --sdk_root="' + $sdk + '" --licenses'
+          $answers = Join-Path $env:RUNNER_TEMP 'android-sdk-license-answers.txt'
+          (1..100 | ForEach-Object { 'y' }) | Set-Content -LiteralPath $answers -Encoding ascii
+
+          $licenseCmd = '""' + $sdkmanager + '" --sdk_root="' + $sdk + '" --licenses < "' + $answers + '""'
           & cmd.exe /d /s /c $licenseCmd
           if ($LASTEXITCODE -ne 0) { throw "ANDROID_SDK_LICENSES_FAILED_$LASTEXITCODE" }
 
-          $installCmd = '(for /l %i in (1,1,100) do @echo y) | "' + $sdkmanager + '" --sdk_root="' + $sdk + '" "platform-tools" "platforms;android-35" "build-tools;35.0.0"'
+          $installCmd = '""' + $sdkmanager + '" --sdk_root="' + $sdk + '" "platform-tools" "platforms;android-35" "build-tools;35.0.0" < "' + $answers + '""'
           & cmd.exe /d /s /c $installCmd
           if ($LASTEXITCODE -ne 0) { throw "ANDROID_SDK_PACKAGES_FAILED_$LASTEXITCODE" }
 
