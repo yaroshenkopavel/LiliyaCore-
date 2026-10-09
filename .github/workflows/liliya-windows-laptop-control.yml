@@ -232,7 +232,7 @@ jobs:
           '@ | Set-Content -Path (Join-Path $env:GRADLE_USER_HOME 'gradle.properties') -Encoding ASCII
 
           $adb = (Get-Command adb.exe -ErrorAction Stop).Source
-          $deviceLines = @(& $adb devices | Select-Object -Skip 1 | Where-Object { $_ -match '\tdevice })
+          $deviceLines = @(& $adb devices | Select-Object -Skip 1 | Where-Object { $_ -match '\tdevice$' })
           if ($deviceLines.Count -ne 1) {
             throw "EXACTLY_ONE_AUTHORIZED_USB_ADB_DEVICE_REQUIRED count=$($deviceLines.Count)"
           }
