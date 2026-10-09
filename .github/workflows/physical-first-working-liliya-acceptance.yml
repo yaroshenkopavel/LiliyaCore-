@@ -265,7 +265,7 @@ jobs:
 
   physical-first-working-liliya:
     name: Physical ARM64 First Working Liliya READY-to-first-chat acceptance
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     needs:
       - validate-physical-acceptance-contract
       - build-physical-acceptance-bundle

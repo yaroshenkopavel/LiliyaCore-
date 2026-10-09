@@ -174,7 +174,7 @@ jobs:
 
   physical-arm64:
     name: Physical ARM64 governed-learning semantic rebuild candidate
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     needs: [validate, build-bundle]
     runs-on: [self-hosted, ARM64, android-device]
     timeout-minutes: 40

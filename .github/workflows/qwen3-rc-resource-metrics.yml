@@ -170,7 +170,7 @@ jobs:
 
   physical-resource-metrics:
     name: Physical ARM64 frozen RC Qwen3 resource metrics
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     needs: build-frozen-rc-bundle
     runs-on: [self-hosted, ARM64, android-device]
     timeout-minutes: 120

@@ -272,7 +272,7 @@ jobs:
 
   physical-candidate:
     name: Physical ARM64 Qwen3 candidate execution evidence
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     needs: build-exact-bundle
     runs-on: [self-hosted, ARM64, android-device]
     timeout-minutes: 120
