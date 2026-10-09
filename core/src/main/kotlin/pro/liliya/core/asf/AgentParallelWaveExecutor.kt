@@ -98,10 +98,10 @@ class AgentParallelWaveExecutor(
             )
         }
 
-        val deadlineNanos = Math.addExact(
-            System.nanoTime(),
-            TimeUnit.MILLISECONDS.toNanos(timeoutMillis)
-        )
+        // Use elapsed monotonic time rather than adding to nanoTime: the origin can
+        // be negative and a saturated nanos timeout must not overflow the deadline.
+        val startNanos = System.nanoTime()
+        val timeoutNanos = TimeUnit.MILLISECONDS.toNanos(timeoutMillis)
         val futures = linkedMapOf<AgentCoordinatorStepId, Future<AgentParallelWaveTaskOutcome>>()
 
         try {
@@ -141,7 +141,7 @@ class AgentParallelWaveExecutor(
                     )
                 }
 
-                val remainingNanos = deadlineNanos - System.nanoTime()
+                val remainingNanos = timeoutNanos - (System.nanoTime() - startNanos)
                 if (remainingNanos <= 0L) {
                     cancelAll(futures.values)
                     return AgentParallelWaveExecutionResult(
@@ -157,7 +157,8 @@ class AgentParallelWaveExecutor(
                 val outcome = await(
                     stepId = stepId,
                     future = futures.getValue(stepId),
-                    deadlineNanos = deadlineNanos,
+                    startNanos = startNanos,
+                    timeoutNanos = timeoutNanos,
                     cancelled = cancelled
                 ) ?: run {
                     cancelAll(futures.values)
@@ -215,13 +216,14 @@ class AgentParallelWaveExecutor(
     private fun await(
         stepId: AgentCoordinatorStepId,
         future: Future<AgentParallelWaveTaskOutcome>,
-        deadlineNanos: Long,
+        startNanos: Long,
+        timeoutNanos: Long,
         cancelled: () -> Boolean
     ): AgentParallelWaveTaskOutcome? {
         val pollNanos = TimeUnit.MILLISECONDS.toNanos(10)
         while (true) {
             if (cancelled()) return null
-            val remaining = deadlineNanos - System.nanoTime()
+            val remaining = timeoutNanos - (System.nanoTime() - startNanos)
             if (remaining <= 0L) return null
             try {
                 return future.get(minOf(remaining, pollNanos), TimeUnit.NANOSECONDS)
