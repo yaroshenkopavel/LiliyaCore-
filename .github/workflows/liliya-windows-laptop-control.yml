@@ -282,3 +282,30 @@ jobs:
           name: asf-h-usb-adb-evidence-${{ needs.resolve.outputs.ref }}
           path: ${{ runner.temp }}\asf-h-usb-adb-evidence
           if-no-files-found: warn
+
+  report-to-pr:
+    needs: [resolve, laptop]
+    if: ${{ always() && needs.resolve.outputs.allowed == 'true' && github.event_name == 'issue_comment' && github.event.issue.pull_request != null }}
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Publish exact run result to triggering PR
+        uses: actions/github-script@v7
+        env:
+          CONTROL_COMMAND: ${{ needs.resolve.outputs.command }}
+          CONTROL_REF: ${{ needs.resolve.outputs.ref }}
+          LAPTOP_RESULT: ${{ needs.laptop.result }}
+        with:
+          script: |
+            const command = process.env.CONTROL_COMMAND;
+            const ref = process.env.CONTROL_REF;
+            const result = process.env.LAPTOP_RESULT;
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const body = ['LILIYA_LAPTOP_CONTROL_RESULT', `command=${command}`, `ref=${ref}`, `laptop_result=${result}`, `run=${runUrl}`].join('\n');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body
+            });
