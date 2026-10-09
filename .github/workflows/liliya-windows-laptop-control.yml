@@ -104,7 +104,8 @@ jobs:
     concurrency:
       group: liliya-windows-laptop-physical
       cancel-in-progress: false
-    if: needs.resolve.outputs.allowed == 'true'
+    # Reject non-main dispatches before allocating the privileged host runner.
+    if: needs.resolve.outputs.allowed == 'true' && github.ref == 'refs/heads/main'
     runs-on: [self-hosted, Windows, X64, liliya-laptop]
     timeout-minutes: 60
     steps:
