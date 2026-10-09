@@ -15,6 +15,7 @@ permissions:
 jobs:
   arm64-device:
     name: Physical Android ARM64 Semantic Resource Acceptance
+    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch'
     runs-on: [self-hosted, ARM64, android-device]
     timeout-minutes: 90
 
