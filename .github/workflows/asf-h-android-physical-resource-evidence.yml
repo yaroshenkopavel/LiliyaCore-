@@ -169,7 +169,8 @@ jobs:
       - validate-tooling
       - build-exact-asf-h-bundle
     # Physical self-hosted runners must never auto-execute pull-request code.
-    if: github.event_name == 'workflow_dispatch'
+    # Dispatch from the protected default branch only; reject other refs.
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     runs-on: [self-hosted, ARM64, android-device]
     timeout-minutes: 45
     steps:
