@@ -72,7 +72,7 @@ jobs:
           profile: pixel_6
           disable-animations: true
           script: |
-            set -euo pipefail
+            set -eu
             adb install -r android-app/build/outputs/apk/debug/android-app-debug.apk
             adb install -r android-app/build/outputs/apk/androidTest/debug/android-app-debug-androidTest.apk
             adb shell am instrument -w -r -e class pro.liliya.app.AsfParallelWaveExecutorInstrumentedTest pro.liliya.app.test/androidx.test.runner.AndroidJUnitRunner | tee "$RUNNER_TEMP/asf-parallel-instrumentation.txt"
