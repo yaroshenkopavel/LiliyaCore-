@@ -77,6 +77,20 @@ jobs:
               core.setOutput('allowed', 'false');
               return;
             }
+            // Never execute unreviewed pull-request code or arbitrary refs on the
+            // self-hosted Windows runner sharing a host with licensing services.
+            const mainBranch = context.payload.repository.default_branch;
+            const branchInfo = await github.rest.repos.getBranch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              branch: mainBranch
+            });
+            const trustedSha = branchInfo.data.commit.sha;
+            if (ref === mainBranch) ref = trustedSha;
+            if (command !== 'health' && ref !== trustedSha) {
+              core.setFailed('LAPTOP_UNTRUSTED_REF_REJECTED: only exact default-branch SHA may execute on this host');
+              return;
+            }
             core.setOutput('command', command);
             core.setOutput('ref', ref);
             core.setOutput('allowed', 'true');
