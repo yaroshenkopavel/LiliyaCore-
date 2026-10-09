@@ -167,6 +167,25 @@ jobs:
             }
             Write-Host "RUNNER_BOUNDARY_$($entry.Key)=$status"
           }
+          # Metadata-only probes for fixed sensitive file paths: never open files.
+          $protectedFiles = [ordered]@{
+            OPENBAO_CA = 'C:\LiliyaServer\config\openbao\tls\ca.crt'
+            OPENBAO_BAO_EXE = 'C:\LiliyaServer\bin\bao.exe'
+          }
+          foreach ($entry in $protectedFiles.GetEnumerator()) {
+            $status = 'INDETERMINATE'
+            try {
+              $item = Get-Item -LiteralPath $entry.Value -ErrorAction Stop
+              $status = if ($item.PSIsContainer) { 'UNEXPECTED_DIRECTORY' } else { 'METADATA_VISIBLE' }
+            } catch [System.UnauthorizedAccessException] {
+              $status = 'DENIED'
+            } catch [System.Management.Automation.ItemNotFoundException] {
+              $status = 'MISSING'
+            } catch {
+              $status = 'INDETERMINATE'
+            }
+            Write-Host "RUNNER_FILE_METADATA_$($entry.Key)=$status"
+          }
           Write-Host "RUNNER_IS_ADMIN=$isAdmin"
           Write-Host "RUNNER_BOUNDARY_AUDIT=OBSERVATIONS_ONLY"
           Write-Host "LILIYA_LAPTOP_HEALTH=PASS"
