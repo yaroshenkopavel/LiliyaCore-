@@ -101,7 +101,8 @@ class AgentParallelWaveExecutor(
         // Use elapsed monotonic time rather than adding to nanoTime: the origin can
         // be negative and a saturated nanos timeout must not overflow the deadline.
         val startNanos = System.nanoTime()
-        val timeoutNanos = TimeUnit.MILLISECONDS.toNanos(timeoutMillis)
+        // Never exceed the wall-clock ceiling already reserved by the scheduler.
+        val timeoutNanos = TimeUnit.MILLISECONDS.toNanos(minOf(timeoutMillis, wave.reservation.maxWallClockMillis))
         val futures = linkedMapOf<AgentCoordinatorStepId, Future<AgentParallelWaveTaskOutcome>>()
 
         try {
