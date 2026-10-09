@@ -23,10 +23,6 @@ permissions:
   issues: read
   pull-requests: read
 
-concurrency:
-  group: liliya-windows-laptop-control
-  cancel-in-progress: false
-
 jobs:
   resolve:
     permissions:
@@ -96,6 +92,9 @@ jobs:
 
   laptop:
     needs: resolve
+    concurrency:
+      group: liliya-windows-laptop-physical
+      cancel-in-progress: false
     if: needs.resolve.outputs.allowed == 'true'
     runs-on: [self-hosted, Windows, X64, liliya-laptop]
     timeout-minutes: 60
