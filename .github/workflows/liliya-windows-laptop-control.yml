@@ -159,6 +159,22 @@ jobs:
 
           gradle.bat :core:test --configure-on-demand --no-daemon --console=plain --info --stacktrace
 
+      - name: Validate ASF-H measurement script before SDK provisioning
+        if: needs.resolve.outputs.command == 'asf-h-usb-evidence'
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $script = 'tools\physical-runner\Measure-AsfHUsbAdb.ps1'
+          if (!(Test-Path $script)) { throw 'ASF_H_MEASUREMENT_SCRIPT_MISSING' }
+          $tokens = $null
+          $parseErrors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $script).Path, [ref]$tokens, [ref]$parseErrors)
+          if (@($parseErrors).Count -ne 0) {
+            $parseErrors | ForEach-Object { Write-Error $_.ToString() }
+            throw 'ASF_H_MEASUREMENT_SCRIPT_PARSE_FAILED'
+          }
+          Write-Host 'ASF_H_SCRIPT_PREFLIGHT=PASS'
+
       - name: Set up Java 17 for ASF-H USB evidence
         if: needs.resolve.outputs.command == 'asf-h-usb-evidence'
         uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
@@ -172,38 +188,52 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
 
-          $sdk = Join-Path $env:RUNNER_TEMP 'liliya-android-sdk'
+          # Persist SDK across jobs on this dedicated self-hosted runner.
+          $cacheRoot = if ($env:RUNNER_TOOL_CACHE) { $env:RUNNER_TOOL_CACHE } else { Join-Path $env:RUNNER_TEMP 'tool-cache' }
+          $sdk = Join-Path $cacheRoot 'liliya-android-sdk-api35-buildtools35-v1'
           $zip = Join-Path $env:RUNNER_TEMP 'android-commandlinetools.zip'
           $unpack = Join-Path $env:RUNNER_TEMP 'android-commandlinetools-unpack'
           $url = 'https://dl.google.com/android/repository/commandlinetools-win-11076708_latest.zip'
 
-          Remove-Item $sdk -Recurse -Force -ErrorAction SilentlyContinue
-          Remove-Item $unpack -Recurse -Force -ErrorAction SilentlyContinue
-          New-Item -ItemType Directory -Force -Path $sdk,$unpack | Out-Null
+          $adb = Join-Path $sdk 'platform-tools\adb.exe'
+          $platform = Join-Path $sdk 'platforms\android-35\android.jar'
+          $buildTools = Join-Path $sdk 'build-tools\35.0.0\aapt2.exe'
+          $sdkManager = Join-Path $sdk 'cmdline-tools\latest\bin\sdkmanager.bat'
+          $cacheValid = (Test-Path $adb) -and (Test-Path $platform) -and
+                        (Test-Path $buildTools) -and (Test-Path $sdkManager)
+          if ($cacheValid) {
+            Write-Host 'ANDROID_SDK_CACHE=HIT'
+          } else {
+            Write-Host 'ANDROID_SDK_CACHE=MISS'
+            Remove-Item $sdk -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-Item $unpack -Recurse -Force -ErrorAction SilentlyContinue
+            New-Item -ItemType Directory -Force -Path $sdk,$unpack | Out-Null
 
-          Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing
-          if (!(Test-Path $zip)) { throw 'ANDROID_CMDLINE_TOOLS_DOWNLOAD_MISSING' }
-          Expand-Archive -LiteralPath $zip -DestinationPath $unpack -Force
-
-          $cmdlineLatest = Join-Path $sdk 'cmdline-tools\latest'
-          New-Item -ItemType Directory -Force -Path $cmdlineLatest | Out-Null
-          $source = Join-Path $unpack 'cmdline-tools'
-          if (!(Test-Path (Join-Path $source 'bin\sdkmanager.bat'))) {
-            throw 'ANDROID_SDKMANAGER_ARCHIVE_LAYOUT_INVALID'
+            Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing
+            if (!(Test-Path $zip)) { throw 'ANDROID_CMDLINE_TOOLS_DOWNLOAD_MISSING' }
+            Expand-Archive -LiteralPath $zip -DestinationPath $unpack -Force
+  
+            $cmdlineLatest = Join-Path $sdk 'cmdline-tools\latest'
+            New-Item -ItemType Directory -Force -Path $cmdlineLatest | Out-Null
+            $source = Join-Path $unpack 'cmdline-tools'
+            if (!(Test-Path (Join-Path $source 'bin\sdkmanager.bat'))) {
+              throw 'ANDROID_SDKMANAGER_ARCHIVE_LAYOUT_INVALID'
+            }
+            Copy-Item -Path (Join-Path $source '*') -Destination $cmdlineLatest -Recurse -Force
+  
+            $sdkmanager = Join-Path $cmdlineLatest 'bin\sdkmanager.bat'
+            $answers = Join-Path $env:RUNNER_TEMP 'android-sdk-license-answers.txt'
+            (1..100 | ForEach-Object { 'y' }) | Set-Content -LiteralPath $answers -Encoding ascii
+  
+            $licenseCmd = '""' + $sdkmanager + '" --sdk_root="' + $sdk + '" --licenses < "' + $answers + '""'
+            & cmd.exe /d /s /c $licenseCmd
+            if ($LASTEXITCODE -ne 0) { throw "ANDROID_SDK_LICENSES_FAILED_$LASTEXITCODE" }
+  
+            $installCmd = '""' + $sdkmanager + '" --sdk_root="' + $sdk + '" "platform-tools" "platforms;android-35" "build-tools;35.0.0" < "' + $answers + '""'
+            & cmd.exe /d /s /c $installCmd
+            if ($LASTEXITCODE -ne 0) { throw "ANDROID_SDK_PACKAGES_FAILED_$LASTEXITCODE" }
+  
           }
-          Copy-Item -Path (Join-Path $source '*') -Destination $cmdlineLatest -Recurse -Force
-
-          $sdkmanager = Join-Path $cmdlineLatest 'bin\sdkmanager.bat'
-          $answers = Join-Path $env:RUNNER_TEMP 'android-sdk-license-answers.txt'
-          (1..100 | ForEach-Object { 'y' }) | Set-Content -LiteralPath $answers -Encoding ascii
-
-          $licenseCmd = '""' + $sdkmanager + '" --sdk_root="' + $sdk + '" --licenses < "' + $answers + '""'
-          & cmd.exe /d /s /c $licenseCmd
-          if ($LASTEXITCODE -ne 0) { throw "ANDROID_SDK_LICENSES_FAILED_$LASTEXITCODE" }
-
-          $installCmd = '""' + $sdkmanager + '" --sdk_root="' + $sdk + '" "platform-tools" "platforms;android-35" "build-tools;35.0.0" < "' + $answers + '""'
-          & cmd.exe /d /s /c $installCmd
-          if ($LASTEXITCODE -ne 0) { throw "ANDROID_SDK_PACKAGES_FAILED_$LASTEXITCODE" }
 
           $adb = Join-Path $sdk 'platform-tools\adb.exe'
           $platform = Join-Path $sdk 'platforms\android-35\android.jar'
@@ -211,6 +241,7 @@ jobs:
           if (!(Test-Path $adb)) { throw "ADB_MISSING path=$adb" }
           if (!(Test-Path $platform)) { throw "ANDROID_PLATFORM_35_MISSING path=$platform" }
           if (!(Test-Path $buildTools)) { throw "ANDROID_BUILD_TOOLS_35_MISSING path=$buildTools" }
+          Write-Host "ANDROID_SDK_CACHE_PATH=$sdk"
 
           "ANDROID_HOME=$sdk" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "ANDROID_SDK_ROOT=$sdk" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
