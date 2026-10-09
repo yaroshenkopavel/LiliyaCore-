@@ -128,6 +128,45 @@ class AgentParallelWaveExecutorContractTest {
     }
 
     @Test
+    fun caller_timeout_cannot_exceed_reserved_wave_wall_clock_budget() {
+        val pool = Executors.newSingleThreadExecutor()
+        try {
+            val taskInterrupted = CountDownLatch(1)
+            val result = AgentParallelWaveExecutor(pool).execute(
+                wave = AgentParallelWave(
+                    index = 0,
+                    stepIds = listOf(stepA),
+                    reservation = AgentParallelWaveReservation(
+                        maxWallClockMillis = 40,
+                        maxInferenceUnits = 100,
+                        maxContextBytes = 100,
+                        maxRetrievalItems = 0,
+                        maxArtifacts = 1,
+                        maxAgents = 1
+                    )
+                ),
+                tasks = mapOf(
+                    stepA to AgentParallelWaveTask {
+                        try {
+                            Thread.sleep(5_000)
+                            AgentParallelWaveTaskOutcome.Completed(stepA)
+                        } catch (_: InterruptedException) {
+                            taskInterrupted.countDown()
+                            throw InterruptedException()
+                        }
+                    }
+                ),
+                timeoutMillis = 5_000
+            )
+            assertEquals(AgentParallelWaveExecutionState.TIMED_OUT, result.state)
+            assertTrue(result.outcomes.isEmpty())
+            assertTrue(taskInterrupted.await(1, TimeUnit.SECONDS))
+        } finally {
+            pool.shutdownNow()
+        }
+    }
+
+    @Test
     fun very_large_timeout_does_not_overflow_monotonic_deadline() {
         val pool = Executors.newSingleThreadExecutor()
         try {
