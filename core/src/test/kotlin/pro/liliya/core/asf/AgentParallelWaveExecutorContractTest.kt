@@ -128,6 +128,37 @@ class AgentParallelWaveExecutorContractTest {
     }
 
     @Test
+    fun very_large_timeout_does_not_overflow_monotonic_deadline() {
+        val pool = Executors.newSingleThreadExecutor()
+        try {
+            val result = AgentParallelWaveExecutor(pool).execute(
+                wave = AgentParallelWave(
+                    index = 0,
+                    stepIds = listOf(stepA),
+                    reservation = AgentParallelWaveReservation(
+                        maxWallClockMillis = 1_000,
+                        maxInferenceUnits = 1_000,
+                        maxContextBytes = 1_000,
+                        maxRetrievalItems = 0,
+                        maxArtifacts = 1,
+                        maxAgents = 1
+                    )
+                ),
+                tasks = mapOf(
+                    stepA to AgentParallelWaveTask {
+                        AgentParallelWaveTaskOutcome.Completed(stepA)
+                    }
+                ),
+                timeoutMillis = Long.MAX_VALUE
+            )
+            assertEquals(AgentParallelWaveExecutionState.COMPLETED, result.state)
+            assertEquals(listOf(stepA), result.outcomes.map(::outcomeStepId))
+        } finally {
+            pool.shutdownNow()
+        }
+    }
+
+    @Test
     fun artifact_reference_surface_is_bounded() {
         kotlin.test.assertFailsWith<IllegalArgumentException> {
             AgentParallelWaveTaskOutcome.Completed(
