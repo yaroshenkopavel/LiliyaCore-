@@ -146,6 +146,26 @@ jobs:
           } catch {
             Write-Host "RUNNER_BACKEND_DIR_CHECK_INDETERMINATE=True"
           }
+          # Fixed path allowlist only. Report no names, ACL entries, or file contents.
+          $boundaryPaths = [ordered]@{
+            OPENBAO_CONFIG = 'C:\LiliyaServer\config\openbao'
+            BACKEND_CONFIG = 'C:\LiliyaServer\config'
+            BACKEND_BACKUP = 'C:\LiliyaServer\backups'
+          }
+          foreach ($entry in $boundaryPaths.GetEnumerator()) {
+            $status = 'INDETERMINATE'
+            try {
+              $null = [IO.Directory]::GetFileSystemEntries($entry.Value)
+              $status = 'LISTABLE'
+            } catch [UnauthorizedAccessException] {
+              $status = 'DENIED'
+            } catch [IO.DirectoryNotFoundException] {
+              $status = 'MISSING'
+            } catch {
+              $status = 'INDETERMINATE'
+            }
+            Write-Host "RUNNER_BOUNDARY_$($entry.Key)=$status"
+          }
           Write-Host "RUNNER_IS_ADMIN=$isAdmin"
           Write-Host "RUNNER_BOUNDARY_AUDIT=OBSERVATIONS_ONLY"
           Write-Host "LILIYA_LAPTOP_HEALTH=PASS"
