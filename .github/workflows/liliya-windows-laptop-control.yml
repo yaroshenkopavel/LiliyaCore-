@@ -135,9 +135,9 @@ jobs:
           $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
           $principal = New-Object Security.Principal.WindowsPrincipal($identity)
           $isAdmin = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-          $backendReadable = $false
           try {
-            $backendReadable = [IO.Directory]::EnumerateFileSystemEntries('C:\LiliyaServer').GetEnumerator().MoveNext()
+            # Enumeration success (including an empty directory) is the access signal.
+            $null = [IO.Directory]::GetFileSystemEntries('C:\LiliyaServer')
             Write-Host "RUNNER_BACKEND_DIR_LISTABLE=True"
           } catch [UnauthorizedAccessException] {
             Write-Host "RUNNER_BACKEND_DIR_LISTABLE=False"
