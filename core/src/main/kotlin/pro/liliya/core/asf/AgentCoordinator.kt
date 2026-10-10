@@ -34,6 +34,21 @@ class AgentCoordinator(
         return null
     }
 
+    /**
+     * Advisory post-wave checkpoint. Rechecks this coordinator's budgeted plan
+     * before accepting the exact completed wave. Never authorizes a task, agent,
+     * tool, artifact or dispatch; the production execution path remains sequential.
+     */
+    fun previewAdvanceParallelWave(
+        plan: AgentCoordinatorPlan,
+        progress: AgentParallelWaveProgress,
+        result: AgentParallelWaveExecutionResult
+    ): AgentParallelWaveProgress? {
+        val schedule = previewParallelSchedule(plan) as? AgentParallelScheduleResult.Ready
+            ?: return null
+        return progress.advance(schedule, result)
+    }
+
     fun runSequential(
         plan: AgentCoordinatorPlan,
         runWindow: AgentCoordinatorRunWindow,
