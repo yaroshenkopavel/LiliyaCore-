@@ -78,10 +78,7 @@ jobs:
             adb shell am instrument -w -r -e class pro.liliya.app.AsfParallelWaveExecutorInstrumentedTest pro.liliya.app.test/androidx.test.runner.AndroidJUnitRunner | tee "$RUNNER_TEMP/asf-parallel-instrumentation.txt"
             grep -Fq 'OK (2 tests)' "$RUNNER_TEMP/asf-parallel-instrumentation.txt"
             grep -Fq 'INSTRUMENTATION_CODE: -1' "$RUNNER_TEMP/asf-parallel-instrumentation.txt"
-            if grep -Eq 'FAILURES!!!|INSTRUMENTATION_FAILED|INSTRUMENTATION_STATUS: stack=' "$RUNNER_TEMP/asf-parallel-instrumentation.txt"; then
-              echo "Direct ASF executor instrumentation reported a failure" >&2
-              exit 1
-            fi
+            ! grep -Eq 'FAILURES!!!|INSTRUMENTATION_FAILED|INSTRUMENTATION_STATUS: stack=' "$RUNNER_TEMP/asf-parallel-instrumentation.txt"
 
       - name: Preserve exact-head hosted emulator evidence
         if: always()
