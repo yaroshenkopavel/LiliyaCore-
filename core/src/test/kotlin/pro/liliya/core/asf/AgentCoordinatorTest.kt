@@ -87,6 +87,26 @@ class AgentCoordinatorTest {
     }
 
     @Test
+    fun parallel_wave_preview_requires_complete_dependency_barrier() {
+        val coordinator = coordinator(adapter = AgentRuntimeAdapter { error("must not run") })
+        val fullPlan = plan()
+        val rootId = AgentCoordinatorStepId("research")
+        val childId = AgentCoordinatorStepId("verify")
+        assertEquals(listOf(rootId), coordinator.previewNextParallelWave(fullPlan, emptySet())?.stepIds)
+        assertEquals(listOf(childId), coordinator.previewNextParallelWave(fullPlan, setOf(rootId))?.stepIds)
+        assertNull(coordinator.previewNextParallelWave(fullPlan, setOf(childId)))
+        assertNull(coordinator.previewNextParallelWave(fullPlan, setOf(rootId, childId)))
+        assertNull(coordinator.previewNextParallelWave(fullPlan, setOf(AgentCoordinatorStepId("unknown"))))
+    }
+
+    @Test
+    fun parallel_wave_preview_rejects_over_budget_plan_without_dispatch() {
+        val aggregate = AgentAggregateBudget(1_000, 1_000, 1_000, 0, 1, 1)
+        val coordinator = coordinator(aggregate, AgentRuntimeAdapter { error("must not run") })
+        assertNull(coordinator.previewNextParallelWave(plan(), emptySet()))
+    }
+
+    @Test
     fun sequential_two_worker_chain_preserves_parent_child_provenance() {
         val seen = mutableListOf<AgentRuntimeContext>()
         val coordinator = coordinator(
