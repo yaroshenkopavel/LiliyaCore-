@@ -215,7 +215,7 @@ class AgentCoordinatorTest {
             receipts[stepId] = "artifact:tampered"
             reference == "artifact:research"
         }
-        assertEquals(1, kotlin.test.assertNotNull(accepted).nextWaveIndex)
+        assertNull(accepted)
         assertEquals("artifact:tampered", receipts[rootId])
     }
 
