@@ -201,6 +201,13 @@ class AgentParallelWaveExecutor(
                 state = state,
                 outcomes = outcomes
             )
+        } catch (_: InterruptedException) {
+            cancelAll(futures.values)
+            Thread.currentThread().interrupt()
+            return AgentParallelWaveExecutionResult(
+                state = AgentParallelWaveExecutionState.CANCELLED,
+                outcomes = emptyList()
+            )
         } catch (_: ArithmeticException) {
             cancelAll(futures.values)
             return AgentParallelWaveExecutionResult(
@@ -230,6 +237,8 @@ class AgentParallelWaveExecutor(
                 return future.get(minOf(remaining, pollNanos), TimeUnit.NANOSECONDS)
             } catch (_: TimeoutException) {
                 // Re-check cancellation and deadline.
+            } catch (interrupted: InterruptedException) {
+                throw interrupted
             } catch (_: Exception) {
                 return AgentParallelWaveTaskOutcome.Failed(
                     stepId = stepId,
