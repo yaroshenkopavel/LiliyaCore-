@@ -91,7 +91,7 @@ class AgentParallelWaveExecutor(
         require(tasks.keys == wave.stepIds.toSet()) {
             "parallel wave tasks must exactly match scheduled step ids"
         }
-        if (cancelled()) {
+        if (Thread.currentThread().isInterrupted || cancelled()) {
             return AgentParallelWaveExecutionResult(
                 state = AgentParallelWaveExecutionState.CANCELLED,
                 outcomes = emptyList()
