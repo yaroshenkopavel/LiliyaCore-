@@ -93,10 +93,16 @@ class AgentCoordinator(
         committedArtifacts: Map<AgentCoordinatorStepId, String>,
         verifyCommittedArtifact: (AgentCoordinatorStepId, String) -> Boolean
     ): AgentParallelWaveProgress? {
+        // Snapshot caller-owned receipts to avoid verification observing a changing
+        // map, and verify in canonical outcome order rather than map iteration order.
+        val receiptSnapshot = committedArtifacts.toMap()
         val matched = previewAdvanceArtifactMatchedParallelWave(
-            plan, progress, result, committedArtifacts
+            plan, progress, result, receiptSnapshot
         ) ?: return null
-        for ((stepId, reference) in committedArtifacts) {
+        for (outcome in result.outcomes) {
+            val stepId = (outcome as? AgentParallelWaveTaskOutcome.Completed)?.stepId
+                ?: return null
+            val reference = receiptSnapshot[stepId] ?: return null
             val verified = try {
                 verifyCommittedArtifact(stepId, reference)
             } catch (_: Exception) {
