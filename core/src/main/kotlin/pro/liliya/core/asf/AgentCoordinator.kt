@@ -49,6 +49,22 @@ class AgentCoordinator(
         return progress.advance(schedule, result)
     }
 
+    /**
+     * Advisory verified wave checkpoint, not a dispatch authorization.
+     * The caller must independently establish provenance of committedStepIds;
+     * this method only checks exact membership against the budgeted schedule.
+     */
+    fun previewAdvanceVerifiedParallelWave(
+        plan: AgentCoordinatorPlan,
+        progress: AgentParallelWaveProgress,
+        result: AgentParallelWaveExecutionResult,
+        committedStepIds: Set<AgentCoordinatorStepId>
+    ): AgentParallelWaveProgress? {
+        val schedule = previewParallelSchedule(plan) as? AgentParallelScheduleResult.Ready
+            ?: return null
+        return progress.advanceVerified(schedule, result, committedStepIds)
+    }
+
     fun runSequential(
         plan: AgentCoordinatorPlan,
         runWindow: AgentCoordinatorRunWindow,
