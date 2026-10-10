@@ -41,6 +41,11 @@ data class AgentParallelWaveProgress(
     ): AgentParallelWaveProgress? {
         val wave = schedule.waves.getOrNull(nextWaveIndex) ?: return null
         if (committedArtifacts.keys != wave.stepIds.toSet()) return null
+        // A single receipt cannot prove two independent durable commits.
+        // Reject missing, malformed or reused references before advancing.
+        val receipts = committedArtifacts.values
+        if (receipts.any { it.isBlank() || it.toByteArray(Charsets.UTF_8).size > 256 }) return null
+        if (receipts.toSet().size != receipts.size) return null
         val completed = waveResult.outcomes.map {
             it as? AgentParallelWaveTaskOutcome.Completed ?: return null
         }
