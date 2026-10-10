@@ -251,6 +251,39 @@ class AgentCoordinatorTest {
     }
 
     @Test
+    fun receipt_checked_dependency_wave_requires_independent_child_commit() {
+        val coordinator = coordinator(adapter = AgentRuntimeAdapter {
+            error("preview must never dispatch")
+        })
+        val rootId = AgentCoordinatorStepId("research")
+        val childId = AgentCoordinatorStepId("verify")
+        val rootResult = AgentParallelWaveExecutionResult(
+            AgentParallelWaveExecutionState.COMPLETED,
+            listOf(AgentParallelWaveTaskOutcome.Completed(rootId, "artifact:root"))
+        )
+        val afterRoot = kotlin.test.assertNotNull(
+            coordinator.previewAdvanceReceiptCheckedParallelWave(
+                plan(), AgentParallelWaveProgress(), rootResult,
+                mapOf(rootId to "artifact:root")
+            ) { id, reference -> id == rootId && reference == "artifact:root" }
+        )
+        val childResult = AgentParallelWaveExecutionResult(
+            AgentParallelWaveExecutionState.COMPLETED,
+            listOf(AgentParallelWaveTaskOutcome.Completed(childId, "artifact:child"))
+        )
+        assertNull(coordinator.previewAdvanceReceiptCheckedParallelWave(
+            plan(), afterRoot, childResult, mapOf(childId to "artifact:child")
+        ) { _, _ -> false })
+        assertEquals(listOf(childId),
+            coordinator.previewNextVerifiedParallelWave(plan(), afterRoot)?.stepIds)
+        assertEquals(2, kotlin.test.assertNotNull(
+            coordinator.previewAdvanceReceiptCheckedParallelWave(
+                plan(), afterRoot, childResult, mapOf(childId to "artifact:child")
+            ) { id, reference -> id == childId && reference == "artifact:child" }
+        ).nextWaveIndex)
+    }
+
+    @Test
     fun coordinator_artifact_checkpoint_matches_receipts_without_dispatch() {
         var launches = 0
         val coordinator = coordinator(adapter = AgentRuntimeAdapter {
