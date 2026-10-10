@@ -139,7 +139,7 @@ class AgentParallelWaveExecutor(
 
             val outcomes = mutableListOf<AgentParallelWaveTaskOutcome>()
             for (stepId in wave.stepIds) {
-                if (cancelled()) {
+                if (Thread.currentThread().isInterrupted || cancelled()) {
                     cancelAll(futures.values)
                     return AgentParallelWaveExecutionResult(
                         state = if (outcomes.isEmpty()) {
