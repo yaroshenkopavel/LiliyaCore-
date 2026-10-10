@@ -29,6 +29,30 @@ data class AgentParallelWaveProgress(
         return advance(schedule, waveResult)
     }
 
+    /**
+     * Advisory equality check between executor artifact references and separately
+     * supplied commit receipts. The caller must verify receipt authenticity and
+     * durable persistence; this method does NOT establish either property.
+     */
+    fun advanceArtifactMatched(
+        schedule: AgentParallelScheduleResult.Ready,
+        waveResult: AgentParallelWaveExecutionResult,
+        committedArtifacts: Map<AgentCoordinatorStepId, String>
+    ): AgentParallelWaveProgress? {
+        val wave = schedule.waves.getOrNull(nextWaveIndex) ?: return null
+        if (committedArtifacts.keys != wave.stepIds.toSet()) return null
+        val completed = waveResult.outcomes.map {
+            it as? AgentParallelWaveTaskOutcome.Completed ?: return null
+        }
+        if (completed.size != wave.stepIds.size) return null
+        if (completed.any {
+                val reference = it.artifactReference
+                reference == null || committedArtifacts[it.stepId] != reference
+            }
+        ) return null
+        return advanceVerified(schedule, waveResult, committedArtifacts.keys)
+    }
+
     fun advance(
         schedule: AgentParallelScheduleResult.Ready,
         waveResult: AgentParallelWaveExecutionResult
