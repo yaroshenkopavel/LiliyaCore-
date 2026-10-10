@@ -13,6 +13,36 @@ class AgentParallelWaveExecutorContractTest {
     private val stepB = AgentCoordinatorStepId("b")
 
     @Test
+    fun malformed_wave_cannot_launch_more_agents_than_reservation() {
+        val pool = Executors.newFixedThreadPool(2)
+        try {
+            val launches = java.util.concurrent.atomic.AtomicInteger(0)
+            val undersizedReservation = wave().copy(
+                reservation = wave().reservation.copy(maxAgents = 1)
+            )
+            kotlin.test.assertFailsWith<IllegalArgumentException> {
+                AgentParallelWaveExecutor(pool).execute(
+                    wave = undersizedReservation,
+                    tasks = mapOf(
+                        stepA to AgentParallelWaveTask {
+                            launches.incrementAndGet()
+                            AgentParallelWaveTaskOutcome.Completed(stepA)
+                        },
+                        stepB to AgentParallelWaveTask {
+                            launches.incrementAndGet()
+                            AgentParallelWaveTaskOutcome.Completed(stepB)
+                        }
+                    ),
+                    timeoutMillis = 2_000
+                )
+            }
+            assertEquals(0, launches.get())
+        } finally {
+            pool.shutdownNow()
+        }
+    }
+
+    @Test
     fun sibling_tasks_run_concurrently_but_results_publish_in_canonical_order() {
         val pool = Executors.newFixedThreadPool(2)
         try {
