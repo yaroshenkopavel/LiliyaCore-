@@ -86,6 +86,24 @@ class AgentParallelWaveProgressTest {
     }
 
     @Test
+    fun artifact_matched_checkpoint_requires_exact_references_and_ids() {
+        val progress = AgentParallelWaveProgress()
+        val result = AgentParallelWaveExecutionResult(
+            AgentParallelWaveExecutionState.COMPLETED,
+            listOf(AgentParallelWaveTaskOutcome.Completed(root, "artifact:root"))
+        )
+        assertNull(progress.advanceArtifactMatched(schedule(), result, emptyMap()))
+        assertNull(progress.advanceArtifactMatched(schedule(), result, mapOf(root to "artifact:wrong")))
+        assertNull(progress.advanceArtifactMatched(schedule(), result, mapOf(root to "artifact:root", a to "artifact:a")))
+        assertEquals(1, assertNotNull(progress.advanceArtifactMatched(
+            schedule(), result, mapOf(root to "artifact:root")
+        )).nextWaveIndex)
+        assertNull(progress.advanceArtifactMatched(
+            schedule(), success(listOf(root)), mapOf(root to "artifact:root")
+        ))
+    }
+
+    @Test
     fun forged_prior_completion_or_index_is_rejected() {
         val forged = AgentParallelWaveProgress(setOf(a), 1)
         assertNull(forged.advance(schedule(), success(listOf(a, b))))
