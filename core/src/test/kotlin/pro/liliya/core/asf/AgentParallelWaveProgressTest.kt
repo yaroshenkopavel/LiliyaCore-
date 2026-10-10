@@ -26,7 +26,7 @@ class AgentParallelWaveProgressTest {
         maxAgents = agents
     )
 
-    private fun success(vararg ids: AgentCoordinatorStepId) =
+    private fun success(ids: List<AgentCoordinatorStepId>) =
         AgentParallelWaveExecutionResult(
             AgentParallelWaveExecutionState.COMPLETED,
             ids.map { AgentParallelWaveTaskOutcome.Completed(it) }
@@ -34,21 +34,21 @@ class AgentParallelWaveProgressTest {
 
     @Test
     fun completed_waves_advance_in_dependency_order() {
-        val first = assertNotNull(AgentParallelWaveProgress().advance(schedule(), success(root)))
+        val first = assertNotNull(AgentParallelWaveProgress().advance(schedule(), success(listOf(root))))
         assertEquals(1, first.nextWaveIndex)
         assertEquals(setOf(root), first.completedStepIds)
-        val second = assertNotNull(first.advance(schedule(), success(a, b)))
+        val second = assertNotNull(first.advance(schedule(), success(listOf(a, b))))
         assertEquals(2, second.nextWaveIndex)
         assertEquals(setOf(root, a, b), second.completedStepIds)
-        assertNull(second.advance(schedule(), success(root)))
+        assertNull(second.advance(schedule(), success(listOf(root))))
     }
 
     @Test
     fun incomplete_failed_and_wrong_wave_results_never_advance() {
-        val first = assertNotNull(AgentParallelWaveProgress().advance(schedule(), success(root)))
-        assertNull(AgentParallelWaveProgress().advance(schedule(), success(a, b)))
-        assertNull(first.advance(schedule(), success(a)))
-        assertNull(first.advance(schedule(), success(root)))
+        val first = assertNotNull(AgentParallelWaveProgress().advance(schedule(), success(listOf(root))))
+        assertNull(AgentParallelWaveProgress().advance(schedule(), success(listOf(a, b))))
+        assertNull(first.advance(schedule(), success(listOf(a))))
+        assertNull(first.advance(schedule(), success(listOf(root))))
         assertNull(first.advance(schedule(), AgentParallelWaveExecutionResult(
             AgentParallelWaveExecutionState.PARTIAL,
             listOf(AgentParallelWaveTaskOutcome.Completed(a))
@@ -68,8 +68,8 @@ class AgentParallelWaveProgressTest {
     @Test
     fun forged_prior_completion_or_index_is_rejected() {
         val forged = AgentParallelWaveProgress(setOf(a), 1)
-        assertNull(forged.advance(schedule(), success(a, b)))
+        assertNull(forged.advance(schedule(), success(listOf(a, b))))
         val skipped = AgentParallelWaveProgress(setOf(root), 2)
-        assertNull(skipped.advance(schedule(), success(a, b)))
+        assertNull(skipped.advance(schedule(), success(listOf(a, b))))
     }
 }
