@@ -124,7 +124,15 @@ class AgentParallelWaveExecutor(
                 val future = try {
                     executor.submit(
                         Callable {
-                            tasks.getValue(stepId).run()
+                            // A queued task must not start after cancellation, even
+                            // if the controller was cancelled after its submission.
+                            if (Thread.currentThread().isInterrupted || cancelled()) {
+                                AgentParallelWaveTaskOutcome.Failed(
+                                    stepId, "parallel wave cancelled before task start"
+                                )
+                            } else {
+                                tasks.getValue(stepId).run()
+                            }
                         }
                     )
                 } catch (_: Exception) {
