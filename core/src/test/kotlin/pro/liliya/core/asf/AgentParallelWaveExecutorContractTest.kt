@@ -366,6 +366,32 @@ class AgentParallelWaveExecutorContractTest {
     }
 
     @Test
+    fun cancellation_when_all_tasks_finish_does_not_publish_complete_wave() {
+        val pool = Executors.newFixedThreadPool(2)
+        try {
+            val allTasksFinished = CountDownLatch(2)
+            val result = AgentParallelWaveExecutor(pool).execute(
+                wave = wave(),
+                tasks = mapOf(
+                    stepA to AgentParallelWaveTask {
+                        allTasksFinished.countDown()
+                        AgentParallelWaveTaskOutcome.Completed(stepA)
+                    },
+                    stepB to AgentParallelWaveTask {
+                        allTasksFinished.countDown()
+                        AgentParallelWaveTaskOutcome.Completed(stepB)
+                    }
+                ),
+                timeoutMillis = 2_000,
+                cancelled = { allTasksFinished.count == 0L }
+            )
+            assertTrue(result.state != AgentParallelWaveExecutionState.COMPLETED)
+        } finally {
+            pool.shutdownNow()
+        }
+    }
+
+    @Test
     fun pre_interrupted_caller_never_submits_tasks_and_keeps_interrupt_status() {
         val pool = Executors.newFixedThreadPool(2)
         try {
