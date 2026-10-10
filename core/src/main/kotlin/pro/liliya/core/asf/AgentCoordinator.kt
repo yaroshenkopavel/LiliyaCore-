@@ -14,6 +14,26 @@ class AgentCoordinator(
     fun previewParallelSchedule(plan: AgentCoordinatorPlan): AgentParallelScheduleResult =
         AgentParallelScheduler.schedule(plan, aggregateBudget)
 
+    /**
+     * Advisory wave barrier preview only; supplied completion IDs are not proof
+     * of authorization, successful runtime execution or artifact commitment.
+     * Requires completed waves to be a contiguous prefix and never exposes a
+     * partially completed wave as ready for further dispatch.
+     */
+    fun previewNextParallelWave(
+        plan: AgentCoordinatorPlan,
+        completedStepIds: Set<AgentCoordinatorStepId>
+    ): AgentParallelWave? {
+        val scheduled = previewParallelSchedule(plan) as? AgentParallelScheduleResult.Ready
+            ?: return null
+        val completedPrefix = mutableSetOf<AgentCoordinatorStepId>()
+        for (wave in scheduled.waves) {
+            if (completedStepIds == completedPrefix) return wave
+            completedPrefix.addAll(wave.stepIds)
+        }
+        return null
+    }
+
     fun runSequential(
         plan: AgentCoordinatorPlan,
         runWindow: AgentCoordinatorRunWindow,
