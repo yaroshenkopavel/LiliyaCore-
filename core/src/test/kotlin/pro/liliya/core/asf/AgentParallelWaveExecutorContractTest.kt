@@ -336,6 +336,41 @@ class AgentParallelWaveExecutorContractTest {
         }
     }
 
+    @Test
+    fun terminal_task_failure_immediately_interrupts_running_sibling() {
+        val pool = Executors.newFixedThreadPool(2)
+        try {
+            val siblingStarted = CountDownLatch(1)
+            val siblingInterrupted = CountDownLatch(1)
+            val result = AgentParallelWaveExecutor(pool).execute(
+                wave = wave(),
+                tasks = mapOf(
+                    stepA to AgentParallelWaveTask {
+                        assertTrue(siblingStarted.await(1, TimeUnit.SECONDS))
+                        AgentParallelWaveTaskOutcome.Failed(stepA, "rejected")
+                    },
+                    stepB to AgentParallelWaveTask {
+                        siblingStarted.countDown()
+                        try {
+                            Thread.sleep(10_000)
+                            AgentParallelWaveTaskOutcome.Completed(stepB)
+                        } catch (_: InterruptedException) {
+                            siblingInterrupted.countDown()
+                            throw InterruptedException()
+                        }
+                    }
+                ),
+                timeoutMillis = 2_000
+            )
+            assertEquals(AgentParallelWaveExecutionState.PARTIAL, result.state)
+            assertEquals(1, result.outcomes.size)
+            assertEquals(stepA, outcomeStepId(result.outcomes.single()))
+            assertTrue(siblingInterrupted.await(1, TimeUnit.SECONDS))
+        } finally {
+            pool.shutdownNow()
+        }
+    }
+
     private fun blockingTask(
         stepId: AgentCoordinatorStepId,
         started: CountDownLatch,
