@@ -66,6 +66,22 @@ class AgentCoordinator(
     }
 
     /**
+     * Read-only artifact-matched wave checkpoint. Revalidates the plan against
+     * this coordinator's aggregate budget. Receipts must be authenticated and
+     * durably committed by the owning runtime; this preview grants no authority.
+     */
+    fun previewAdvanceArtifactMatchedParallelWave(
+        plan: AgentCoordinatorPlan,
+        progress: AgentParallelWaveProgress,
+        result: AgentParallelWaveExecutionResult,
+        committedArtifacts: Map<AgentCoordinatorStepId, String>
+    ): AgentParallelWaveProgress? {
+        val schedule = previewParallelSchedule(plan) as? AgentParallelScheduleResult.Ready
+            ?: return null
+        return progress.advanceArtifactMatched(schedule, result, committedArtifacts)
+    }
+
+    /**
      * Read-only barrier for a complete verified prefix of committed waves.
      * These identifiers are supplied by the caller and DO NOT constitute
      * admission, authority or proof of durable artifact persistence.
