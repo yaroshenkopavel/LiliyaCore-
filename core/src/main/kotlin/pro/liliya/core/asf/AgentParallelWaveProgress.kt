@@ -15,6 +15,20 @@ data class AgentParallelWaveProgress(
         require(nextWaveIndex >= 0)
     }
 
+    /**
+     * Verified commit evidence must be supplied independently by the runtime.
+     * Bare executor completion is insufficient for a dependent wave.
+     */
+    fun advanceVerified(
+        schedule: AgentParallelScheduleResult.Ready,
+        waveResult: AgentParallelWaveExecutionResult,
+        committedStepIds: Set<AgentCoordinatorStepId>
+    ): AgentParallelWaveProgress? {
+        val wave = schedule.waves.getOrNull(nextWaveIndex) ?: return null
+        if (committedStepIds != wave.stepIds.toSet()) return null
+        return advance(schedule, waveResult)
+    }
+
     fun advance(
         schedule: AgentParallelScheduleResult.Ready,
         waveResult: AgentParallelWaveExecutionResult
