@@ -173,6 +173,32 @@ class AgentCoordinatorTest {
     }
 
     @Test
+    fun coordinator_verified_wave_checkpoint_requires_exact_committed_steps() {
+        var launches = 0
+        val coordinator = coordinator(adapter = AgentRuntimeAdapter {
+            launches++
+            error("advisory checkpoint must not launch")
+        })
+        val rootId = AgentCoordinatorStepId("research")
+        val result = AgentParallelWaveExecutionResult(
+            AgentParallelWaveExecutionState.COMPLETED,
+            listOf(AgentParallelWaveTaskOutcome.Completed(rootId))
+        )
+        assertNull(coordinator.previewAdvanceVerifiedParallelWave(
+            plan(), AgentParallelWaveProgress(), result, emptySet()
+        ))
+        assertNull(coordinator.previewAdvanceVerifiedParallelWave(
+            plan(), AgentParallelWaveProgress(), result,
+            setOf(rootId, AgentCoordinatorStepId("verify"))
+        ))
+        val progress = kotlin.test.assertNotNull(coordinator.previewAdvanceVerifiedParallelWave(
+            plan(), AgentParallelWaveProgress(), result, setOf(rootId)
+        ))
+        assertEquals(1, progress.nextWaveIndex)
+        assertEquals(0, launches)
+    }
+
+    @Test
     fun sequential_two_worker_chain_preserves_parent_child_provenance() {
         val seen = mutableListOf<AgentRuntimeContext>()
         val coordinator = coordinator(
