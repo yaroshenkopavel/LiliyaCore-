@@ -157,6 +157,25 @@ class AgentParallelSchedulerContractTest {
     }
 
     @Test
+    fun nested_descendant_tree_at_exact_cap_remains_schedulable() {
+        val root = step("root", null, rootBudget.copy(maxDescendants = 3))
+        val childA = step("a", "root", childBudget.copy(maxDescendants = 1))
+        val childB = step("b", "root", childBudget)
+        val grandchild = step("c", "a", childBudget)
+        val ready = assertIs<AgentParallelScheduleResult.Ready>(
+            AgentParallelScheduler.schedule(
+                AgentCoordinatorPlan(
+                    AgentRootTaskId("parallel-root"),
+                    listOf(root, childA, childB, grandchild)
+                ),
+                aggregate
+            )
+        )
+        assertEquals(3, ready.waves.size)
+        assertEquals(listOf(AgentCoordinatorStepId("c")), ready.waves[2].stepIds)
+    }
+
+    @Test
     fun scheduler_contract_contains_no_authority_execution_or_secret_fields() {
         val forbidden = listOf(
             "authority",
