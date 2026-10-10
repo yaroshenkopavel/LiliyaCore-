@@ -65,6 +65,23 @@ class AgentCoordinator(
         return progress.advanceVerified(schedule, result, committedStepIds)
     }
 
+    /**
+     * Read-only barrier for a complete verified prefix of committed waves.
+     * These identifiers are supplied by the caller and DO NOT constitute
+     * admission, authority or proof of durable artifact persistence.
+     */
+    fun previewNextVerifiedParallelWave(
+        plan: AgentCoordinatorPlan,
+        progress: AgentParallelWaveProgress
+    ): AgentParallelWave? {
+        val schedule = previewParallelSchedule(plan) as? AgentParallelScheduleResult.Ready
+            ?: return null
+        val expected = schedule.waves.take(progress.nextWaveIndex)
+            .flatMap { it.stepIds }.toSet()
+        if (progress.completedStepIds != expected) return null
+        return schedule.waves.getOrNull(progress.nextWaveIndex)
+    }
+
     fun runSequential(
         plan: AgentCoordinatorPlan,
         runWindow: AgentCoordinatorRunWindow,
