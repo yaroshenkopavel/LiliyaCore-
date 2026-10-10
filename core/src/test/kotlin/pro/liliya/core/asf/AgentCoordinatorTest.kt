@@ -199,6 +199,30 @@ class AgentCoordinatorTest {
     }
 
     @Test
+    fun verified_progress_preview_rejects_forged_prefix_without_dispatch() {
+        var launches = 0
+        val coordinator = coordinator(adapter = AgentRuntimeAdapter {
+            launches++
+            error("preview must not dispatch")
+        })
+        val plan = plan()
+        val rootId = AgentCoordinatorStepId("research")
+        val childId = AgentCoordinatorStepId("verify")
+        assertEquals(listOf(rootId),
+            coordinator.previewNextVerifiedParallelWave(plan, AgentParallelWaveProgress())?.stepIds)
+        assertNull(coordinator.previewNextVerifiedParallelWave(
+            plan, AgentParallelWaveProgress(setOf(childId), 1)
+        ))
+        assertEquals(listOf(childId), coordinator.previewNextVerifiedParallelWave(
+            plan, AgentParallelWaveProgress(setOf(rootId), 1)
+        )?.stepIds)
+        assertNull(coordinator.previewNextVerifiedParallelWave(
+            plan, AgentParallelWaveProgress(setOf(rootId, childId), 2)
+        ))
+        assertEquals(0, launches)
+    }
+
+    @Test
     fun sequential_two_worker_chain_preserves_parent_child_provenance() {
         val seen = mutableListOf<AgentRuntimeContext>()
         val coordinator = coordinator(
