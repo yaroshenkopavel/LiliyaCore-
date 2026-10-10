@@ -96,7 +96,7 @@ class AgentParallelWaveExecutor(
         require(tasks.keys == wave.stepIds.toSet()) {
             "parallel wave tasks must exactly match scheduled step ids"
         }
-        if (Thread.currentThread().isInterrupted || cancelled()) {
+        if (Thread.currentThread().isInterrupted || isCancelled(cancelled)) {
             return AgentParallelWaveExecutionResult(
                 state = AgentParallelWaveExecutionState.CANCELLED,
                 outcomes = emptyList()
@@ -114,7 +114,7 @@ class AgentParallelWaveExecutor(
             wave.stepIds.forEach { stepId ->
                 // Cancellation may arrive after the initial preflight or between
                 // submissions; do not enqueue any further agent work.
-                if (Thread.currentThread().isInterrupted || cancelled()) {
+                if (Thread.currentThread().isInterrupted || isCancelled(cancelled)) {
                     cancelAll(futures.values)
                     return AgentParallelWaveExecutionResult(
                         state = AgentParallelWaveExecutionState.CANCELLED,
@@ -126,7 +126,7 @@ class AgentParallelWaveExecutor(
                         Callable {
                             // A queued task must not start after cancellation, even
                             // if the controller was cancelled after its submission.
-                            if (Thread.currentThread().isInterrupted || cancelled()) {
+                            if (Thread.currentThread().isInterrupted || isCancelled(cancelled)) {
                                 AgentParallelWaveTaskOutcome.Failed(
                                     stepId, "parallel wave cancelled before task start"
                                 )
@@ -152,7 +152,7 @@ class AgentParallelWaveExecutor(
 
             val outcomes = mutableListOf<AgentParallelWaveTaskOutcome>()
             for (stepId in wave.stepIds) {
-                if (Thread.currentThread().isInterrupted || cancelled()) {
+                if (Thread.currentThread().isInterrupted || isCancelled(cancelled)) {
                     cancelAll(futures.values)
                     return AgentParallelWaveExecutionResult(
                         state = if (outcomes.isEmpty()) {
@@ -187,7 +187,7 @@ class AgentParallelWaveExecutor(
                     cancelAll(futures.values)
                     return AgentParallelWaveExecutionResult(
                         state = if (outcomes.isEmpty()) {
-                            if (cancelled()) AgentParallelWaveExecutionState.CANCELLED
+                            if (isCancelled(cancelled)) AgentParallelWaveExecutionState.CANCELLED
                             else AgentParallelWaveExecutionState.TIMED_OUT
                         } else {
                             AgentParallelWaveExecutionState.PARTIAL
@@ -225,7 +225,7 @@ class AgentParallelWaveExecutor(
 
             // Recheck immediately before publishing a successful terminal wave.
             // Cancellation can be requested after the last Future completes.
-            if (Thread.currentThread().isInterrupted || cancelled()) {
+            if (Thread.currentThread().isInterrupted || isCancelled(cancelled)) {
                 cancelAll(futures.values)
                 return AgentParallelWaveExecutionResult(
                     state = AgentParallelWaveExecutionState.CANCELLED,
@@ -256,7 +256,7 @@ class AgentParallelWaveExecutor(
                 outcomes = emptyList()
             )
         } finally {
-            if (cancelled()) {
+            if (isCancelled(cancelled)) {
                 cancelAll(futures.values)
             }
         }
@@ -271,7 +271,7 @@ class AgentParallelWaveExecutor(
     ): AgentParallelWaveTaskOutcome? {
         val pollNanos = TimeUnit.MILLISECONDS.toNanos(10)
         while (true) {
-            if (cancelled()) return null
+            if (isCancelled(cancelled)) return null
             val remaining = timeoutNanos - (System.nanoTime() - startNanos)
             if (remaining <= 0L) return null
             try {
@@ -288,6 +288,14 @@ class AgentParallelWaveExecutor(
             }
         }
     }
+
+    // A broken cancellation provider must never authorize additional work.
+    private fun isCancelled(cancelled: () -> Boolean): Boolean =
+        try {
+            cancelled()
+        } catch (_: Exception) {
+            true
+        }
 
     private fun cancelAll(
         futures: Collection<Future<AgentParallelWaveTaskOutcome>>
