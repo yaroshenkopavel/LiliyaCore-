@@ -58,6 +58,34 @@ class AgentParallelWaveExecutorContractTest {
     }
 
     @Test
+    fun throwing_cancellation_callback_fails_closed_before_dispatch() {
+        val pool = Executors.newFixedThreadPool(2)
+        try {
+            val launches = java.util.concurrent.atomic.AtomicInteger(0)
+            val result = AgentParallelWaveExecutor(pool).execute(
+                wave = wave(),
+                tasks = mapOf(
+                    stepA to AgentParallelWaveTask {
+                        launches.incrementAndGet()
+                        AgentParallelWaveTaskOutcome.Completed(stepA)
+                    },
+                    stepB to AgentParallelWaveTask {
+                        launches.incrementAndGet()
+                        AgentParallelWaveTaskOutcome.Completed(stepB)
+                    }
+                ),
+                timeoutMillis = 2_000,
+                cancelled = { throw IllegalStateException("cancel provider unavailable") }
+            )
+            assertEquals(AgentParallelWaveExecutionState.CANCELLED, result.state)
+            assertTrue(result.outcomes.isEmpty())
+            assertEquals(0, launches.get())
+        } finally {
+            pool.shutdownNow()
+        }
+    }
+
+    @Test
     fun malformed_wave_cannot_launch_more_agents_than_reservation() {
         val pool = Executors.newFixedThreadPool(2)
         try {
