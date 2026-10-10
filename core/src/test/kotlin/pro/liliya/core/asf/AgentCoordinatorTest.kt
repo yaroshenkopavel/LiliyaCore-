@@ -199,6 +199,27 @@ class AgentCoordinatorTest {
     }
 
     @Test
+    fun receipt_verifier_observes_stable_snapshot_after_caller_mutation() {
+        val coordinator = coordinator(adapter = AgentRuntimeAdapter {
+            error("preview must not dispatch")
+        })
+        val rootId = AgentCoordinatorStepId("research")
+        val receipts = mutableMapOf(rootId to "artifact:research")
+        val result = AgentParallelWaveExecutionResult(
+            AgentParallelWaveExecutionState.COMPLETED,
+            listOf(AgentParallelWaveTaskOutcome.Completed(rootId, "artifact:research"))
+        )
+        val accepted = coordinator.previewAdvanceReceiptCheckedParallelWave(
+            plan(), AgentParallelWaveProgress(), result, receipts
+        ) { stepId, reference ->
+            receipts[stepId] = "artifact:tampered"
+            reference == "artifact:research"
+        }
+        assertEquals(1, kotlin.test.assertNotNull(accepted).nextWaveIndex)
+        assertEquals("artifact:tampered", receipts[rootId])
+    }
+
+    @Test
     fun receipt_checked_checkpoint_fails_closed_on_denial_or_verifier_exception() {
         val coordinator = coordinator(adapter = AgentRuntimeAdapter {
             error("receipt preview must not dispatch agents")
