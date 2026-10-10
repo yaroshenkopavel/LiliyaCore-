@@ -190,6 +190,15 @@ class AgentParallelWaveExecutor(
                     )
                 }
                 outcomes += outcome
+                if (outcome is AgentParallelWaveTaskOutcome.Failed) {
+                    // A terminal failure must stop the wave immediately. Waiting for
+                    // siblings would allow avoidable work after fail-closed rejection.
+                    cancelAll(futures.values)
+                    return AgentParallelWaveExecutionResult(
+                        state = AgentParallelWaveExecutionState.PARTIAL,
+                        outcomes = outcomes
+                    )
+                }
             }
 
             val state = if (outcomes.all { it is AgentParallelWaveTaskOutcome.Completed }) {
