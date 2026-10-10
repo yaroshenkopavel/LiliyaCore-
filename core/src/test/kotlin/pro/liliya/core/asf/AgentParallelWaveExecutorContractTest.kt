@@ -301,6 +301,41 @@ class AgentParallelWaveExecutorContractTest {
         }
     }
 
+    @Test
+    fun interrupted_caller_cancels_running_tasks_and_preserves_interrupt_flag() {
+        val pool = Executors.newFixedThreadPool(2)
+        try {
+            val bothStarted = CountDownLatch(2)
+            val workersInterrupted = CountDownLatch(2)
+            val finished = CountDownLatch(1)
+            val callerInterrupted = AtomicBoolean(false)
+            val state = java.util.concurrent.atomic.AtomicReference<AgentParallelWaveExecutionState>()
+            val caller = Thread {
+                val result = AgentParallelWaveExecutor(pool).execute(
+                    wave = wave(),
+                    tasks = mapOf(
+                        stepA to blockingTask(stepA, bothStarted, workersInterrupted),
+                        stepB to blockingTask(stepB, bothStarted, workersInterrupted)
+                    ),
+                    timeoutMillis = 2_000
+                )
+                state.set(result.state)
+                callerInterrupted.set(Thread.currentThread().isInterrupted)
+                finished.countDown()
+            }
+            caller.start()
+            assertTrue(bothStarted.await(1, TimeUnit.SECONDS))
+            caller.interrupt()
+            assertTrue(finished.await(2, TimeUnit.SECONDS))
+            assertEquals(AgentParallelWaveExecutionState.CANCELLED, state.get())
+            assertTrue(callerInterrupted.get())
+            assertTrue(workersInterrupted.await(1, TimeUnit.SECONDS))
+            caller.join(1_000)
+        } finally {
+            pool.shutdownNow()
+        }
+    }
+
     private fun blockingTask(
         stepId: AgentCoordinatorStepId,
         started: CountDownLatch,
