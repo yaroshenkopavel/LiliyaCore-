@@ -66,6 +66,26 @@ class AgentParallelWaveProgressTest {
     }
 
     @Test
+    fun verified_checkpoint_requires_exact_independent_commit_acknowledgments() {
+        val first = AgentParallelWaveProgress()
+        val rootResult = success(listOf(root))
+        assertNull(first.advanceVerified(schedule(), rootResult, emptySet()))
+        assertNull(first.advanceVerified(schedule(), rootResult, setOf(root, a)))
+        val afterRoot = assertNotNull(first.advanceVerified(schedule(), rootResult, setOf(root)))
+        assertNull(afterRoot.advanceVerified(schedule(), success(listOf(a, b)), setOf(a)))
+        assertNull(afterRoot.advanceVerified(schedule(), success(listOf(a, b)), setOf(a, b, root)))
+        assertEquals(
+            2,
+            assertNotNull(afterRoot.advanceVerified(schedule(), success(listOf(a, b)), setOf(a, b)))
+                .nextWaveIndex
+        )
+        assertNull(afterRoot.advanceVerified(schedule(),
+            AgentParallelWaveExecutionResult(AgentParallelWaveExecutionState.PARTIAL,
+                listOf(AgentParallelWaveTaskOutcome.Completed(a))),
+            setOf(a, b)))
+    }
+
+    @Test
     fun forged_prior_completion_or_index_is_rejected() {
         val forged = AgentParallelWaveProgress(setOf(a), 1)
         assertNull(forged.advance(schedule(), success(listOf(a, b))))
