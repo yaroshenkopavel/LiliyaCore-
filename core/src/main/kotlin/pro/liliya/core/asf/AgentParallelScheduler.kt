@@ -58,7 +58,9 @@ sealed interface AgentParallelScheduleResult {
 
 enum class AgentParallelScheduleRejection {
     PLAN_AGGREGATE_BUDGET_EXCEEDED,
-    ARITHMETIC_OVERFLOW
+    PARENT_DESCENDANT_BUDGET_EXCEEDED,
+    ARITHMETIC_OVERFLOW,
+    PROTECTED_TOOL_ADMISSION_UNAVAILABLE
 }
 
 /**
@@ -73,12 +75,44 @@ object AgentParallelScheduler {
         plan: AgentCoordinatorPlan,
         aggregateBudget: AgentAggregateBudget
     ): AgentParallelScheduleResult {
+        // Parallel admission for privileged tool views is not integrated yet.
+        // Until authorization is bound to actual runtime instances, fail closed.
+        if (plan.steps.any { it.protectedToolViewRequested }) {
+            return AgentParallelScheduleResult.Rejected(
+                AgentParallelScheduleRejection.PROTECTED_TOOL_ADMISSION_UNAVAILABLE
+            )
+        }
         val depthByStep = LinkedHashMap<AgentCoordinatorStepId, Int>(plan.steps.size)
         for (step in plan.steps) {
             val depth = step.parentStepId?.let { parent ->
                 Math.addExact(requireNotNull(depthByStep[parent]), 1)
             } ?: 0
             depthByStep[step.id] = depth
+        }
+
+        // Post-order accumulation counts every descendant once per ancestor.
+        // This stays linear in the plan size and respects all transitive caps
+        // without repeatedly walking the parent chain for every candidate.
+        val descendantCounts = HashMap<AgentCoordinatorStepId, Int>(plan.steps.size)
+        try {
+            for (step in plan.steps.asReversed()) {
+                val count = descendantCounts[step.id] ?: 0
+                if (count > step.budget.maxDescendants) {
+                    return AgentParallelScheduleResult.Rejected(
+                        AgentParallelScheduleRejection.PARENT_DESCENDANT_BUDGET_EXCEEDED
+                    )
+                }
+                step.parentStepId?.let { parent ->
+                    descendantCounts[parent] = Math.addExact(
+                        descendantCounts[parent] ?: 0,
+                        Math.addExact(count, 1)
+                    )
+                }
+            }
+        } catch (_: ArithmeticException) {
+            return AgentParallelScheduleResult.Rejected(
+                AgentParallelScheduleRejection.ARITHMETIC_OVERFLOW
+            )
         }
 
         val grouped = plan.steps.groupBy { depthByStep.getValue(it.id) }

@@ -5,6 +5,135 @@ class AgentCoordinator(
     private val aggregateBudget: AgentAggregateBudget,
     private val workerFactory: AgentWorkerFactory? = null
 ) {
+    /**
+     * Read-only preflight for a potential parallel coordinator run.
+     *
+     * This does not admit agents, start tasks or grant authority. The existing
+     * runSequential path remains the only production coordinator execution mode.
+     */
+    fun previewParallelSchedule(plan: AgentCoordinatorPlan): AgentParallelScheduleResult =
+        AgentParallelScheduler.schedule(plan, aggregateBudget)
+
+    /**
+     * Advisory wave barrier preview only; supplied completion IDs are not proof
+     * of authorization, successful runtime execution or artifact commitment.
+     * Requires completed waves to be a contiguous prefix and never exposes a
+     * partially completed wave as ready for further dispatch.
+     */
+    fun previewNextParallelWave(
+        plan: AgentCoordinatorPlan,
+        completedStepIds: Set<AgentCoordinatorStepId>
+    ): AgentParallelWave? {
+        val scheduled = previewParallelSchedule(plan) as? AgentParallelScheduleResult.Ready
+            ?: return null
+        val completedPrefix = mutableSetOf<AgentCoordinatorStepId>()
+        for (wave in scheduled.waves) {
+            if (completedStepIds == completedPrefix) return wave
+            completedPrefix.addAll(wave.stepIds)
+        }
+        return null
+    }
+
+    /**
+     * Advisory post-wave checkpoint. Rechecks this coordinator's budgeted plan
+     * before accepting the exact completed wave. Never authorizes a task, agent,
+     * tool, artifact or dispatch; the production execution path remains sequential.
+     */
+    fun previewAdvanceParallelWave(
+        plan: AgentCoordinatorPlan,
+        progress: AgentParallelWaveProgress,
+        result: AgentParallelWaveExecutionResult
+    ): AgentParallelWaveProgress? {
+        val schedule = previewParallelSchedule(plan) as? AgentParallelScheduleResult.Ready
+            ?: return null
+        return progress.advance(schedule, result)
+    }
+
+    /**
+     * Advisory verified wave checkpoint, not a dispatch authorization.
+     * The caller must independently establish provenance of committedStepIds;
+     * this method only checks exact membership against the budgeted schedule.
+     */
+    fun previewAdvanceVerifiedParallelWave(
+        plan: AgentCoordinatorPlan,
+        progress: AgentParallelWaveProgress,
+        result: AgentParallelWaveExecutionResult,
+        committedStepIds: Set<AgentCoordinatorStepId>
+    ): AgentParallelWaveProgress? {
+        val schedule = previewParallelSchedule(plan) as? AgentParallelScheduleResult.Ready
+            ?: return null
+        return progress.advanceVerified(schedule, result, committedStepIds)
+    }
+
+    /**
+     * Read-only artifact-matched wave checkpoint. Revalidates the plan against
+     * this coordinator's aggregate budget. Receipts must be authenticated and
+     * durably committed by the owning runtime; this preview grants no authority.
+     */
+    fun previewAdvanceArtifactMatchedParallelWave(
+        plan: AgentCoordinatorPlan,
+        progress: AgentParallelWaveProgress,
+        result: AgentParallelWaveExecutionResult,
+        committedArtifacts: Map<AgentCoordinatorStepId, String>
+    ): AgentParallelWaveProgress? {
+        val schedule = previewParallelSchedule(plan) as? AgentParallelScheduleResult.Ready
+            ?: return null
+        return progress.advanceArtifactMatched(schedule, result, committedArtifacts)
+    }
+
+    /**
+     * Advisory runtime-receipt gate. The caller supplies a trusted verifier
+     * bound to its durable artifact store; this coordinator does not issue
+     * receipts or elevate their authority. Any verifier failure denies advance.
+     */
+    fun previewAdvanceReceiptCheckedParallelWave(
+        plan: AgentCoordinatorPlan,
+        progress: AgentParallelWaveProgress,
+        result: AgentParallelWaveExecutionResult,
+        committedArtifacts: Map<AgentCoordinatorStepId, String>,
+        verifyCommittedArtifact: (AgentCoordinatorStepId, String) -> Boolean
+    ): AgentParallelWaveProgress? {
+        // Snapshot caller-owned receipts to avoid verification observing a changing
+        // map, and verify in canonical outcome order rather than map iteration order.
+        val receiptSnapshot = committedArtifacts.toMap()
+        val matched = previewAdvanceArtifactMatchedParallelWave(
+            plan, progress, result, receiptSnapshot
+        ) ?: return null
+        for (outcome in result.outcomes) {
+            val stepId = (outcome as? AgentParallelWaveTaskOutcome.Completed)?.stepId
+                ?: return null
+            val reference = receiptSnapshot[stepId] ?: return null
+            val verified = try {
+                verifyCommittedArtifact(stepId, reference)
+            } catch (_: Exception) {
+                false
+            }
+            if (!verified) return null
+        }
+        // A verifier may mutate caller-owned evidence through an alias during
+        // its callback. Such mutation invalidates the entire checkpoint even
+        // if each value checked against our earlier snapshot was valid.
+        if (committedArtifacts != receiptSnapshot) return null
+        return matched
+    }
+
+    /**
+     * Read-only barrier for a complete verified prefix of committed waves.
+     * These identifiers are supplied by the caller and DO NOT constitute
+     * admission, authority or proof of durable artifact persistence.
+     */
+    fun previewNextVerifiedParallelWave(
+        plan: AgentCoordinatorPlan,
+        progress: AgentParallelWaveProgress
+    ): AgentParallelWave? {
+        val schedule = previewParallelSchedule(plan) as? AgentParallelScheduleResult.Ready
+            ?: return null
+        val expected = schedule.waves.take(progress.nextWaveIndex)
+            .flatMap { it.stepIds }.toSet()
+        if (progress.completedStepIds != expected) return null
+        return schedule.waves.getOrNull(progress.nextWaveIndex)
+    }
+
     fun runSequential(
         plan: AgentCoordinatorPlan,
         runWindow: AgentCoordinatorRunWindow,

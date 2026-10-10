@@ -1,0 +1,93 @@
+name: ASF Parallel Executor Hosted Emulator
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/asf-parallel-executor-hosted-emulator.yml'
+      - 'core/src/main/kotlin/pro/liliya/core/asf/**'
+      - 'android-app/src/androidTest/kotlin/pro/liliya/app/AsfParallelWaveExecutorInstrumentedTest.kt'
+
+permissions:
+  contents: read
+
+jobs:
+  direct-executor-emulator:
+    name: Direct ASF wave executor instrumentation (hosted emulator)
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Set up Java 17
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle 9.6.1
+        uses: gradle/actions/setup-gradle@4c125117fe7c5aed11272ec4213f602f012f89f2
+        with:
+          gradle-version: '9.6.1'
+
+      - name: Configure hosted CI Gradle/Kotlin memory
+        run: bash .github/ci/configure-gradle-memory.sh
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+        with:
+          packages: platform-tools
+
+      - name: Install pinned Android build toolchain
+        run: |
+          sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools" "ndk;29.0.13113456" "cmake;3.31.6"
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Build exact app and test APKs
+        env:
+          LILIYA_LLAMA_ALLOW_X86_64_API35_TRANSLATION: '1'
+        run: |
+          set -euo pipefail
+          gradle :android-app:assembleDebug :android-app:assembleDebugAndroidTest --console=plain
+          sha256sum android-app/build/outputs/apk/debug/android-app-debug.apk android-app/build/outputs/apk/androidTest/debug/android-app-debug-androidTest.apk | tee "$RUNNER_TEMP/asf-parallel-apk-hashes.txt"
+          git rev-parse HEAD > "$RUNNER_TEMP/asf-parallel-source-sha.txt"
+
+      - name: Run only direct parallel executor tests in disposable emulator
+        uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          disable-animations: true
+          script: |
+            set -eu
+            adb install -r android-app/build/outputs/apk/debug/android-app-debug.apk
+            adb install -r android-app/build/outputs/apk/androidTest/debug/android-app-debug-androidTest.apk
+            adb shell am instrument -w -r -e class pro.liliya.app.AsfParallelWaveExecutorInstrumentedTest pro.liliya.app.test/androidx.test.runner.AndroidJUnitRunner | tee "$RUNNER_TEMP/asf-parallel-instrumentation.txt"
+            grep -Fq 'OK (2 tests)' "$RUNNER_TEMP/asf-parallel-instrumentation.txt"
+            grep -Fq 'INSTRUMENTATION_CODE: -1' "$RUNNER_TEMP/asf-parallel-instrumentation.txt"
+            ! grep -Eq 'FAILURES!!!|INSTRUMENTATION_FAILED|INSTRUMENTATION_STATUS: stack=' "$RUNNER_TEMP/asf-parallel-instrumentation.txt"
+
+      - name: Preserve exact-head hosted emulator evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: asf-parallel-executor-emulator-${{ github.event.pull_request.head.sha || github.sha }}
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            ${{ runner.temp }}/asf-parallel-apk-hashes.txt
+            ${{ runner.temp }}/asf-parallel-source-sha.txt
+            ${{ runner.temp }}/asf-parallel-instrumentation.txt

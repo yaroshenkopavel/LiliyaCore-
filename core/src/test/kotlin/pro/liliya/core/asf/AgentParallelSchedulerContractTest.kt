@@ -70,6 +70,60 @@ class AgentParallelSchedulerContractTest {
     }
 
     @Test
+    fun privileged_tool_request_is_rejected_before_parallel_scheduling() {
+        val privilegedRoot = step("root", null, rootBudget).copy(
+            workerClass = AgentWorkerClass.FULL,
+            runtime = AgentWorkerRuntimeDescriptor(
+                runtimeId = "deterministic-test",
+                kind = AgentWorkerRuntimeKind.DETERMINISTIC
+            ),
+            protectedToolViewRequested = true
+        )
+        val result = assertIs<AgentParallelScheduleResult.Rejected>(
+            AgentParallelScheduler.schedule(
+                AgentCoordinatorPlan(AgentRootTaskId("parallel-root"), listOf(privilegedRoot)),
+                aggregate
+            )
+        )
+        assertEquals(
+            AgentParallelScheduleRejection.PROTECTED_TOOL_ADMISSION_UNAVAILABLE,
+            result.reason
+        )
+        assertIs<AgentParallelScheduleResult.Ready>(
+            AgentParallelScheduler.schedule(
+                AgentCoordinatorPlan(
+                    AgentRootTaskId("parallel-root"),
+                    listOf(privilegedRoot.copy(protectedToolViewRequested = false))
+                ),
+                aggregate
+            )
+        )
+    }
+
+    @Test
+    fun protected_descendant_rejects_entire_plan_before_any_wave() {
+        val root = step("root", null, rootBudget)
+        val privilegedChild = step("child", "root", childBudget).copy(
+            workerClass = AgentWorkerClass.FULL,
+            runtime = AgentWorkerRuntimeDescriptor(
+                runtimeId = "deterministic-test",
+                kind = AgentWorkerRuntimeKind.DETERMINISTIC
+            ),
+            protectedToolViewRequested = true
+        )
+        val result = assertIs<AgentParallelScheduleResult.Rejected>(
+            AgentParallelScheduler.schedule(
+                AgentCoordinatorPlan(AgentRootTaskId("parallel-root"), listOf(root, privilegedChild)),
+                aggregate
+            )
+        )
+        assertEquals(
+            AgentParallelScheduleRejection.PROTECTED_TOOL_ADMISSION_UNAVAILABLE,
+            result.reason
+        )
+    }
+
+    @Test
     fun sibling_wave_order_is_deterministic_for_equivalent_valid_plans() {
         val first = assertIs<AgentParallelScheduleResult.Ready>(
             AgentParallelScheduler.schedule(
@@ -127,6 +181,52 @@ class AgentParallelSchedulerContractTest {
             AgentParallelScheduleRejection.PLAN_AGGREGATE_BUDGET_EXCEEDED,
             rejected.reason
         )
+    }
+
+    @Test
+    fun reject_siblings_exceeding_root_descendant_cap_even_when_aggregate_fits() {
+        val root = step("root", null, rootBudget.copy(maxDescendants = 1))
+        val children = listOf("a", "b").map { step(it, "root", childBudget) }
+        val result = assertIs<AgentParallelScheduleResult.Rejected>(
+            AgentParallelScheduler.schedule(
+                AgentCoordinatorPlan(AgentRootTaskId("parallel-root"), listOf(root) + children),
+                aggregate
+            )
+        )
+        assertEquals(AgentParallelScheduleRejection.PARENT_DESCENDANT_BUDGET_EXCEEDED, result.reason)
+    }
+
+    @Test
+    fun reject_transitive_descendant_cap_violation_even_when_direct_children_fit() {
+        val root = step("root", null, rootBudget.copy(maxDescendants = 1))
+        val child = step("a", "root", childBudget.copy(maxDescendants = 1))
+        val grandchild = step("b", "a", childBudget)
+        val result = assertIs<AgentParallelScheduleResult.Rejected>(
+            AgentParallelScheduler.schedule(
+                AgentCoordinatorPlan(AgentRootTaskId("parallel-root"), listOf(root, child, grandchild)),
+                aggregate
+            )
+        )
+        assertEquals(AgentParallelScheduleRejection.PARENT_DESCENDANT_BUDGET_EXCEEDED, result.reason)
+    }
+
+    @Test
+    fun nested_descendant_tree_at_exact_cap_remains_schedulable() {
+        val root = step("root", null, rootBudget.copy(maxDescendants = 3))
+        val childA = step("a", "root", childBudget.copy(maxDescendants = 1))
+        val childB = step("b", "root", childBudget)
+        val grandchild = step("c", "a", childBudget)
+        val ready = assertIs<AgentParallelScheduleResult.Ready>(
+            AgentParallelScheduler.schedule(
+                AgentCoordinatorPlan(
+                    AgentRootTaskId("parallel-root"),
+                    listOf(root, childA, childB, grandchild)
+                ),
+                aggregate
+            )
+        )
+        assertEquals(3, ready.waves.size)
+        assertEquals(listOf(AgentCoordinatorStepId("c")), ready.waves[2].stepIds)
     }
 
     @Test

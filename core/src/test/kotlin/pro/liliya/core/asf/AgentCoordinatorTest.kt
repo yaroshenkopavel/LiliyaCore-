@@ -39,6 +39,310 @@ class AgentCoordinatorTest {
     )
 
     @Test
+    fun parallel_preflight_reserves_budget_without_starting_workers() {
+        var executions = 0
+        val aggregate = AgentAggregateBudget(
+            maxWallClockMillis = 60_000,
+            maxInferenceUnits = 40_000,
+            maxContextBytes = 256_000,
+            maxRetrievalItems = 32,
+            maxArtifacts = 8,
+            maxAgents = 4
+        )
+        val coordinator = coordinator(aggregate, AgentRuntimeAdapter { context ->
+            executions++
+            AgentRuntimeOutcome.Completed(
+                "report", "sha256:preflight", context.workspace.inputReferences,
+                AgentRuntimeUsage(1, 1, 1, 0, 1)
+            )
+        })
+        val expected = AgentParallelScheduler.schedule(plan(), aggregate)
+        assertEquals(expected, coordinator.previewParallelSchedule(plan()))
+        assertEquals(0, executions)
+    }
+
+    @Test
+    fun parallel_preflight_rejects_over_budget_before_execution() {
+        var executions = 0
+        val aggregate = AgentAggregateBudget(
+            maxWallClockMillis = 1_000,
+            maxInferenceUnits = 1_000,
+            maxContextBytes = 1_000,
+            maxRetrievalItems = 0,
+            maxArtifacts = 1,
+            maxAgents = 1
+        )
+        val coordinator = coordinator(aggregate, AgentRuntimeAdapter { context ->
+            executions++
+            AgentRuntimeOutcome.Completed(
+                "report", "sha256:preflight", context.workspace.inputReferences,
+                AgentRuntimeUsage(1, 1, 1, 0, 1)
+            )
+        })
+        val rejected = assertIs<AgentParallelScheduleResult.Rejected>(
+            coordinator.previewParallelSchedule(plan())
+        )
+        assertEquals(AgentParallelScheduleRejection.PLAN_AGGREGATE_BUDGET_EXCEEDED, rejected.reason)
+        assertEquals(0, executions)
+    }
+
+    @Test
+    fun parallel_wave_preview_requires_complete_dependency_barrier() {
+        val coordinator = coordinator(adapter = AgentRuntimeAdapter { error("must not run") })
+        val fullPlan = plan()
+        val rootId = AgentCoordinatorStepId("research")
+        val childId = AgentCoordinatorStepId("verify")
+        assertEquals(listOf(rootId), coordinator.previewNextParallelWave(fullPlan, emptySet())?.stepIds)
+        assertEquals(listOf(childId), coordinator.previewNextParallelWave(fullPlan, setOf(rootId))?.stepIds)
+        assertNull(coordinator.previewNextParallelWave(fullPlan, setOf(childId)))
+        assertNull(coordinator.previewNextParallelWave(fullPlan, setOf(rootId, childId)))
+        assertNull(coordinator.previewNextParallelWave(fullPlan, setOf(AgentCoordinatorStepId("unknown"))))
+    }
+
+    @Test
+    fun parallel_preview_requires_all_siblings_before_any_descendant_wave() {
+        val coordinator = coordinator(adapter = AgentRuntimeAdapter { error("preview must not run agents") })
+        val rootId = AgentCoordinatorStepId("research")
+        val childA = AgentCoordinatorStepId("a")
+        val childB = AgentCoordinatorStepId("b")
+        val grandchild = AgentCoordinatorStepId("grandchild")
+        val rooted = parentBudget.copy(maxDescendants = 3)
+        val childWithDescendant = childBudget.copy(maxDescendants = 1)
+        val siblingPlan = AgentCoordinatorPlan(
+            root,
+            listOf(
+                step("research", researcher, researcher.cognitiveScope, rooted, listOf("evidence:a")),
+                step("a", verifier, verifyScope, childWithDescendant, listOf("evidence:b"), parent = "research"),
+                step("b", verifier, verifyScope, childBudget, listOf("evidence:c"), parent = "research"),
+                step("grandchild", verifier, verifyScope, childBudget, listOf("evidence:d"), parent = "a")
+            )
+        )
+        // The plan exceeds the default coordinator's four-agent wall-clock reservation:
+        // 20s + 10s + 10s + 10s <= 60s; the complete plan remains in budget.
+        assertEquals(listOf(rootId), coordinator.previewNextParallelWave(siblingPlan, emptySet())?.stepIds)
+        assertEquals(listOf(childA, childB), coordinator.previewNextParallelWave(siblingPlan, setOf(rootId))?.stepIds)
+        assertNull(coordinator.previewNextParallelWave(siblingPlan, setOf(rootId, childA)))
+        assertNull(coordinator.previewNextParallelWave(siblingPlan, setOf(rootId, childB)))
+        assertEquals(
+            listOf(grandchild),
+            coordinator.previewNextParallelWave(siblingPlan, setOf(rootId, childA, childB))?.stepIds
+        )
+    }
+
+    @Test
+    fun parallel_wave_preview_rejects_over_budget_plan_without_dispatch() {
+        val aggregate = AgentAggregateBudget(1_000, 1_000, 1_000, 0, 1, 1)
+        val coordinator = coordinator(aggregate, AgentRuntimeAdapter { error("must not run") })
+        assertNull(coordinator.previewNextParallelWave(plan(), emptySet()))
+    }
+
+    @Test
+    fun coordinator_wave_checkpoint_requires_exact_successful_prior_wave() {
+        var executions = 0
+        val coordinator = coordinator(adapter = AgentRuntimeAdapter {
+            executions++
+            error("checkpoint must not execute agents")
+        })
+        val rootId = AgentCoordinatorStepId("research")
+        val childId = AgentCoordinatorStepId("verify")
+        val first = coordinator.previewAdvanceParallelWave(
+            plan(), AgentParallelWaveProgress(),
+            AgentParallelWaveExecutionResult(
+                AgentParallelWaveExecutionState.COMPLETED,
+                listOf(AgentParallelWaveTaskOutcome.Completed(rootId))
+            )
+        )
+        val accepted = kotlin.test.assertNotNull(first)
+        assertEquals(setOf(rootId), accepted.completedStepIds)
+        assertEquals(1, accepted.nextWaveIndex)
+        assertNull(coordinator.previewAdvanceParallelWave(
+            plan(), AgentParallelWaveProgress(),
+            AgentParallelWaveExecutionResult(
+                AgentParallelWaveExecutionState.COMPLETED,
+                listOf(AgentParallelWaveTaskOutcome.Completed(childId))
+            )
+        ))
+        assertNull(coordinator.previewAdvanceParallelWave(
+            plan(), accepted,
+            AgentParallelWaveExecutionResult(
+                AgentParallelWaveExecutionState.PARTIAL,
+                listOf(AgentParallelWaveTaskOutcome.Completed(childId))
+            )
+        ))
+        assertEquals(0, executions)
+    }
+
+    @Test
+    fun coordinator_verified_wave_checkpoint_requires_exact_committed_steps() {
+        var launches = 0
+        val coordinator = coordinator(adapter = AgentRuntimeAdapter {
+            launches++
+            error("advisory checkpoint must not launch")
+        })
+        val rootId = AgentCoordinatorStepId("research")
+        val result = AgentParallelWaveExecutionResult(
+            AgentParallelWaveExecutionState.COMPLETED,
+            listOf(AgentParallelWaveTaskOutcome.Completed(rootId))
+        )
+        assertNull(coordinator.previewAdvanceVerifiedParallelWave(
+            plan(), AgentParallelWaveProgress(), result, emptySet()
+        ))
+        assertNull(coordinator.previewAdvanceVerifiedParallelWave(
+            plan(), AgentParallelWaveProgress(), result,
+            setOf(rootId, AgentCoordinatorStepId("verify"))
+        ))
+        val progress = kotlin.test.assertNotNull(coordinator.previewAdvanceVerifiedParallelWave(
+            plan(), AgentParallelWaveProgress(), result, setOf(rootId)
+        ))
+        assertEquals(1, progress.nextWaveIndex)
+        assertEquals(0, launches)
+    }
+
+    @Test
+    fun receipt_verifier_observes_stable_snapshot_after_caller_mutation() {
+        val coordinator = coordinator(adapter = AgentRuntimeAdapter {
+            error("preview must not dispatch")
+        })
+        val rootId = AgentCoordinatorStepId("research")
+        val receipts = mutableMapOf(rootId to "artifact:research")
+        val result = AgentParallelWaveExecutionResult(
+            AgentParallelWaveExecutionState.COMPLETED,
+            listOf(AgentParallelWaveTaskOutcome.Completed(rootId, "artifact:research"))
+        )
+        val accepted = coordinator.previewAdvanceReceiptCheckedParallelWave(
+            plan(), AgentParallelWaveProgress(), result, receipts
+        ) { stepId, reference ->
+            receipts[stepId] = "artifact:tampered"
+            reference == "artifact:research"
+        }
+        assertNull(accepted)
+        assertEquals("artifact:tampered", receipts[rootId])
+    }
+
+    @Test
+    fun receipt_checked_checkpoint_fails_closed_on_denial_or_verifier_exception() {
+        val coordinator = coordinator(adapter = AgentRuntimeAdapter {
+            error("receipt preview must not dispatch agents")
+        })
+        val rootId = AgentCoordinatorStepId("research")
+        val result = AgentParallelWaveExecutionResult(
+            AgentParallelWaveExecutionState.COMPLETED,
+            listOf(AgentParallelWaveTaskOutcome.Completed(rootId, "artifact:research"))
+        )
+        val receipts = mapOf(rootId to "artifact:research")
+        assertNull(coordinator.previewAdvanceReceiptCheckedParallelWave(
+            plan(), AgentParallelWaveProgress(), result, receipts
+        ) { _, _ -> false })
+        assertNull(coordinator.previewAdvanceReceiptCheckedParallelWave(
+            plan(), AgentParallelWaveProgress(), result, receipts
+        ) { _, _ -> throw IllegalStateException("storage unavailable") })
+        var verified = 0
+        val progress = kotlin.test.assertNotNull(coordinator.previewAdvanceReceiptCheckedParallelWave(
+            plan(), AgentParallelWaveProgress(), result, receipts
+        ) { id, ref ->
+            verified++
+            id == rootId && ref == "artifact:research"
+        })
+        assertEquals(1, verified)
+        assertEquals(1, progress.nextWaveIndex)
+        assertNull(coordinator.previewAdvanceReceiptCheckedParallelWave(
+            plan(), AgentParallelWaveProgress(), result, mapOf(rootId to "artifact:wrong")
+        ) { _, _ -> error("mismatched receipt must not reach verifier") })
+    }
+
+    @Test
+    fun receipt_checked_dependency_wave_requires_independent_child_commit() {
+        val coordinator = coordinator(adapter = AgentRuntimeAdapter {
+            error("preview must never dispatch")
+        })
+        val rootId = AgentCoordinatorStepId("research")
+        val childId = AgentCoordinatorStepId("verify")
+        val rootResult = AgentParallelWaveExecutionResult(
+            AgentParallelWaveExecutionState.COMPLETED,
+            listOf(AgentParallelWaveTaskOutcome.Completed(rootId, "artifact:root"))
+        )
+        val afterRoot = kotlin.test.assertNotNull(
+            coordinator.previewAdvanceReceiptCheckedParallelWave(
+                plan(), AgentParallelWaveProgress(), rootResult,
+                mapOf(rootId to "artifact:root")
+            ) { id, reference -> id == rootId && reference == "artifact:root" }
+        )
+        val childResult = AgentParallelWaveExecutionResult(
+            AgentParallelWaveExecutionState.COMPLETED,
+            listOf(AgentParallelWaveTaskOutcome.Completed(childId, "artifact:child"))
+        )
+        assertNull(coordinator.previewAdvanceReceiptCheckedParallelWave(
+            plan(), afterRoot, childResult, mapOf(childId to "artifact:child")
+        ) { _, _ -> false })
+        assertEquals(listOf(childId),
+            coordinator.previewNextVerifiedParallelWave(plan(), afterRoot)?.stepIds)
+        assertEquals(2, kotlin.test.assertNotNull(
+            coordinator.previewAdvanceReceiptCheckedParallelWave(
+                plan(), afterRoot, childResult, mapOf(childId to "artifact:child")
+            ) { id, reference -> id == childId && reference == "artifact:child" }
+        ).nextWaveIndex)
+    }
+
+    @Test
+    fun coordinator_artifact_checkpoint_matches_receipts_without_dispatch() {
+        var launches = 0
+        val coordinator = coordinator(adapter = AgentRuntimeAdapter {
+            launches++
+            error("preview must not dispatch")
+        })
+        val rootId = AgentCoordinatorStepId("research")
+        val result = AgentParallelWaveExecutionResult(
+            AgentParallelWaveExecutionState.COMPLETED,
+            listOf(AgentParallelWaveTaskOutcome.Completed(rootId, "artifact:research"))
+        )
+        assertNull(coordinator.previewAdvanceArtifactMatchedParallelWave(
+            plan(), AgentParallelWaveProgress(), result, emptyMap()
+        ))
+        assertNull(coordinator.previewAdvanceArtifactMatchedParallelWave(
+            plan(), AgentParallelWaveProgress(), result,
+            mapOf(rootId to "artifact:wrong")
+        ))
+        val accepted = kotlin.test.assertNotNull(coordinator.previewAdvanceArtifactMatchedParallelWave(
+            plan(), AgentParallelWaveProgress(), result,
+            mapOf(rootId to "artifact:research")
+        ))
+        assertEquals(1, accepted.nextWaveIndex)
+        val restricted = coordinator(
+            AgentAggregateBudget(1_000, 1_000, 1_000, 0, 1, 1),
+            AgentRuntimeAdapter { error("must not dispatch") }
+        )
+        assertNull(restricted.previewAdvanceArtifactMatchedParallelWave(
+            plan(), AgentParallelWaveProgress(), result,
+            mapOf(rootId to "artifact:research")
+        ))
+        assertEquals(0, launches)
+    }
+
+    @Test
+    fun verified_progress_preview_rejects_forged_prefix_without_dispatch() {
+        var launches = 0
+        val coordinator = coordinator(adapter = AgentRuntimeAdapter {
+            launches++
+            error("preview must not dispatch")
+        })
+        val plan = plan()
+        val rootId = AgentCoordinatorStepId("research")
+        val childId = AgentCoordinatorStepId("verify")
+        assertEquals(listOf(rootId),
+            coordinator.previewNextVerifiedParallelWave(plan, AgentParallelWaveProgress())?.stepIds)
+        assertNull(coordinator.previewNextVerifiedParallelWave(
+            plan, AgentParallelWaveProgress(setOf(childId), 1)
+        ))
+        assertEquals(listOf(childId), coordinator.previewNextVerifiedParallelWave(
+            plan, AgentParallelWaveProgress(setOf(rootId), 1)
+        )?.stepIds)
+        assertNull(coordinator.previewNextVerifiedParallelWave(
+            plan, AgentParallelWaveProgress(setOf(rootId, childId), 2)
+        ))
+        assertEquals(0, launches)
+    }
+
+    @Test
     fun sequential_two_worker_chain_preserves_parent_child_provenance() {
         val seen = mutableListOf<AgentRuntimeContext>()
         val coordinator = coordinator(
