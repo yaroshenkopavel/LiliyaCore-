@@ -82,6 +82,32 @@ class AgentCoordinator(
     }
 
     /**
+     * Advisory runtime-receipt gate. The caller supplies a trusted verifier
+     * bound to its durable artifact store; this coordinator does not issue
+     * receipts or elevate their authority. Any verifier failure denies advance.
+     */
+    fun previewAdvanceReceiptCheckedParallelWave(
+        plan: AgentCoordinatorPlan,
+        progress: AgentParallelWaveProgress,
+        result: AgentParallelWaveExecutionResult,
+        committedArtifacts: Map<AgentCoordinatorStepId, String>,
+        verifyCommittedArtifact: (AgentCoordinatorStepId, String) -> Boolean
+    ): AgentParallelWaveProgress? {
+        val matched = previewAdvanceArtifactMatchedParallelWave(
+            plan, progress, result, committedArtifacts
+        ) ?: return null
+        for ((stepId, reference) in committedArtifacts) {
+            val verified = try {
+                verifyCommittedArtifact(stepId, reference)
+            } catch (_: Exception) {
+                false
+            }
+            if (!verified) return null
+        }
+        return matched
+    }
+
+    /**
      * Read-only barrier for a complete verified prefix of committed waves.
      * These identifiers are supplied by the caller and DO NOT constitute
      * admission, authority or proof of durable artifact persistence.
