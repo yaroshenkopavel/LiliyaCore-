@@ -13,6 +13,51 @@ class AgentParallelWaveExecutorContractTest {
     private val stepB = AgentCoordinatorStepId("b")
 
     @Test
+    fun queued_sibling_never_starts_after_late_cancellation() {
+        val pool = Executors.newSingleThreadExecutor()
+        try {
+            val started = CountDownLatch(1)
+            val stopped = CountDownLatch(1)
+            val cancel = AtomicBoolean(false)
+            val siblingLaunches = java.util.concurrent.atomic.AtomicInteger(0)
+            val controller = Thread {
+                try {
+                    AgentParallelWaveExecutor(pool).execute(
+                        wave = wave(),
+                        tasks = mapOf(
+                            stepA to AgentParallelWaveTask {
+                                started.countDown()
+                                try {
+                                    Thread.sleep(10_000)
+                                    AgentParallelWaveTaskOutcome.Completed(stepA)
+                                } catch (_: InterruptedException) {
+                                    throw InterruptedException()
+                                }
+                            },
+                            stepB to AgentParallelWaveTask {
+                                siblingLaunches.incrementAndGet()
+                                AgentParallelWaveTaskOutcome.Completed(stepB)
+                            }
+                        ),
+                        timeoutMillis = 2_000,
+                        cancelled = cancel::get
+                    )
+                } finally {
+                    stopped.countDown()
+                }
+            }
+            controller.start()
+            assertTrue(started.await(1, TimeUnit.SECONDS))
+            cancel.set(true)
+            assertTrue(stopped.await(2, TimeUnit.SECONDS))
+            assertEquals(0, siblingLaunches.get())
+            controller.join(1_000)
+        } finally {
+            pool.shutdownNow()
+        }
+    }
+
+    @Test
     fun malformed_wave_cannot_launch_more_agents_than_reservation() {
         val pool = Executors.newFixedThreadPool(2)
         try {
