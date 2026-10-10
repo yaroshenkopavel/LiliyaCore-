@@ -58,6 +58,7 @@ sealed interface AgentParallelScheduleResult {
 
 enum class AgentParallelScheduleRejection {
     PLAN_AGGREGATE_BUDGET_EXCEEDED,
+    PARENT_DESCENDANT_BUDGET_EXCEEDED,
     ARITHMETIC_OVERFLOW
 }
 
@@ -79,6 +80,28 @@ object AgentParallelScheduler {
                 Math.addExact(requireNotNull(depthByStep[parent]), 1)
             } ?: 0
             depthByStep[step.id] = depth
+        }
+
+        // The whole descendant tree must fit within each ancestor's spawn cap.
+        // Without this check, a sibling wave could appear schedulable even though
+        // runSequential would deny the later descendant during admission.
+        for (ancestor in plan.steps) {
+            var descendantCount = 0
+            for (candidate in plan.steps) {
+                var parentId = candidate.parentStepId
+                while (parentId != null) {
+                    if (parentId == ancestor.id) {
+                        descendantCount++
+                        break
+                    }
+                    parentId = requireNotNull(plan.step(parentId)).parentStepId
+                }
+                if (descendantCount > ancestor.budget.maxDescendants) {
+                    return AgentParallelScheduleResult.Rejected(
+                        AgentParallelScheduleRejection.PARENT_DESCENDANT_BUDGET_EXCEEDED
+                    )
+                }
+            }
         }
 
         val grouped = plan.steps.groupBy { depthByStep.getValue(it.id) }
