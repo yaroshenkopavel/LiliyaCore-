@@ -39,6 +39,54 @@ class AgentCoordinatorTest {
     )
 
     @Test
+    fun parallel_preflight_reserves_budget_without_starting_workers() {
+        var executions = 0
+        val aggregate = AgentAggregateBudget(
+            maxWallClockMillis = 60_000,
+            maxInferenceUnits = 40_000,
+            maxContextBytes = 256_000,
+            maxRetrievalItems = 32,
+            maxArtifacts = 8,
+            maxAgents = 4
+        )
+        val coordinator = coordinator(aggregate, AgentRuntimeAdapter { context ->
+            executions++
+            AgentRuntimeOutcome.Completed(
+                "report", "sha256:preflight", context.workspace.inputReferences,
+                AgentRuntimeUsage(1, 1, 1, 0, 1)
+            )
+        })
+        val expected = AgentParallelScheduler.schedule(plan(), aggregate)
+        assertEquals(expected, coordinator.previewParallelSchedule(plan()))
+        assertEquals(0, executions)
+    }
+
+    @Test
+    fun parallel_preflight_rejects_over_budget_before_execution() {
+        var executions = 0
+        val aggregate = AgentAggregateBudget(
+            maxWallClockMillis = 1_000,
+            maxInferenceUnits = 1_000,
+            maxContextBytes = 1_000,
+            maxRetrievalItems = 0,
+            maxArtifacts = 1,
+            maxAgents = 1
+        )
+        val coordinator = coordinator(aggregate, AgentRuntimeAdapter { context ->
+            executions++
+            AgentRuntimeOutcome.Completed(
+                "report", "sha256:preflight", context.workspace.inputReferences,
+                AgentRuntimeUsage(1, 1, 1, 0, 1)
+            )
+        })
+        val rejected = assertIs<AgentParallelScheduleResult.Rejected>(
+            coordinator.previewParallelSchedule(plan())
+        )
+        assertEquals(AgentParallelScheduleRejection.PLAN_AGGREGATE_BUDGET_EXCEEDED, rejected.reason)
+        assertEquals(0, executions)
+    }
+
+    @Test
     fun sequential_two_worker_chain_preserves_parent_child_provenance() {
         val seen = mutableListOf<AgentRuntimeContext>()
         val coordinator = coordinator(
