@@ -82,26 +82,29 @@ object AgentParallelScheduler {
             depthByStep[step.id] = depth
         }
 
-        // The whole descendant tree must fit within each ancestor's spawn cap.
-        // Without this check, a sibling wave could appear schedulable even though
-        // runSequential would deny the later descendant during admission.
-        for (ancestor in plan.steps) {
-            var descendantCount = 0
-            for (candidate in plan.steps) {
-                var parentId = candidate.parentStepId
-                while (parentId != null) {
-                    if (parentId == ancestor.id) {
-                        descendantCount++
-                        break
-                    }
-                    parentId = requireNotNull(plan.step(parentId)).parentStepId
-                }
-                if (descendantCount > ancestor.budget.maxDescendants) {
+        // Post-order accumulation counts every descendant once per ancestor.
+        // This stays linear in the plan size and respects all transitive caps
+        // without repeatedly walking the parent chain for every candidate.
+        val descendantCounts = HashMap<AgentCoordinatorStepId, Int>(plan.steps.size)
+        try {
+            for (step in plan.steps.asReversed()) {
+                val count = descendantCounts[step.id] ?: 0
+                if (count > step.budget.maxDescendants) {
                     return AgentParallelScheduleResult.Rejected(
                         AgentParallelScheduleRejection.PARENT_DESCENDANT_BUDGET_EXCEEDED
                     )
                 }
+                step.parentStepId?.let { parent ->
+                    descendantCounts[parent] = Math.addExact(
+                        descendantCounts[parent] ?: 0,
+                        Math.addExact(count, 1)
+                    )
+                }
             }
+        } catch (_: ArithmeticException) {
+            return AgentParallelScheduleResult.Rejected(
+                AgentParallelScheduleRejection.ARITHMETIC_OVERFLOW
+            )
         }
 
         val grouped = plan.steps.groupBy { depthByStep.getValue(it.id) }
