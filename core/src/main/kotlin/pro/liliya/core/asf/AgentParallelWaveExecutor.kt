@@ -88,6 +88,11 @@ class AgentParallelWaveExecutor(
         require(timeoutMillis > 0L) {
             "parallel wave timeout must be positive"
         }
+        // Defence in depth: refuse a malformed/adversarial wave that attempts
+        // to dispatch more agents than the reservation permits.
+        require(wave.stepIds.size <= wave.reservation.maxAgents) {
+            "parallel wave exceeds reserved agent population"
+        }
         require(tasks.keys == wave.stepIds.toSet()) {
             "parallel wave tasks must exactly match scheduled step ids"
         }
