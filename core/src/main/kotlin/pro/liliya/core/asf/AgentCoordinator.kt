@@ -5,6 +5,15 @@ class AgentCoordinator(
     private val aggregateBudget: AgentAggregateBudget,
     private val workerFactory: AgentWorkerFactory? = null
 ) {
+    /**
+     * Read-only preflight for a potential parallel coordinator run.
+     *
+     * This does not admit agents, start tasks or grant authority. The existing
+     * runSequential path remains the only production coordinator execution mode.
+     */
+    fun previewParallelSchedule(plan: AgentCoordinatorPlan): AgentParallelScheduleResult =
+        AgentParallelScheduler.schedule(plan, aggregateBudget)
+
     fun runSequential(
         plan: AgentCoordinatorPlan,
         runWindow: AgentCoordinatorRunWindow,
