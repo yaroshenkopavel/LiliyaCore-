@@ -101,6 +101,29 @@ class AgentParallelSchedulerContractTest {
     }
 
     @Test
+    fun protected_descendant_rejects_entire_plan_before_any_wave() {
+        val root = step("root", null, rootBudget)
+        val privilegedChild = step("child", "root", childBudget).copy(
+            workerClass = AgentWorkerClass.FULL,
+            runtime = AgentWorkerRuntimeDescriptor(
+                runtimeId = "deterministic-test",
+                kind = AgentWorkerRuntimeKind.DETERMINISTIC
+            ),
+            protectedToolViewRequested = true
+        )
+        val result = assertIs<AgentParallelScheduleResult.Rejected>(
+            AgentParallelScheduler.schedule(
+                AgentCoordinatorPlan(AgentRootTaskId("parallel-root"), listOf(root, privilegedChild)),
+                aggregate
+            )
+        )
+        assertEquals(
+            AgentParallelScheduleRejection.PROTECTED_TOOL_ADMISSION_UNAVAILABLE,
+            result.reason
+        )
+    }
+
+    @Test
     fun sibling_wave_order_is_deterministic_for_equivalent_valid_plans() {
         val first = assertIs<AgentParallelScheduleResult.Ready>(
             AgentParallelScheduler.schedule(
