@@ -104,6 +104,39 @@ class AgentParallelWaveProgressTest {
     }
 
     @Test
+    fun artifact_matched_checkpoint_rejects_reused_and_malformed_receipts() {
+        val progressed = assertNotNull(AgentParallelWaveProgress().advance(
+            schedule(), success(listOf(root))
+        ))
+        val results = AgentParallelWaveExecutionResult(
+            AgentParallelWaveExecutionState.COMPLETED,
+            listOf(
+                AgentParallelWaveTaskOutcome.Completed(a, "artifact:shared"),
+                AgentParallelWaveTaskOutcome.Completed(b, "artifact:shared")
+            )
+        )
+        assertNull(progressed.advanceArtifactMatched(
+            schedule(), results, mapOf(a to "artifact:shared", b to "artifact:shared")
+        ))
+        assertNull(progressed.advanceArtifactMatched(
+            schedule(), results, mapOf(a to "artifact:shared", b to " ")
+        ))
+        assertNull(progressed.advanceArtifactMatched(
+            schedule(), results, mapOf(a to "artifact:shared", b to "x".repeat(257))
+        ))
+        val distinct = AgentParallelWaveExecutionResult(
+            AgentParallelWaveExecutionState.COMPLETED,
+            listOf(
+                AgentParallelWaveTaskOutcome.Completed(a, "artifact:a"),
+                AgentParallelWaveTaskOutcome.Completed(b, "artifact:b")
+            )
+        )
+        assertEquals(2, assertNotNull(progressed.advanceArtifactMatched(
+            schedule(), distinct, mapOf(a to "artifact:a", b to "artifact:b")
+        )).nextWaveIndex)
+    }
+
+    @Test
     fun forged_prior_completion_or_index_is_rejected() {
         val forged = AgentParallelWaveProgress(setOf(a), 1)
         assertNull(forged.advance(schedule(), success(listOf(a, b))))
