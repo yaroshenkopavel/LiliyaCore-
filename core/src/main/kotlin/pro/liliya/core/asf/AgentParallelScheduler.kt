@@ -59,7 +59,8 @@ sealed interface AgentParallelScheduleResult {
 enum class AgentParallelScheduleRejection {
     PLAN_AGGREGATE_BUDGET_EXCEEDED,
     PARENT_DESCENDANT_BUDGET_EXCEEDED,
-    ARITHMETIC_OVERFLOW
+    ARITHMETIC_OVERFLOW,
+    PROTECTED_TOOL_ADMISSION_UNAVAILABLE
 }
 
 /**
@@ -74,6 +75,13 @@ object AgentParallelScheduler {
         plan: AgentCoordinatorPlan,
         aggregateBudget: AgentAggregateBudget
     ): AgentParallelScheduleResult {
+        // Parallel admission for privileged tool views is not integrated yet.
+        // Until authorization is bound to actual runtime instances, fail closed.
+        if (plan.steps.any { it.protectedToolViewRequested }) {
+            return AgentParallelScheduleResult.Rejected(
+                AgentParallelScheduleRejection.PROTECTED_TOOL_ADMISSION_UNAVAILABLE
+            )
+        }
         val depthByStep = LinkedHashMap<AgentCoordinatorStepId, Int>(plan.steps.size)
         for (step in plan.steps) {
             val depth = step.parentStepId?.let { parent ->
