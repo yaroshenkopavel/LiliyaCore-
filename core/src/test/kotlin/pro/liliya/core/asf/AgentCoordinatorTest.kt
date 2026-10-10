@@ -199,6 +199,41 @@ class AgentCoordinatorTest {
     }
 
     @Test
+    fun coordinator_artifact_checkpoint_matches_receipts_without_dispatch() {
+        var launches = 0
+        val coordinator = coordinator(adapter = AgentRuntimeAdapter {
+            launches++
+            error("preview must not dispatch")
+        })
+        val rootId = AgentCoordinatorStepId("research")
+        val result = AgentParallelWaveExecutionResult(
+            AgentParallelWaveExecutionState.COMPLETED,
+            listOf(AgentParallelWaveTaskOutcome.Completed(rootId, "artifact:research"))
+        )
+        assertNull(coordinator.previewAdvanceArtifactMatchedParallelWave(
+            plan(), AgentParallelWaveProgress(), result, emptyMap()
+        ))
+        assertNull(coordinator.previewAdvanceArtifactMatchedParallelWave(
+            plan(), AgentParallelWaveProgress(), result,
+            mapOf(rootId to "artifact:wrong")
+        ))
+        val accepted = kotlin.test.assertNotNull(coordinator.previewAdvanceArtifactMatchedParallelWave(
+            plan(), AgentParallelWaveProgress(), result,
+            mapOf(rootId to "artifact:research")
+        ))
+        assertEquals(1, accepted.nextWaveIndex)
+        val restricted = coordinator(
+            AgentAggregateBudget(1_000, 1_000, 1_000, 0, 1, 1),
+            AgentRuntimeAdapter { error("must not dispatch") }
+        )
+        assertNull(restricted.previewAdvanceArtifactMatchedParallelWave(
+            plan(), AgentParallelWaveProgress(), result,
+            mapOf(rootId to "artifact:research")
+        ))
+        assertEquals(0, launches)
+    }
+
+    @Test
     fun verified_progress_preview_rejects_forged_prefix_without_dispatch() {
         var launches = 0
         val coordinator = coordinator(adapter = AgentRuntimeAdapter {
