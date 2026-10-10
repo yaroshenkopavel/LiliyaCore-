@@ -302,6 +302,35 @@ class AgentParallelWaveExecutorContractTest {
     }
 
     @Test
+    fun cancellation_between_preflight_and_submission_prevents_any_dispatch() {
+        val pool = Executors.newFixedThreadPool(2)
+        try {
+            val checks = java.util.concurrent.atomic.AtomicInteger(0)
+            val launches = java.util.concurrent.atomic.AtomicInteger(0)
+            val result = AgentParallelWaveExecutor(pool).execute(
+                wave = wave(),
+                tasks = mapOf(
+                    stepA to AgentParallelWaveTask {
+                        launches.incrementAndGet()
+                        AgentParallelWaveTaskOutcome.Completed(stepA)
+                    },
+                    stepB to AgentParallelWaveTask {
+                        launches.incrementAndGet()
+                        AgentParallelWaveTaskOutcome.Completed(stepB)
+                    }
+                ),
+                timeoutMillis = 2_000,
+                cancelled = { checks.incrementAndGet() >= 2 }
+            )
+            assertEquals(AgentParallelWaveExecutionState.CANCELLED, result.state)
+            assertTrue(result.outcomes.isEmpty())
+            assertEquals(0, launches.get())
+        } finally {
+            pool.shutdownNow()
+        }
+    }
+
+    @Test
     fun pre_interrupted_caller_never_submits_tasks_and_keeps_interrupt_status() {
         val pool = Executors.newFixedThreadPool(2)
         try {
