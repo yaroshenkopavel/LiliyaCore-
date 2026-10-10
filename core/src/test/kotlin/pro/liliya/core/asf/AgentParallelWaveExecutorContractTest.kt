@@ -331,6 +331,41 @@ class AgentParallelWaveExecutorContractTest {
     }
 
     @Test
+    fun interruption_after_task_submissions_never_publishes_completed_wave() {
+        val pool = Executors.newFixedThreadPool(2)
+        try {
+            val started = CountDownLatch(2)
+            val workersInterrupted = CountDownLatch(2)
+            val done = CountDownLatch(1)
+            val observed = java.util.concurrent.atomic.AtomicReference<AgentParallelWaveExecutionResult>()
+            val caller = Thread {
+                try {
+                    observed.set(AgentParallelWaveExecutor(pool).execute(
+                        wave = wave(),
+                        tasks = mapOf(
+                            stepA to blockingTask(stepA, started, workersInterrupted),
+                            stepB to blockingTask(stepB, started, workersInterrupted)
+                        ),
+                        timeoutMillis = 2_000
+                    ))
+                } finally {
+                    done.countDown()
+                }
+            }
+            caller.start()
+            assertTrue(started.await(1, TimeUnit.SECONDS))
+            caller.interrupt()
+            assertTrue(done.await(2, TimeUnit.SECONDS))
+            assertEquals(AgentParallelWaveExecutionState.CANCELLED, observed.get().state)
+            assertTrue(observed.get().outcomes.isEmpty())
+            assertTrue(workersInterrupted.await(1, TimeUnit.SECONDS))
+            caller.join(1_000)
+        } finally {
+            pool.shutdownNow()
+        }
+    }
+
+    @Test
     fun pre_interrupted_caller_never_submits_tasks_and_keeps_interrupt_status() {
         val pool = Executors.newFixedThreadPool(2)
         try {
