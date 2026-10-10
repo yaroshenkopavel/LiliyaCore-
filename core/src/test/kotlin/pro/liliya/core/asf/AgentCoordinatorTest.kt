@@ -199,6 +199,37 @@ class AgentCoordinatorTest {
     }
 
     @Test
+    fun receipt_checked_checkpoint_fails_closed_on_denial_or_verifier_exception() {
+        val coordinator = coordinator(adapter = AgentRuntimeAdapter {
+            error("receipt preview must not dispatch agents")
+        })
+        val rootId = AgentCoordinatorStepId("research")
+        val result = AgentParallelWaveExecutionResult(
+            AgentParallelWaveExecutionState.COMPLETED,
+            listOf(AgentParallelWaveTaskOutcome.Completed(rootId, "artifact:research"))
+        )
+        val receipts = mapOf(rootId to "artifact:research")
+        assertNull(coordinator.previewAdvanceReceiptCheckedParallelWave(
+            plan(), AgentParallelWaveProgress(), result, receipts
+        ) { _, _ -> false })
+        assertNull(coordinator.previewAdvanceReceiptCheckedParallelWave(
+            plan(), AgentParallelWaveProgress(), result, receipts
+        ) { _, _ -> throw IllegalStateException("storage unavailable") })
+        var verified = 0
+        val progress = kotlin.test.assertNotNull(coordinator.previewAdvanceReceiptCheckedParallelWave(
+            plan(), AgentParallelWaveProgress(), result, receipts
+        ) { id, ref ->
+            verified++
+            id == rootId && ref == "artifact:research"
+        })
+        assertEquals(1, verified)
+        assertEquals(1, progress.nextWaveIndex)
+        assertNull(coordinator.previewAdvanceReceiptCheckedParallelWave(
+            plan(), AgentParallelWaveProgress(), result, mapOf(rootId to "artifact:wrong")
+        ) { _, _ -> error("mismatched receipt must not reach verifier") })
+    }
+
+    @Test
     fun coordinator_artifact_checkpoint_matches_receipts_without_dispatch() {
         var launches = 0
         val coordinator = coordinator(adapter = AgentRuntimeAdapter {
