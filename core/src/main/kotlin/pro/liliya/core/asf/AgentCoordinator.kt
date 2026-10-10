@@ -110,6 +110,10 @@ class AgentCoordinator(
             }
             if (!verified) return null
         }
+        // A verifier may mutate caller-owned evidence through an alias during
+        // its callback. Such mutation invalidates the entire checkpoint even
+        // if each value checked against our earlier snapshot was valid.
+        if (committedArtifacts != receiptSnapshot) return null
         return matched
     }
 
