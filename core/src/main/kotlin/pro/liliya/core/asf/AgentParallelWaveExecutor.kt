@@ -107,6 +107,15 @@ class AgentParallelWaveExecutor(
 
         try {
             wave.stepIds.forEach { stepId ->
+                // Cancellation may arrive after the initial preflight or between
+                // submissions; do not enqueue any further agent work.
+                if (Thread.currentThread().isInterrupted || cancelled()) {
+                    cancelAll(futures.values)
+                    return AgentParallelWaveExecutionResult(
+                        state = AgentParallelWaveExecutionState.CANCELLED,
+                        outcomes = emptyList()
+                    )
+                }
                 val future = try {
                     executor.submit(
                         Callable {
