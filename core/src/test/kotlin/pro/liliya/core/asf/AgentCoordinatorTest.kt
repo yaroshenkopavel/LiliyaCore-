@@ -100,6 +100,36 @@ class AgentCoordinatorTest {
     }
 
     @Test
+    fun parallel_preview_requires_all_siblings_before_any_descendant_wave() {
+        val coordinator = coordinator(adapter = AgentRuntimeAdapter { error("preview must not run agents") })
+        val rootId = AgentCoordinatorStepId("research")
+        val childA = AgentCoordinatorStepId("a")
+        val childB = AgentCoordinatorStepId("b")
+        val grandchild = AgentCoordinatorStepId("grandchild")
+        val rooted = parentBudget.copy(maxDescendants = 3)
+        val childWithDescendant = childBudget.copy(maxDescendants = 1)
+        val siblingPlan = AgentCoordinatorPlan(
+            root,
+            listOf(
+                step("research", researcher, researcher.cognitiveScope, rooted, listOf("evidence:a")),
+                step("a", verifier, verifyScope, childWithDescendant, listOf("evidence:b"), parent = "research"),
+                step("b", verifier, verifyScope, childBudget, listOf("evidence:c"), parent = "research"),
+                step("grandchild", verifier, verifyScope, childBudget, listOf("evidence:d"), parent = "a")
+            )
+        )
+        // The plan exceeds the default coordinator's four-agent wall-clock reservation:
+        // 20s + 10s + 10s + 10s <= 60s; the complete plan remains in budget.
+        assertEquals(listOf(rootId), coordinator.previewNextParallelWave(siblingPlan, emptySet())?.stepIds)
+        assertEquals(listOf(childA, childB), coordinator.previewNextParallelWave(siblingPlan, setOf(rootId))?.stepIds)
+        assertNull(coordinator.previewNextParallelWave(siblingPlan, setOf(rootId, childA)))
+        assertNull(coordinator.previewNextParallelWave(siblingPlan, setOf(rootId, childB)))
+        assertEquals(
+            listOf(grandchild),
+            coordinator.previewNextParallelWave(siblingPlan, setOf(rootId, childA, childB))?.stepIds
+        )
+    }
+
+    @Test
     fun parallel_wave_preview_rejects_over_budget_plan_without_dispatch() {
         val aggregate = AgentAggregateBudget(1_000, 1_000, 1_000, 0, 1, 1)
         val coordinator = coordinator(aggregate, AgentRuntimeAdapter { error("must not run") })
