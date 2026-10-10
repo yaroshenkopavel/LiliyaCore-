@@ -130,6 +130,33 @@ class AgentParallelSchedulerContractTest {
     }
 
     @Test
+    fun reject_siblings_exceeding_root_descendant_cap_even_when_aggregate_fits() {
+        val root = step("root", null, rootBudget.copy(maxDescendants = 1))
+        val children = listOf("a", "b").map { step(it, "root", childBudget) }
+        val result = assertIs<AgentParallelScheduleResult.Rejected>(
+            AgentParallelScheduler.schedule(
+                AgentCoordinatorPlan(AgentRootTaskId("parallel-root"), listOf(root) + children),
+                aggregate
+            )
+        )
+        assertEquals(AgentParallelScheduleRejection.PARENT_DESCENDANT_BUDGET_EXCEEDED, result.reason)
+    }
+
+    @Test
+    fun reject_transitive_descendant_cap_violation_even_when_direct_children_fit() {
+        val root = step("root", null, rootBudget.copy(maxDescendants = 1))
+        val child = step("a", "root", childBudget.copy(maxDescendants = 1))
+        val grandchild = step("b", "a", childBudget)
+        val result = assertIs<AgentParallelScheduleResult.Rejected>(
+            AgentParallelScheduler.schedule(
+                AgentCoordinatorPlan(AgentRootTaskId("parallel-root"), listOf(root, child, grandchild)),
+                aggregate
+            )
+        )
+        assertEquals(AgentParallelScheduleRejection.PARENT_DESCENDANT_BUDGET_EXCEEDED, result.reason)
+    }
+
+    @Test
     fun scheduler_contract_contains_no_authority_execution_or_secret_fields() {
         val forbidden = listOf(
             "authority",
