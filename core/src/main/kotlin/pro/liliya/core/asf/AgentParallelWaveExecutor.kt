@@ -210,6 +210,16 @@ class AgentParallelWaveExecutor(
                 }
             }
 
+            // Recheck immediately before publishing a successful terminal wave.
+            // Cancellation can be requested after the last Future completes.
+            if (Thread.currentThread().isInterrupted || cancelled()) {
+                cancelAll(futures.values)
+                return AgentParallelWaveExecutionResult(
+                    state = AgentParallelWaveExecutionState.CANCELLED,
+                    outcomes = emptyList()
+                )
+            }
+
             val state = if (outcomes.all { it is AgentParallelWaveTaskOutcome.Completed }) {
                 AgentParallelWaveExecutionState.COMPLETED
             } else {
