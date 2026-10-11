@@ -178,7 +178,7 @@ class AgentCoordinator(
                 val parent = evidence.get(parentId) ?: return null
                 if (parent.artifactReference !in progress.committedArtifactReferences) return null
                 val parentStep = plan.step(parentId) ?: return null
-                if (entry.request.provenance.depth != 1 ||
+                if (entry.request.provenance.depth != ancestorChain(plan, parentId).size ||
                     !evidence.matchesChild(
                         parentId, entry.request, parentStep.cognitiveScope,
                         parentStep.budget, parent.artifactReference
