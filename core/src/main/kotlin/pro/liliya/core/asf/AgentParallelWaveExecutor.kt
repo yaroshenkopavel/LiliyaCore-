@@ -102,15 +102,25 @@ class AgentParallelWaveExecutor(
         parentScopeForStep: (AgentCoordinatorStepId) -> AgentCognitiveScope? = { null },
         parentBudgetForStep: (AgentCoordinatorStepId) -> AgentWorkBudget? = { null },
         cancelled: () -> Boolean = { false }
-    ): AgentParallelWaveExecutionResult =
-        executeAfterAdmission(wave, tasks, timeoutMillis, admit = { stepId ->
-            factory.previewAdmission(
-                request = requestForStep(stepId),
-                population = populationForStep(stepId),
-                parentScope = parentScopeForStep(stepId),
-                parentRemainingBudget = parentBudgetForStep(stepId)
-            ) is AgentAdmissionDecision.Admissible
+    ): AgentParallelWaveExecutionResult {
+        // Never let two sibling steps claim one deterministic spawn identity.
+        // A preflight snapshot is advisory; dispatch still needs live runSingle
+        // admission and atomic population reservations across siblings.
+        val seenRequests = HashSet<AgentSpawnRequestId>()
+        return executeAfterAdmission(wave, tasks, timeoutMillis, admit = { stepId ->
+            val request = requestForStep(stepId)
+            if (!seenRequests.add(request.id)) {
+                false
+            } else {
+                factory.previewAdmission(
+                    request = request,
+                    population = populationForStep(stepId),
+                    parentScope = parentScopeForStep(stepId),
+                    parentRemainingBudget = parentBudgetForStep(stepId)
+                ) is AgentAdmissionDecision.Admissible
+            }
         }, cancelled = cancelled)
+    }
 
     fun executeAfterAdmission(
         wave: AgentParallelWave,
