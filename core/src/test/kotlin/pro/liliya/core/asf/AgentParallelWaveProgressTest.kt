@@ -105,8 +105,13 @@ class AgentParallelWaveProgressTest {
 
     @Test
     fun artifact_matched_checkpoint_rejects_reused_and_malformed_receipts() {
-        val progressed = assertNotNull(AgentParallelWaveProgress().advance(
-            schedule(), success(listOf(root))
+        val progressed = assertNotNull(AgentParallelWaveProgress().advanceArtifactMatched(
+            schedule(),
+            AgentParallelWaveExecutionResult(
+                AgentParallelWaveExecutionState.COMPLETED,
+                listOf(AgentParallelWaveTaskOutcome.Completed(root, "artifact:root"))
+            ),
+            mapOf(root to "artifact:root")
         ))
         val results = AgentParallelWaveExecutionResult(
             AgentParallelWaveExecutionState.COMPLETED,
