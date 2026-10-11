@@ -79,6 +79,60 @@ class AgentParallelFactoryWaveRunnerTest {
         }
     }
 
+    @Test
+    fun actual_factory_execution_produces_completed_wave_artifact_references() {
+        val pool = Executors.newFixedThreadPool(2)
+        try {
+            val executions = AtomicInteger()
+            val now = Instant.parse("2026-10-11T00:00:00Z")
+            val blueprint = AgentBlueprint.create(
+                AgentBlueprintVersion(1), "researcher", "analysis",
+                AgentCognitiveScope.create(listOf("research"))
+            )
+            val budget = AgentWorkBudget(30_000, 20_000, 128_000, 16, 4, 2)
+            val factory = AgentFactory(
+                AgentBlueprintRegistry(listOf(blueprint)),
+                AgentAdmissionPolicy(
+                    AgentFactoryBounds.PROTOTYPE, blueprint.cognitiveScope, budget
+                ),
+                AgentRuntimeAdapter { context ->
+                    executions.incrementAndGet()
+                    AgentRuntimeOutcome.Completed(
+                        "research-report", "sha256:result",
+                        context.workspace.inputReferences,
+                        AgentRuntimeUsage(100, 100, 1024, 1, 1)
+                    )
+                },
+                AgentAuditLedger { },
+                timeSource = { now }
+            )
+            val entries = listOf(a, b).mapIndexed { index, step ->
+                step to AgentParallelFactoryWaveRunner.Entry(
+                    request = AgentSpawnRequest.create(
+                        AgentBlueprintReference(blueprint.id, blueprint.version),
+                        AgentSpawnProvenance(AgentRootTaskId("shared-root"), null, null, 0),
+                        blueprint.cognitiveScope, budget, index
+                    ),
+                    generation = AgentInstanceGeneration(1),
+                    inputReferences = listOf("evidence:shared")
+                )
+            }.toMap()
+            val result = AgentParallelFactoryWaveRunner(
+                factory, AgentParallelWaveExecutor(pool)
+            ).run(
+                wave(), entries, AgentPopulationSnapshot(0, 0, 0),
+                now, now.plusSeconds(300), 2_000
+            )
+            assertEquals(AgentParallelWaveExecutionState.COMPLETED, result.state)
+            assertEquals(2, executions.get())
+            assertEquals(listOf(a, b), result.outcomes.map {
+                (it as AgentParallelWaveTaskOutcome.Completed).stepId
+            })
+        } finally {
+            pool.shutdownNow()
+        }
+    }
+
     private fun wave() = AgentParallelWave(
         0, listOf(a, b),
         AgentParallelWaveReservation(2_000, 40_000, 256_000, 32, 8, 2)
