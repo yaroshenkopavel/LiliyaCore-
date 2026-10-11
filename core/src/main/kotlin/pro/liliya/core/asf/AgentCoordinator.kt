@@ -161,6 +161,16 @@ class AgentCoordinator(
         // No worker-specific protected-tool admission is supplied by this bridge.
         if (plan.steps.any { it.workerClass != null || it.protectedToolViewRequested }) return null
         if (entries.keys != wave.stepIds.toSet()) return null
+        // Parent instance IDs and generations must be bound to a trusted,
+        // completed factory result, never invented from a caller's checkpoint.
+        // Until the bridge retains those instances, reject dependent waves.
+        if (wave.stepIds.any { plan.step(it)?.parentStepId != null }) return null
+        if (entries.any { (_, entry) ->
+                entry.request.provenance.parentAgentId != null ||
+                    entry.request.provenance.parentGeneration != null ||
+                    entry.request.provenance.depth != 0
+            }
+        ) return null
         if (entries.any { (id, entry) ->
                 val planned = plan.step(id) ?: return null
                 entry.request.blueprint != planned.blueprint ||
