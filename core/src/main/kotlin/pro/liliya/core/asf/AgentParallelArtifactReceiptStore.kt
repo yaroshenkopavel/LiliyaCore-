@@ -33,6 +33,24 @@ class AgentParallelArtifactReceiptStore(private val store: PersistentRecordStore
         } catch (_: Exception) { false }
     }
 
+    /**
+     * Only publish a receipt when the owner can independently read and verify
+     * the durable payload both before install and after receipt readback.
+     *
+     * The verifier must reject missing bytes, wrong digest, and non-durable
+     * storage. This method does not make two independent stores atomic.
+     */
+    fun commitAndVerifyWithPayload(
+        stepId: AgentCoordinatorStepId,
+        artifact: AgentArtifact,
+        verifyDurablePayload: (AgentArtifact) -> Boolean
+    ): Boolean {
+        val before = try { verifyDurablePayload(artifact) } catch (_: Exception) { false }
+        if (!before) return false
+        if (!commitAndVerify(stepId, artifact)) return false
+        return try { verifyDurablePayload(artifact) } catch (_: Exception) { false }
+    }
+
     private fun record(stepId: AgentCoordinatorStepId, artifact: AgentArtifact): PersistentRecord {
         val id = PersistentEntityId(
             "asf-step-receipt-" + AsfIdentity.sha256(
