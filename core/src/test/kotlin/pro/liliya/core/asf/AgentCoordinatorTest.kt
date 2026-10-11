@@ -49,15 +49,6 @@ class AgentCoordinatorTest {
                 ))
             )
             val parentId = AgentCoordinatorStepId("research")
-            val receipt = "asf-artifact:parent"
-            val progress = AgentParallelWaveProgress().advanceArtifactMatched(
-                schedule,
-                AgentParallelWaveExecutionResult(
-                    AgentParallelWaveExecutionState.COMPLETED,
-                    listOf(AgentParallelWaveTaskOutcome.Completed(parentId, receipt))
-                ),
-                mapOf(parentId to receipt)
-            ) ?: error("fixture")
             val parentRequest = AgentSpawnRequest.create(
                 AgentBlueprintReference(researcher.id, researcher.version),
                 AgentSpawnProvenance(root, null, null, 0),
@@ -77,7 +68,16 @@ class AgentCoordinatorTest {
             )
             val evidence = AgentParallelParentEvidence()
             kotlin.test.assertTrue(evidence.record(parentId, instance, artifact))
-            // Fixture progress is deliberately forged: it must not allow dispatch.
+            val receipt = "asf-artifact:${artifact.id.value}"
+            val progress = AgentParallelWaveProgress().advanceArtifactMatched(
+                schedule,
+                AgentParallelWaveExecutionResult(
+                    AgentParallelWaveExecutionState.COMPLETED,
+                    listOf(AgentParallelWaveTaskOutcome.Completed(parentId, receipt))
+                ),
+                mapOf(parentId to receipt)
+            ) ?: error("fixture")
+            // Even structurally matched in-memory evidence must be revalidated.
             val childRequest = AgentSpawnRequest.create(
                 AgentBlueprintReference(verifier.id, verifier.version),
                 AgentSpawnProvenance(root, instance.id, instance.generation, 1),
