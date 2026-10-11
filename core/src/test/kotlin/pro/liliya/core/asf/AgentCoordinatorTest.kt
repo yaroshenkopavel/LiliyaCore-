@@ -39,6 +39,64 @@ class AgentCoordinatorTest {
     )
 
     @Test
+    fun experimental_coordinator_requires_stored_receipt_before_advancing() {
+        val pool = java.util.concurrent.Executors.newSingleThreadExecutor()
+        try {
+            val simple = AgentCoordinatorPlan(root, listOf(
+                step("research", researcher, researchScope, childBudget, listOf("evidence:a"))
+            ))
+            val registry = AgentBlueprintRegistry(listOf(researcher))
+            val factory = AgentFactory(
+                registry,
+                AgentAdmissionPolicy(
+                    AgentFactoryBounds.PROTOTYPE,
+                    researcher.cognitiveScope,
+                    parentBudget
+                ),
+                AgentRuntimeAdapter { context ->
+                    AgentRuntimeOutcome.Completed(
+                        "report", "sha256:result", context.workspace.inputReferences,
+                        AgentRuntimeUsage(1, 1, 1, 0, 1)
+                    )
+                },
+                AgentAuditLedger { }, timeSource = { now }
+            )
+            val coordinator = AgentCoordinator(factory, AgentAggregateBudget(
+                60_000, 40_000, 256_000, 32, 8, 4
+            ))
+            val entry = AgentParallelFactoryWaveRunner.Entry(
+                AgentSpawnRequest.create(
+                    AgentBlueprintReference(researcher.id, researcher.version),
+                    AgentSpawnProvenance(root, null, null, 0),
+                    researchScope, childBudget
+                ),
+                AgentInstanceGeneration(1), listOf("evidence:a")
+            )
+            val runner = AgentParallelFactoryWaveRunner(
+                factory, AgentParallelWaveExecutor(pool)
+            )
+            val ledger = AgentParallelPopulationLedger(4, 4)
+            val args = mapOf(AgentCoordinatorStepId("research") to entry)
+            val denied = coordinator.runExperimentalCommittedWave(
+                simple, AgentParallelWaveProgress(), runner, ledger, args,
+                AgentPopulationSnapshot(0, 0, 0), now, expires, 2_000,
+                commitAndVerify = { _, _ -> true },
+                verifyStoredReference = { _, _ -> false }
+            )
+            assertNull(denied)
+            val accepted = coordinator.runExperimentalCommittedWave(
+                simple, AgentParallelWaveProgress(), runner, ledger, args,
+                AgentPopulationSnapshot(0, 0, 0), now, expires, 2_000,
+                commitAndVerify = { _, _ -> true },
+                verifyStoredReference = { _, ref -> ref.startsWith("asf-artifact:") }
+            )
+            assertEquals(1, accepted?.nextWaveIndex)
+        } finally {
+            pool.shutdownNow()
+        }
+    }
+
+    @Test
     fun parallel_preflight_reserves_budget_without_starting_workers() {
         var executions = 0
         val aggregate = AgentAggregateBudget(
