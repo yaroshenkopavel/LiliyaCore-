@@ -137,6 +137,34 @@ class AgentParallelWaveProgressTest {
     }
 
     @Test
+    fun unverified_prior_wave_cannot_be_upgraded_into_artifact_verified_chain() {
+        val unverified = assertNotNull(AgentParallelWaveProgress().advance(
+            schedule(), success(listOf(root))
+        ))
+        val childResult = AgentParallelWaveExecutionResult(
+            AgentParallelWaveExecutionState.COMPLETED,
+            listOf(
+                AgentParallelWaveTaskOutcome.Completed(a, "artifact:a"),
+                AgentParallelWaveTaskOutcome.Completed(b, "artifact:b")
+            )
+        )
+        assertNull(unverified.advanceArtifactMatched(
+            schedule(), childResult, mapOf(a to "artifact:a", b to "artifact:b")
+        ))
+        val verifiedRoot = assertNotNull(AgentParallelWaveProgress().advanceArtifactMatched(
+            schedule(),
+            AgentParallelWaveExecutionResult(
+                AgentParallelWaveExecutionState.COMPLETED,
+                listOf(AgentParallelWaveTaskOutcome.Completed(root, "artifact:root"))
+            ),
+            mapOf(root to "artifact:root")
+        ))
+        assertEquals(2, assertNotNull(verifiedRoot.advanceArtifactMatched(
+            schedule(), childResult, mapOf(a to "artifact:a", b to "artifact:b")
+        )).nextWaveIndex)
+    }
+
+    @Test
     fun artifact_receipt_cannot_be_reused_across_dependency_waves() {
         val progress = AgentParallelWaveProgress()
         val firstResult = AgentParallelWaveExecutionResult(
