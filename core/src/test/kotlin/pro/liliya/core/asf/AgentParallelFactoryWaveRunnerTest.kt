@@ -293,6 +293,25 @@ class AgentParallelFactoryWaveRunnerTest {
             assertEquals(AgentInstanceGeneration(1), recorded.generation)
             assertEquals((result.outcomes.single() as AgentParallelWaveTaskOutcome.Completed).artifactReference,
                 recorded.artifactReference)
+            val childRequest = AgentSpawnRequest.create(
+                AgentBlueprintReference(blueprint.id, blueprint.version),
+                AgentSpawnProvenance(root, recorded.instanceId, recorded.generation, 1),
+                blueprint.cognitiveScope, budget
+            )
+            kotlin.test.assertTrue(evidence.matchesChild(
+                step, childRequest, blueprint.cognitiveScope, budget, recorded.artifactReference
+            ))
+            kotlin.test.assertFalse(evidence.matchesChild(
+                step, childRequest, blueprint.cognitiveScope, budget, "asf-artifact:forged"
+            ))
+            val wrongParent = AgentSpawnRequest.create(
+                AgentBlueprintReference(blueprint.id, blueprint.version),
+                AgentSpawnProvenance(root, AgentInstanceId("forged-parent"), recorded.generation, 1),
+                blueprint.cognitiveScope, budget
+            )
+            kotlin.test.assertFalse(evidence.matchesChild(
+                step, wrongParent, blueprint.cognitiveScope, budget, recorded.artifactReference
+            ))
         } finally {
             pool.shutdownNow()
         }
