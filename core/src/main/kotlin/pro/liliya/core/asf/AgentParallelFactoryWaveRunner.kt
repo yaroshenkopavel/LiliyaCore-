@@ -47,6 +47,35 @@ class AgentParallelFactoryWaveRunner(
             timeoutMillis, cancelled, commitAndVerify, parentEvidence
         )
 
+    /**
+     * Opt-in atomic artifact path. The owner provides the exact payload bytes
+     * and a PersistentRecordStore backed by crash-durable storage.
+     * Missing payload fails closed; this does not grant execution authority.
+     */
+    fun runReservedWithAtomicArtifacts(
+        ledger: AgentParallelPopulationLedger,
+        wave: AgentParallelWave,
+        entries: Map<AgentCoordinatorStepId, Entry>,
+        baselinePopulation: AgentPopulationSnapshot,
+        admittedAt: Instant,
+        expiresAt: Instant,
+        timeoutMillis: Long,
+        receipts: AgentParallelArtifactReceiptStore,
+        payloadForArtifact: (AgentArtifact) -> ByteArray?,
+        cancelled: () -> Boolean = { false },
+        parentEvidence: AgentParallelParentEvidence? = null
+    ): AgentParallelWaveExecutionResult =
+        runReservedCommitted(
+            ledger, wave, entries, baselinePopulation, admittedAt, expiresAt,
+            timeoutMillis,
+            commitAndVerify = { stepId, artifact ->
+                val payload = payloadForArtifact(artifact)
+                payload != null && receipts.commitPayloadAndReceipt(stepId, artifact, payload)
+            },
+            cancelled = cancelled,
+            parentEvidence = parentEvidence
+        )
+
     fun runReserved(
         ledger: AgentParallelPopulationLedger,
         wave: AgentParallelWave,
