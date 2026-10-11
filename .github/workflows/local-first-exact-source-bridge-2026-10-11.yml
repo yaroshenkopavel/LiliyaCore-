@@ -82,24 +82,8 @@ jobs:
           tar -C "$(dirname "$GRADLE_ROOT")" -czf "$RUNNER_TEMP/toolchain-export/gradle.tar.gz" "$(basename "$GRADLE_ROOT")"
           tar -tzf "$RUNNER_TEMP/toolchain-export/jdk17.tar.gz" > "$RUNNER_TEMP/toolchain-export/jdk-list.txt"
           tar -tzf "$RUNNER_TEMP/toolchain-export/gradle.tar.gz" > "$RUNNER_TEMP/toolchain-export/gradle-list.txt"
-          grep -q '/bin/java
-          (cd "$RUNNER_TEMP/toolchain-export" && sha256sum jdk17.tar.gz gradle.tar.gz > sha256.txt)
-      - uses: actions/upload-artifact@v4
-        with:
-          name: liliya-jdk17-gradle961-44ccbc14
-          path: ${{ runner.temp }}/toolchain-export/
-          retention-days: 1
-          if-no-files-found: error
- "$RUNNER_TEMP/toolchain-export/jdk-list.txt"
-          grep -q '/bin/gradle
-          (cd "$RUNNER_TEMP/toolchain-export" && sha256sum jdk17.tar.gz gradle.tar.gz > sha256.txt)
-      - uses: actions/upload-artifact@v4
-        with:
-          name: liliya-jdk17-gradle961-44ccbc14
-          path: ${{ runner.temp }}/toolchain-export/
-          retention-days: 1
-          if-no-files-found: error
- "$RUNNER_TEMP/toolchain-export/gradle-list.txt"
+          grep -F '/bin/java' "$RUNNER_TEMP/toolchain-export/jdk-list.txt" > /dev/null
+          grep -F '/bin/gradle' "$RUNNER_TEMP/toolchain-export/gradle-list.txt" > /dev/null
           (cd "$RUNNER_TEMP/toolchain-export" && sha256sum jdk17.tar.gz gradle.tar.gz > sha256.txt)
       - uses: actions/upload-artifact@v4
         with:
