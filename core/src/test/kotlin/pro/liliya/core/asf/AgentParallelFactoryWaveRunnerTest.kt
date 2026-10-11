@@ -312,6 +312,16 @@ class AgentParallelFactoryWaveRunnerTest {
             kotlin.test.assertFalse(evidence.matchesChild(
                 step, wrongParent, blueprint.cognitiveScope, budget, recorded.artifactReference
             ))
+            val wrongRoot = AgentSpawnRequest.create(
+                AgentBlueprintReference(blueprint.id, blueprint.version),
+                AgentSpawnProvenance(
+                    AgentRootTaskId("unrelated-root"), recorded.instanceId, recorded.generation, 1
+                ),
+                blueprint.cognitiveScope, budget
+            )
+            kotlin.test.assertFalse(evidence.matchesChild(
+                step, wrongRoot, blueprint.cognitiveScope, budget, recorded.artifactReference
+            ))
         } finally {
             pool.shutdownNow()
         }
