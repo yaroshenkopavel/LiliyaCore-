@@ -52,6 +52,10 @@ jobs:
           GRADLE_USER_HOME: ${{ runner.temp }}/liliya-gradle-home
         run: |
           set -euo pipefail
+          mkdir -p "$GRADLE_USER_HOME"
+          cp "$HOME/.gradle/gradle.properties" "$GRADLE_USER_HOME/gradle.properties"
+          echo '=== Active isolated Gradle memory configuration ==='
+          cat "$GRADLE_USER_HOME/gradle.properties"
           gradle :core:test --configure-on-demand --console=plain --no-daemon
           gradle :core:test --configure-on-demand --offline --console=plain --no-daemon
           mkdir -p "$RUNNER_TEMP/cache-export"
