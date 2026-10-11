@@ -19,6 +19,38 @@ class AgentParallelFactoryWaveRunner(
         val parentRemainingBudget: AgentWorkBudget? = null
     )
 
+    /**
+     * Reserve all concurrent slots atomically before any factory execution.
+     * Shares a ledger with other wave runners on this process. The baseline
+     * snapshot remains owner-supplied; distributed or external executions
+     * are NOT covered by this in-process mechanism.
+     */
+    fun runReserved(
+        ledger: AgentParallelPopulationLedger,
+        wave: AgentParallelWave,
+        entries: Map<AgentCoordinatorStepId, Entry>,
+        baselinePopulation: AgentPopulationSnapshot,
+        admittedAt: Instant,
+        expiresAt: Instant,
+        timeoutMillis: Long,
+        cancelled: () -> Boolean = { false }
+    ): AgentParallelWaveExecutionResult {
+        require(entries.keys == wave.stepIds.toSet())
+        require(entries.isNotEmpty())
+        val root = entries.values.first().request.provenance.rootTaskId
+        require(entries.values.all { it.request.provenance.rootTaskId == root })
+        val lease = ledger.reserve(root, wave.stepIds.size)
+            ?: return AgentParallelWaveExecutionResult(
+                AgentParallelWaveExecutionState.PARTIAL,
+                listOf(AgentParallelWaveTaskOutcome.Failed(
+                    wave.stepIds.first(), "parallel wave population reservation denied"
+                ))
+            )
+        return lease.use {
+            run(wave, entries, baselinePopulation, admittedAt, expiresAt, timeoutMillis, cancelled)
+        }
+    }
+
     fun run(
         wave: AgentParallelWave,
         entries: Map<AgentCoordinatorStepId, Entry>,
