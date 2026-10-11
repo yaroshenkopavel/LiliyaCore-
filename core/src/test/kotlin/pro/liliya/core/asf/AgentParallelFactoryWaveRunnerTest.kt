@@ -238,8 +238,17 @@ class AgentParallelFactoryWaveRunnerTest {
                 commitAndVerify = { _, _ -> false }
             )
             assertEquals(AgentParallelWaveExecutionState.PARTIAL, failed.state)
+            // A new attempt must use fresh deterministic spawn identities.
+            // Reusing the failed attempt would produce the same artifact IDs.
+            val retryEntries = entries.mapValues { (_, entry) ->
+                entry.copy(request = AgentSpawnRequest.create(
+                    entry.request.blueprint, entry.request.provenance,
+                    entry.request.cognitiveScope, entry.request.budget,
+                    entry.request.logicalRoleAttempt + 10
+                ))
+            }
             val recovered = runner.runReservedCommitted(
-                ledger, wave(), entries, AgentPopulationSnapshot(0, 0, 0),
+                ledger, wave(), retryEntries, AgentPopulationSnapshot(0, 0, 0),
                 now, now.plusSeconds(300), 2_000,
                 commitAndVerify = { _, artifact -> artifact.kind == "research-report" }
             )
