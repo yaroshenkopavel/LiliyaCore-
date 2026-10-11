@@ -152,7 +152,8 @@ class AgentCoordinator(
         timeoutMillis: Long,
         commitAndVerify: (AgentCoordinatorStepId, AgentArtifact) -> Boolean,
         verifyStoredReference: (AgentCoordinatorStepId, String) -> Boolean,
-        cancelled: () -> Boolean = { false }
+        cancelled: () -> Boolean = { false },
+        parentEvidence: AgentParallelParentEvidence? = null
     ): AgentParallelWaveProgress? {
         val schedule = previewParallelSchedule(plan) as? AgentParallelScheduleResult.Ready
             ?: return null
@@ -161,16 +162,30 @@ class AgentCoordinator(
         // No worker-specific protected-tool admission is supplied by this bridge.
         if (plan.steps.any { it.workerClass != null || it.protectedToolViewRequested }) return null
         if (entries.keys != wave.stepIds.toSet()) return null
-        // Parent instance IDs and generations must be bound to a trusted,
-        // completed factory result, never invented from a caller's checkpoint.
-        // Until the bridge retains those instances, reject dependent waves.
-        if (wave.stepIds.any { plan.step(it)?.parentStepId != null }) return null
-        if (entries.any { (_, entry) ->
-                entry.request.provenance.parentAgentId != null ||
+        // Parent identity must come from an actual completed factory instance.
+        // The artifact reference is checked against this wave's verified prefix;
+        // this evidence alone does not grant permission or prove persistence.
+        for ((id, entry) in entries) {
+            val parentId = plan.step(id)?.parentStepId
+            if (parentId == null) {
+                if (entry.request.provenance.parentAgentId != null ||
                     entry.request.provenance.parentGeneration != null ||
                     entry.request.provenance.depth != 0
+                ) return null
+            } else {
+                val evidence = parentEvidence ?: return null
+                if (parentId !in progress.completedStepIds) return null
+                val parent = evidence.get(parentId) ?: return null
+                if (parent.artifactReference !in progress.committedArtifactReferences) return null
+                val parentStep = plan.step(parentId) ?: return null
+                if (entry.request.provenance.depth != 1 ||
+                    !evidence.matchesChild(
+                        parentId, entry.request, parentStep.cognitiveScope,
+                        parentStep.budget, parent.artifactReference
+                    )
+                ) return null
             }
-        ) return null
+        }
         if (entries.any { (id, entry) ->
                 val planned = plan.step(id) ?: return null
                 entry.request.blueprint != planned.blueprint ||
@@ -182,7 +197,7 @@ class AgentCoordinator(
         val result = try {
             runner.runReservedCommitted(
                 ledger, wave, entries, baselinePopulation, admittedAt,
-                expiresAt, timeoutMillis, commitAndVerify, cancelled
+                expiresAt, timeoutMillis, commitAndVerify, cancelled, parentEvidence
             )
         } catch (_: Exception) {
             return null
