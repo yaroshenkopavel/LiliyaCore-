@@ -343,6 +343,68 @@ class AgentParallelFactoryWaveRunnerTest {
         }
     }
 
+    @Test
+    fun timed_out_uncooperative_worker_cannot_start_late_durable_commit() {
+        val pool = Executors.newSingleThreadExecutor()
+        val entered = java.util.concurrent.CountDownLatch(1)
+        val release = java.util.concurrent.CountDownLatch(1)
+        val commits = AtomicInteger()
+        try {
+            val now = Instant.parse("2026-10-11T00:00:00Z")
+            val blueprint = AgentBlueprint.create(
+                AgentBlueprintVersion(1), "researcher", "analysis",
+                AgentCognitiveScope.create(listOf("research"))
+            )
+            val budget = AgentWorkBudget(30_000, 20_000, 128_000, 16, 4, 2)
+            val factory = AgentFactory(
+                AgentBlueprintRegistry(listOf(blueprint)),
+                AgentAdmissionPolicy(AgentFactoryBounds.PROTOTYPE, blueprint.cognitiveScope, budget),
+                AgentRuntimeAdapter { context ->
+                    entered.countDown()
+                    while (release.count > 0) {
+                        try {
+                            release.await(20, java.util.concurrent.TimeUnit.MILLISECONDS)
+                        } catch (_: InterruptedException) {
+                            // Deliberately emulate a runtime which discards cancellation.
+                        }
+                    }
+                    AgentRuntimeOutcome.Completed(
+                        "research-report", "sha256:result", context.workspace.inputReferences,
+                        AgentRuntimeUsage(1, 1, 1, 0, 1)
+                    )
+                },
+                AgentAuditLedger { }, timeSource = { now }
+            )
+            val step = a
+            val request = AgentSpawnRequest.create(
+                AgentBlueprintReference(blueprint.id, blueprint.version),
+                AgentSpawnProvenance(AgentRootTaskId("late-root"), null, null, 0),
+                blueprint.cognitiveScope, budget
+            )
+            val entry = AgentParallelFactoryWaveRunner.Entry(
+                request, AgentInstanceGeneration(1), listOf("evidence:late")
+            )
+            val result = AgentParallelFactoryWaveRunner(factory, AgentParallelWaveExecutor(pool))
+                .runReservedCommitted(
+                    AgentParallelPopulationLedger(1, 1),
+                    AgentParallelWave(0, listOf(step),
+                        AgentParallelWaveReservation(120, 20_000, 128_000, 16, 4, 1)),
+                    mapOf(step to entry), AgentPopulationSnapshot(0, 0, 0),
+                    now, now.plusSeconds(300), 120,
+                    commitAndVerify = { _, _ -> commits.incrementAndGet(); true }
+                )
+            assertEquals(AgentParallelWaveExecutionState.TIMED_OUT, result.state)
+            kotlin.test.assertEquals(0L, entered.count)
+            release.countDown()
+            pool.shutdown()
+            kotlin.test.assertTrue(pool.awaitTermination(5, java.util.concurrent.TimeUnit.SECONDS))
+            assertEquals(0, commits.get(), "a timed-out wave must not start a late durable commit")
+        } finally {
+            release.countDown()
+            pool.shutdownNow()
+        }
+    }
+
     private fun wave() = AgentParallelWave(
         0, listOf(a, b),
         AgentParallelWaveReservation(2_000, 40_000, 256_000, 32, 8, 2)
