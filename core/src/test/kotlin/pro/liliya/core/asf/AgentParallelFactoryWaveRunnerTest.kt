@@ -252,7 +252,7 @@ class AgentParallelFactoryWaveRunnerTest {
                 now, now.plusSeconds(300), 2_000,
                 commitAndVerify = { _, artifact -> artifact.kind == "research-report" }
             )
-            assertEquals(AgentParallelWaveExecutionState.COMPLETED, recovered.state)
+            assertEquals(AgentParallelWaveExecutionState.COMPLETED, recovered.state, "outcomes=${recovered.outcomes}")
         } finally {
             pool.shutdownNow()
         }
