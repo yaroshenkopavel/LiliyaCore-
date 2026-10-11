@@ -39,6 +39,89 @@ class AgentCoordinatorTest {
     )
 
     @Test
+    fun dependent_wave_rechecks_parent_durable_receipt_before_any_child_dispatch() {
+        val pool = java.util.concurrent.Executors.newSingleThreadExecutor()
+        try {
+            val fullPlan = plan()
+            val schedule = assertIs<AgentParallelScheduleResult.Ready>(
+                AgentParallelScheduler.schedule(fullPlan, AgentAggregateBudget(
+                    60_000, 40_000, 256_000, 32, 8, 4
+                ))
+            )
+            val parentId = AgentCoordinatorStepId("research")
+            val receipt = "asf-artifact:parent"
+            val progress = AgentParallelWaveProgress().advanceArtifactMatched(
+                schedule,
+                AgentParallelWaveExecutionResult(
+                    AgentParallelWaveExecutionState.COMPLETED,
+                    listOf(AgentParallelWaveTaskOutcome.Completed(parentId, receipt))
+                ),
+                mapOf(parentId to receipt)
+            ) ?: error("fixture")
+            val parentRequest = AgentSpawnRequest.create(
+                AgentBlueprintReference(researcher.id, researcher.version),
+                AgentSpawnProvenance(root, null, null, 0),
+                researcher.cognitiveScope, parentBudget
+            )
+            val admission = AgentAdmission.create(
+                parentRequest.id, AgentInstanceGeneration(1),
+                parentRequest.cognitiveScope, parentRequest.budget, now
+            )
+            val instance = AgentInstance.fromAdmission(admission, parentRequest)
+                .transition(AgentLifecycleState.SPAWNED)
+                .transition(AgentLifecycleState.RUNNING)
+                .transition(AgentLifecycleState.COMPLETED)
+            val artifact = AgentArtifact.create(
+                instance.id, instance.generation, root,
+                "report", "sha256:parent", listOf("evidence:a"), now
+            )
+            val evidence = AgentParallelParentEvidence()
+            kotlin.test.assertTrue(evidence.record(parentId, instance, artifact))
+            // Fixture progress is deliberately forged: it must not allow dispatch.
+            val childRequest = AgentSpawnRequest.create(
+                AgentBlueprintReference(verifier.id, verifier.version),
+                AgentSpawnProvenance(root, instance.id, instance.generation, 1),
+                verifyScope, childBudget
+            )
+            val childId = AgentCoordinatorStepId("verify")
+            val entry = AgentParallelFactoryWaveRunner.Entry(
+                childRequest, AgentInstanceGeneration(1), listOf("evidence:b"),
+                researcher.cognitiveScope, parentBudget
+            )
+            var launches = 0
+            val factory = AgentFactory(
+                AgentBlueprintRegistry(listOf(researcher, verifier)),
+                AgentAdmissionPolicy(
+                    AgentFactoryBounds.PROTOTYPE,
+                    AgentCognitiveScope.create(listOf("research", "verification")),
+                    parentBudget
+                ),
+                AgentRuntimeAdapter {
+                    launches++
+                    error("child must never start")
+                },
+                AgentAuditLedger { }, timeSource = { now }
+            )
+            val coordinator = coordinator(adapter = AgentRuntimeAdapter {
+                error("must not run")
+            })
+            assertNull(coordinator.runExperimentalCommittedWave(
+                fullPlan, progress,
+                AgentParallelFactoryWaveRunner(factory, AgentParallelWaveExecutor(pool)),
+                AgentParallelPopulationLedger(4, 4),
+                mapOf(childId to entry), AgentPopulationSnapshot(0, 1, 0),
+                now, expires, 2_000,
+                commitAndVerify = { _, _ -> error("must not commit") },
+                verifyStoredReference = { _, _ -> false },
+                parentEvidence = evidence
+            ))
+            assertEquals(0, launches)
+        } finally {
+            pool.shutdownNow()
+        }
+    }
+
+    @Test
     fun experimental_coordinator_refuses_dependent_wave_without_bound_parent_instance() {
         val pool = java.util.concurrent.Executors.newSingleThreadExecutor()
         try {
