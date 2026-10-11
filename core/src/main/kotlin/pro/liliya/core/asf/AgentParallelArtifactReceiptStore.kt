@@ -2,6 +2,7 @@ package pro.liliya.core.asf
 
 import java.io.ByteArrayOutputStream
 import java.io.DataOutputStream
+import java.security.MessageDigest
 import pro.liliya.core.persistence.PersistentEntityId
 import pro.liliya.core.persistence.PersistentInstallResult
 import pro.liliya.core.persistence.PersistentPayload
@@ -49,6 +50,48 @@ class AgentParallelArtifactReceiptStore(private val store: PersistentRecordStore
         if (!before) return false
         if (!commitAndVerify(stepId, artifact)) return false
         return try { verifyDurablePayload(artifact) } catch (_: Exception) { false }
+    }
+
+    /**
+     * Atomically publish payload bytes and their artifact receipt in ONE
+     * PersistentRecord. The owner must supply a crash-durable backend.
+     * Does not grant execution authority or commit external side effects.
+     */
+    fun commitPayloadAndReceipt(
+        stepId: AgentCoordinatorStepId,
+        artifact: AgentArtifact,
+        payloadBytes: ByteArray
+    ): Boolean {
+        if (payloadBytes.size > 512 * 1024) return false
+        val actualDigest = MessageDigest.getInstance("SHA-256")
+            .digest(payloadBytes)
+            .joinToString("") { "%02x".format(it) }
+        if (artifact.payloadDigest != "sha256:$actualDigest") return false
+        val receipt = try { record(stepId, artifact) } catch (_: Exception) { return false }
+        val metadata = receipt.payload.copyBytes()
+        val combined = ByteArrayOutputStream().use { bytes ->
+            DataOutputStream(bytes).use { output ->
+                output.writeInt(2)
+                output.writeInt(metadata.size)
+                output.write(metadata)
+                output.writeInt(payloadBytes.size)
+                output.write(payloadBytes)
+            }
+            bytes.toByteArray()
+        }
+        val atomicRecord = receipt.copy(
+            schemaVersion = PersistentSchemaVersion(2),
+            payload = PersistentPayload(combined)
+        )
+        val result = try { store.install(atomicRecord) } catch (_: Exception) { return false }
+        if (result !is PersistentInstallResult.Installed &&
+            result !is PersistentInstallResult.Rejected) return false
+        return try {
+            when (val read = store.inspectResult(atomicRecord.id)) {
+                is PersistentRecordLookupResult.Found -> read.snapshot.record == atomicRecord
+                else -> false
+            }
+        } catch (_: Exception) { false }
     }
 
     private fun record(stepId: AgentCoordinatorStepId, artifact: AgentArtifact): PersistentRecord {
