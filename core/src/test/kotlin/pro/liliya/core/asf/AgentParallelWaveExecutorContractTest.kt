@@ -116,6 +116,65 @@ class AgentParallelWaveExecutorContractTest {
     }
 
     @Test
+    fun admission_denial_blocks_entire_wave_before_any_submission() {
+        val pool = Executors.newFixedThreadPool(2)
+        try {
+            val launches = java.util.concurrent.atomic.AtomicInteger(0)
+            val admitted = mutableListOf<AgentCoordinatorStepId>()
+            val result = AgentParallelWaveExecutor(pool).executeAfterAdmission(
+                wave = wave(),
+                tasks = mapOf(
+                    stepA to AgentParallelWaveTask {
+                        launches.incrementAndGet()
+                        AgentParallelWaveTaskOutcome.Completed(stepA)
+                    },
+                    stepB to AgentParallelWaveTask {
+                        launches.incrementAndGet()
+                        AgentParallelWaveTaskOutcome.Completed(stepB)
+                    }
+                ),
+                timeoutMillis = 2_000,
+                admit = { step ->
+                    admitted += step
+                    step != stepB
+                }
+            )
+            assertEquals(listOf(stepA, stepB), admitted)
+            assertEquals(AgentParallelWaveExecutionState.PARTIAL, result.state)
+            assertEquals(0, launches.get())
+        } finally {
+            pool.shutdownNow()
+        }
+    }
+
+    @Test
+    fun admission_provider_exception_fails_closed_without_starting_tasks() {
+        val pool = Executors.newFixedThreadPool(2)
+        try {
+            val launches = java.util.concurrent.atomic.AtomicInteger(0)
+            val result = AgentParallelWaveExecutor(pool).executeAfterAdmission(
+                wave = wave(),
+                tasks = mapOf(
+                    stepA to AgentParallelWaveTask {
+                        launches.incrementAndGet()
+                        AgentParallelWaveTaskOutcome.Completed(stepA)
+                    },
+                    stepB to AgentParallelWaveTask {
+                        launches.incrementAndGet()
+                        AgentParallelWaveTaskOutcome.Completed(stepB)
+                    }
+                ),
+                timeoutMillis = 2_000,
+                admit = { throw IllegalStateException("admission backend unavailable") }
+            )
+            assertEquals(AgentParallelWaveExecutionState.PARTIAL, result.state)
+            assertEquals(0, launches.get())
+        } finally {
+            pool.shutdownNow()
+        }
+    }
+
+    @Test
     fun sibling_tasks_run_concurrently_but_results_publish_in_canonical_order() {
         val pool = Executors.newFixedThreadPool(2)
         try {
