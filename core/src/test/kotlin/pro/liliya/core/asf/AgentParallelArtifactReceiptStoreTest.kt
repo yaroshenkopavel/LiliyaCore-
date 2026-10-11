@@ -61,6 +61,31 @@ class AgentParallelArtifactReceiptStoreTest {
     }
 
     @Test
+    fun missing_payload_fails_closed_without_installing_receipt() {
+        val a = artifact("sha256:missing")
+        assertFalse(store().commitAndVerifyWithPayload(step, a) { false })
+        // No receipt may have been installed by the failed verification.
+        assertTrue(store().commitAndVerifyWithPayload(step, artifact("sha256:present")) { true })
+    }
+
+    @Test
+    fun verifier_exception_fails_closed() {
+        val a = artifact("sha256:missing")
+        assertFalse(store().commitAndVerifyWithPayload(step, a) { error("backend unavailable") })
+        assertTrue(store().commitAndVerifyWithPayload(step, artifact("sha256:present")) { true })
+    }
+
+    @Test
+    fun payload_must_remain_verifiable_after_receipt_readback() {
+        val a = artifact("sha256:present")
+        val checks = AtomicInteger()
+        assertFalse(store().commitAndVerifyWithPayload(step, a) {
+            checks.incrementAndGet() == 1
+        })
+        kotlin.test.assertEquals(2, checks.get())
+    }
+
+    @Test
     fun failed_backend_commit_never_returns_a_receipt() {
         backend.failNextCommit()
         assertFalse(store().commitAndVerify(step, artifact("sha256:a")))
