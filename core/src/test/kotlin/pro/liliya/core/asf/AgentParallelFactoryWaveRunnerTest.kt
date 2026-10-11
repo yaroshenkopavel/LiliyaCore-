@@ -248,14 +248,11 @@ class AgentParallelFactoryWaveRunnerTest {
                 }
             }
             kotlin.test.assertNotNull(recoveredLease).close()
-            // A new attempt must use fresh deterministic spawn identities.
-            // Reusing the failed attempt would produce the same artifact IDs.
+            // Increment the instance generation for a new execution. The
+            // existing role-attempt values (0 and 1) must stay within the
+            // PROTOTYPE maxRetryPerLogicalRole=1 admission limit.
             val retryEntries = entries.mapValues { (_, entry) ->
-                entry.copy(request = AgentSpawnRequest.create(
-                    entry.request.blueprint, entry.request.provenance,
-                    entry.request.cognitiveScope, entry.request.budget,
-                    entry.request.logicalRoleAttempt + 10
-                ))
+                entry.copy(generation = AgentInstanceGeneration(2))
             }
             val recovered = runner.runReservedCommitted(
                 ledger, wave(), retryEntries, AgentPopulationSnapshot(0, 0, 0),
