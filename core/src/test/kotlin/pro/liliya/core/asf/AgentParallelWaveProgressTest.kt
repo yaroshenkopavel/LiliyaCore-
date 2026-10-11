@@ -137,6 +137,42 @@ class AgentParallelWaveProgressTest {
     }
 
     @Test
+    fun artifact_receipt_cannot_be_reused_across_dependency_waves() {
+        val progress = AgentParallelWaveProgress()
+        val firstResult = AgentParallelWaveExecutionResult(
+            AgentParallelWaveExecutionState.COMPLETED,
+            listOf(AgentParallelWaveTaskOutcome.Completed(root, "artifact:shared"))
+        )
+        val afterFirst = assertNotNull(progress.advanceArtifactMatched(
+            schedule(), firstResult, mapOf(root to "artifact:shared")
+        ))
+        assertEquals(setOf("artifact:shared"), afterFirst.committedArtifactReferences)
+
+        val reused = AgentParallelWaveExecutionResult(
+            AgentParallelWaveExecutionState.COMPLETED,
+            listOf(
+                AgentParallelWaveTaskOutcome.Completed(a, "artifact:shared"),
+                AgentParallelWaveTaskOutcome.Completed(b, "artifact:distinct")
+            )
+        )
+        assertNull(afterFirst.advanceArtifactMatched(
+            schedule(), reused, mapOf(a to "artifact:shared", b to "artifact:distinct")
+        ))
+        val distinct = AgentParallelWaveExecutionResult(
+            AgentParallelWaveExecutionState.COMPLETED,
+            listOf(
+                AgentParallelWaveTaskOutcome.Completed(a, "artifact:a"),
+                AgentParallelWaveTaskOutcome.Completed(b, "artifact:b")
+            )
+        )
+        val completed = assertNotNull(afterFirst.advanceArtifactMatched(
+            schedule(), distinct, mapOf(a to "artifact:a", b to "artifact:b")
+        ))
+        assertEquals(setOf("artifact:shared", "artifact:a", "artifact:b"),
+            completed.committedArtifactReferences)
+    }
+
+    @Test
     fun forged_prior_completion_or_index_is_rejected() {
         val forged = AgentParallelWaveProgress(setOf(a), 1)
         assertNull(forged.advance(schedule(), success(listOf(a, b))))
