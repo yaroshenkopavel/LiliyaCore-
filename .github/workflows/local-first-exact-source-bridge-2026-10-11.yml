@@ -49,8 +49,8 @@ jobs:
           GRADLE_USER_HOME: ${{ runner.temp }}/liliya-gradle-home
         run: |
           set -euo pipefail
-          gradle :core:test --console=plain --no-daemon
-          gradle :core:test --offline --console=plain --no-daemon
+          gradle :core:test --configure-on-demand --console=plain --no-daemon
+          gradle :core:test --configure-on-demand --offline --console=plain --no-daemon
           mkdir -p "$RUNNER_TEMP/cache-export"
           tar -C "$RUNNER_TEMP" -czf "$RUNNER_TEMP/cache-export/gradle-home.tar.gz" liliya-gradle-home
           sha256sum "$RUNNER_TEMP/cache-export/gradle-home.tar.gz" > "$RUNNER_TEMP/cache-export/sha256.txt"
