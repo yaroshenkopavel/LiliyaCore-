@@ -95,7 +95,17 @@ class AgentParallelWaveExecutor(
         require(timeoutMillis > 0L)
         require(wave.stepIds.size <= wave.reservation.maxAgents)
         require(tasks.keys == wave.stepIds.toSet())
+        // Admission consumes the same wall-clock envelope as execution.
+        val startedNanos = System.nanoTime()
+        val ceilingNanos = TimeUnit.MILLISECONDS.toNanos(
+            minOf(timeoutMillis, wave.reservation.maxWallClockMillis)
+        )
         for (stepId in wave.stepIds) {
+            if (System.nanoTime() - startedNanos >= ceilingNanos) {
+                return AgentParallelWaveExecutionResult(
+                    AgentParallelWaveExecutionState.TIMED_OUT, emptyList()
+                )
+            }
             if (Thread.currentThread().isInterrupted || isCancelled(cancelled)) {
                 return AgentParallelWaveExecutionResult(
                     AgentParallelWaveExecutionState.CANCELLED, emptyList()
@@ -115,7 +125,25 @@ class AgentParallelWaveExecutor(
                 )
             }
         }
-        return execute(wave, tasks, timeoutMillis, cancelled)
+        if (Thread.currentThread().isInterrupted || isCancelled(cancelled)) {
+            return AgentParallelWaveExecutionResult(
+                AgentParallelWaveExecutionState.CANCELLED, emptyList()
+            )
+        }
+        val remainingNanos = ceilingNanos - (System.nanoTime() - startedNanos)
+        if (remainingNanos <= 0L) {
+            return AgentParallelWaveExecutionResult(
+                AgentParallelWaveExecutionState.TIMED_OUT, emptyList()
+            )
+        }
+        // Round down: never extend the reservation by a partial millisecond.
+        val remainingMillis = TimeUnit.NANOSECONDS.toMillis(remainingNanos)
+        if (remainingMillis <= 0L) {
+            return AgentParallelWaveExecutionResult(
+                AgentParallelWaveExecutionState.TIMED_OUT, emptyList()
+            )
+        }
+        return execute(wave, tasks, remainingMillis, cancelled)
     }
 
     fun execute(
