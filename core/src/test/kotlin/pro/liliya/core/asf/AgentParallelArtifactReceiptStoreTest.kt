@@ -61,6 +61,26 @@ class AgentParallelArtifactReceiptStoreTest {
     }
 
     @Test
+    fun atomic_payload_receipt_survives_reopen_with_exact_content() {
+        val bytes = "bounded durable artifact".toByteArray()
+        val sha = java.security.MessageDigest.getInstance("SHA-256").digest(bytes)
+            .joinToString("") { "%02x".format(it) }
+        val a = artifact("sha256:$sha")
+        assertTrue(store().commitPayloadAndReceipt(step, a, bytes))
+        assertTrue(store().commitPayloadAndReceipt(step, a, bytes))
+        assertFalse(store().commitPayloadAndReceipt(step, a, "forged".toByteArray()))
+    }
+
+    @Test
+    fun atomic_payload_receipt_rejects_wrong_digest_and_overlimit_size() {
+        assertFalse(store().commitPayloadAndReceipt(step, artifact("sha256:wrong"), "wrong".toByteArray()))
+        val bytes = ByteArray(512 * 1024 + 1)
+        val sha = java.security.MessageDigest.getInstance("SHA-256").digest(bytes)
+            .joinToString("") { "%02x".format(it) }
+        assertFalse(store().commitPayloadAndReceipt(step, artifact("sha256:$sha"), bytes))
+    }
+
+    @Test
     fun missing_payload_fails_closed_without_installing_receipt() {
         val a = artifact("sha256:missing")
         assertFalse(store().commitAndVerifyWithPayload(step, a) { false })
