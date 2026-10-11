@@ -20,6 +20,26 @@ class AgentFactory(
     private val auditLedger: AgentAuditLedger,
     private val timeSource: () -> Instant = { Instant.now() }
 ) {
+    /**
+     * Pure advisory preflight using the SAME registry and admission policy as
+     * runSingle. No AgentAdmission, instance, workspace, audit event or runtime
+     * is created. A positive result is NOT authorization to execute later:
+     * live population, parent state and budgets must be checked at dispatch.
+     */
+    fun previewAdmission(
+        request: AgentSpawnRequest,
+        population: AgentPopulationSnapshot,
+        parentScope: AgentCognitiveScope? = null,
+        parentRemainingBudget: AgentWorkBudget? = null
+    ): AgentAdmissionDecision =
+        admissionPolicy.evaluate(
+            request = request,
+            blueprint = registry.resolve(request.blueprint),
+            population = population,
+            parentScope = parentScope,
+            parentRemainingBudget = parentRemainingBudget
+        )
+
     fun runSingle(
         request: AgentSpawnRequest,
         population: AgentPopulationSnapshot,
