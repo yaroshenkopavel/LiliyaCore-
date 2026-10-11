@@ -238,6 +238,16 @@ class AgentParallelFactoryWaveRunnerTest {
                 commitAndVerify = { _, _ -> false }
             )
             assertEquals(AgentParallelWaveExecutionState.PARTIAL, failed.state)
+            // A sibling cancelled after the first durable-commit refusal may
+            // still be finishing. The next wave must wait for real lease release.
+            var recoveredLease: AgentParallelPopulationLedger.Lease? = null
+            repeat(100) {
+                if (recoveredLease == null) {
+                    recoveredLease = ledger.reserve(AgentRootTaskId("shared-root"), 2)
+                    if (recoveredLease == null) Thread.sleep(10)
+                }
+            }
+            kotlin.test.assertNotNull(recoveredLease).close()
             // A new attempt must use fresh deterministic spawn identities.
             // Reusing the failed attempt would produce the same artifact IDs.
             val retryEntries = entries.mapValues { (_, entry) ->
