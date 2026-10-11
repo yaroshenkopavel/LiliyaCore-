@@ -134,6 +134,60 @@ class AgentCoordinator(
         return schedule.waves.getOrNull(progress.nextWaveIndex)
     }
 
+    /**
+     * Experimental one-wave coordinator bridge. Uses the coordinator's own
+     * aggregate-budget schedule and refuses a mismatched checkpoint. Entry
+     * construction, factory admission and durable commit remain separately
+     * enforced. This is NOT the production runSequential path.
+     */
+    fun runExperimentalCommittedWave(
+        plan: AgentCoordinatorPlan,
+        progress: AgentParallelWaveProgress,
+        runner: AgentParallelFactoryWaveRunner,
+        ledger: AgentParallelPopulationLedger,
+        entries: Map<AgentCoordinatorStepId, AgentParallelFactoryWaveRunner.Entry>,
+        baselinePopulation: AgentPopulationSnapshot,
+        admittedAt: java.time.Instant,
+        expiresAt: java.time.Instant,
+        timeoutMillis: Long,
+        commitAndVerify: (AgentCoordinatorStepId, AgentArtifact) -> Boolean,
+        verifyStoredReference: (AgentCoordinatorStepId, String) -> Boolean,
+        cancelled: () -> Boolean = { false }
+    ): AgentParallelWaveProgress? {
+        val schedule = previewParallelSchedule(plan) as? AgentParallelScheduleResult.Ready
+            ?: return null
+        val wave = progress.let { previewNextVerifiedParallelWave(plan, it) }
+            ?: return null
+        // No worker-specific protected-tool admission is supplied by this bridge.
+        if (plan.steps.any { it.workerClass != null || it.protectedToolViewRequested }) return null
+        if (entries.keys != wave.stepIds.toSet()) return null
+        if (entries.any { (id, entry) ->
+                val planned = plan.step(id) ?: return null
+                entry.request.blueprint != planned.blueprint ||
+                    entry.request.cognitiveScope != planned.cognitiveScope ||
+                    entry.request.budget != planned.budget ||
+                    entry.request.provenance.rootTaskId != plan.rootTaskId
+            }
+        ) return null
+        val result = try {
+            runner.runReservedCommitted(
+                ledger, wave, entries, baselinePopulation, admittedAt,
+                expiresAt, timeoutMillis, commitAndVerify, cancelled
+            )
+        } catch (_: Exception) {
+            return null
+        }
+        if (result.state != AgentParallelWaveExecutionState.COMPLETED) return null
+        val receipts = result.outcomes.associate { outcome ->
+            val complete = outcome as? AgentParallelWaveTaskOutcome.Completed ?: return null
+            complete.stepId to (complete.artifactReference ?: return null)
+        }
+        // Never infer a durable commit from a task outcome alone.
+        return previewAdvanceReceiptCheckedParallelWave(
+            plan, progress, result, receipts, verifyStoredReference
+        )
+    }
+
     fun runSequential(
         plan: AgentCoordinatorPlan,
         runWindow: AgentCoordinatorRunWindow,
