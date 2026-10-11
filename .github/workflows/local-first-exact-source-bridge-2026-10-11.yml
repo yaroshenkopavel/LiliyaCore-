@@ -166,6 +166,7 @@ jobs:
           retention-days: 2
           if-no-files-found: error
   export-android-dependencies:
+    if: false # accepted 38178060481
     runs-on: ubuntu-latest
     timeout-minutes: 110
     steps:
@@ -263,5 +264,30 @@ jobs:
           path: |
             ${{ runner.temp }}/android-cache-export/manifest-sha256.txt
             ${{ runner.temp }}/android-cache-export/parts-sha256.txt
+          retention-days: 2
+          if-no-files-found: error
+  export-pinned-llama:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Fetch exact pinned native source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/native/llama.cpp" "$RUNNER_TEMP/native/export"
+          cd "$RUNNER_TEMP/native/llama.cpp"
+          git init -q
+          git remote add origin https://github.com/ggml-org/llama.cpp.git
+          git fetch -q --depth=1 origin 0f3a71be15af836d277c9f918adfafb45732677e
+          git checkout -q --detach FETCH_HEAD
+          test "$(git rev-parse HEAD)" = '0f3a71be15af836d277c9f918adfafb45732677e'
+          test -z "$(git status --porcelain --untracked-files=no)"
+          cd "$RUNNER_TEMP/native"
+          tar -czf export/llama-pinned-git.tar.gz llama.cpp
+          (cd export && sha256sum llama-pinned-git.tar.gz > sha256.txt)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-llama-source-0f3a71be
+          path: ${{ runner.temp }}/native/export/
           retention-days: 2
           if-no-files-found: error
