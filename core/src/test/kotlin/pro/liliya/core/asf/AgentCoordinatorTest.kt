@@ -39,6 +39,55 @@ class AgentCoordinatorTest {
     )
 
     @Test
+    fun experimental_coordinator_refuses_dependent_wave_without_bound_parent_instance() {
+        val pool = java.util.concurrent.Executors.newSingleThreadExecutor()
+        try {
+            val fullPlan = plan()
+            val schedule = assertIs<AgentParallelScheduleResult.Ready>(
+                AgentParallelScheduler.schedule(fullPlan, AgentAggregateBudget(
+                    60_000, 40_000, 256_000, 32, 8, 4
+                ))
+            )
+            val prior = assertIs<AgentParallelWaveTaskOutcome.Completed>(
+                AgentParallelWaveTaskOutcome.Completed(
+                    AgentCoordinatorStepId("research"), "asf-artifact:parent"
+                )
+            )
+            val progress = AgentParallelWaveProgress().advanceArtifactMatched(
+                schedule,
+                AgentParallelWaveExecutionResult(
+                    AgentParallelWaveExecutionState.COMPLETED, listOf(prior)
+                ),
+                mapOf(AgentCoordinatorStepId("research") to "asf-artifact:parent")
+            ) ?: error("test fixture failed")
+            val coordinator = coordinator(adapter = AgentRuntimeAdapter {
+                error("must not run")
+            })
+            val runner = AgentParallelFactoryWaveRunner(
+                AgentFactory(
+                    AgentBlueprintRegistry(listOf(researcher, verifier)),
+                    AgentAdmissionPolicy(
+                        AgentFactoryBounds.PROTOTYPE,
+                        AgentCognitiveScope.create(listOf("research", "verification")),
+                        parentBudget
+                    ),
+                    AgentRuntimeAdapter { error("must not run") },
+                    AgentAuditLedger { }
+                ), AgentParallelWaveExecutor(pool)
+            )
+            assertNull(coordinator.runExperimentalCommittedWave(
+                fullPlan, progress, runner, AgentParallelPopulationLedger(4, 4),
+                emptyMap(), AgentPopulationSnapshot(0, 0, 0),
+                now, expires, 2_000,
+                commitAndVerify = { _, _ -> error("must not commit") },
+                verifyStoredReference = { _, _ -> error("must not verify") }
+            ))
+        } finally {
+            pool.shutdownNow()
+        }
+    }
+
+    @Test
     fun experimental_coordinator_requires_stored_receipt_before_advancing() {
         val pool = java.util.concurrent.Executors.newSingleThreadExecutor()
         try {
