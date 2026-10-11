@@ -85,6 +85,33 @@ class AgentParallelWaveExecutor(
      * true result alone is not a capability, grant or persistent authority.
      * No task is submitted until EVERY member is admitted.
      */
+    /**
+     * Read-only AgentFactory policy preflight before the execution barrier.
+     * This does NOT mint an admission or authorize tasks: the caller MUST
+     * ensure each task performs fresh runSingle admission at dispatch time,
+     * with a live population snapshot and scoped budgets. Never use this
+     * wrapper to run a task that bypasses runSingle.
+     */
+    fun executeAfterFactoryPreflight(
+        wave: AgentParallelWave,
+        tasks: Map<AgentCoordinatorStepId, AgentParallelWaveTask>,
+        timeoutMillis: Long,
+        factory: AgentFactory,
+        requestForStep: (AgentCoordinatorStepId) -> AgentSpawnRequest,
+        populationForStep: (AgentCoordinatorStepId) -> AgentPopulationSnapshot,
+        parentScopeForStep: (AgentCoordinatorStepId) -> AgentCognitiveScope? = { null },
+        parentBudgetForStep: (AgentCoordinatorStepId) -> AgentWorkBudget? = { null },
+        cancelled: () -> Boolean = { false }
+    ): AgentParallelWaveExecutionResult =
+        executeAfterAdmission(wave, tasks, timeoutMillis, admit = { stepId ->
+            factory.previewAdmission(
+                request = requestForStep(stepId),
+                population = populationForStep(stepId),
+                parentScope = parentScopeForStep(stepId),
+                parentRemainingBudget = parentBudgetForStep(stepId)
+            ) is AgentAdmissionDecision.Admissible
+        }, cancelled = cancelled)
+
     fun executeAfterAdmission(
         wave: AgentParallelWave,
         tasks: Map<AgentCoordinatorStepId, AgentParallelWaveTask>,
