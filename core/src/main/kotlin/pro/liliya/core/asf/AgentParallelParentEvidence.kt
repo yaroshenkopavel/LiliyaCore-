@@ -24,5 +24,25 @@ class AgentParallelParentEvidence {
         ) == null
     }
 
+    /**
+     * Checks only recorded provenance and the caller's explicit scope/budget
+     * bounds. It does not authorize child execution or validate persistence.
+     */
+    fun matchesChild(
+        parentStepId: AgentCoordinatorStepId,
+        child: AgentSpawnRequest,
+        parentScope: AgentCognitiveScope,
+        parentRemainingBudget: AgentWorkBudget,
+        verifiedArtifactReference: String
+    ): Boolean {
+        val parent = completed[parentStepId] ?: return false
+        return child.provenance.parentAgentId == parent.instanceId &&
+            child.provenance.parentGeneration == parent.generation &&
+            child.provenance.depth > 0 &&
+            parent.artifactReference == verifiedArtifactReference &&
+            child.cognitiveScope.isWithin(parentScope) &&
+            child.budget.isWithin(parentRemainingBudget)
+    }
+
     fun get(stepId: AgentCoordinatorStepId): AgentParallelCompletedParent? = completed[stepId]
 }
