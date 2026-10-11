@@ -46,8 +46,27 @@ class AgentParallelFactoryWaveRunner(
                     wave.stepIds.first(), "parallel wave population reservation denied"
                 ))
             )
-        return lease.use {
-            run(wave, entries, baselinePopulation, admittedAt, expiresAt, timeoutMillis, cancelled)
+        // Each task races with controller cleanup to claim its own slot.
+        // Controller closes unstarted slots; started slots close only in the
+        // actual runtime thread's finally, even if it ignores interruption.
+        val unclaimed = wave.stepIds.associateWith { java.util.concurrent.atomic.AtomicBoolean(false) }
+        val remaining = java.util.concurrent.atomic.AtomicInteger(wave.stepIds.size)
+        val releaseOne = {
+            if (remaining.decrementAndGet() == 0) lease.close()
+        }
+        try {
+            return runInternal(
+                wave, entries, baselinePopulation, admittedAt, expiresAt,
+                timeoutMillis, cancelled,
+                taskGate = { stepId -> unclaimed.getValue(stepId).compareAndSet(false, true) },
+                taskFinished = { releaseOne() }
+            )
+        } finally {
+            // After the executor returns, prevent a queued task from entering
+            // runSingle even if its cancellation was not observed by the pool.
+            wave.stepIds.forEach { id ->
+                if (unclaimed.getValue(id).compareAndSet(false, true)) releaseOne()
+            }
         }
     }
 
@@ -59,6 +78,19 @@ class AgentParallelFactoryWaveRunner(
         expiresAt: Instant,
         timeoutMillis: Long,
         cancelled: () -> Boolean = { false }
+    ): AgentParallelWaveExecutionResult =
+        runInternal(wave, entries, baselinePopulation, admittedAt, expiresAt, timeoutMillis, cancelled)
+
+    private fun runInternal(
+        wave: AgentParallelWave,
+        entries: Map<AgentCoordinatorStepId, Entry>,
+        baselinePopulation: AgentPopulationSnapshot,
+        admittedAt: Instant,
+        expiresAt: Instant,
+        timeoutMillis: Long,
+        cancelled: () -> Boolean,
+        taskGate: (AgentCoordinatorStepId) -> Boolean = { true },
+        taskFinished: (AgentCoordinatorStepId) -> Unit = {}
     ): AgentParallelWaveExecutionResult {
         require(entries.keys == wave.stepIds.toSet())
         require(wave.stepIds.size <= wave.reservation.maxAgents)
@@ -79,6 +111,9 @@ class AgentParallelFactoryWaveRunner(
                 directChildrenForParent = baselinePopulation.directChildrenForParent
             )
             stepId to AgentParallelWaveTask {
+                if (!taskGate(stepId)) {
+                    AgentParallelWaveTaskOutcome.Failed(stepId, "parallel wave task no longer reserved")
+                } else try {
                 val result = factory.runSingle(
                     request = entry.request,
                     population = population,
@@ -105,6 +140,9 @@ class AgentParallelFactoryWaveRunner(
                             )
                         }
                     }
+                }
+                } finally {
+                    taskFinished(stepId)
                 }
             }
         }
