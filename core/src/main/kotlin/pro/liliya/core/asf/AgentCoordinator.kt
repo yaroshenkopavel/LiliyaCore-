@@ -178,6 +178,14 @@ class AgentCoordinator(
                 if (parentId !in progress.completedStepIds) return null
                 val parent = evidence.get(parentId) ?: return null
                 if (parent.artifactReference !in progress.committedArtifactReferences) return null
+                // Revalidate prior-wave persistence at the moment of child
+                // dispatch, not only when the earlier checkpoint was written.
+                val parentStillCommitted = try {
+                    verifyStoredReference(parentId, parent.artifactReference)
+                } catch (_: Exception) {
+                    false
+                }
+                if (!parentStillCommitted) return null
                 val parentStep = plan.step(parentId) ?: return null
                 if (entry.parentScope != parentStep.cognitiveScope ||
                     entry.parentRemainingBudget == null ||
