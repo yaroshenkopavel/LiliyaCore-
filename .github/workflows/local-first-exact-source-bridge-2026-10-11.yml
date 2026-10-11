@@ -1,0 +1,62 @@
+name: Local First Exact Source Bridge 2026-10-11
+on:
+  push:
+    branches: [technical/local-env-bridge-2026-10-11]
+permissions:
+  contents: read
+jobs:
+  export-source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 44ccbc140d3730b56c0601a8a3b8cfc2ba045a1f
+          fetch-depth: 0
+      - name: Verify exact code identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = '44ccbc140d3730b56c0601a8a3b8cfc2ba045a1f'
+          test "$(git rev-parse HEAD^{tree})" = '1bdcf93ff6692ab251ace13f73a5d978805a9cbc'
+      - name: Export worktree and Git metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/source"
+          git archive --format=tar.gz -o "$RUNNER_TEMP/source/worktree.tar.gz" HEAD
+          tar -czf "$RUNNER_TEMP/source/git.tar.gz" .git
+          echo 'head=44ccbc140d3730b56c0601a8a3b8cfc2ba045a1f' > "$RUNNER_TEMP/source/manifest.txt"
+          echo 'tree=1bdcf93ff6692ab251ace13f73a5d978805a9cbc' >> "$RUNNER_TEMP/source/manifest.txt"
+          cd "$RUNNER_TEMP/source"
+          sha256sum worktree.tar.gz git.tar.gz >> manifest.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-source-exact-44ccbc14
+          path: ${{ runner.temp }}/source/
+          retention-days: 1
+          if-no-files-found: error
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.1'
+      - name: Warm and verify core dependency cache
+        shell: bash
+        env:
+          GRADLE_USER_HOME: ${{ runner.temp }}/liliya-gradle-home
+        run: |
+          set -euo pipefail
+          gradle :core:test --console=plain --no-daemon
+          gradle :core:test --offline --console=plain --no-daemon
+          mkdir -p "$RUNNER_TEMP/cache-export"
+          tar -C "$RUNNER_TEMP" -czf "$RUNNER_TEMP/cache-export/gradle-home.tar.gz" liliya-gradle-home
+          sha256sum "$RUNNER_TEMP/cache-export/gradle-home.tar.gz" > "$RUNNER_TEMP/cache-export/sha256.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-core-gradle-cache-44ccbc14
+          path: ${{ runner.temp }}/cache-export/
+          retention-days: 1
+          if-no-files-found: error
