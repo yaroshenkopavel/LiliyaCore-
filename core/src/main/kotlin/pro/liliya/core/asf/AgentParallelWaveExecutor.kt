@@ -79,6 +79,45 @@ data class AgentParallelWaveExecutionResult(
 class AgentParallelWaveExecutor(
     private val executor: ExecutorService
 ) {
+    /**
+     * Opt-in pre-dispatch barrier for an independently authorized wave.
+     * The supplied callback must be backed by real AgentFactory admission; a
+     * true result alone is not a capability, grant or persistent authority.
+     * No task is submitted until EVERY member is admitted.
+     */
+    fun executeAfterAdmission(
+        wave: AgentParallelWave,
+        tasks: Map<AgentCoordinatorStepId, AgentParallelWaveTask>,
+        timeoutMillis: Long,
+        admit: (AgentCoordinatorStepId) -> Boolean,
+        cancelled: () -> Boolean = { false }
+    ): AgentParallelWaveExecutionResult {
+        require(timeoutMillis > 0L)
+        require(wave.stepIds.size <= wave.reservation.maxAgents)
+        require(tasks.keys == wave.stepIds.toSet())
+        for (stepId in wave.stepIds) {
+            if (Thread.currentThread().isInterrupted || isCancelled(cancelled)) {
+                return AgentParallelWaveExecutionResult(
+                    AgentParallelWaveExecutionState.CANCELLED, emptyList()
+                )
+            }
+            val admitted = try {
+                admit(stepId)
+            } catch (_: Exception) {
+                false
+            }
+            if (!admitted) {
+                return AgentParallelWaveExecutionResult(
+                    AgentParallelWaveExecutionState.PARTIAL,
+                    listOf(AgentParallelWaveTaskOutcome.Failed(
+                        stepId, "parallel wave admission denied"
+                    ))
+                )
+            }
+        }
+        return execute(wave, tasks, timeoutMillis, cancelled)
+    }
+
     fun execute(
         wave: AgentParallelWave,
         tasks: Map<AgentCoordinatorStepId, AgentParallelWaveTask>,
