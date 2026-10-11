@@ -133,6 +133,70 @@ class AgentParallelFactoryWaveRunnerTest {
         }
     }
 
+    @Test
+    fun timeout_keeps_population_reserved_until_uncooperative_worker_exits() {
+        val pool = Executors.newFixedThreadPool(2)
+        val entered = java.util.concurrent.CountDownLatch(1)
+        val release = java.util.concurrent.CountDownLatch(1)
+        try {
+            val now = Instant.parse("2026-10-11T00:00:00Z")
+            val blueprint = AgentBlueprint.create(
+                AgentBlueprintVersion(1), "researcher", "analysis",
+                AgentCognitiveScope.create(listOf("research"))
+            )
+            val budget = AgentWorkBudget(30_000, 20_000, 128_000, 16, 4, 2)
+            val factory = AgentFactory(
+                AgentBlueprintRegistry(listOf(blueprint)),
+                AgentAdmissionPolicy(
+                    AgentFactoryBounds.PROTOTYPE, blueprint.cognitiveScope, budget
+                ),
+                AgentRuntimeAdapter { context ->
+                    entered.countDown()
+                    // Model an uncooperative runtime that ignores interrupts.
+                    while (release.count > 0) {
+                        try { release.await(20, java.util.concurrent.TimeUnit.MILLISECONDS) }
+                        catch (_: InterruptedException) { }
+                    }
+                    AgentRuntimeOutcome.Completed(
+                        "research-report", "sha256:result",
+                        context.workspace.inputReferences,
+                        AgentRuntimeUsage(100, 100, 1024, 1, 1)
+                    )
+                },
+                AgentAuditLedger { }, timeSource = { now }
+            )
+            val request = AgentSpawnRequest.create(
+                AgentBlueprintReference(blueprint.id, blueprint.version),
+                AgentSpawnProvenance(AgentRootTaskId("shared-root"), null, null, 0),
+                blueprint.cognitiveScope, budget
+            )
+            val entry = AgentParallelFactoryWaveRunner.Entry(
+                request, AgentInstanceGeneration(1), listOf("evidence:a")
+            )
+            val ledger = AgentParallelPopulationLedger(1, 1)
+            val one = AgentParallelWave(0, listOf(a),
+                AgentParallelWaveReservation(80, 20_000, 128_000, 16, 4, 1))
+            val result = AgentParallelFactoryWaveRunner(factory, AgentParallelWaveExecutor(pool))
+                .runReserved(ledger, one, mapOf(a to entry),
+                    AgentPopulationSnapshot(0, 0, 0), now, now.plusSeconds(300), 80)
+            assertEquals(AgentParallelWaveExecutionState.TIMED_OUT, result.state)
+            kotlin.test.assertTrue(entered.count == 0L)
+            kotlin.test.assertNull(ledger.reserve(AgentRootTaskId("other"), 1))
+            release.countDown()
+            var next: AgentParallelPopulationLedger.Lease? = null
+            repeat(100) {
+                if (next == null) {
+                    next = ledger.reserve(AgentRootTaskId("other"), 1)
+                    if (next == null) Thread.sleep(10)
+                }
+            }
+            kotlin.test.assertNotNull(next).close()
+        } finally {
+            release.countDown()
+            pool.shutdownNow()
+        }
+    }
+
     private fun wave() = AgentParallelWave(
         0, listOf(a, b),
         AgentParallelWaveReservation(2_000, 40_000, 256_000, 32, 8, 2)
