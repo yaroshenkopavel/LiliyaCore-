@@ -25,6 +25,27 @@ class AgentParallelFactoryWaveRunner(
      * snapshot remains owner-supplied; distributed or external executions
      * are NOT covered by this in-process mechanism.
      */
+    /**
+     * Experimental durable-commit gate: the owning storage layer must commit
+     * and verify the exact produced artifact before reporting true. False or
+     * exception fails the wave; this callback never grants execution authority.
+     */
+    fun runReservedCommitted(
+        ledger: AgentParallelPopulationLedger,
+        wave: AgentParallelWave,
+        entries: Map<AgentCoordinatorStepId, Entry>,
+        baselinePopulation: AgentPopulationSnapshot,
+        admittedAt: Instant,
+        expiresAt: Instant,
+        timeoutMillis: Long,
+        commitAndVerify: (AgentCoordinatorStepId, AgentArtifact) -> Boolean,
+        cancelled: () -> Boolean = { false }
+    ): AgentParallelWaveExecutionResult =
+        runReservedInternal(
+            ledger, wave, entries, baselinePopulation, admittedAt, expiresAt,
+            timeoutMillis, cancelled, commitAndVerify
+        )
+
     fun runReserved(
         ledger: AgentParallelPopulationLedger,
         wave: AgentParallelWave,
@@ -34,6 +55,22 @@ class AgentParallelFactoryWaveRunner(
         expiresAt: Instant,
         timeoutMillis: Long,
         cancelled: () -> Boolean = { false }
+    ): AgentParallelWaveExecutionResult =
+        runReservedInternal(
+            ledger, wave, entries, baselinePopulation, admittedAt, expiresAt,
+            timeoutMillis, cancelled, null
+        )
+
+    private fun runReservedInternal(
+        ledger: AgentParallelPopulationLedger,
+        wave: AgentParallelWave,
+        entries: Map<AgentCoordinatorStepId, Entry>,
+        baselinePopulation: AgentPopulationSnapshot,
+        admittedAt: Instant,
+        expiresAt: Instant,
+        timeoutMillis: Long,
+        cancelled: () -> Boolean,
+        commitAndVerify: ((AgentCoordinatorStepId, AgentArtifact) -> Boolean)?
     ): AgentParallelWaveExecutionResult {
         require(entries.keys == wave.stepIds.toSet())
         require(entries.isNotEmpty())
@@ -59,7 +96,8 @@ class AgentParallelFactoryWaveRunner(
                 wave, entries, baselinePopulation, admittedAt, expiresAt,
                 timeoutMillis, cancelled,
                 taskGate = { stepId -> unclaimed.getValue(stepId).compareAndSet(false, true) },
-                taskFinished = { releaseOne() }
+                taskFinished = { releaseOne() },
+                commitAndVerify = commitAndVerify
             )
         } finally {
             // After the executor returns, prevent a queued task from entering
@@ -90,7 +128,8 @@ class AgentParallelFactoryWaveRunner(
         timeoutMillis: Long,
         cancelled: () -> Boolean,
         taskGate: (AgentCoordinatorStepId) -> Boolean = { true },
-        taskFinished: (AgentCoordinatorStepId) -> Unit = {}
+        taskFinished: (AgentCoordinatorStepId) -> Unit = {},
+        commitAndVerify: ((AgentCoordinatorStepId, AgentArtifact) -> Boolean)? = null
     ): AgentParallelWaveExecutionResult {
         require(entries.keys == wave.stepIds.toSet())
         require(wave.stepIds.size <= wave.reservation.maxAgents)
@@ -135,9 +174,20 @@ class AgentParallelFactoryWaveRunner(
                         ) {
                             AgentParallelWaveTaskOutcome.Failed(stepId, "agent factory did not complete")
                         } else {
-                            AgentParallelWaveTaskOutcome.Completed(
-                                stepId, "asf-artifact:${artifact.id.value}"
-                            )
+                            val committed = try {
+                                commitAndVerify?.invoke(stepId, artifact) ?: (commitAndVerify == null)
+                            } catch (_: Exception) {
+                                false
+                            }
+                            if (!committed) {
+                                AgentParallelWaveTaskOutcome.Failed(
+                                    stepId, "agent artifact durable commit not verified"
+                                )
+                            } else {
+                                AgentParallelWaveTaskOutcome.Completed(
+                                    stepId, "asf-artifact:${artifact.id.value}"
+                                )
+                            }
                         }
                     }
                 }
