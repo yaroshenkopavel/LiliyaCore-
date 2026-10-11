@@ -93,6 +93,7 @@ jobs:
           retention-days: 1
           if-no-files-found: error
   export-android-toolchain:
+    if: false # accepted 38177485270
     runs-on: ubuntu-latest
     timeout-minutes: 100
     steps:
@@ -162,5 +163,105 @@ jobs:
           path: |
             ${{ runner.temp }}/sdk-export/manifest-sha256.txt
             ${{ runner.temp }}/sdk-export/parts-sha256.txt
+          retention-days: 2
+          if-no-files-found: error
+  export-android-dependencies:
+    runs-on: ubuntu-latest
+    timeout-minutes: 110
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 44ccbc140d3730b56c0601a8a3b8cfc2ba045a1f
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.1'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+        with:
+          packages: platform-tools
+      - name: Install Android API 35 and NDK 29
+        run: |
+          set -euo pipefail
+          sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'build-tools;36.0.0' 'ndk;29.0.13113456' 'cmake;3.31.6'
+      - name: Warm complete Android test dependencies and export
+        shell: bash
+        env:
+          GRADLE_USER_HOME: ${{ runner.temp }}/liliya-android-gradle-home
+        run: |
+          set -euo pipefail
+          mkdir -p "$GRADLE_USER_HOME"
+          bash .github/ci/configure-gradle-memory.sh
+          cp "$HOME/.gradle/gradle.properties" "$GRADLE_USER_HOME/gradle.properties"
+          gradle :core:test :android-runtime:testDebugUnitTest :android-app:testDebugUnitTest :android-app:compileDebugAndroidTestKotlin --configure-on-demand --console=plain --no-daemon
+          gradle :core:test :android-runtime:testDebugUnitTest :android-app:testDebugUnitTest :android-app:compileDebugAndroidTestKotlin --configure-on-demand --offline --console=plain --no-daemon
+          mkdir -p "$RUNNER_TEMP/android-cache-export/parts"
+          tar -C "$RUNNER_TEMP" -czf "$RUNNER_TEMP/android-cache-export/android-gradle-cache.tar.gz" liliya-android-gradle-home
+          (cd "$RUNNER_TEMP/android-cache-export" && sha256sum android-gradle-cache.tar.gz > manifest-sha256.txt)
+          split -b 240M -d -a 2 "$RUNNER_TEMP/android-cache-export/android-gradle-cache.tar.gz" "$RUNNER_TEMP/android-cache-export/parts/part."
+          (cd "$RUNNER_TEMP/android-cache-export/parts" && sha256sum part.* > ../parts-sha256.txt)
+          ls -lh "$RUNNER_TEMP/android-cache-export/parts"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-android-cache-part00-44ccbc14
+          path: ${{ runner.temp }}/android-cache-export/parts/part.00
+          retention-days: 2
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-android-cache-part01-44ccbc14
+          path: ${{ runner.temp }}/android-cache-export/parts/part.01
+          retention-days: 2
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-android-cache-part02-44ccbc14
+          path: ${{ runner.temp }}/android-cache-export/parts/part.02
+          retention-days: 2
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-android-cache-part03-44ccbc14
+          path: ${{ runner.temp }}/android-cache-export/parts/part.03
+          retention-days: 2
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-android-cache-part04-44ccbc14
+          path: ${{ runner.temp }}/android-cache-export/parts/part.04
+          retention-days: 2
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-android-cache-part05-44ccbc14
+          path: ${{ runner.temp }}/android-cache-export/parts/part.05
+          retention-days: 2
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-android-cache-part06-44ccbc14
+          path: ${{ runner.temp }}/android-cache-export/parts/part.06
+          retention-days: 2
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-android-cache-part07-44ccbc14
+          path: ${{ runner.temp }}/android-cache-export/parts/part.07
+          retention-days: 2
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-android-cache-part08-44ccbc14
+          path: ${{ runner.temp }}/android-cache-export/parts/part.08
+          retention-days: 2
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-android-cache-manifest-44ccbc14
+          path: |
+            ${{ runner.temp }}/android-cache-export/manifest-sha256.txt
+            ${{ runner.temp }}/android-cache-export/parts-sha256.txt
           retention-days: 2
           if-no-files-found: error
