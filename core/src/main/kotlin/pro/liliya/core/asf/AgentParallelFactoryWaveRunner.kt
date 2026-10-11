@@ -39,11 +39,12 @@ class AgentParallelFactoryWaveRunner(
         expiresAt: Instant,
         timeoutMillis: Long,
         commitAndVerify: (AgentCoordinatorStepId, AgentArtifact) -> Boolean,
-        cancelled: () -> Boolean = { false }
+        cancelled: () -> Boolean = { false },
+        parentEvidence: AgentParallelParentEvidence? = null
     ): AgentParallelWaveExecutionResult =
         runReservedInternal(
             ledger, wave, entries, baselinePopulation, admittedAt, expiresAt,
-            timeoutMillis, cancelled, commitAndVerify
+            timeoutMillis, cancelled, commitAndVerify, parentEvidence
         )
 
     fun runReserved(
@@ -70,7 +71,8 @@ class AgentParallelFactoryWaveRunner(
         expiresAt: Instant,
         timeoutMillis: Long,
         cancelled: () -> Boolean,
-        commitAndVerify: ((AgentCoordinatorStepId, AgentArtifact) -> Boolean)?
+        commitAndVerify: ((AgentCoordinatorStepId, AgentArtifact) -> Boolean)?,
+        parentEvidence: AgentParallelParentEvidence? = null
     ): AgentParallelWaveExecutionResult {
         require(entries.keys == wave.stepIds.toSet())
         require(entries.isNotEmpty())
@@ -97,7 +99,8 @@ class AgentParallelFactoryWaveRunner(
                 timeoutMillis, cancelled,
                 taskGate = { stepId -> unclaimed.getValue(stepId).compareAndSet(false, true) },
                 taskFinished = { releaseOne() },
-                commitAndVerify = commitAndVerify
+                commitAndVerify = commitAndVerify,
+                parentEvidence = parentEvidence
             )
         } finally {
             // After the executor returns, prevent a queued task from entering
@@ -129,7 +132,8 @@ class AgentParallelFactoryWaveRunner(
         cancelled: () -> Boolean,
         taskGate: (AgentCoordinatorStepId) -> Boolean = { true },
         taskFinished: (AgentCoordinatorStepId) -> Unit = {},
-        commitAndVerify: ((AgentCoordinatorStepId, AgentArtifact) -> Boolean)? = null
+        commitAndVerify: ((AgentCoordinatorStepId, AgentArtifact) -> Boolean)? = null,
+        parentEvidence: AgentParallelParentEvidence? = null
     ): AgentParallelWaveExecutionResult {
         require(entries.keys == wave.stepIds.toSet())
         require(wave.stepIds.size <= wave.reservation.maxAgents)
@@ -182,6 +186,12 @@ class AgentParallelFactoryWaveRunner(
                             if (!committed) {
                                 AgentParallelWaveTaskOutcome.Failed(
                                     stepId, "agent artifact durable commit not verified"
+                                )
+                            } else if (parentEvidence != null &&
+                                !parentEvidence.record(stepId, result.instance, artifact)
+                            ) {
+                                AgentParallelWaveTaskOutcome.Failed(
+                                    stepId, "completed parent identity could not be recorded"
                                 )
                             } else {
                                 AgentParallelWaveTaskOutcome.Completed(
