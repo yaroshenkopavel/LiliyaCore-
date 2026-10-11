@@ -7,6 +7,7 @@ package pro.liliya.core.asf
 data class AgentParallelCompletedParent(
     val instanceId: AgentInstanceId,
     val generation: AgentInstanceGeneration,
+    val rootTaskId: AgentRootTaskId,
     val artifactReference: String
 )
 
@@ -15,11 +16,12 @@ class AgentParallelParentEvidence {
 
     fun record(stepId: AgentCoordinatorStepId, instance: AgentInstance, artifact: AgentArtifact): Boolean {
         if (instance.lifecycle != AgentLifecycleState.COMPLETED) return false
+        if (instance.provenance.rootTaskId != artifact.rootTaskId) return false
         if (artifact.producerId != instance.id || artifact.producerGeneration != instance.generation) return false
         val reference = "asf-artifact:${artifact.id.value}"
         return completed.putIfAbsent(
             stepId, AgentParallelCompletedParent(
-                instance.id, instance.generation, reference
+                instance.id, instance.generation, instance.provenance.rootTaskId, reference
             )
         ) == null
     }
@@ -36,7 +38,8 @@ class AgentParallelParentEvidence {
         verifiedArtifactReference: String
     ): Boolean {
         val parent = completed[parentStepId] ?: return false
-        return child.provenance.parentAgentId == parent.instanceId &&
+        return child.provenance.rootTaskId == parent.rootTaskId &&
+            child.provenance.parentAgentId == parent.instanceId &&
             child.provenance.parentGeneration == parent.generation &&
             child.provenance.depth > 0 &&
             parent.artifactReference == verifiedArtifactReference &&
