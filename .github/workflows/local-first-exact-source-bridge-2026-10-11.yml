@@ -43,6 +43,9 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.6.1'
+      - name: Configure existing hosted memory policy
+        shell: bash
+        run: bash .github/ci/configure-gradle-memory.sh
       - name: Warm and verify core dependency cache
         shell: bash
         env:
