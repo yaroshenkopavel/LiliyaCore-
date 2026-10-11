@@ -1,0 +1,65 @@
+name: ASF Atomic Durable Android Acceptance
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/asf-atomic-durable-android.yml'
+      - 'android-durable-persistence/src/androidTest/kotlin/pro/liliya/android/persistence/AsfAtomicArtifactDurabilityInstrumentedTest.kt'
+      - 'core/src/main/kotlin/pro/liliya/core/asf/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  durable-artifact-emulator:
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@4c125117fe7c5aed11272ec4213f602f012f89f2
+        with:
+          gradle-version: '9.6.1'
+      - run: bash .github/ci/configure-gradle-memory.sh
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+        with:
+          packages: platform-tools
+      - run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools" "ndk;29.0.13113456" "cmake;3.31.6"
+      - name: Compile durable backend instrumentation
+        run: gradle :android-durable-persistence:assembleDebugAndroidTest --console=plain --no-daemon
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Verify durable artifact reopen and corruption
+        uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          disable-animations: true
+          script: |
+            set -eu
+            find android-durable-persistence/build/outputs/apk -name '*.apk' -print
+            adb install -r android-durable-persistence/build/outputs/apk/debug/android-durable-persistence-debug.apk
+            adb install -r android-durable-persistence/build/outputs/apk/androidTest/debug/android-durable-persistence-debug-androidTest.apk
+            adb shell am instrument -w -r -e class pro.liliya.android.persistence.AsfAtomicArtifactDurabilityInstrumentedTest pro.liliya.android.persistence.test/androidx.test.runner.AndroidJUnitRunner | tee "$RUNNER_TEMP/asf-durable-instrumentation.txt"
+            grep -Eq 'OK \(1 test\)' "$RUNNER_TEMP/asf-durable-instrumentation.txt"
+            ! grep -Eq 'FAILURES!!!|INSTRUMENTATION_FAILED|INSTRUMENTATION_STATUS: stack=' "$RUNNER_TEMP/asf-durable-instrumentation.txt"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: asf-atomic-durable-android-${{ github.event.pull_request.head.sha || github.sha }}
+          path: ${{ runner.temp }}/asf-durable-instrumentation.txt
+          if-no-files-found: warn
+          retention-days: 7
