@@ -91,3 +91,72 @@ jobs:
           path: ${{ runner.temp }}/toolchain-export/
           retention-days: 1
           if-no-files-found: error
+  export-android-toolchain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 100
+    steps:
+      - name: Install exact Android SDK NDK and CMake
+        shell: bash
+        run: |
+          set -euo pipefail
+          export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          yes | sdkmanager --licenses > /dev/null || test "${PIPESTATUS[1]}" -eq 0
+          sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'build-tools;36.0.0' 'platform-tools' 'ndk;29.0.13113456' 'cmake;3.31.6'
+          test -f "$ANDROID_HOME/ndk/29.0.13113456/source.properties"
+          test -x "$ANDROID_HOME/cmake/3.31.6/bin/cmake"
+          mkdir -p "$RUNNER_TEMP/sdk-export/core" "$RUNNER_TEMP/sdk-export/ndk"
+          for p in platforms/android-35 build-tools/35.0.0 build-tools/36.0.0 platform-tools cmake/3.31.6; do
+            mkdir -p "$RUNNER_TEMP/sdk-export/core/$(dirname "$p")"
+            cp -a "$ANDROID_HOME/$p" "$RUNNER_TEMP/sdk-export/core/$p"
+          done
+          tar -C "$RUNNER_TEMP/sdk-export/core" -czf "$RUNNER_TEMP/sdk-export/android-sdk-core.tar.gz" .
+          tar -C "$ANDROID_HOME/ndk" -czf "$RUNNER_TEMP/sdk-export/ndk.tar.gz" 29.0.13113456
+          gzip -t "$RUNNER_TEMP/sdk-export/ndk.tar.gz"
+          split -b 240M -d -a 2 "$RUNNER_TEMP/sdk-export/ndk.tar.gz" "$RUNNER_TEMP/sdk-export/ndk/part."
+          (cd "$RUNNER_TEMP/sdk-export" && sha256sum android-sdk-core.tar.gz ndk.tar.gz > manifest-sha256.txt)
+          (cd "$RUNNER_TEMP/sdk-export/ndk" && sha256sum part.* > ../parts-sha256.txt)
+          ls -lh "$RUNNER_TEMP/sdk-export/ndk"/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-sdk-core-44ccbc14
+          path: ${{ runner.temp }}/sdk-export/android-sdk-core.tar.gz
+          retention-days: 2
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-sdk-ndk-part00-44ccbc14
+          path: ${{ runner.temp }}/sdk-export/ndk/part.00
+          retention-days: 2
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-sdk-ndk-part01-44ccbc14
+          path: ${{ runner.temp }}/sdk-export/ndk/part.01
+          retention-days: 2
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-sdk-ndk-part02-44ccbc14
+          path: ${{ runner.temp }}/sdk-export/ndk/part.02
+          retention-days: 2
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-sdk-ndk-part03-44ccbc14
+          path: ${{ runner.temp }}/sdk-export/ndk/part.03
+          retention-days: 2
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-sdk-ndk-part04-44ccbc14
+          path: ${{ runner.temp }}/sdk-export/ndk/part.04
+          retention-days: 2
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-sdk-manifest-44ccbc14
+          path: |
+            ${{ runner.temp }}/sdk-export/manifest-sha256.txt
+            ${{ runner.temp }}/sdk-export/parts-sha256.txt
+          retention-days: 2
+          if-no-files-found: error
