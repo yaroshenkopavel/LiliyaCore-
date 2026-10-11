@@ -9,7 +9,9 @@ package pro.liliya.core.asf
  */
 data class AgentParallelWaveProgress(
     val completedStepIds: Set<AgentCoordinatorStepId> = emptySet(),
-    val nextWaveIndex: Int = 0
+    val nextWaveIndex: Int = 0,
+    // Advisory history only: never treat references as proof of durable commits.
+    val committedArtifactReferences: Set<String> = emptySet()
 ) {
     init {
         require(nextWaveIndex >= 0)
@@ -46,6 +48,8 @@ data class AgentParallelWaveProgress(
         val receipts = committedArtifacts.values
         if (receipts.any { it.isBlank() || it.toByteArray(Charsets.UTF_8).size > 256 }) return null
         if (receipts.toSet().size != receipts.size) return null
+        // A previous wave cannot contribute the same artifact receipt twice.
+        if (receipts.any { it in committedArtifactReferences }) return null
         val completed = waveResult.outcomes.map {
             it as? AgentParallelWaveTaskOutcome.Completed ?: return null
         }
@@ -55,7 +59,11 @@ data class AgentParallelWaveProgress(
                 reference == null || committedArtifacts[it.stepId] != reference
             }
         ) return null
-        return advanceVerified(schedule, waveResult, committedArtifacts.keys)
+        val advanced = advanceVerified(schedule, waveResult, committedArtifacts.keys)
+            ?: return null
+        return advanced.copy(
+            committedArtifactReferences = committedArtifactReferences + receipts
+        )
     }
 
     fun advance(
