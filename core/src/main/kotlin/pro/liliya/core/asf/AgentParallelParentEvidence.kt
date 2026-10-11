@@ -7,8 +7,6 @@ package pro.liliya.core.asf
 data class AgentParallelCompletedParent(
     val instanceId: AgentInstanceId,
     val generation: AgentInstanceGeneration,
-    val scope: AgentCognitiveScope,
-    val budget: AgentWorkBudget,
     val artifactReference: String
 )
 
@@ -21,8 +19,7 @@ class AgentParallelParentEvidence {
         val reference = "asf-artifact:${artifact.id.value}"
         return completed.putIfAbsent(
             stepId, AgentParallelCompletedParent(
-                instance.id, instance.generation, instance.cognitiveScope,
-                instance.budget, reference
+                instance.id, instance.generation, reference
             )
         ) == null
     }
