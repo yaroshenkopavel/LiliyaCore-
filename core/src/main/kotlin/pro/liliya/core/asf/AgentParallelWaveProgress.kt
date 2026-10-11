@@ -42,6 +42,9 @@ data class AgentParallelWaveProgress(
         committedArtifacts: Map<AgentCoordinatorStepId, String>
     ): AgentParallelWaveProgress? {
         val wave = schedule.waves.getOrNull(nextWaveIndex) ?: return null
+        // Do not upgrade a bare/advisory checkpoint into an artifact-verified
+        // chain: every previously completed step must already have one receipt.
+        if (committedArtifactReferences.size != completedStepIds.size) return null
         if (committedArtifacts.keys != wave.stepIds.toSet()) return null
         // A single receipt cannot prove two independent durable commits.
         // Reject missing, malformed or reused references before advancing.
