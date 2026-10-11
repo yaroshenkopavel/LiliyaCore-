@@ -249,6 +249,55 @@ class AgentParallelFactoryWaveRunnerTest {
         }
     }
 
+    @Test
+    fun committed_factory_wave_records_actual_parent_identity() {
+        val pool = Executors.newSingleThreadExecutor()
+        try {
+            val now = Instant.parse("2026-10-11T00:00:00Z")
+            val blueprint = AgentBlueprint.create(
+                AgentBlueprintVersion(1), "researcher", "analysis",
+                AgentCognitiveScope.create(listOf("research"))
+            )
+            val budget = AgentWorkBudget(30_000, 20_000, 128_000, 16, 4, 2)
+            val factory = AgentFactory(
+                AgentBlueprintRegistry(listOf(blueprint)),
+                AgentAdmissionPolicy(AgentFactoryBounds.PROTOTYPE, blueprint.cognitiveScope, budget),
+                AgentRuntimeAdapter { context ->
+                    AgentRuntimeOutcome.Completed("report", "sha256:report",
+                        context.workspace.inputReferences, AgentRuntimeUsage(1, 1, 1, 0, 1))
+                },
+                AgentAuditLedger { }, timeSource = { now }
+            )
+            val step = a
+            val root = AgentRootTaskId("root-proof")
+            val entries = mapOf(step to AgentParallelFactoryWaveRunner.Entry(
+                AgentSpawnRequest.create(
+                    AgentBlueprintReference(blueprint.id, blueprint.version),
+                    AgentSpawnProvenance(root, null, null, 0),
+                    blueprint.cognitiveScope, budget
+                ), AgentInstanceGeneration(1), listOf("evidence:a")
+            ))
+            val evidence = AgentParallelParentEvidence()
+            val result = AgentParallelFactoryWaveRunner(factory, AgentParallelWaveExecutor(pool))
+                .runReservedCommitted(
+                    AgentParallelPopulationLedger(2, 2),
+                    AgentParallelWave(0, listOf(step),
+                        AgentParallelWaveReservation(2_000, 20_000, 128_000, 16, 4, 1)),
+                    entries, AgentPopulationSnapshot(0, 0, 0),
+                    now, now.plusSeconds(300), 2_000,
+                    commitAndVerify = { _, _ -> true },
+                    parentEvidence = evidence
+                )
+            assertEquals(AgentParallelWaveExecutionState.COMPLETED, result.state)
+            val recorded = kotlin.test.assertNotNull(evidence.get(step))
+            assertEquals(AgentInstanceGeneration(1), recorded.generation)
+            assertEquals((result.outcomes.single() as AgentParallelWaveTaskOutcome.Completed).artifactReference,
+                recorded.artifactReference)
+        } finally {
+            pool.shutdownNow()
+        }
+    }
+
     private fun wave() = AgentParallelWave(
         0, listOf(a, b),
         AgentParallelWaveReservation(2_000, 40_000, 256_000, 32, 8, 2)
