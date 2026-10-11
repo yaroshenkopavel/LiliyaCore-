@@ -116,6 +116,36 @@ class AgentParallelWaveExecutorContractTest {
     }
 
     @Test
+    fun admission_timeout_never_submits_wave_tasks() {
+        val pool = Executors.newFixedThreadPool(2)
+        try {
+            val launches = java.util.concurrent.atomic.AtomicInteger(0)
+            val result = AgentParallelWaveExecutor(pool).executeAfterAdmission(
+                wave = wave(),
+                tasks = mapOf(
+                    stepA to AgentParallelWaveTask {
+                        launches.incrementAndGet()
+                        AgentParallelWaveTaskOutcome.Completed(stepA)
+                    },
+                    stepB to AgentParallelWaveTask {
+                        launches.incrementAndGet()
+                        AgentParallelWaveTaskOutcome.Completed(stepB)
+                    }
+                ),
+                timeoutMillis = 1,
+                admit = {
+                    Thread.sleep(30)
+                    true
+                }
+            )
+            assertEquals(AgentParallelWaveExecutionState.TIMED_OUT, result.state)
+            assertEquals(0, launches.get())
+        } finally {
+            pool.shutdownNow()
+        }
+    }
+
+    @Test
     fun admission_denial_blocks_entire_wave_before_any_submission() {
         val pool = Executors.newFixedThreadPool(2)
         try {
