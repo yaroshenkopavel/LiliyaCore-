@@ -13,6 +13,55 @@ class AgentParallelWaveExecutorContractTest {
     private val stepB = AgentCoordinatorStepId("b")
 
     @Test
+    fun factory_preflight_duplicate_spawn_request_blocks_entire_wave() {
+        val pool = Executors.newFixedThreadPool(2)
+        try {
+            val launches = java.util.concurrent.atomic.AtomicInteger(0)
+            val blueprint = AgentBlueprint.create(
+                AgentBlueprintVersion(1), "researcher", "analysis",
+                AgentCognitiveScope.create(listOf("research"))
+            )
+            val budget = AgentWorkBudget(30_000, 20_000, 128_000, 16, 4, 2)
+            val factory = AgentFactory(
+                AgentBlueprintRegistry(listOf(blueprint)),
+                AgentAdmissionPolicy(
+                    AgentFactoryBounds.PROTOTYPE,
+                    blueprint.cognitiveScope,
+                    budget
+                ),
+                AgentRuntimeAdapter { error("preflight must not execute") },
+                AgentAuditLedger { }
+            )
+            val request = AgentSpawnRequest.create(
+                AgentBlueprintReference(blueprint.id, blueprint.version),
+                AgentSpawnProvenance(AgentRootTaskId("root"), null, null, 0),
+                blueprint.cognitiveScope, budget
+            )
+            val result = AgentParallelWaveExecutor(pool).executeAfterFactoryPreflight(
+                wave = wave(),
+                tasks = mapOf(
+                    stepA to AgentParallelWaveTask {
+                        launches.incrementAndGet()
+                        AgentParallelWaveTaskOutcome.Completed(stepA)
+                    },
+                    stepB to AgentParallelWaveTask {
+                        launches.incrementAndGet()
+                        AgentParallelWaveTaskOutcome.Completed(stepB)
+                    }
+                ),
+                timeoutMillis = 2_000,
+                factory = factory,
+                requestForStep = { request },
+                populationForStep = { AgentPopulationSnapshot(0, 0, 0) }
+            )
+            assertEquals(AgentParallelWaveExecutionState.PARTIAL, result.state)
+            assertEquals(0, launches.get())
+        } finally {
+            pool.shutdownNow()
+        }
+    }
+
+    @Test
     fun factory_preflight_rejection_never_dispatches_wave_tasks() {
         val pool = Executors.newFixedThreadPool(2)
         try {
