@@ -90,6 +90,9 @@ class AgentParallelFactoryWaveRunner(
         // actual runtime thread's finally, even if it ignores interruption.
         val unclaimed = wave.stepIds.associateWith { java.util.concurrent.atomic.AtomicBoolean(false) }
         val remaining = java.util.concurrent.atomic.AtomicInteger(wave.stepIds.size)
+        // Close the commit admission barrier as soon as the controller returns.
+        // An interrupt-ignoring worker must not start a new durable commit later.
+        val commitAdmissionOpen = java.util.concurrent.atomic.AtomicBoolean(true)
         val releaseOne = {
             if (remaining.decrementAndGet() == 0) lease.close()
         }
@@ -100,9 +103,11 @@ class AgentParallelFactoryWaveRunner(
                 taskGate = { stepId -> unclaimed.getValue(stepId).compareAndSet(false, true) },
                 taskFinished = { releaseOne() },
                 commitAndVerify = commitAndVerify,
+                commitAdmissionOpen = commitAdmissionOpen,
                 parentEvidence = parentEvidence
             )
         } finally {
+            commitAdmissionOpen.set(false)
             // After the executor returns, prevent a queued task from entering
             // runSingle even if its cancellation was not observed by the pool.
             wave.stepIds.forEach { id ->
@@ -133,6 +138,7 @@ class AgentParallelFactoryWaveRunner(
         taskGate: (AgentCoordinatorStepId) -> Boolean = { true },
         taskFinished: (AgentCoordinatorStepId) -> Unit = {},
         commitAndVerify: ((AgentCoordinatorStepId, AgentArtifact) -> Boolean)? = null,
+        commitAdmissionOpen: java.util.concurrent.atomic.AtomicBoolean? = null,
         parentEvidence: AgentParallelParentEvidence? = null
     ): AgentParallelWaveExecutionResult {
         require(entries.keys == wave.stepIds.toSet())
@@ -179,7 +185,12 @@ class AgentParallelFactoryWaveRunner(
                             AgentParallelWaveTaskOutcome.Failed(stepId, "agent factory did not complete")
                         } else {
                             val committed = try {
-                                commitAndVerify?.invoke(stepId, artifact) ?: (commitAndVerify == null)
+                                if (commitAdmissionOpen?.get() == false ||
+                                    Thread.currentThread().isInterrupted || cancelled()) {
+                                    false
+                                } else {
+                                    commitAndVerify?.invoke(stepId, artifact) ?: (commitAndVerify == null)
+                                }
                             } catch (_: Exception) {
                                 false
                             }
