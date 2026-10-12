@@ -49,10 +49,8 @@ jobs:
           profile: pixel_6
           disable-animations: true
           script: |
-            set -eu
-            gradle :android-durable-persistence:connectedDebugAndroidTest --console=plain --no-daemon \
-              -Pandroid.testInstrumentationRunnerArguments.class=pro.liliya.android.persistence.AsfAtomicArtifactDurabilityInstrumentedTest \
-              2>&1 | tee "$RUNNER_TEMP/asf-durable-instrumentation.txt"
+            set -euo pipefail
+            gradle :android-durable-persistence:connectedDebugAndroidTest --console=plain --no-daemon -Pandroid.testInstrumentationRunnerArguments.class=pro.liliya.android.persistence.AsfAtomicArtifactDurabilityInstrumentedTest 2>&1 | tee "$RUNNER_TEMP/asf-durable-instrumentation.txt"
             grep -Fq 'BUILD SUCCESSFUL' "$RUNNER_TEMP/asf-durable-instrumentation.txt"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
