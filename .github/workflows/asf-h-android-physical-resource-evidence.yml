@@ -168,7 +168,7 @@ jobs:
     needs:
       - validate-tooling
       - build-exact-asf-h-bundle
-    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    if: ${{ always() && needs.validate-tooling.result == 'success' && needs.build-exact-asf-h-bundle.result == 'success' && (github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository) }}
     runs-on: [self-hosted, ARM64, android-device]
     timeout-minutes: 45
     steps:
