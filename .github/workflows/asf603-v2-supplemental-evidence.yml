@@ -35,6 +35,29 @@ jobs:
             "$RUNNER_TEMP/asf603-v2.zip" | tee "$RUNNER_TEMP/asf603-v2-validation.json"
           grep -Fq SUPPLEMENTAL_V2_VERIFIED_NOT_OFFICIAL_ARM64_GATE \
             "$RUNNER_TEMP/asf603-v2-validation.json"
+      - name: Reject altered and truncated evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp "$RUNNER_TEMP/asf603-v2.zip" "$RUNNER_TEMP/asf603-tampered.zip"
+          python3 - "$RUNNER_TEMP/asf603-tampered.zip" <<'PY'
+          from pathlib import Path
+          import sys
+          path = Path(sys.argv[1])
+          data = bytearray(path.read_bytes())
+          data[len(data) // 2] ^= 1
+          path.write_bytes(data)
+          PY
+          if python3 tools/physical-runner/validate_asf603_v2_evidence.py "$RUNNER_TEMP/asf603-tampered.zip"; then
+            echo "Tampered physical evidence incorrectly accepted" >&2
+            exit 1
+          fi
+          head -c 100 "$RUNNER_TEMP/asf603-v2.zip" > "$RUNNER_TEMP/asf603-truncated.zip"
+          if python3 tools/physical-runner/validate_asf603_v2_evidence.py "$RUNNER_TEMP/asf603-truncated.zip"; then
+            echo "Truncated physical evidence incorrectly accepted" >&2
+            exit 1
+          fi
+          echo "ASF603_NEGATIVE_EVIDENCE_TESTS=PASS"
       - name: Upload supplemental validation report
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
