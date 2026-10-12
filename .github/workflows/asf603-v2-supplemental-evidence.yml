@@ -35,6 +35,21 @@ jobs:
           else
             echo 'OFFICIAL_ARM64_JOB_IF_EXPRESSION_EXPECTED=FALSE'
           fi
+      - name: Diagnose merge conflict without changing either branch
+        shell: bash
+        env:
+          BASE_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main
+          echo "CURRENT_HEAD=$(git rev-parse HEAD)"
+          echo "FETCHED_MAIN=$(git rev-parse FETCH_HEAD)"
+          if git merge-tree --write-tree FETCH_HEAD HEAD > "$RUNNER_TEMP/asf603-merge-tree.txt" 2>&1; then
+            echo "ASF603_MERGE_TREE=CLEAN"
+          else
+            echo "ASF603_MERGE_TREE=CONFLICT"
+            cat "$RUNNER_TEMP/asf603-merge-tree.txt"
+          fi
       - name: Download exact user-uploaded GitHub attachment
         shell: bash
         run: |
