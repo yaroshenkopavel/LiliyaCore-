@@ -193,15 +193,8 @@ class Handler(BaseHTTPRequestHandler):
             return
         path = urlsplit(self.path).path
 
-        if path == "/v1/reset-packages":
-            self._reset_packages((TEST_PACKAGE, APP_PACKAGE), "reset-packages")
-            return
-
-        if path == "/v1/reset-semantic-packages":
-            self._reset_packages(
-                (SEMANTIC_TEST_PACKAGE, SEMANTIC_APP_PACKAGE),
-                "reset-semantic-packages",
-            )
+        if path in ("/v1/reset-packages", "/v1/reset-semantic-packages"):
+            self._json(403, {"error": "destructive package resets disabled"})
             return
 
         if path in UPLOADS:
@@ -241,19 +234,6 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         self._json(404, {"error": "unknown endpoint"})
-
-    def _reset_packages(self, packages: tuple[str, ...], operation: str) -> None:
-        outputs = []
-        for package in packages:
-            completed = run_rish(f"pm uninstall {package}", timeout=60)
-            outputs.append(
-                {
-                    "package": package,
-                    "exit": completed.returncode,
-                    "output": completed.stdout.strip(),
-                }
-            )
-        self._json(200, {"operation": operation, "results": outputs})
 
     def _install_upload(self, path: str) -> None:
         filename, package = UPLOADS[path]
