@@ -13,6 +13,7 @@ permissions:
   contents: read
 jobs:
   source-and-toolchain:
+    if: false # toolchain already verified and exported; source-only reanchor
     runs-on: ubuntu-latest
     timeout-minutes: 120
     env:
@@ -241,4 +242,24 @@ jobs:
           path: |
             ${{ runner.temp }}/liliya-export/transport/gradle-home.part.06
           if-no-files-found: warn
+          retention-days: 2
+  exact-source-reanchor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ba86ebf8f51a72203ea9220fca114e523dc222bb
+          fetch-depth: 1
+      - name: Export immutable current-main Git source
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "ba86ebf8f51a72203ea9220fca114e523dc222bb"
+          mkdir -p "$RUNNER_TEMP/exact-reanchor"
+          git archive --format=tar.gz --output="$RUNNER_TEMP/exact-reanchor/worktree.tar.gz" HEAD
+          tar -czf "$RUNNER_TEMP/exact-reanchor/git.tar.gz" .git
+          { echo "target_sha=$(git rev-parse HEAD)"; echo "target_tree=$(git rev-parse HEAD^{tree})"; sha256sum "$RUNNER_TEMP/exact-reanchor/"*.tar.gz; } > "$RUNNER_TEMP/exact-reanchor/manifest.txt"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: liliya-source-reanchor-ba86ebf8
+          path: ${{ runner.temp }}/exact-reanchor/
           retention-days: 2
