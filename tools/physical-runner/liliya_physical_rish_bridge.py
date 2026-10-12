@@ -160,6 +160,32 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/v1/probe":
             self._json(200, fixed_probe())
             return
+        if path == "/v1/installed-apk-digests":
+            # Read-only attestation of the exact APK installed on the device.
+            # Never expose app-private data or permit caller-selected commands.
+            observed = {}
+            for package in (APP_PACKAGE, TEST_PACKAGE):
+                located = run_rish(f"pm path {package}", timeout=30)
+                paths = [
+                    line.removeprefix("package:").strip()
+                    for line in located.stdout.splitlines()
+                    if line.startswith("package:")
+                ]
+                if located.returncode != 0 or len(paths) != 1:
+                    self._json(409, {"error": "exactly one installed base APK required", "package": package})
+                    return
+                apk_path = paths[0]
+                if not re.fullmatch(r"/[a-zA-Z0-9_./-]+\\.apk", apk_path) or ".." in apk_path.split("/"):
+                    self._json(409, {"error": "unsafe installed APK path", "package": package})
+                    return
+                digested = run_rish(f"sha256sum '{apk_path}'", timeout=45)
+                match = re.fullmatch(r"([0-9a-f]{64})\\s+\\S+", digested.stdout.strip())
+                if digested.returncode != 0 or match is None:
+                    self._json(409, {"error": "installed APK SHA256 unavailable", "package": package})
+                    return
+                observed[package] = {"sha256": match.group(1)}
+            self._json(200, {"evidenceClass": "installed-apk-digests-v1", "packages": observed})
+            return
         self._json(404, {"error": "unknown endpoint"})
 
     def do_POST(self) -> None:  # noqa: N802
