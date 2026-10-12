@@ -280,77 +280,33 @@ jobs:
                   raise SystemExit(f"size mismatch: {name}")
           PY
 
-      - name: Reset and install exact APK pair
+      - name: Verify already-installed exact APK pair without mutation
         shell: bash
         run: |
           set -euo pipefail
           token="$(cat /data/data/com.termux/files/home/.liliya-physical-bridge-token)"
-          auth=(-H "Authorization: Bearer $token")
-          bundle="$RUNNER_TEMP/asf-h-physical-bundle"
-
-          # Safety guard: this endpoint invokes 'pm uninstall pro.liliya.app'
-          # and can destroy app-private Qwen, license and activation state.
-          # ASF-H physical acceptance must be non-destructive by default.
-          if [ "${ASF_H_ALLOW_DESTRUCTIVE_PACKAGE_RESET:-}" != "YES_EXPLICIT_DESTRUCTIVE_RESET" ]; then
-            echo "ASF_H_DESTRUCTIVE_RESET_BLOCKED: refusing to uninstall pro.liliya.app" >&2
-            exit 1
-          fi
-          curl --fail-with-body --silent --show-error -X POST "${auth[@]}"             "$PRIMARY_BRIDGE_URL/v1/reset-packages"             > "$RUNNER_TEMP/asf-h-reset.json"
-
-          install_one() {
-            local kind="$1"
-            local apk="$2"
-            local out="$3"
-            local sha
-            local http_code
-            sha="$(sha256sum "$apk" | awk '{print $1}')"
-
-            local curl_exit
-            if http_code="$(
-              curl --silent --show-error -X POST "${auth[@]}"                 -H "X-Liliya-Sha256: $sha"                 -H 'Content-Type: application/vnd.android.package-archive'                 --data-binary "@$apk"                 --output "$out"                 --write-out '%{http_code}'                 "$PRIMARY_BRIDGE_URL/v1/install/$kind"
-            )"; then
-              curl_exit=0
-            else
-              curl_exit=$?
-            fi
-
-            if [ "$curl_exit" -eq 0 ] && [[ "$http_code" =~ ^2 ]]; then
-              python3 -c 'import json,sys; r=json.load(open(sys.argv[1], encoding="utf-8")); o=str(r.get("installOutput", "")); assert "Failure [" not in o, f"install response contains failure: {o}"; assert str(r.get("packagePath", "")).strip(), "installed package path missing"' "$out"
-              return 0
-            fi
-
-            if [ -f "$out" ] && grep -Fq 'INSTALL_FAILED_USER_RESTRICTED' "$out"; then
-              echo "MIUI/HyperOS shell install gate detected for $kind; using strict committed USB/ADB evidence fallback."
-              echo "ASF_H_USE_USB_ADB_FALLBACK=1" >> "$GITHUB_ENV"
-              return 10
-            fi
-
-            cat "$out" >&2 2>/dev/null || true
-            echo "unexpected install failure for $kind: curl_exit=$curl_exit http_code=$http_code" >&2
-            return 1
+          curl --fail-with-body --silent --show-error \
+            -H "Authorization: Bearer $token" \
+            "$PRIMARY_BRIDGE_URL/v1/installed-apk-digests" \
+            > "$RUNNER_TEMP/asf-h-installed-apk-digests.json"
+          python3 - "$RUNNER_TEMP/asf-h-installed-apk-digests.json" \
+            "$RUNNER_TEMP/asf-h-physical-bundle/asf-h-physical-test-bundle.json" <<'PY'
+          import json, sys
+          installed = json.load(open(sys.argv[1], encoding="utf-8"))
+          bundle = json.load(open(sys.argv[2], encoding="utf-8"))
+          if installed.get("evidenceClass") != "installed-apk-digests-v1":
+              raise SystemExit("read-only APK digest endpoint missing; refuse destructive installation")
+          expected = {
+              "pro.liliya.app": "liliya-app-debug.apk",
+              "pro.liliya.app.test": "liliya-app-debug-androidTest.apk",
           }
-
-          app="$bundle/liliya-app-debug.apk"
-          if install_one app "$app" "$RUNNER_TEMP/asf-h-install-app.json"; then
-            :
-          else
-            rc=$?
-            if [ "$rc" -eq 10 ]; then
-              exit 0
-            fi
-            exit "$rc"
-          fi
-
-          test_apk="$bundle/liliya-app-debug-androidTest.apk"
-          if install_one test "$test_apk" "$RUNNER_TEMP/asf-h-install-test.json"; then
-            :
-          else
-            rc=$?
-            if [ "$rc" -eq 10 ]; then
-              exit 0
-            fi
-            exit "$rc"
-          fi
+          for package, name in expected.items():
+              actual = installed["packages"][package]["sha256"]
+              required = bundle["files"][name]["sha256"]
+              if actual != required:
+                  raise SystemExit(f"installed APK hash mismatch for {package}; refusing replacement")
+          print("ASF_H_INSTALLED_APK_SHA256=PASS")
+          PY
 
       - name: Validate committed USB ADB fallback evidence
         if: env.ASF_H_USE_USB_ADB_FALLBACK == '1'
