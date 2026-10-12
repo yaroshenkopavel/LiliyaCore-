@@ -182,7 +182,9 @@ jobs:
     needs:
       - validate-tooling
       - build-exact-asf-h-bundle
-    if: ${{ always() && needs.validate-tooling.result == 'success' && needs.build-exact-asf-h-bundle.result == 'success' && (github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository) }}
+    # Physical self-hosted runners must never auto-execute pull-request code.
+    # Dispatch from the protected default branch only; reject other refs.
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     runs-on: [self-hosted, ARM64, android-device]
     timeout-minutes: 45
     steps:
