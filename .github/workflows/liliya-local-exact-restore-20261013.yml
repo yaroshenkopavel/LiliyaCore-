@@ -5,6 +5,10 @@ on:
     paths:
       - '.github/workflows/liliya-local-exact-restore-20261013.yml'
   workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/liliya-local-exact-restore-20261013.yml'
 permissions:
   contents: read
 jobs:
