@@ -26,7 +26,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+  SOURCE_SHA: ${{ github.event.pull_request.head.sha || inputs.source_sha || github.sha }}
   PRIMARY_BRIDGE_URL: http://127.0.0.1:18765
   ASF_H_METRICS_BRIDGE_URL: http://127.0.0.1:18767
 
