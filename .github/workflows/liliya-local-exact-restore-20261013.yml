@@ -1,4 +1,5 @@
 name: Liliya Local Exact Environment Restore 20261013 Main Transport
+# Temporary transport-only PR triggering exact immutable checkout; DO NOT MERGE.
 on:
   push:
     branches: [main]
