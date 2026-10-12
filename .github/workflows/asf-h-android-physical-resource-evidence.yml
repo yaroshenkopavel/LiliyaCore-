@@ -288,6 +288,13 @@ jobs:
           auth=(-H "Authorization: Bearer $token")
           bundle="$RUNNER_TEMP/asf-h-physical-bundle"
 
+          # Safety guard: this endpoint invokes 'pm uninstall pro.liliya.app'
+          # and can destroy app-private Qwen, license and activation state.
+          # ASF-H physical acceptance must be non-destructive by default.
+          if [ "${ASF_H_ALLOW_DESTRUCTIVE_PACKAGE_RESET:-}" != "YES_EXPLICIT_DESTRUCTIVE_RESET" ]; then
+            echo "ASF_H_DESTRUCTIVE_RESET_BLOCKED: refusing to uninstall pro.liliya.app" >&2
+            exit 1
+          fi
           curl --fail-with-body --silent --show-error -X POST "${auth[@]}"             "$PRIMARY_BRIDGE_URL/v1/reset-packages"             > "$RUNNER_TEMP/asf-h-reset.json"
 
           install_one() {
