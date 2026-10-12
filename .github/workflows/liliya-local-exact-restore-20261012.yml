@@ -38,6 +38,15 @@ jobs:
       - name: Install exact project SDK dependencies
         run: |
           sdkmanager "platforms;android-35" "build-tools;35.0.0" "build-tools;36.0.0" "platform-tools" "ndk;29.0.13113456" "cmake;3.31.6"
+      - name: Apply proven hosted Gradle and Kotlin memory policy to project cache
+        env:
+          GRADLE_USER_HOME: ${{ runner.temp }}/liliya-gradle-home
+        run: |
+          set -euo pipefail
+          bash .github/ci/configure-gradle-memory.sh
+          mkdir -p "$GRADLE_USER_HOME"
+          cp "$HOME/.gradle/gradle.properties" "$GRADLE_USER_HOME/gradle.properties"
+          cat "$GRADLE_USER_HOME/gradle.properties"
       - name: Warm project-only Gradle cache
         env:
           GRADLE_USER_HOME: ${{ runner.temp }}/liliya-gradle-home
