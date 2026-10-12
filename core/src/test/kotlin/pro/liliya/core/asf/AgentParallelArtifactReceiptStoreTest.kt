@@ -81,6 +81,27 @@ class AgentParallelArtifactReceiptStoreTest {
     }
 
     @Test
+    fun atomic_backend_failure_does_not_create_a_false_receipt() {
+        val bytes = "payload-after-recovery".toByteArray()
+        val hash = java.security.MessageDigest.getInstance("SHA-256").digest(bytes)
+            .joinToString("") { "%02x".format(it) }
+        val a = artifact("sha256:$hash")
+        backend.failNextCommit()
+        assertFalse(store().commitPayloadAndReceipt(step, a, bytes))
+        assertTrue(store().commitPayloadAndReceipt(step, a, bytes))
+    }
+
+    @Test
+    fun existing_metadata_only_receipt_cannot_be_silently_upgraded_to_atomic_payload() {
+        val bytes = "payload".toByteArray()
+        val hash = java.security.MessageDigest.getInstance("SHA-256").digest(bytes)
+            .joinToString("") { "%02x".format(it) }
+        val a = artifact("sha256:$hash")
+        assertTrue(store().commitAndVerify(step, a))
+        assertFalse(store().commitPayloadAndReceipt(step, a, bytes))
+    }
+
+    @Test
     fun missing_payload_fails_closed_without_installing_receipt() {
         val a = artifact("sha256:missing")
         assertFalse(store().commitAndVerifyWithPayload(step, a) { false })
