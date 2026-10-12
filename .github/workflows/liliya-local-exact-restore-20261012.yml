@@ -1,0 +1,78 @@
+name: Liliya Local Exact Environment Restore 20261012
+on:
+  push:
+    branches: [technical/local-env-restore-2026-10-12]
+permissions:
+  contents: read
+jobs:
+  source-and-toolchain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      TARGET_SHA: f20120177d04a5d2fb592b25a453472445eb0461
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ env.TARGET_SHA }}
+          fetch-depth: 1
+      - name: Verify exact canonical source
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git rev-parse HEAD
+          git rev-parse HEAD^{tree}
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@4c125117fe7c5aed11272ec4213f602f012f89f2
+        with:
+          gradle-version: '9.6.1'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+        with:
+          packages: platform-tools
+      - name: Install exact project SDK dependencies
+        run: |
+          sdkmanager "platforms;android-35" "build-tools;35.0.0" "build-tools;36.0.0" "platform-tools" "ndk;29.0.13113456" "cmake;3.31.6"
+      - name: Warm project-only Gradle cache
+        env:
+          GRADLE_USER_HOME: ${{ runner.temp }}/liliya-gradle-home
+        run: |
+          set -euo pipefail
+          gradle :android-app:testDebugUnitTest :android-runtime:testDebugUnitTest :core:test :android-app:compileDebugAndroidTestKotlin --console=plain --no-daemon
+          gradle :core:test --offline --console=plain --no-daemon
+      - name: Export exact source, toolchain, and checksums
+        env:
+          GRADLE_USER_HOME: ${{ runner.temp }}/liliya-gradle-home
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/liliya-export"
+          E="$RUNNER_TEMP/liliya-export"
+          git archive --format=tar.gz --output="$E/worktree.tar.gz" HEAD
+          tar czf "$E/git.tar.gz" .git
+          J="$(readlink -f "$JAVA_HOME")"
+          test -x "$J/bin/java"
+          tar czf "$E/jdk17-real.tar.gz" -C "$(dirname "$J")" "$(basename "$J")"
+          tar tzf "$E/jdk17-real.tar.gz" | grep -q '/bin/java$'
+          G="$(readlink -f "$(command -v gradle)")"
+          GR="$(cd "$(dirname "$G")/.." && pwd)"
+          tar czf "$E/gradle-9.6.1.tar.gz" -C "$(dirname "$GR")" "$(basename "$GR")"
+          mkdir -p "$E/sdk-core"
+          for p in platforms/android-35 build-tools/35.0.0 build-tools/36.0.0 platform-tools; do
+            mkdir -p "$E/sdk-core/$(dirname "$p")"
+            cp -a "$ANDROID_HOME/$p" "$E/sdk-core/$p"
+          done
+          tar czf "$E/android-sdk-core.tar.gz" -C "$E/sdk-core" .
+          tar czf "$E/cmake-3.31.6.tar.gz" -C "$ANDROID_HOME/cmake" 3.31.6
+          tar czf "$E/ndk.tar.gz" -C "$ANDROID_HOME/ndk" 29.0.13113456
+          split -b 300M -d -a 2 "$E/ndk.tar.gz" "$E/ndk.part."
+          tar czf "$E/gradle-home.tar.gz" -C "$RUNNER_TEMP" liliya-gradle-home
+          split -b 300M -d -a 2 "$E/gradle-home.tar.gz" "$E/gradle-home.part."
+          { echo "target_sha=$(git rev-parse HEAD)"; echo "target_tree=$(git rev-parse HEAD^{tree})"; java -version 2>&1 | head -1; gradle --version | grep "^Gradle "; sha256sum "$E"/*.tar.gz "$E"/ndk.part.* "$E"/gradle-home.part.*; } > "$E/manifest.txt"
+          mkdir -p "$E/transport"
+          mv "$E"/*.tar.gz "$E"/ndk.part.* "$E"/gradle-home.part.* "$E"/manifest.txt "$E/transport/"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: liliya-local-restore-20261012
+          path: ${{ runner.temp }}/liliya-export/transport/
+          retention-days: 2
