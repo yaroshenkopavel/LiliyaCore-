@@ -81,6 +81,32 @@ class AgentParallelArtifactReceiptStoreTest {
     }
 
     @Test
+    fun atomic_receipt_retains_original_bytes_after_caller_mutates_buffer() {
+        val bytes = "original durable bytes".toByteArray()
+        val hash = java.security.MessageDigest.getInstance("SHA-256").digest(bytes)
+            .joinToString("") { "%02x".format(it) }
+        val a = artifact("sha256:$hash")
+        assertTrue(store().commitPayloadAndReceipt(step, a, bytes))
+        bytes.fill(0)
+        val original = "original durable bytes".toByteArray()
+        assertTrue(store().commitPayloadAndReceipt(step, a, original))
+    }
+
+    @Test
+    fun atomic_receipt_cannot_rebind_same_step_even_with_valid_new_digest() {
+        val first = "first payload".toByteArray()
+        val second = "second payload".toByteArray()
+        fun from(bytes: ByteArray): AgentArtifact {
+            val hash = java.security.MessageDigest.getInstance("SHA-256").digest(bytes)
+                .joinToString("") { "%02x".format(it) }
+            return artifact("sha256:$hash")
+        }
+        assertTrue(store().commitPayloadAndReceipt(step, from(first), first))
+        assertFalse(store().commitPayloadAndReceipt(step, from(second), second))
+        assertTrue(store().commitPayloadAndReceipt(step, from(first), first))
+    }
+
+    @Test
     fun atomic_backend_failure_does_not_create_a_false_receipt() {
         val bytes = "payload-after-recovery".toByteArray()
         val hash = java.security.MessageDigest.getInstance("SHA-256").digest(bytes)
