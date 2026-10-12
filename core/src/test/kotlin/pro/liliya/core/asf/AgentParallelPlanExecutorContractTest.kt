@@ -121,6 +121,58 @@ class AgentParallelPlanExecutorContractTest {
         }
     }
 
+    @Test
+    fun task_factory_exception_fails_closed_before_wave_execution() {
+        val pool = Executors.newFixedThreadPool(2)
+        try {
+            val result = AgentParallelPlanExecutor(
+                waveExecutor = AgentParallelWaveExecutor(pool),
+                taskFactory = AgentParallelPlanTaskFactory { _, _ ->
+                    throw IllegalStateException("task preparation failed")
+                }
+            ).execute(
+                plan = plan(includeParentArtifact = true),
+                aggregateBudget = aggregate,
+                timeoutPerWaveMillis = 2_000
+            )
+            assertEquals(AgentParallelPlanExecutionState.PARTIAL, result.state)
+            assertEquals(0, result.completedWaves)
+            assertEquals(0, result.outcomes.size)
+        } finally {
+            pool.shutdownNow()
+        }
+    }
+
+    @Test
+    fun cancellation_during_task_preparation_stops_before_submitting_wave() {
+        val pool = Executors.newFixedThreadPool(2)
+        try {
+            var cancelledNow = false
+            var created = 0
+            val result = AgentParallelPlanExecutor(
+                waveExecutor = AgentParallelWaveExecutor(pool),
+                taskFactory = AgentParallelPlanTaskFactory { step, _ ->
+                    created++
+                    cancelledNow = true
+                    AgentParallelWaveTask {
+                        AgentParallelWaveTaskOutcome.Completed(step.id, "unexpected")
+                    }
+                }
+            ).execute(
+                plan = plan(includeParentArtifact = true),
+                aggregateBudget = aggregate,
+                timeoutPerWaveMillis = 2_000,
+                cancelled = { cancelledNow }
+            )
+            assertEquals(AgentParallelPlanExecutionState.CANCELLED, result.state)
+            assertEquals(0, result.completedWaves)
+            assertEquals(0, result.outcomes.size)
+            assertEquals(1, created)
+        } finally {
+            pool.shutdownNow()
+        }
+    }
+
     private fun plan(
         includeParentArtifact: Boolean
     ): AgentCoordinatorPlan {
