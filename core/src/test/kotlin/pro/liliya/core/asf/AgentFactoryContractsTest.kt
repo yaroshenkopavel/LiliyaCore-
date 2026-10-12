@@ -35,6 +35,33 @@ class AgentFactoryContractsTest {
     )
 
     @Test
+    fun factory_preflight_uses_live_admission_policy_without_running_agent() {
+        var executions = 0
+        val factory = AgentFactory(
+            AgentBlueprintRegistry(listOf(blueprint)),
+            policy(),
+            AgentRuntimeAdapter {
+                executions++
+                error("preflight must not run")
+            },
+            AgentAuditLedger { },
+            timeSource = { now }
+        )
+        assertIs<AgentAdmissionDecision.Admissible>(
+            factory.previewAdmission(request(), AgentPopulationSnapshot(0, 0, 0))
+        )
+        assertEquals(AgentAdmissionRejection.ACTIVE_POPULATION_LIMIT,
+            assertIs<AgentAdmissionDecision.Rejected>(
+                factory.previewAdmission(request(), AgentPopulationSnapshot(8, 0, 0))
+            ).reason)
+        assertEquals(AgentAdmissionRejection.PARENT_CONTEXT_REQUIRED,
+            assertIs<AgentAdmissionDecision.Rejected>(
+                factory.previewAdmission(childRequest(1), AgentPopulationSnapshot(0, 0, 0))
+            ).reason)
+        assertEquals(0, executions)
+    }
+
+    @Test
     fun blueprint_identity_is_deterministic_and_scope_order_independent() {
         val first = AgentBlueprint.create(
             AgentBlueprintVersion(1),

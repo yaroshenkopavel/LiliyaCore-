@@ -42,9 +42,13 @@ capture_liliya_window() {
     if grep -Fq "Pixel Launcher" "$local_xml" &&
        grep -Fq "responding" "$local_xml"; then
       echo "$orientation: transient Pixel Launcher ANR overlay; dismissing and retrying ($attempt/3)" >&2
+      # A launcher ANR can remain modal after BACK. Recover only the
+      # system launcher; never force-stop Liliya or dismiss a Liliya ANR.
       adb shell input keyevent KEYCODE_BACK || true
-      adb shell am start -W -n pro.liliya.app/.LiliyaProvisioningActivity         > "$out/recover-${orientation}-${attempt}.txt"
-      sleep 2
+      adb shell am force-stop com.google.android.apps.nexuslauncher || true
+      adb shell am start -W -n pro.liliya.app/.LiliyaProvisioningActivity \
+        > "$out/recover-${orientation}-${attempt}.txt"
+      sleep 3
       continue
     fi
 
