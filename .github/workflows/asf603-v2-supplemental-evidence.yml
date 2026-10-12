@@ -18,6 +18,23 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - name: Diagnose official ARM64 job eligibility (no secrets)
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          SOURCE_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+          TARGET_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          echo "EVENT_NAME=$EVENT_NAME"
+          echo "SOURCE_REPOSITORY=$SOURCE_REPOSITORY"
+          echo "TARGET_REPOSITORY=$TARGET_REPOSITORY"
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ||
+                ( -n "$SOURCE_REPOSITORY" && "$SOURCE_REPOSITORY" == "$TARGET_REPOSITORY" ) ]]; then
+            echo 'OFFICIAL_ARM64_JOB_IF_EXPRESSION_EXPECTED=TRUE'
+          else
+            echo 'OFFICIAL_ARM64_JOB_IF_EXPRESSION_EXPECTED=FALSE'
+          fi
       - name: Download exact user-uploaded GitHub attachment
         shell: bash
         run: |
