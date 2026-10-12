@@ -1,0 +1,44 @@
+name: ASF603 V2 Supplemental Evidence Verification
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/asf603-v2-supplemental-evidence.yml'
+      - 'tools/physical-runner/validate_asf603_v2_evidence.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-operator-v2:
+    name: Verify pinned operator ASF603 V2 ZIP (not official ARM64 acceptance)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - name: Download exact user-uploaded GitHub attachment
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --silent --show-error \
+            --retry 4 --retry-all-errors --retry-delay 2 \
+            --connect-timeout 15 --max-time 120 \
+            'https://github.com/user-attachments/files/33334934/evidence-v2-20261012-105421.zip' \
+            --output "$RUNNER_TEMP/asf603-v2.zip"
+      - name: Verify ZIP and physical test consistency
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/physical-runner/validate_asf603_v2_evidence.py \
+            "$RUNNER_TEMP/asf603-v2.zip" | tee "$RUNNER_TEMP/asf603-v2-validation.json"
+          grep -Fq SUPPLEMENTAL_V2_VERIFIED_NOT_OFFICIAL_ARM64_GATE \
+            "$RUNNER_TEMP/asf603-v2-validation.json"
+      - name: Upload supplemental validation report
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: asf603-operator-v2-supplemental-verification
+          path: ${{ runner.temp }}/asf603-v2-validation.json
+          if-no-files-found: error
+          retention-days: 30
