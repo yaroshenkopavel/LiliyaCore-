@@ -11,17 +11,22 @@ on:
       - 'android-app/src/androidTest/kotlin/pro/liliya/app/AsfHierarchicalPhysicalResourceInstrumentedTest.kt'
       - 'core/src/main/kotlin/pro/liliya/core/asf/**'
   workflow_dispatch:
+    inputs:
+      source_sha:
+        description: 'Exact 40-character PR #603 head SHA (verified by GitHub API)'
+        required: true
+        type: string
 
 permissions:
   contents: read
   actions: read
 
 concurrency:
-  group: asf-h-android-physical-resource-${{ github.event.pull_request.head.sha || github.sha }}
+  group: asf-h-android-physical-resource-${{ github.event.pull_request.head.sha || inputs.source_sha || github.sha }}
   cancel-in-progress: false
 
 env:
-  SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+  SOURCE_SHA: ${{ github.event.pull_request.head.sha || inputs.source_sha || github.sha }}
   PRIMARY_BRIDGE_URL: http://127.0.0.1:18765
   ASF_H_METRICS_BRIDGE_URL: http://127.0.0.1:18767
 
@@ -31,6 +36,18 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - name: Verify approved PR head identity for physical dispatch
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REF" == "refs/heads/main" ]] || { echo 'Trusted main dispatch required' >&2; exit 1; }
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'Exact 40-char SHA required' >&2; exit 1; }
+          actual="$(curl --fail --silent --show-error -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' "https://api.github.com/repos/$GITHUB_REPOSITORY/pulls/603" | python3 -c 'import json,sys; p=json.load(sys.stdin); assert p["state"]=="open"; assert p["head"]["repo"]["full_name"]==p["base"]["repo"]["full_name"]; print(p["head"]["sha"])')"
+          [[ "$actual" == "$SOURCE_SHA" ]] || { echo "PR #603 HEAD changed; refuse stale source" >&2; exit 1; }
+          echo "ASF603_EXACT_PR_HEAD=$actual"
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           ref: ${{ env.SOURCE_SHA }}
@@ -174,9 +191,11 @@ jobs:
     runs-on: [self-hosted, ARM64, android-device]
     timeout-minutes: 45
     steps:
+      # Never execute PR-controlled scripts directly on the physical self-hosted runner.
+      # Trusted tooling is from the protected dispatch commit; tested APK bundle is from SOURCE_SHA.
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
-          ref: ${{ env.SOURCE_SHA }}
+          ref: ${{ github.sha }}
 
       - name: Verify pre-provisioned physical runner
         shell: bash
