@@ -618,6 +618,7 @@ jobs:
           path: |
             ${{ runner.temp }}/asf-h-physical-bundle/asf-h-physical-test-bundle.json
             ${{ runner.temp }}/asf-h-primary-probe.json
+            ${{ runner.temp }}/asf-h-installed-apk-digests.json
             ${{ runner.temp }}/asf-h-reset.json
             ${{ runner.temp }}/asf-h-install-app.json
             ${{ runner.temp }}/asf-h-install-test.json
