@@ -82,6 +82,25 @@ jobs:
           tar czf "$E/gradle-home.tar.gz" -C "$RUNNER_TEMP" liliya-gradle-home
           split -b 300M -d -a 2 "$E/gradle-home.tar.gz" "$E/gradle-home.part."
           { echo "target_sha=$(git rev-parse HEAD)"; echo "target_tree=$(git rev-parse HEAD^{tree})"; java -version 2>&1 | head -1; gradle --version | grep "^Gradle "; sha256sum "$E"/*.tar.gz "$E"/ndk.part.* "$E"/gradle-home.part.*; } > "$E/manifest.txt"
+          # Fail before publishing if a standalone transport archive exceeds the connector limit.
+          # Split parts are limited to 300 MiB each; each artifact uploads only its named part.
+          python3 - "$E" <<'PY'
+          import pathlib, sys
+          root = pathlib.Path(sys.argv[1])
+          max_bytes = 480 * 1024 * 1024
+          names = ("worktree.tar.gz", "git.tar.gz", "jdk17-real.tar.gz",
+                   "gradle-9.6.1.tar.gz", "android-sdk-core.tar.gz",
+                   "cmake-3.31.6.tar.gz")
+          for name in names:
+              p = root / name
+              if not p.is_file() or not (0 < p.stat().st_size <= max_bytes):
+                  raise SystemExit(f"TRANSPORT_ARCHIVE_SIZE_INVALID: {name}")
+          for pattern in ("ndk.part.*", "gradle-home.part.*"):
+              parts = sorted(root.glob(pattern))
+              if not parts or any(not (0 < p.stat().st_size <= max_bytes) for p in parts):
+                  raise SystemExit(f"TRANSPORT_PART_SIZE_INVALID: {pattern}")
+          print("TRANSPORT_ALL_ARTIFACT_PARTS_WITHIN_480_MIB")
+          PY
           mkdir -p "$E/transport"
           mv "$E"/*.tar.gz "$E"/ndk.part.* "$E"/gradle-home.part.* "$E"/manifest.txt "$E/transport/"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
