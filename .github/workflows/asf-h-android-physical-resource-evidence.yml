@@ -50,11 +50,11 @@ jobs:
           from pathlib import Path
           source = Path("tools/physical-runner/liliya_physical_rish_bridge.py").read_text()
           assert '"/v1/installed-apk-digests"' in source
-          assert 'r"/[a-zA-Z0-9_./~-]+\\.apk"' in source
-          assert 'r"([0-9a-f]{64})\\s+\\S+"' in source
-          assert re.fullmatch(r"/[a-zA-Z0-9_./~-]+\\.apk", "/data/app/~~id/pro.liliya.app-id/base.apk")
-          assert re.fullmatch(r"([0-9a-f]{64})\\s+\\S+", "a" * 64 + "  /data/app/example/base.apk")
-          assert not re.fullmatch(r"/[a-zA-Z0-9_./~-]+\\.apk", "/data/app/a';rm -rf /;'/base.apk")
+          assert 'r"/[a-zA-Z0-9_./~-]+\.apk"' in source
+          assert 'r"([0-9a-f]{64})\s+\S+"' in source
+          assert re.fullmatch(r"/[a-zA-Z0-9_./~-]+\.apk", "/data/app/~~id/pro.liliya.app-id/base.apk")
+          assert re.fullmatch(r"([0-9a-f]{64})\s+\S+", "a" * 64 + "  /data/app/example/base.apk")
+          assert not re.fullmatch(r"/[a-zA-Z0-9_./~-]+\.apk", "/data/app/a';rm -rf /;'/base.apk")
           print("ASF_H_READ_ONLY_APK_DIGEST_CONTRACT=PASS")
           PY
 
