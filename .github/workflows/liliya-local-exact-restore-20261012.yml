@@ -2,6 +2,10 @@ name: Liliya Local Exact Environment Restore 20261012
 on:
   push:
     branches: [technical/local-env-restore-2026-10-12]
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/liliya-local-exact-restore-20261012.yml'
 permissions:
   contents: read
 jobs:
@@ -73,6 +77,136 @@ jobs:
           mv "$E"/*.tar.gz "$E"/ndk.part.* "$E"/gradle-home.part.* "$E"/manifest.txt "$E/transport/"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: liliya-local-restore-20261012
-          path: ${{ runner.temp }}/liliya-export/transport/
+          name: liliya-local-20261012-source-manifest
+          path: |
+            ${{ runner.temp }}/liliya-export/transport/worktree.tar.gz
+            ${{ runner.temp }}/liliya-export/transport/git.tar.gz
+            ${{ runner.temp }}/liliya-export/transport/manifest.txt
+          if-no-files-found: warn
+          retention-days: 2
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: liliya-local-20261012-jdk17
+          path: |
+            ${{ runner.temp }}/liliya-export/transport/jdk17-real.tar.gz
+          if-no-files-found: warn
+          retention-days: 2
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: liliya-local-20261012-gradle-runtime
+          path: |
+            ${{ runner.temp }}/liliya-export/transport/gradle-9.6.1.tar.gz
+          if-no-files-found: warn
+          retention-days: 2
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: liliya-local-20261012-android-sdk
+          path: |
+            ${{ runner.temp }}/liliya-export/transport/android-sdk-core.tar.gz
+          if-no-files-found: warn
+          retention-days: 2
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: liliya-local-20261012-cmake
+          path: |
+            ${{ runner.temp }}/liliya-export/transport/cmake-3.31.6.tar.gz
+          if-no-files-found: warn
+          retention-days: 2
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: liliya-local-20261012-ndk-part00
+          path: |
+            ${{ runner.temp }}/liliya-export/transport/ndk.part.00
+          if-no-files-found: warn
+          retention-days: 2
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: liliya-local-20261012-ndk-part01
+          path: |
+            ${{ runner.temp }}/liliya-export/transport/ndk.part.01
+          if-no-files-found: warn
+          retention-days: 2
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: liliya-local-20261012-ndk-part02
+          path: |
+            ${{ runner.temp }}/liliya-export/transport/ndk.part.02
+          if-no-files-found: warn
+          retention-days: 2
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: liliya-local-20261012-ndk-part03
+          path: |
+            ${{ runner.temp }}/liliya-export/transport/ndk.part.03
+          if-no-files-found: warn
+          retention-days: 2
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: liliya-local-20261012-ndk-part04
+          path: |
+            ${{ runner.temp }}/liliya-export/transport/ndk.part.04
+          if-no-files-found: warn
+          retention-days: 2
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: liliya-local-20261012-ndk-part05
+          path: |
+            ${{ runner.temp }}/liliya-export/transport/ndk.part.05
+          if-no-files-found: warn
+          retention-days: 2
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: liliya-local-20261012-ndk-part06
+          path: |
+            ${{ runner.temp }}/liliya-export/transport/ndk.part.06
+          if-no-files-found: warn
+          retention-days: 2
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: liliya-local-20261012-gradle-cache-part00
+          path: |
+            ${{ runner.temp }}/liliya-export/transport/gradle-home.part.00
+          if-no-files-found: warn
+          retention-days: 2
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: liliya-local-20261012-gradle-cache-part01
+          path: |
+            ${{ runner.temp }}/liliya-export/transport/gradle-home.part.01
+          if-no-files-found: warn
+          retention-days: 2
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: liliya-local-20261012-gradle-cache-part02
+          path: |
+            ${{ runner.temp }}/liliya-export/transport/gradle-home.part.02
+          if-no-files-found: warn
+          retention-days: 2
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: liliya-local-20261012-gradle-cache-part03
+          path: |
+            ${{ runner.temp }}/liliya-export/transport/gradle-home.part.03
+          if-no-files-found: warn
+          retention-days: 2
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: liliya-local-20261012-gradle-cache-part04
+          path: |
+            ${{ runner.temp }}/liliya-export/transport/gradle-home.part.04
+          if-no-files-found: warn
+          retention-days: 2
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: liliya-local-20261012-gradle-cache-part05
+          path: |
+            ${{ runner.temp }}/liliya-export/transport/gradle-home.part.05
+          if-no-files-found: warn
+          retention-days: 2
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: liliya-local-20261012-gradle-cache-part06
+          path: |
+            ${{ runner.temp }}/liliya-export/transport/gradle-home.part.06
+          if-no-files-found: warn
           retention-days: 2
