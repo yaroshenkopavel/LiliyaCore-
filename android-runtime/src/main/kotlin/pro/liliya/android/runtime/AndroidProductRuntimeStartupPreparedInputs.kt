@@ -45,6 +45,7 @@ data class AndroidProductRuntimeStartupPreparedInputOwners(
     val learningMutationStoreId: PersistentStoreId,
     val artifactIds: CognitiveArtifactIdSource,
     val timestamps: CognitiveTimestampSource,
+    val advisoryLlama: AndroidProductRuntimeAdvisoryLlamaConfiguration? = null,
     val limits: CognitiveRuntimeLimits = CognitiveRuntimeLimits(),
     val personaLimits: AndroidHeartProductionPersonaLimits =
         AndroidHeartProductionPersonaLimits()
@@ -131,6 +132,7 @@ class AndroidProductRuntimeStartupPreparedInputsAdapter internal constructor(
                     mutations = mutations,
                     artifactIds = owners.artifactIds,
                     timestamps = owners.timestamps,
+                    advisoryLlama = owners.advisoryLlama,
                     limits = owners.limits,
                     personaLimits = owners.personaLimits
                 )
