@@ -1,6 +1,7 @@
 package pro.liliya.android.runtime
 
 import java.time.Instant
+import pro.liliya.android.llamacppengine.AndroidLlamaCppCognitiveModelAssembly
 import pro.liliya.core.asf.AgentAdmissionPolicy
 import pro.liliya.core.asf.AgentAggregateBudget
 import pro.liliya.core.asf.AgentAuditLedger
@@ -16,6 +17,7 @@ import pro.liliya.core.asf.AgentWorkBudget
 import pro.liliya.core.asf.AgentWorkerAdmissionPolicy
 import pro.liliya.core.asf.AgentWorkerFactory
 import pro.liliya.core.asf.AgentWorkerProfileSet
+import pro.liliya.core.asf.AgentWorkerRuntimeDescriptor
 
 enum class AndroidProductRuntimeAdvisoryAgentCompositionFailure {
     EMPTY_BLUEPRINTS,
@@ -41,6 +43,50 @@ sealed interface AndroidProductRuntimeAdvisoryAgentCompositionResult {
  * registrations are exact-identity/fail-closed through AgentHeterogeneousRuntimeFabric.
  */
 object AndroidProductRuntimeAdvisoryAgentComposition {
+    /**
+     * Explicit production wiring for one already-owned llama.cpp model and bounded ASF.
+     * No model is started, duplicated, or implicitly made available here.
+     */
+    fun createForLlamaAssembly(
+        blueprints: Collection<AgentBlueprint>,
+        globalScope: AgentCognitiveScope,
+        globalBudget: AgentWorkBudget,
+        workerProfiles: AgentWorkerProfileSet,
+        aggregateBudget: AgentAggregateBudget,
+        descriptor: AgentWorkerRuntimeDescriptor,
+        available: () -> Boolean,
+        contextCompiler: AndroidProductRuntimeAdvisoryLlmContextCompiler,
+        llamaAssembly: AndroidLlamaCppCognitiveModelAssembly,
+        usageMeter: AndroidProductRuntimeAdvisoryLlmUsageMeter,
+        auditLedger: AgentAuditLedger,
+        otherRegistrations: Collection<AgentCognitiveRuntimeRegistration> = emptyList(),
+        bounds: AgentFactoryBounds = AgentFactoryBounds.PROTOTYPE,
+        timeSource: () -> Instant = { Instant.now() }
+    ): AndroidProductRuntimeAdvisoryAgentCompositionResult {
+        val llmRegistration = try {
+            AndroidProductRuntimeAdvisoryLlmRegistration.createForLlamaAssembly(
+                descriptor = descriptor,
+                available = available,
+                contextCompiler = contextCompiler,
+                llamaAssembly = llamaAssembly,
+                usageMeter = usageMeter
+            )
+        } catch (_: IllegalArgumentException) {
+            return rejected(AndroidProductRuntimeAdvisoryAgentCompositionFailure.INVALID_CONFIGURATION)
+        }
+        return create(
+            blueprints = blueprints,
+            globalScope = globalScope,
+            globalBudget = globalBudget,
+            workerProfiles = workerProfiles,
+            aggregateBudget = aggregateBudget,
+            registrations = otherRegistrations + llmRegistration,
+            auditLedger = auditLedger,
+            bounds = bounds,
+            timeSource = timeSource
+        )
+    }
+
     fun create(
         blueprints: Collection<AgentBlueprint>,
         globalScope: AgentCognitiveScope,
