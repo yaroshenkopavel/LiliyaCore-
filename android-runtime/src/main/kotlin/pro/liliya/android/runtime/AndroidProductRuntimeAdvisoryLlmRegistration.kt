@@ -92,7 +92,11 @@ object AndroidProductRuntimeAdvisoryLlmRegistration {
                     null
                 }
                 val finished = nanoTime()
-                val elapsedMillis = maxOf(0L, (finished - started) / 1_000_000L)
+                // Invalid timing must not be silently charged as zero usage.
+                if (finished < started) {
+                    return@llm failed("advisory LLM monotonic clock regression")
+                }
+                val elapsedMillis = (finished - started) / 1_000_000L
 
                 val usage = try {
                     usageMeter.measure(
