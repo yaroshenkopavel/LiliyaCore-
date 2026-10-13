@@ -85,10 +85,21 @@ class AgentParallelPlanExecutor(
                     )
                 }
 
-                tasks[stepId] = taskFactory.create(
-                    step = step,
-                    parentArtifactReference = parentArtifact
-                )
+                // Fail closed before dispatching any sibling when task construction fails.
+                // An untrusted factory exception must not escape plan orchestration.
+                val task = try {
+                    taskFactory.create(
+                        step = step,
+                        parentArtifactReference = parentArtifact
+                    )
+                } catch (_: Exception) {
+                    return terminal(
+                        AgentParallelPlanExecutionState.PARTIAL,
+                        completedWaves,
+                        outcomes
+                    )
+                }
+                tasks[stepId] = task
             }
 
             val result = waveExecutor.execute(
