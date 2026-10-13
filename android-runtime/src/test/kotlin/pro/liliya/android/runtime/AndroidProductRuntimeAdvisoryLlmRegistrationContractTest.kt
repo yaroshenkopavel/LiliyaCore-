@@ -84,6 +84,46 @@ class AndroidProductRuntimeAdvisoryLlmRegistrationContractTest {
     }
 
     @Test
+    fun provider_response_from_different_turn_fails_closed_without_publishing_artifact() {
+        val foreignTurn = CognitiveTurnReference(
+            CognitiveTurnId("foreign-turn"),
+            CognitiveTurnGeneration(1)
+        )
+        val registration = AndroidProductRuntimeAdvisoryLlmRegistration.create(
+            descriptor = descriptor,
+            available = { true },
+            contextCompiler = {
+                AndroidProductRuntimeAdvisoryLlmCompiledRequest(
+                    inference = CognitiveInferenceRequest(
+                        turn = turn,
+                        input = CognitiveInput("bounded advisory request"),
+                        context = CognitiveContextSnapshot(turn, emptyList())
+                    ),
+                    sourceReferences = listOf("evidence:agent-input")
+                )
+            },
+            inference = { CognitiveInferenceResult.Succeeded(foreignTurn, "foreign output") },
+            usageMeter = AndroidProductRuntimeAdvisoryLlmUsageMeter { _, _, _, elapsed ->
+                AgentRuntimeUsage(
+                    wallClockMillis = elapsed,
+                    inferenceUnits = 1,
+                    contextBytes = 0,
+                    retrievalItems = 0,
+                    artifactCount = 1
+                )
+            },
+            nanoTime = sequenceNanoTime(10_000_000L, 12_000_000L)
+        )
+
+        val failed = assertIs<AgentCognitiveRuntimeExecutionResult.Failed>(
+            registration.adapter.run(executionRequest(descriptor))
+        )
+        assertEquals("advisory LLM inference turn mismatch", failed.reason)
+        assertEquals(0, failed.usage.artifactCount)
+        assertEquals(1, failed.usage.inferenceUnits)
+    }
+
+    @Test
     fun successful_provider_result_fails_closed_when_usage_meter_does_not_count_artifact() {
         val registration = AndroidProductRuntimeAdvisoryLlmRegistration.create(
             descriptor = descriptor,
