@@ -9,6 +9,7 @@ import pro.liliya.core.asf.AgentCognitiveRuntimeRegistration
 import pro.liliya.core.asf.AgentRuntimeUsage
 import pro.liliya.core.asf.AgentWorkerRuntimeDescriptor
 import pro.liliya.core.asf.AgentWorkerRuntimeKind
+import pro.liliya.android.llamacppengine.AndroidLlamaCppCognitiveModelAssembly
 import pro.liliya.core.cognitive.CognitiveInferencePort
 import pro.liliya.core.cognitive.CognitiveInferenceRequest
 import pro.liliya.core.cognitive.CognitiveInferenceResult
@@ -60,6 +61,27 @@ fun interface AndroidProductRuntimeAdvisoryLlmUsageMeter {
  * turn/context and authoritative retrieval contracts.
  */
 object AndroidProductRuntimeAdvisoryLlmRegistration {
+    /**
+     * Reuses the exact production llama.cpp inference port instead of creating another
+     * model owner. The caller still owns model readiness, bounded context compilation,
+     * usage accounting and explicit ASF host registration.
+     */
+    fun createForLlamaAssembly(
+        descriptor: AgentWorkerRuntimeDescriptor,
+        available: () -> Boolean,
+        contextCompiler: AndroidProductRuntimeAdvisoryLlmContextCompiler,
+        llamaAssembly: AndroidLlamaCppCognitiveModelAssembly,
+        usageMeter: AndroidProductRuntimeAdvisoryLlmUsageMeter,
+        nanoTime: () -> Long = System::nanoTime
+    ): AgentCognitiveRuntimeRegistration = create(
+        descriptor = descriptor,
+        available = available,
+        contextCompiler = contextCompiler,
+        inference = llamaAssembly.inferencePort,
+        usageMeter = usageMeter,
+        nanoTime = nanoTime
+    )
+
     fun create(
         descriptor: AgentWorkerRuntimeDescriptor,
         available: () -> Boolean,
