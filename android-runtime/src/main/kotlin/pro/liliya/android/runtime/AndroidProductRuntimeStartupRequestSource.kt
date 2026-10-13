@@ -42,6 +42,7 @@ data class AndroidProductRuntimeStartupPreparedInputOwnerTemplate(
     val learningMutationStoreId: pro.liliya.core.persistence.PersistentStoreId,
     val artifactIds: pro.liliya.core.cognitive.CognitiveArtifactIdSource,
     val timestamps: pro.liliya.core.cognitive.CognitiveTimestampSource,
+    val advisoryLlama: AndroidProductRuntimeAdvisoryLlamaConfiguration? = null,
     val limits: pro.liliya.core.cognitive.CognitiveRuntimeLimits =
         pro.liliya.core.cognitive.CognitiveRuntimeLimits(),
     val personaLimits: AndroidHeartProductionPersonaLimits = AndroidHeartProductionPersonaLimits()
@@ -164,6 +165,7 @@ object AndroidProductRuntimeStartupRequestSource {
                 learningMutationStoreId = template.learningMutationStoreId,
                 artifactIds = template.artifactIds,
                 timestamps = template.timestamps,
+                advisoryLlama = template.advisoryLlama,
                 limits = template.limits,
                 personaLimits = template.personaLimits
             )
