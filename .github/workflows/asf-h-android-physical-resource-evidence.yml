@@ -6,6 +6,8 @@ on:
     paths:
       - '.github/workflows/asf-h-android-physical-resource-evidence.yml'
       - 'tools/physical-runner/liliya_asf_h_resource_metrics_bridge.py'
+      - 'tools/physical-runner/liliya_physical_rish_bridge.py'
+      - 'android-app/build.gradle.kts'
       - 'tools/physical-runner/Measure-AsfHUsbAdb.ps1'
       - 'evidence/asf-h/asf-h-usb-adb-physical-resource-evidence-e66f4fa7.json'
       - 'android-app/src/androidTest/kotlin/pro/liliya/app/AsfHierarchicalPhysicalResourceInstrumentedTest.kt'
@@ -68,6 +70,8 @@ jobs:
           from pathlib import Path
           source = Path("tools/physical-runner/liliya_physical_rish_bridge.py").read_text()
           assert '"/v1/installed-apk-digests"' in source
+          assert '"/v1/asf-h-installed-apk-digests"' in source
+          assert 'ASF_H_APP_PACKAGE = "pro.liliya.app.asfh"' in source
           assert 'destructive package resets disabled' in source
           assert 'pm uninstall' not in source
           assert 'def _reset_packages(' not in source
@@ -328,7 +332,7 @@ jobs:
           token="$(cat /data/data/com.termux/files/home/.liliya-physical-bridge-token)"
           curl --fail-with-body --silent --show-error \
             -H "Authorization: Bearer $token" \
-            "$PRIMARY_BRIDGE_URL/v1/installed-apk-digests" \
+            "$PRIMARY_BRIDGE_URL/v1/asf-h-installed-apk-digests" \
             > "$RUNNER_TEMP/asf-h-installed-apk-digests.json"
           python3 - "$RUNNER_TEMP/asf-h-installed-apk-digests.json" \
             "$RUNNER_TEMP/asf-h-physical-bundle/asf-h-physical-test-bundle.json" <<'PY'
@@ -338,8 +342,8 @@ jobs:
           if installed.get("evidenceClass") != "installed-apk-digests-v1":
               raise SystemExit("read-only APK digest endpoint missing; refuse destructive installation")
           expected = {
-              "pro.liliya.app": "liliya-app-debug.apk",
-              "pro.liliya.app.test": "liliya-app-debug-androidTest.apk",
+              "pro.liliya.app.asfh": "liliya-app-debug.apk",
+              "pro.liliya.app.asfh.test": "liliya-app-debug-androidTest.apk",
           }
           for package, name in expected.items():
               actual = installed["packages"][package]["sha256"]
