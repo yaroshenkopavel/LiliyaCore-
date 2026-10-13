@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Read-only preflight for the isolated ASF-H physical APK pair.
-# Usage: bash tools/physical-runner/Verify-AsfHIsolatedBundle.sh /path/to/extracted-artifact
+# Usage: bash tools/physical-runner/Verify-AsfHIsolatedBundle.sh /path/to/extracted-artifact <exact-40-character-source-sha>
 set -euo pipefail
 dir="${1:?expected extracted artifact directory}"
+expected_source_sha="${2:?expected exact 40-character source SHA}"
+[[ "$expected_source_sha" =~ ^[0-9a-f]{40}$ ]] || { echo "FATAL: source SHA must be 40 lower-case hex digits" >&2; exit 1; }
 manifest="$dir/asf-h-physical-test-bundle.json"
 test -f "$manifest"
 command -v python3 >/dev/null
@@ -11,7 +13,7 @@ command -v aapt >/dev/null
 command -v apksigner >/dev/null
 command -v rish >/dev/null
 
-python3 - "$dir" <<'PY'
+python3 - "$dir" "$expected_source_sha" <<'PY'
 import hashlib, json, pathlib, sys
 root = pathlib.Path(sys.argv[1]).resolve(strict=True)
 manifest = json.loads((root / "asf-h-physical-test-bundle.json").read_text())
@@ -19,7 +21,7 @@ assert manifest.get("evidenceClass") == "asf-h-physical-test-bundle-v1"
 assert manifest.get("applicationId") == "pro.liliya.app.asfh"
 assert manifest.get("testApplicationId") == "pro.liliya.app.asfh.test"
 assert manifest.get("workloadProfile") == "physical-synthetic-bounded-runtime-v1"
-assert isinstance(manifest.get("sourceCommit"), str) and len(manifest["sourceCommit"]) == 40
+assert manifest.get("sourceCommit") == sys.argv[2], "source commit mismatch"
 assert set(manifest.get("files", {})) == {"liliya-app-debug.apk", "liliya-app-debug-androidTest.apk"}
 for filename, evidence in manifest["files"].items():
     apk = (root / filename).resolve(strict=True)
