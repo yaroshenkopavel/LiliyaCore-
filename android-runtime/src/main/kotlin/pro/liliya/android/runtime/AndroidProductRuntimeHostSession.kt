@@ -35,6 +35,7 @@ internal interface AndroidProductRuntimeHostSessionBridge {
         maxMessageCharacters: Int
     ): ProductConversationHost? = null
     fun learningFollowUp(): ProductLearningFollowUpHost?
+    fun advisoryAgents(): AndroidProductRuntimeAdvisoryAgentHost? = null
     fun recoverSemantic(): AndroidProductRuntimeSemanticRecoveryResult
     fun close(): HeartRuntimeCloseResult
 }
@@ -94,6 +95,9 @@ class AndroidProductRuntimeHostSession internal constructor(
 
     fun learningFollowUp(): ProductLearningFollowUpHost? =
         if (active) bridge.learningFollowUp() else null
+
+    fun advisoryAgents(): AndroidProductRuntimeAdvisoryAgentHost? =
+        if (active && bridge.state() == HeartRuntimeState.READY) bridge.advisoryAgents() else null
 
     fun recoverSemantic(): AndroidProductRuntimeSemanticRecoveryResult =
         if (active) {
