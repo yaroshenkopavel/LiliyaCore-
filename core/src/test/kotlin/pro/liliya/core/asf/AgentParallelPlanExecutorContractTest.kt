@@ -121,6 +121,45 @@ class AgentParallelPlanExecutorContractTest {
         }
     }
 
+    @Test
+    fun factory_failure_fails_closed_without_dispatching_prepared_siblings() {
+        val pool = Executors.newFixedThreadPool(2)
+        try {
+            var executed = 0
+            var constructedChildren = 0
+            val result = AgentParallelPlanExecutor(
+                waveExecutor = AgentParallelWaveExecutor(pool),
+                taskFactory = AgentParallelPlanTaskFactory { step, _ ->
+                    if (step.id.value != "root") {
+                        constructedChildren++
+                        if (constructedChildren == 2) {
+                            throw IllegalStateException("factory cannot create sibling")
+                        }
+                    }
+                    AgentParallelWaveTask {
+                        executed++
+                        AgentParallelWaveTaskOutcome.Completed(
+                            step.id,
+                            "artifact:" + step.id.value
+                        )
+                    }
+                }
+            ).execute(
+                plan = plan(includeParentArtifact = false),
+                aggregateBudget = aggregate,
+                timeoutPerWaveMillis = 2_000
+            )
+
+            assertEquals(AgentParallelPlanExecutionState.PARTIAL, result.state)
+            assertEquals(1, result.completedWaves)
+            assertEquals(1, result.outcomes.size)
+            assertEquals(1, executed)
+            assertEquals(2, constructedChildren)
+        } finally {
+            pool.shutdownNow()
+        }
+    }
+
     private fun plan(
         includeParentArtifact: Boolean
     ): AgentCoordinatorPlan {
