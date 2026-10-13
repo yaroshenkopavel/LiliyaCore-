@@ -7,6 +7,7 @@ on:
       - '.github/workflows/asf-h-android-physical-resource-evidence.yml'
       - 'tools/physical-runner/liliya_asf_h_resource_metrics_bridge.py'
       - 'tools/physical-runner/liliya_physical_rish_bridge.py'
+      - 'tools/physical-runner/Verify-AsfHIsolatedBundle.sh'
       - 'android-app/build.gradle.kts'
       - 'tools/physical-runner/Measure-AsfHUsbAdb.ps1'
       - 'evidence/asf-h/asf-h-usb-adb-physical-resource-evidence-e66f4fa7.json'
@@ -63,6 +64,8 @@ jobs:
           test_file='android-app/src/androidTest/kotlin/pro/liliya/app/AsfHierarchicalPhysicalResourceInstrumentedTest.kt'
           workflow='.github/workflows/asf-h-android-physical-resource-evidence.yml'
 
+          bash -n tools/physical-runner/Verify-AsfHIsolatedBundle.sh
+          grep -Fq "NO_APK_HAS_BEEN_INSTALLED" tools/physical-runner/Verify-AsfHIsolatedBundle.sh
           python3 -m py_compile "$bridge"
           python3 -m py_compile tools/physical-runner/liliya_physical_rish_bridge.py
           python3 - <<'PY'
