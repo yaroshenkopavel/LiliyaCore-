@@ -36,7 +36,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          gradle :core:test :android-runtime:testDebugUnitTest :android-app:testDebugUnitTest :android-app:compileDebugAndroidTestKotlin --console=plain --no-daemon --max-workers=2
+          bash .github/ci/configure-gradle-memory.sh\n          gradle :core:test :android-runtime:testDebugUnitTest :android-app:testDebugUnitTest :android-app:compileDebugAndroidTestKotlin --console=plain --no-daemon --max-workers=1 -Pkotlin.daemon.jvmargs=-Xmx3072m
       - name: Export reproducible local toolchain
         shell: bash
         run: |
@@ -54,14 +54,14 @@ jobs:
           tar -C "$GRADLE_ROOT" -czf "$R/gradle/gradle.tar.gz" .
           tar -C "$ANDROID_HOME" -czf "$R/sdk/sdk.tar.gz" platforms/android-35 build-tools/35.0.0 build-tools/36.0.0 platform-tools ndk/29.0.13113456 cmake/3.31.6 licenses
           CACHE_ROOT="${GRADLE_USER_HOME:-$HOME/.gradle}"
-          tar -C "$CACHE_ROOT" -czf "$R/cache/cache.tar.gz" caches modules-2 2>/dev/null || tar -C "$CACHE_ROOT" -czf "$R/cache/cache.tar.gz" caches
+          tar -C "$CACHE_ROOT" -czf "$R/cache/cache.tar.gz" caches
           for type in jdk gradle sdk cache; do
             split -b 180M -d -a 3 "$R/$type/$type.tar.gz" "$R/$type/$type.part."
             rm "$R/$type/$type.tar.gz"
           done
           (cd "$R" && find jdk gradle sdk cache -type f -print0 | sort -z | xargs -0 sha256sum > checksums.sha256)
           du -h "$R"/* | tail -10
-      - uses: actions/upload-artifact@v4
+      - if: always()\n        uses: actions/upload-artifact@v4
         with:
           name: liliya-offline-recovery-jdk-gradle
           path: |
