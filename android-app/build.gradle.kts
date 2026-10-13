@@ -48,6 +48,15 @@ android {
         }
     }
 
+    buildTypes {
+        create("asfH") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".asfh"
+            isDebuggable = true
+            matchingFallbacks += listOf("debug")
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
