@@ -1,0 +1,35 @@
+name: Liliya exact-main source export 2026-10-14
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/liliya-exact-main-export-20261014.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: a7bce4c32e2ee301238ec86937e52215005e8077
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Exact immutable source archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/liliya-export"
+          git rev-parse HEAD | tee "$RUNNER_TEMP/liliya-export/HEAD.txt"
+          test "$(git rev-parse HEAD)" = "a7bce4c32e2ee301238ec86937e52215005e8077"
+          git rev-parse HEAD^{tree} > "$RUNNER_TEMP/liliya-export/TREE.txt"
+          git archive --format=tar HEAD | gzip -n > "$RUNNER_TEMP/liliya-export/worktree.tar.gz"
+          tar -czf "$RUNNER_TEMP/liliya-export/git.tar.gz" .git
+          (cd "$RUNNER_TEMP/liliya-export" && sha256sum HEAD.txt TREE.txt worktree.tar.gz git.tar.gz > MANIFEST_SHA256.txt)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-exact-main-a7bce4c
+          path: ${{ runner.temp }}/liliya-export/
+          if-no-files-found: error
+          retention-days: 3
