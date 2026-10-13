@@ -48,6 +48,19 @@ android {
         }
     }
 
+    buildTypes {
+        create("asfH") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".asfh"
+            isDebuggable = true
+            matchingFallbacks += listOf("debug")
+        }
+    }
+
+    if (providers.gradleProperty("liliyaAsfHIsolation").orNull == "true") {
+        testBuildType = "asfH"
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17

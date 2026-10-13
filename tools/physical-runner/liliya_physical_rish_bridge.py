@@ -43,6 +43,8 @@ SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
 APP_PACKAGE = "pro.liliya.app"
 TEST_PACKAGE = "pro.liliya.app.test"
+ASF_H_APP_PACKAGE = "pro.liliya.app.asfh"
+ASF_H_TEST_PACKAGE = "pro.liliya.app.asfh.test"
 SEMANTIC_APP_PACKAGE = "pro.liliya.android.semanticprovider"
 SEMANTIC_TEST_PACKAGE = "pro.liliya.android.semanticprovider.test"
 RUNNER = "androidx.test.runner.AndroidJUnitRunner"
@@ -160,11 +162,12 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/v1/probe":
             self._json(200, fixed_probe())
             return
-        if path == "/v1/installed-apk-digests":
+        if path in ("/v1/installed-apk-digests", "/v1/asf-h-installed-apk-digests"):
             # Read-only attestation of the exact APK installed on the device.
             # Never expose app-private data or permit caller-selected commands.
             observed = {}
-            for package in (APP_PACKAGE, TEST_PACKAGE):
+            packages = (ASF_H_APP_PACKAGE, ASF_H_TEST_PACKAGE) if path == "/v1/asf-h-installed-apk-digests" else (APP_PACKAGE, TEST_PACKAGE)
+            for package in packages:
                 located = run_rish(f"pm path {package}", timeout=30)
                 paths = [
                     line.removeprefix("package:").strip()

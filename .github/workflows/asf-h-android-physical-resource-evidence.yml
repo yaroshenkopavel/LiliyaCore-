@@ -6,6 +6,9 @@ on:
     paths:
       - '.github/workflows/asf-h-android-physical-resource-evidence.yml'
       - 'tools/physical-runner/liliya_asf_h_resource_metrics_bridge.py'
+      - 'tools/physical-runner/liliya_physical_rish_bridge.py'
+      - 'tools/physical-runner/Verify-AsfHIsolatedBundle.sh'
+      - 'android-app/build.gradle.kts'
       - 'tools/physical-runner/Measure-AsfHUsbAdb.ps1'
       - 'evidence/asf-h/asf-h-usb-adb-physical-resource-evidence-e66f4fa7.json'
       - 'android-app/src/androidTest/kotlin/pro/liliya/app/AsfHierarchicalPhysicalResourceInstrumentedTest.kt'
@@ -61,6 +64,8 @@ jobs:
           test_file='android-app/src/androidTest/kotlin/pro/liliya/app/AsfHierarchicalPhysicalResourceInstrumentedTest.kt'
           workflow='.github/workflows/asf-h-android-physical-resource-evidence.yml'
 
+          bash -n tools/physical-runner/Verify-AsfHIsolatedBundle.sh
+          grep -Fq "NO_APK_HAS_BEEN_INSTALLED" tools/physical-runner/Verify-AsfHIsolatedBundle.sh
           python3 -m py_compile "$bridge"
           python3 -m py_compile tools/physical-runner/liliya_physical_rish_bridge.py
           python3 - <<'PY'
@@ -68,6 +73,8 @@ jobs:
           from pathlib import Path
           source = Path("tools/physical-runner/liliya_physical_rish_bridge.py").read_text()
           assert '"/v1/installed-apk-digests"' in source
+          assert '"/v1/asf-h-installed-apk-digests"' in source
+          assert 'ASF_H_APP_PACKAGE = "pro.liliya.app.asfh"' in source
           assert 'destructive package resets disabled' in source
           assert 'pm uninstall' not in source
           assert 'def _reset_packages(' not in source
@@ -145,7 +152,7 @@ jobs:
       - name: Build exact app and instrumentation APKs
         shell: bash
         run: |
-          gradle             :android-app:assembleDebug             :android-app:assembleDebugAndroidTest             --console=plain
+          gradle             :android-app:assembleAsfH             :android-app:assembleAsfHAndroidTest             -PliliyaAsfHIsolation=true             --console=plain
 
       - name: Create exact bundle manifest
         shell: bash
@@ -154,8 +161,8 @@ jobs:
           out="$RUNNER_TEMP/asf-h-physical-bundle"
           mkdir -p "$out"
 
-          app='android-app/build/outputs/apk/debug/android-app-debug.apk'
-          test_apk='android-app/build/outputs/apk/androidTest/debug/android-app-debug-androidTest.apk'
+          app='android-app/build/outputs/apk/asfH/android-app-asfH.apk'
+          test_apk='android-app/build/outputs/apk/androidTest/asfH/android-app-asfH-androidTest.apk'
           test -f "$app"
           test -f "$test_apk"
 
@@ -180,8 +187,8 @@ jobs:
               "sourceCommit": sys.argv[2],
               "sourceTree": sys.argv[3],
               "workloadProfile": "physical-synthetic-bounded-runtime-v1",
-              "applicationId": "pro.liliya.app",
-              "testApplicationId": "pro.liliya.app.test",
+              "applicationId": "pro.liliya.app.asfh",
+              "testApplicationId": "pro.liliya.app.asfh.test",
               "instrumentationClass": "pro.liliya.app.AsfHierarchicalPhysicalResourceInstrumentedTest",
               "files": files,
           }
@@ -307,6 +314,10 @@ jobs:
           )
           if manifest["sourceCommit"] != expected_sha:
               raise SystemExit("source commit mismatch")
+          if manifest.get("applicationId") != "pro.liliya.app.asfh":
+              raise SystemExit("isolated app package mismatch")
+          if manifest.get("testApplicationId") != "pro.liliya.app.asfh.test":
+              raise SystemExit("isolated test package mismatch")
           if not isinstance(manifest.get("sourceTree"), str) or len(manifest["sourceTree"]) != 40:
               raise SystemExit("source tree missing")
           if manifest.get("workloadProfile") != "physical-synthetic-bounded-runtime-v1":
@@ -328,7 +339,7 @@ jobs:
           token="$(cat /data/data/com.termux/files/home/.liliya-physical-bridge-token)"
           curl --fail-with-body --silent --show-error \
             -H "Authorization: Bearer $token" \
-            "$PRIMARY_BRIDGE_URL/v1/installed-apk-digests" \
+            "$PRIMARY_BRIDGE_URL/v1/asf-h-installed-apk-digests" \
             > "$RUNNER_TEMP/asf-h-installed-apk-digests.json"
           python3 - "$RUNNER_TEMP/asf-h-installed-apk-digests.json" \
             "$RUNNER_TEMP/asf-h-physical-bundle/asf-h-physical-test-bundle.json" <<'PY'
@@ -338,8 +349,8 @@ jobs:
           if installed.get("evidenceClass") != "installed-apk-digests-v1":
               raise SystemExit("read-only APK digest endpoint missing; refuse destructive installation")
           expected = {
-              "pro.liliya.app": "liliya-app-debug.apk",
-              "pro.liliya.app.test": "liliya-app-debug-androidTest.apk",
+              "pro.liliya.app.asfh": "liliya-app-debug.apk",
+              "pro.liliya.app.asfh.test": "liliya-app-debug-androidTest.apk",
           }
           for package, name in expected.items():
               actual = installed["packages"][package]["sha256"]
