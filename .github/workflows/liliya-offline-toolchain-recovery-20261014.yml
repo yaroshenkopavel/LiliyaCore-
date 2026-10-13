@@ -1,0 +1,82 @@
+name: Liliya offline toolchain recovery
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/liliya-offline-toolchain-recovery-20261014.yml'
+permissions:
+  contents: read
+jobs:
+  recovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: a7bce4c32e2ee301238ec86937e52215005e8077
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@4c125117fe7c5aed11272ec4213f602f012f89f2
+        with:
+          gradle-version: '9.6.1'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+        with:
+          packages: platform-tools
+      - name: Install exact Android toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager "platforms;android-35" "build-tools;35.0.0" "build-tools;36.0.0" "platform-tools" "ndk;29.0.13113456" "cmake;3.31.6"
+          echo "JAVA_HOME=$JAVA_HOME"
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          which gradle
+      - name: Prime dependency cache with bounded acceptance
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle :core:test :android-runtime:testDebugUnitTest :android-app:testDebugUnitTest :android-app:compileDebugAndroidTestKotlin --console=plain --no-daemon --max-workers=2
+      - name: Export reproducible local toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "a7bce4c32e2ee301238ec86937e52215005e8077"
+          mkdir -p "$RUNNER_TEMP/liliya-recovery"
+          R="$RUNNER_TEMP/liliya-recovery"
+          printf 'SOURCE_HEAD=%s\nJAVA_HOME=%s\nANDROID_HOME=%s\nGRADLE_USER_HOME=%s\n' "$(git rev-parse HEAD)" "$JAVA_HOME" "$ANDROID_HOME" "${GRADLE_USER_HOME:-$HOME/.gradle}" > "$R/paths.txt"
+          GRADLE_BIN="$(command -v gradle)"
+          GRADLE_REAL="$(readlink -f "$GRADLE_BIN")"
+          GRADLE_ROOT="$(dirname "$(dirname "$GRADLE_REAL")")"
+          printf 'GRADLE_ROOT=%s\n' "$GRADLE_ROOT" >> "$R/paths.txt"
+          mkdir -p "$R/jdk" "$R/gradle" "$R/sdk" "$R/cache"
+          tar -C "$JAVA_HOME" -czf "$R/jdk/jdk.tar.gz" .
+          tar -C "$GRADLE_ROOT" -czf "$R/gradle/gradle.tar.gz" .
+          tar -C "$ANDROID_HOME" -czf "$R/sdk/sdk.tar.gz" platforms/android-35 build-tools/35.0.0 build-tools/36.0.0 platform-tools ndk/29.0.13113456 cmake/3.31.6 licenses
+          CACHE_ROOT="${GRADLE_USER_HOME:-$HOME/.gradle}"
+          tar -C "$CACHE_ROOT" -czf "$R/cache/cache.tar.gz" caches modules-2 2>/dev/null || tar -C "$CACHE_ROOT" -czf "$R/cache/cache.tar.gz" caches
+          for type in jdk gradle sdk cache; do
+            split -b 180M -d -a 3 "$R/$type/$type.tar.gz" "$R/$type/$type.part."
+            rm "$R/$type/$type.tar.gz"
+          done
+          (cd "$R" && find jdk gradle sdk cache -type f -print0 | sort -z | xargs -0 sha256sum > checksums.sha256)
+          du -h "$R"/* | tail -10
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-offline-recovery-jdk-gradle
+          path: |
+            ${{ runner.temp }}/liliya-recovery/jdk/
+            ${{ runner.temp }}/liliya-recovery/gradle/
+            ${{ runner.temp }}/liliya-recovery/paths.txt
+            ${{ runner.temp }}/liliya-recovery/checksums.sha256
+          retention-days: 3
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-offline-recovery-sdk
+          path: ${{ runner.temp }}/liliya-recovery/sdk/
+          retention-days: 3
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-offline-recovery-cache
+          path: ${{ runner.temp }}/liliya-recovery/cache/
+          retention-days: 3
