@@ -147,8 +147,34 @@ class AndroidProductRuntimeHostSessionContractTest {
         )
     }
 
+    @Test
+    fun advisory_host_requires_ready_active_session_and_disappears_on_license_denial() {
+        val advisory = AndroidProductRuntimeAdvisoryAgentHost(
+            AndroidProductRuntimeAdvisoryAgentRunPort { _, _, _ ->
+                error("advisory execution not requested")
+            }
+        )
+        val bridge = FakeSessionBridge(advisoryHost = advisory)
+        val session = AndroidProductRuntimeHostSession(bridge)
+
+        bridge.currentState = HeartRuntimeState.IDLE
+        assertNull(session.advisoryAgents())
+
+        bridge.currentState = HeartRuntimeState.READY
+        kotlin.test.assertSame(advisory, session.advisoryAgents())
+
+        val result = session.revalidate(
+            AndroidProductRuntimeAdmissionResult.LicenseDenied(
+                LicenseDenialReason.EXPIRED
+            )
+        )
+        assertIs<AndroidProductRuntimeAdmissionRevalidationResult.Closed>(result)
+        assertNull(session.advisoryAgents())
+    }
+
     private class FakeSessionBridge(
-        private val closeThrows: Boolean = false
+        private val closeThrows: Boolean = false,
+        private val advisoryHost: AndroidProductRuntimeAdvisoryAgentHost? = null
     ) : AndroidProductRuntimeHostSessionBridge {
         var closeCalls: Int = 0
             private set
@@ -156,7 +182,9 @@ class AndroidProductRuntimeHostSessionContractTest {
         var lastConversationSessionId: CognitiveConversationSessionId? = null
             private set
 
-        override fun state(): HeartRuntimeState = HeartRuntimeState.READY
+        var currentState: HeartRuntimeState = HeartRuntimeState.READY
+        override fun state(): HeartRuntimeState = currentState
+        override fun advisoryAgents(): AndroidProductRuntimeAdvisoryAgentHost? = advisoryHost
 
         override fun chat(): ProductChatHost? = null
 
