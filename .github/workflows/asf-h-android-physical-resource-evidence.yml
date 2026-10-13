@@ -311,6 +311,10 @@ jobs:
           )
           if manifest["sourceCommit"] != expected_sha:
               raise SystemExit("source commit mismatch")
+          if manifest.get("applicationId") != "pro.liliya.app.asfh":
+              raise SystemExit("isolated app package mismatch")
+          if manifest.get("testApplicationId") != "pro.liliya.app.asfh.test":
+              raise SystemExit("isolated test package mismatch")
           if not isinstance(manifest.get("sourceTree"), str) or len(manifest["sourceTree"]) != 40:
               raise SystemExit("source tree missing")
           if manifest.get("workloadProfile") != "physical-synthetic-bounded-runtime-v1":
