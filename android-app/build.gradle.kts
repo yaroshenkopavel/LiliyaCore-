@@ -57,6 +57,10 @@ android {
         }
     }
 
+    if (providers.gradleProperty("liliyaAsfHIsolation").orNull == "true") {
+        testBuildType = "asfH"
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
