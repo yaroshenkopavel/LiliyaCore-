@@ -145,7 +145,7 @@ jobs:
       - name: Build exact app and instrumentation APKs
         shell: bash
         run: |
-          gradle             :android-app:assembleDebug             :android-app:assembleDebugAndroidTest             --console=plain
+          gradle             :android-app:assembleAsfH             :android-app:assembleAsfHAndroidTest             -PliliyaAsfHIsolation=true             --console=plain
 
       - name: Create exact bundle manifest
         shell: bash
@@ -154,8 +154,8 @@ jobs:
           out="$RUNNER_TEMP/asf-h-physical-bundle"
           mkdir -p "$out"
 
-          app='android-app/build/outputs/apk/debug/android-app-debug.apk'
-          test_apk='android-app/build/outputs/apk/androidTest/debug/android-app-debug-androidTest.apk'
+          app='android-app/build/outputs/apk/asfH/android-app-asfH.apk'
+          test_apk='android-app/build/outputs/apk/androidTest/asfH/android-app-asfH-androidTest.apk'
           test -f "$app"
           test -f "$test_apk"
 
@@ -180,8 +180,8 @@ jobs:
               "sourceCommit": sys.argv[2],
               "sourceTree": sys.argv[3],
               "workloadProfile": "physical-synthetic-bounded-runtime-v1",
-              "applicationId": "pro.liliya.app",
-              "testApplicationId": "pro.liliya.app.test",
+              "applicationId": "pro.liliya.app.asfh",
+              "testApplicationId": "pro.liliya.app.asfh.test",
               "instrumentationClass": "pro.liliya.app.AsfHierarchicalPhysicalResourceInstrumentedTest",
               "files": files,
           }
