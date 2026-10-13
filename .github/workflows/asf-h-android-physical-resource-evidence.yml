@@ -75,6 +75,10 @@ jobs:
           assert '"/v1/installed-apk-digests"' in source
           assert '"/v1/asf-h-installed-apk-digests"' in source
           assert 'ASF_H_APP_PACKAGE = "pro.liliya.app.asfh"' in source
+          assert '"/v1/install/asf-h-app"' in source
+          assert '"/v1/install/asf-h-test"' in source
+          assert 'isolated package already installed; replacement forbidden' in source
+          assert "pm install {'-t' if isolated else '-r -t'}" in source
           assert 'destructive package resets disabled' in source
           assert 'pm uninstall' not in source
           assert 'def _reset_packages(' not in source
