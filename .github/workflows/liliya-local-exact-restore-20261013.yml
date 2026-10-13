@@ -2,6 +2,9 @@ name: Liliya Exact Main Source Transport
 on:
   push:
     branches: [technical/local-env-restore-retry-2026-10-13]
+  pull_request:
+    branches: [main]
+    paths: ['.github/workflows/liliya-local-exact-restore-20261013.yml']
 permissions:
   contents: read
 jobs:
