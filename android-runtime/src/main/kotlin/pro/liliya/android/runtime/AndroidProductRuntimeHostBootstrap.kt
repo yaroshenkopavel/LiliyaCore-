@@ -162,6 +162,8 @@ object AndroidProductRuntimeHostBootstrap {
                         )
                     override fun learningFollowUp(): ProductLearningFollowUpHost? =
                         runtime.learningFollowUp()
+                    override fun advisoryAgents(): AndroidProductRuntimeAdvisoryAgentHost? =
+                        runtime.advisoryAgents()
                     override fun recoverSemantic(): AndroidProductRuntimeSemanticRecoveryResult =
                         runtime.recoverSemantic()
                     override fun close(): HeartRuntimeCloseResult = runtime.close()
