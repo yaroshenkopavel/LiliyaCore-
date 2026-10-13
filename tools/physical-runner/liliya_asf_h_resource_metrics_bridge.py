@@ -35,8 +35,8 @@ TOKEN_FILE = Path(
     )
 )
 
-APP_PACKAGE = "pro.liliya.app"
-TEST_PACKAGE = "pro.liliya.app.test"
+APP_PACKAGE = "pro.liliya.app.asfh"
+TEST_PACKAGE = "pro.liliya.app.asfh.test"
 RUNNER = "androidx.test.runner.AndroidJUnitRunner"
 TEST_CLASS = "pro.liliya.app.AsfHierarchicalPhysicalResourceInstrumentedTest"
 
