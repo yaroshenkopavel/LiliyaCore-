@@ -72,11 +72,12 @@ jobs:
           assert 'pm uninstall' not in source
           assert 'def _reset_packages(' not in source
 
-          assert 'r"/[a-zA-Z0-9_./~-]+\.apk"' in source
+          assert 'r"/[a-zA-Z0-9_./~=-]+\.apk"' in source
           assert 'r"([0-9a-f]{64})\s+\S+"' in source
-          assert re.fullmatch(r"/[a-zA-Z0-9_./~-]+\.apk", "/data/app/~~id/pro.liliya.app-id/base.apk")
+          assert re.fullmatch(r"/[a-zA-Z0-9_./~=-]+\.apk", "/data/app/~~id/pro.liliya.app-id/base.apk")
+          assert re.fullmatch(r"/[a-zA-Z0-9_./~=-]+\.apk", "/data/app/~~Znsp8MGiZX46y_C1EjX_rQ==/pro.liliya.app-U1Wg3gPdevJ_OsLdBMn7Ow==/base.apk")
           assert re.fullmatch(r"([0-9a-f]{64})\s+\S+", "a" * 64 + "  /data/app/example/base.apk")
-          assert not re.fullmatch(r"/[a-zA-Z0-9_./~-]+\.apk", "/data/app/a';rm -rf /;'/base.apk")
+          assert not re.fullmatch(r"/[a-zA-Z0-9_./~=-]+\.apk", "/data/app/a';rm -rf /;'/base.apk")
           print("ASF_H_READ_ONLY_APK_DIGEST_CONTRACT=PASS")
           PY
 
