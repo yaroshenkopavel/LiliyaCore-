@@ -175,7 +175,7 @@ class Handler(BaseHTTPRequestHandler):
                     self._json(409, {"error": "exactly one installed base APK required", "package": package})
                     return
                 apk_path = paths[0]
-                if not re.fullmatch(r"/[a-zA-Z0-9_./~-]+\.apk", apk_path) or ".." in apk_path.split("/"):
+                if not re.fullmatch(r"/[a-zA-Z0-9_./~=-]+\.apk", apk_path) or ".." in apk_path.split("/"):
                     self._json(409, {"error": "unsafe installed APK path", "package": package})
                     return
                 digested = run_rish(f"sha256sum '{apk_path}'", timeout=45)
