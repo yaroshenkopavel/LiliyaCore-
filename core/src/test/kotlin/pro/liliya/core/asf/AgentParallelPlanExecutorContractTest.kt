@@ -173,6 +173,34 @@ class AgentParallelPlanExecutorContractTest {
         }
     }
 
+    @Test
+    fun failed_cancellation_source_fails_closed_before_factory_dispatch() {
+        val pool = Executors.newFixedThreadPool(2)
+        try {
+            var factoryCalls = 0
+            val result = AgentParallelPlanExecutor(
+                waveExecutor = AgentParallelWaveExecutor(pool),
+                taskFactory = AgentParallelPlanTaskFactory { step, _ ->
+                    factoryCalls++
+                    AgentParallelWaveTask {
+                        AgentParallelWaveTaskOutcome.Completed(step.id, "unexpected")
+                    }
+                }
+            ).execute(
+                plan = plan(includeParentArtifact = true),
+                aggregateBudget = aggregate,
+                timeoutPerWaveMillis = 2_000,
+                cancelled = { throw IllegalStateException("cancellation source unavailable") }
+            )
+            assertEquals(AgentParallelPlanExecutionState.CANCELLED, result.state)
+            assertEquals(0, result.completedWaves)
+            assertEquals(0, result.outcomes.size)
+            assertEquals(0, factoryCalls)
+        } finally {
+            pool.shutdownNow()
+        }
+    }
+
     private fun plan(
         includeParentArtifact: Boolean
     ): AgentCoordinatorPlan {
