@@ -124,6 +124,37 @@ class AndroidProductRuntimeAdvisoryLlmRegistrationContractTest {
     }
 
     @Test
+    fun nonmonotonic_elapsed_time_fails_closed_before_usage_meter_and_artifact() {
+        var meterCalled = false
+        val registration = AndroidProductRuntimeAdvisoryLlmRegistration.create(
+            descriptor = descriptor,
+            available = { true },
+            contextCompiler = {
+                AndroidProductRuntimeAdvisoryLlmCompiledRequest(
+                    inference = CognitiveInferenceRequest(
+                        turn = turn,
+                        input = CognitiveInput("bounded advisory request"),
+                        context = CognitiveContextSnapshot(turn, emptyList())
+                    ),
+                    sourceReferences = listOf("evidence:agent-input")
+                )
+            },
+            inference = { CognitiveInferenceResult.Succeeded(turn, "advisory result") },
+            usageMeter = AndroidProductRuntimeAdvisoryLlmUsageMeter { _, _, _, _ ->
+                meterCalled = true
+                AgentRuntimeUsage(0, 0, 0, 0, 1)
+            },
+            nanoTime = sequenceNanoTime(12_000_000L, 10_000_000L)
+        )
+        val failed = assertIs<AgentCognitiveRuntimeExecutionResult.Failed>(
+            registration.adapter.run(executionRequest(descriptor))
+        )
+        assertEquals("advisory LLM monotonic clock regression", failed.reason)
+        assertEquals(0, failed.usage.artifactCount)
+        assertEquals(false, meterCalled)
+    }
+
+    @Test
     fun successful_provider_result_fails_closed_when_usage_meter_does_not_count_artifact() {
         val registration = AndroidProductRuntimeAdvisoryLlmRegistration.create(
             descriptor = descriptor,
