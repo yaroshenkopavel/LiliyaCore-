@@ -64,7 +64,7 @@ class AgentParallelPlanExecutor(
         var completedWaves = 0
 
         for (wave in schedule.waves) {
-            if (cancelled()) {
+            if (isCancelled(cancelled)) {
                 return terminal(
                     AgentParallelPlanExecutionState.CANCELLED,
                     completedWaves,
@@ -85,7 +85,7 @@ class AgentParallelPlanExecutor(
                     )
                 }
 
-                if (cancelled()) {
+                if (isCancelled(cancelled)) {
                     return terminal(
                         AgentParallelPlanExecutionState.CANCELLED,
                         completedWaves,
@@ -151,6 +151,14 @@ class AgentParallelPlanExecutor(
             outcomes = outcomes
         )
     }
+
+    // A failing cancellation source must deny dispatch rather than crash or authorize work.
+    private fun isCancelled(cancelled: () -> Boolean): Boolean =
+        try {
+            cancelled()
+        } catch (_: Exception) {
+            true
+        }
 
     private fun terminal(
         state: AgentParallelPlanExecutionState,
