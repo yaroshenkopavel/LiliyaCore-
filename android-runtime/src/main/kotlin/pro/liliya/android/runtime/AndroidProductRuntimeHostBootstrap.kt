@@ -1,6 +1,16 @@
 package pro.liliya.android.runtime
 
 import java.io.File
+import java.time.Instant
+import pro.liliya.core.asf.AgentAggregateBudget
+import pro.liliya.core.asf.AgentAuditLedger
+import pro.liliya.core.asf.AgentBlueprint
+import pro.liliya.core.asf.AgentCognitiveRuntimeRegistration
+import pro.liliya.core.asf.AgentCognitiveScope
+import pro.liliya.core.asf.AgentFactoryBounds
+import pro.liliya.core.asf.AgentWorkBudget
+import pro.liliya.core.asf.AgentWorkerProfileSet
+import pro.liliya.core.asf.AgentWorkerRuntimeDescriptor
 import pro.liliya.android.cognitivestorage.AndroidCognitiveStorageAssembly
 import pro.liliya.android.llamacppengine.AndroidLlamaCppCognitiveModelAssembly
 import pro.liliya.core.authority.AuthorityPrincipal
@@ -27,6 +37,26 @@ import pro.liliya.core.protectedmodel.LargeProtectedModelStagedSourceOwnership
  *
  * This object does not create, authorize, provision, repair or replace any dependency.
  */
+/**
+ * Explicit caller-owned ASF configuration. This only binds the already-prepared llama
+ * inference owner; it does not authorize agents, fetch a model or start execution.
+ */
+data class AndroidProductRuntimeAdvisoryLlamaConfiguration(
+    val blueprints: Collection<AgentBlueprint>,
+    val globalScope: AgentCognitiveScope,
+    val globalBudget: AgentWorkBudget,
+    val workerProfiles: AgentWorkerProfileSet,
+    val aggregateBudget: AgentAggregateBudget,
+    val descriptor: AgentWorkerRuntimeDescriptor,
+    val available: () -> Boolean,
+    val contextCompiler: AndroidProductRuntimeAdvisoryLlmContextCompiler,
+    val usageMeter: AndroidProductRuntimeAdvisoryLlmUsageMeter,
+    val auditLedger: AgentAuditLedger,
+    val otherRegistrations: Collection<AgentCognitiveRuntimeRegistration> = emptyList(),
+    val bounds: AgentFactoryBounds = AgentFactoryBounds.PROTOTYPE,
+    val timeSource: () -> Instant = { Instant.now() }
+)
+
 data class AndroidProductRuntimeHostPreparedInputs(
     val foundation: FoundationComposition,
     val cognitiveStorage: AndroidCognitiveStorageAssembly,
@@ -52,6 +82,7 @@ data class AndroidProductRuntimeHostPreparedInputs(
     val artifactIds: CognitiveArtifactIdSource,
     val timestamps: CognitiveTimestampSource,
     val advisoryAgents: AndroidProductRuntimeAdvisoryAgentHost? = null,
+    val advisoryLlama: AndroidProductRuntimeAdvisoryLlamaConfiguration? = null,
     val limits: CognitiveRuntimeLimits = CognitiveRuntimeLimits(),
     val personaLimits: AndroidHeartProductionPersonaLimits =
         AndroidHeartProductionPersonaLimits()
@@ -174,8 +205,41 @@ object AndroidProductRuntimeHostBootstrap {
 
     private fun createProductionRuntime(
         inputs: AndroidProductRuntimeHostPreparedInputs
-    ): AndroidProductRuntimeCreateResult =
-        AndroidProductRuntimeAssembly.create(
+    ): AndroidProductRuntimeCreateResult {
+        // Never allow two ambiguous advisory owners for one product session.
+        if (inputs.advisoryAgents != null && inputs.advisoryLlama != null) {
+            return AndroidProductRuntimeCreateResult.Rejected(
+                AndroidProductRuntimeCreateFailure.COMPOSITION_REJECTED
+            )
+        }
+        val advisoryHost = if (inputs.advisoryLlama != null) {
+            val config = inputs.advisoryLlama
+            when (val composed = AndroidProductRuntimeAdvisoryAgentComposition.createForLlamaAssembly(
+                blueprints = config.blueprints,
+                globalScope = config.globalScope,
+                globalBudget = config.globalBudget,
+                workerProfiles = config.workerProfiles,
+                aggregateBudget = config.aggregateBudget,
+                descriptor = config.descriptor,
+                available = config.available,
+                contextCompiler = config.contextCompiler,
+                llamaAssembly = inputs.llamaAssembly,
+                usageMeter = config.usageMeter,
+                auditLedger = config.auditLedger,
+                otherRegistrations = config.otherRegistrations,
+                bounds = config.bounds,
+                timeSource = config.timeSource
+            )) {
+                is AndroidProductRuntimeAdvisoryAgentCompositionResult.Ready -> composed.host
+                is AndroidProductRuntimeAdvisoryAgentCompositionResult.Rejected ->
+                    return AndroidProductRuntimeCreateResult.Rejected(
+                        AndroidProductRuntimeCreateFailure.COMPOSITION_REJECTED
+                    )
+            }
+        } else {
+            inputs.advisoryAgents
+        }
+        return AndroidProductRuntimeAssembly.create(
             foundation = inputs.foundation,
             cognitiveStorage = inputs.cognitiveStorage,
             memoryStoreId = inputs.memoryStoreId,
@@ -199,10 +263,11 @@ object AndroidProductRuntimeHostBootstrap {
             mutations = inputs.mutations,
             artifactIds = inputs.artifactIds,
             timestamps = inputs.timestamps,
-            advisoryAgents = inputs.advisoryAgents,
+            advisoryAgents = advisoryHost,
             limits = inputs.limits,
             personaLimits = inputs.personaLimits
         )
+    }
 
     private fun safeClose(
         runtime: AndroidProductRuntimeAssembly
