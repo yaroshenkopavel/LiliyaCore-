@@ -112,6 +112,14 @@ object AndroidProductRuntimeAdvisoryLlmRegistration {
                     )
                 }
 
+                // Never publish artifacts from a different cognitive turn.
+                if (providerResult.turn != compiled.inference.turn) {
+                    return@llm AgentCognitiveRuntimeExecutionResult.Failed(
+                        reason = "advisory LLM inference turn mismatch",
+                        usage = failureUsage(usage)
+                    )
+                }
+
                 when (providerResult) {
                     is CognitiveInferenceResult.Succeeded -> {
                         if (usage.artifactCount != 1) {
