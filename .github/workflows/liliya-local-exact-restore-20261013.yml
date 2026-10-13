@@ -248,18 +248,18 @@ jobs:
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
-          ref: ba86ebf8f51a72203ea9220fca114e523dc222bb
+          ref: f0771c0257b8aecec701b0d6cf0df6acda181521
           fetch-depth: 1
       - name: Export immutable current-main Git source
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "ba86ebf8f51a72203ea9220fca114e523dc222bb"
+          test "$(git rev-parse HEAD)" = "f0771c0257b8aecec701b0d6cf0df6acda181521"
           mkdir -p "$RUNNER_TEMP/exact-reanchor"
           git archive --format=tar.gz --output="$RUNNER_TEMP/exact-reanchor/worktree.tar.gz" HEAD
           tar -czf "$RUNNER_TEMP/exact-reanchor/git.tar.gz" .git
           { echo "target_sha=$(git rev-parse HEAD)"; echo "target_tree=$(git rev-parse HEAD^{tree})"; sha256sum "$RUNNER_TEMP/exact-reanchor/"*.tar.gz; } > "$RUNNER_TEMP/exact-reanchor/manifest.txt"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: liliya-source-reanchor-ba86ebf8
+          name: liliya-pr644-exact-source-f0771c02
           path: ${{ runner.temp }}/exact-reanchor/
           retention-days: 2
