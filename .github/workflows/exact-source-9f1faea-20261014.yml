@@ -1,0 +1,30 @@
+name: Exact source transfer 9f1faea
+on:
+  pull_request:
+    paths:
+      - .github/workflows/exact-source-9f1faea-20261014.yml
+permissions:
+  contents: read
+jobs:
+  transfer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 9f1faea607ff5f861e086d14d7653ec50ddb5999
+          persist-credentials: false
+      - name: Archive immutable main
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/exact"
+          git rev-parse HEAD > "$RUNNER_TEMP/exact/HEAD.txt"
+          git rev-parse 'HEAD^{tree}' > "$RUNNER_TEMP/exact/TREE.txt"
+          test "$(cat "$RUNNER_TEMP/exact/HEAD.txt")" = "9f1faea607ff5f861e086d14d7653ec50ddb5999"
+          git archive HEAD | gzip -n > "$RUNNER_TEMP/exact/worktree.tar.gz"
+          tar -czf "$RUNNER_TEMP/exact/git.tar.gz" .git
+          (cd "$RUNNER_TEMP/exact" && sha256sum HEAD.txt TREE.txt worktree.tar.gz git.tar.gz > SHA256SUMS.txt)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: exact-main-9f1faea
+          path: ${{ runner.temp }}/exact/
+          retention-days: 2
