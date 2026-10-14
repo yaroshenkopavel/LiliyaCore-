@@ -38,8 +38,9 @@ internal class LlamaCppSessionOwnership(
     // an in-flight streaming operation without touching its native pointer.
     private val cancellationRequested = AtomicBoolean(false)
 
-    internal fun requestStreamCancellation() {
+    override fun requestStreamCancellation(): Boolean {
         cancellationRequested.set(true)
+        return true
     }
 
     private var state = State.LIVE

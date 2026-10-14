@@ -85,6 +85,15 @@ class StagedModelEngineLoadCoordinator(
                     return delegate.stream(request, sink)
                 }
 
+                override fun requestStreamCancellation(): Boolean {
+                    if (!lifecycle.operationAllowed()) return false
+                    return try {
+                        delegate.requestStreamCancellation()
+                    } catch (_: Exception) {
+                        false
+                    }
+                }
+
                 override fun close(): ModelEngineCloseResult = lifecycle.close()
             }
         } else {

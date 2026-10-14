@@ -114,6 +114,9 @@ interface ModelEngineStreamingSessionOwnership : ModelEngineSessionOwnership {
         request: ModelEngineInferenceRequest,
         sink: ModelEngineStreamingSink
     ): ModelEngineInferenceResult
+
+    /** Cooperative cancellation, never a synchronous native close. Unsupported engines return false. */
+    fun requestStreamCancellation(): Boolean = false
 }
 
 enum class ModelEngineCloseFailure {
