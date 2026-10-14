@@ -390,18 +390,21 @@ internal object ProductionAndroidOfflineResumeAcceptedProcessPolicyFactory {
  */
 internal object ProductionAndroidOfflineResumeAcceptedProductInputFactory {
     fun create(
-        context: Context
+        context: Context,
+        advisoryLlama: AndroidProductRuntimeAdvisoryLlamaConfiguration? = null
     ): ProductionAndroidOfflineResumeProductInputFactory =
         ProductionAndroidOfflineResumeProductInputFactory { material ->
             createInput(
                 context = context.applicationContext,
-                material = material
+                material = material,
+                advisoryLlama = advisoryLlama
             )
         }
 
     private fun createInput(
         context: Context,
-        material: ProductionAndroidOfflineResumeMaterial
+        material: ProductionAndroidOfflineResumeMaterial,
+        advisoryLlama: AndroidProductRuntimeAdvisoryLlamaConfiguration?
     ): AndroidProductRuntimeFirstRunProductInput? {
         val trust = when (
             val verified = ProductionAndroidOfflineResumeTrustVerifier.verify(
@@ -416,7 +419,8 @@ internal object ProductionAndroidOfflineResumeAcceptedProductInputFactory {
         val policy = ProductionAndroidOfflineResumeAcceptedProcessPolicyFactory.create(
             context = context.applicationContext,
             trust = trust,
-            deploymentProfile = material.deploymentProfile
+            deploymentProfile = material.deploymentProfile,
+            advisoryLlama = advisoryLlama
         ) ?: return null
 
         return when (
