@@ -196,13 +196,27 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          $adbCandidates = @(
-            (Join-Path $env:RUNNER_TOOL_CACHE 'liliya-android-sdk-api35-buildtools35-v1\platform-tools\adb.exe'),
-            'C:\Android\Sdk\platform-tools\adb.exe',
-            'C:\Users\123\AppData\Local\Android\Sdk\platform-tools\adb.exe'
-          )
-          $adb = $adbCandidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
-          if (-not $adb) { throw 'USB_PREFLIGHT_ADB_NOT_FOUND' }
+          # The runner executes as NETWORK SERVICE; never probe interactive
+          # user profiles (Test-Path raises UnauthorizedAccessException there).
+          $adbCandidates = @()
+          if ($env:RUNNER_TOOL_CACHE) {
+            $adbCandidates += Join-Path $env:RUNNER_TOOL_CACHE 'liliya-android-sdk-api35-buildtools35-v1\platform-tools\adb.exe'
+          }
+          $adbCandidates += 'C:\Android\Sdk\platform-tools\adb.exe'
+          $pathAdb = Get-Command adb.exe -ErrorAction SilentlyContinue
+          if ($pathAdb) { $adbCandidates += $pathAdb.Source }
+          $adb = $null
+          foreach ($candidate in $adbCandidates) {
+            try {
+              if (Test-Path -LiteralPath $candidate -ErrorAction Stop) {
+                $adb = $candidate
+                break
+              }
+            } catch [System.UnauthorizedAccessException] {
+              continue
+            }
+          }
+          if (-not $adb) { throw 'USB_PREFLIGHT_SERVICE_OWNED_ADB_NOT_FOUND' }
           Write-Host 'USB_PREFLIGHT=START'
           $listing = @(& $adb devices -l)
           $listing | ForEach-Object { Write-Host $_ }
