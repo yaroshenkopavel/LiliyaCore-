@@ -73,7 +73,12 @@ object AndroidProductRuntimeAdvisoryLlmRegistration {
         llamaAssembly: AndroidLlamaCppCognitiveModelAssembly,
         usageMeter: AndroidProductRuntimeAdvisoryLlmUsageMeter,
         nanoTime: () -> Long = System::nanoTime,
-        ownerGeneration: (() -> Long)? = null
+        ownerGeneration: (() -> Long)? = {
+            // Bind publication to the actual Cognitive Runtime owner generation.
+            // Missing owner must fail closed in the ASF fabric.
+            llamaAssembly.cognitiveRuntime.currentSession()?.generation?.value
+                ?: throw IllegalStateException("advisory LLM has no active model session")
+        }
     ): AgentCognitiveRuntimeRegistration = create(
         descriptor = descriptor,
         available = available,
