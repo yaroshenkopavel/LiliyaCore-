@@ -6,11 +6,12 @@ on:
   workflow_dispatch:
     inputs:
       command:
-        description: "Allowed command: health, core-test, or asf-h-usb-evidence"
+        description: "Allowed command: health, usb-preflight, core-test, or asf-h-usb-evidence"
         required: true
         type: choice
         options:
           - health
+          - usb-preflight
           - core-test
           - asf-h-usb-evidence
       ref:
@@ -52,7 +53,7 @@ jobs:
               ref = context.payload.inputs.ref || 'main';
             } else {
               const body = (context.payload.comment.body || '').trim();
-              const match = body.match(/^\/liliya-laptop\s+(health|core-test|asf-h-usb-evidence)$/);
+              const match = body.match(/^\/liliya-laptop\s+(health|usb-preflight|core-test|asf-h-usb-evidence)$/);
               if (!match) {
                 core.setOutput('allowed', 'false');
                 return;
@@ -73,7 +74,7 @@ jobs:
                 ref = 'main';
               }
             }
-            if (!['health', 'core-test', 'asf-h-usb-evidence'].includes(command)) {
+            if (!['health', 'usb-preflight', 'core-test', 'asf-h-usb-evidence'].includes(command)) {
               core.setOutput('allowed', 'false');
               return;
             }
@@ -189,6 +190,38 @@ jobs:
           Write-Host "RUNNER_IS_ADMIN=$isAdmin"
           Write-Host "RUNNER_BOUNDARY_AUDIT=OBSERVATIONS_ONLY"
           Write-Host "LILIYA_LAPTOP_HEALTH=PASS"
+
+      - name: Read-only USB ADB preflight
+        if: needs.resolve.outputs.command == 'usb-preflight'
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $adbCandidates = @(
+            (Join-Path $env:RUNNER_TOOL_CACHE 'liliya-android-sdk-api35-buildtools35-v1\platform-tools\adb.exe'),
+            'C:\Android\Sdk\platform-tools\adb.exe',
+            'C:\Users\123\AppData\Local\Android\Sdk\platform-tools\adb.exe'
+          )
+          $adb = $adbCandidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+          if (-not $adb) { throw 'USB_PREFLIGHT_ADB_NOT_FOUND' }
+          Write-Host 'USB_PREFLIGHT=START'
+          $listing = @(& $adb devices -l)
+          $listing | ForEach-Object { Write-Host $_ }
+          $usb = @($listing | Where-Object { $_ -match '^([^:\s]+)\s+device(?:\s|$)' })
+          if ($usb.Count -ne 1) {
+            throw "USB_PREFLIGHT_EXPECT_ONE_USB_DEVICE count=$($usb.Count)"
+          }
+          $serial = [regex]::Match($usb[0], '^([^\s]+)').Groups[1].Value
+          $model = (& $adb -s $serial shell getprop ro.product.model | Out-String).Trim()
+          $abi = (& $adb -s $serial shell getprop ro.product.cpu.abi | Out-String).Trim()
+          $sdk = (& $adb -s $serial shell getprop ro.build.version.sdk | Out-String).Trim()
+          Write-Host "USB_PREFLIGHT_SERIAL=$serial"
+          Write-Host "USB_PREFLIGHT_MODEL=$model"
+          Write-Host "USB_PREFLIGHT_ABI=$abi"
+          Write-Host "USB_PREFLIGHT_SDK=$sdk"
+          if ($abi -ne 'arm64-v8a' -or [int]$sdk -lt 29) {
+            throw 'USB_PREFLIGHT_TARGET_MISMATCH'
+          }
+          Write-Host 'USB_PREFLIGHT=PASS_NO_INSTALL_NO_RESET'
 
       - name: Checkout requested exact ref
         if: needs.resolve.outputs.command == 'core-test' || needs.resolve.outputs.command == 'asf-h-usb-evidence'
