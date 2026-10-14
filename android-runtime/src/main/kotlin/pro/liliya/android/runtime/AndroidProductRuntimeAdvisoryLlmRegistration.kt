@@ -107,6 +107,17 @@ object AndroidProductRuntimeAdvisoryLlmRegistration {
                     return@llm failed("advisory LLM context compilation failed")
                 }
 
+                // Context compilation may outlive the model session. Do not start inference
+                // if its owner became unavailable while preparing the request.
+                val readyForInference = try {
+                    available()
+                } catch (_: Exception) {
+                    false
+                }
+                if (!readyForInference) {
+                    return@llm failed("advisory LLM session unavailable before inference")
+                }
+
                 val started = nanoTime()
                 val providerResult = try {
                     inference.infer(compiled.inference)
