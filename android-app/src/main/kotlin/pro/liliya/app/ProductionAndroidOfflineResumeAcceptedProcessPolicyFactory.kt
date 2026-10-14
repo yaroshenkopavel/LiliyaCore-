@@ -416,6 +416,10 @@ internal object ProductionAndroidOfflineResumeAcceptedProductInputFactory {
             is ProductionAndroidOfflineResumeTrustResult.Rejected -> return null
         }
 
+        // A caller-supplied advisory owner must be live at the admission boundary.
+        // Runtime also rechecks its dynamic availability before agent work.
+        if (!ProductionAndroidAsfAvailabilityGate.accepts(advisoryLlama?.available)) return null
+
         val policy = ProductionAndroidOfflineResumeAcceptedProcessPolicyFactory.create(
             context = context.applicationContext,
             trust = trust,
@@ -458,4 +462,14 @@ internal object ProductionAndroidOfflineResumeAcceptedProductInputFactory {
             is ProductionAndroidOfflineResumeProductInputResult.Rejected -> null
         }
     }
+}
+
+/** An absent opt-in preserves the standard production path; explicit opt-in fails closed. */
+internal object ProductionAndroidAsfAvailabilityGate {
+    fun accepts(available: (() -> Boolean)?): Boolean =
+        available == null || try {
+            available()
+        } catch (_: Throwable) {
+            false
+        }
 }
