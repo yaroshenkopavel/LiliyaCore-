@@ -84,6 +84,43 @@ class AndroidProductRuntimeAdvisoryLlmRegistrationContractTest {
     }
 
     @Test
+    fun session_closed_during_inference_must_not_publish_stale_artifact() {
+        var live = true
+        var inferCalls = 0
+        val registration = AndroidProductRuntimeAdvisoryLlmRegistration.create(
+            descriptor = descriptor,
+            available = { live },
+            contextCompiler = {
+                AndroidProductRuntimeAdvisoryLlmCompiledRequest(
+                    inference = CognitiveInferenceRequest(
+                        turn = turn,
+                        input = CognitiveInput("bounded advisory request"),
+                        context = CognitiveContextSnapshot(turn, emptyList())
+                    ),
+                    sourceReferences = listOf("evidence:agent-input")
+                )
+            },
+            inference = {
+                inferCalls += 1
+                live = false // Simulate session closure while the provider is running.
+                CognitiveInferenceResult.Succeeded(turn, "stale output")
+            },
+            usageMeter = AndroidProductRuntimeAdvisoryLlmUsageMeter { _, _, _, elapsed ->
+                AgentRuntimeUsage(elapsed, 3, 0, 0, 1)
+            },
+            nanoTime = sequenceNanoTime(10_000_000L, 12_000_000L)
+        )
+
+        val failed = assertIs<AgentCognitiveRuntimeExecutionResult.Failed>(
+            registration.adapter.run(executionRequest(descriptor))
+        )
+        assertEquals("advisory LLM session unavailable after inference", failed.reason)
+        assertEquals(0, failed.usage.artifactCount)
+        assertEquals(3, failed.usage.inferenceUnits)
+        assertEquals(1, inferCalls)
+    }
+
+    @Test
     fun provider_response_from_different_turn_fails_closed_without_publishing_artifact() {
         val foreignTurn = CognitiveTurnReference(
             CognitiveTurnId("foreign-turn"),
