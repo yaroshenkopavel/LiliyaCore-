@@ -357,6 +357,105 @@ class AgentHeterogeneousRuntimeFabricContractTest {
     }
 
     @Test
+    fun availability_revoked_during_admission_prevents_adapter_execution() {
+        var ready = true
+        var adapterCalls = 0
+        val fabric = AgentHeterogeneousRuntimeFabric(listOf(
+            AgentCognitiveRuntimeRegistration(
+                descriptor = graphRuntime,
+                available = { ready },
+                ownerGeneration = {
+                    ready = false
+                    8L
+                },
+                adapter = AgentCognitiveRuntimeAdapters.retrievalGraph {
+                    adapterCalls++
+                    completed(it, "must-not-run", AgentRuntimeUsage(10, 0, 8, 1, 1))
+                }
+            )
+        ))
+        val result = runSingleMicro(graphRuntime, fabric)
+        assertEquals(AgentCoordinatorTerminalState.FAILED, result.state)
+        assertEquals(0, adapterCalls)
+        assertTrue(result.artifacts.isEmpty())
+    }
+
+    @Test
+    fun generation_changed_during_admission_prevents_adapter_execution() {
+        var generation = 7L
+        var reads = 0
+        var adapterCalls = 0
+        val fabric = AgentHeterogeneousRuntimeFabric(listOf(
+            AgentCognitiveRuntimeRegistration(
+                descriptor = graphRuntime,
+                available = { true },
+                ownerGeneration = {
+                    reads++
+                    if (reads == 2) generation++
+                    generation
+                },
+                adapter = AgentCognitiveRuntimeAdapters.retrievalGraph {
+                    adapterCalls++
+                    completed(it, "must-not-run", AgentRuntimeUsage(10, 0, 8, 1, 1))
+                }
+            )
+        ))
+        val result = runSingleMicro(graphRuntime, fabric)
+        assertEquals(AgentCoordinatorTerminalState.FAILED, result.state)
+        assertEquals(0, adapterCalls)
+        assertTrue(result.artifacts.isEmpty())
+    }
+
+    @Test
+    fun availability_exception_during_readmission_does_not_execute_adapter() {
+        var checks = 0
+        var calls = 0
+        val fabric = AgentHeterogeneousRuntimeFabric(listOf(
+            AgentCognitiveRuntimeRegistration(
+                descriptor = graphRuntime,
+                available = {
+                    checks++
+                    if (checks == 2) error("owner disposed during admission")
+                    true
+                },
+                adapter = AgentCognitiveRuntimeAdapters.retrievalGraph {
+                    calls++
+                    completed(it, "should-not-execute", AgentRuntimeUsage(10, 0, 8, 1, 1))
+                }
+            )
+        ))
+        val result = runSingleMicro(graphRuntime, fabric)
+        assertEquals(AgentCoordinatorTerminalState.FAILED, result.state)
+        assertEquals(0, calls)
+        assertTrue(result.artifacts.isEmpty())
+    }
+
+    @Test
+    fun generation_exception_during_readmission_does_not_execute_adapter() {
+        var reads = 0
+        var calls = 0
+        val fabric = AgentHeterogeneousRuntimeFabric(listOf(
+            AgentCognitiveRuntimeRegistration(
+                descriptor = graphRuntime,
+                available = { true },
+                ownerGeneration = {
+                    reads++
+                    if (reads == 2) error("generation no longer available")
+                    42L
+                },
+                adapter = AgentCognitiveRuntimeAdapters.retrievalGraph {
+                    calls++
+                    completed(it, "should-not-execute", AgentRuntimeUsage(10, 0, 8, 1, 1))
+                }
+            )
+        ))
+        val result = runSingleMicro(graphRuntime, fabric)
+        assertEquals(AgentCoordinatorTerminalState.FAILED, result.state)
+        assertEquals(0, calls)
+        assertTrue(result.artifacts.isEmpty())
+    }
+
+    @Test
     fun availability_callback_exception_fails_closed_before_execution() {
         var executions = 0
         val fabric = AgentHeterogeneousRuntimeFabric(listOf(
