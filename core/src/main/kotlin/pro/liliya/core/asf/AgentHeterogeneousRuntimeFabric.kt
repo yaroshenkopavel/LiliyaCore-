@@ -108,7 +108,10 @@ fun interface AgentCognitiveRuntimeExecutionAdapter {
 data class AgentCognitiveRuntimeRegistration(
     val descriptor: AgentWorkerRuntimeDescriptor,
     val available: () -> Boolean,
-    val adapter: AgentCognitiveRuntimeExecutionAdapter
+    val adapter: AgentCognitiveRuntimeExecutionAdapter,
+    // Optional lifecycle generation supplied by the actual runtime owner.
+    // An old worker must not publish after a replacement becomes available.
+    val ownerGeneration: (() -> Long)? = null
 ) {
     val cognitiveKind: AgentCognitiveRuntimeKind
         get() = descriptor.kind.toCognitiveRuntimeKind()
@@ -155,11 +158,22 @@ class AgentHeterogeneousRuntimeFabric(
             )
         }
 
-        if (!registration.available()) {
+        val initiallyAvailable = try {
+            registration.available()
+        } catch (_: Exception) {
+            false
+        }
+        if (!initiallyAvailable) {
             return fail(
                 reason = "heterogeneous worker runtime unavailable",
                 usage = AgentRuntimeUsage(0, 0, 0, 0, 0)
             )
+        }
+
+        val admittedGeneration = try {
+            registration.ownerGeneration?.invoke()
+        } catch (_: Exception) {
+            return fail("heterogeneous worker runtime generation unavailable", AgentRuntimeUsage(0, 0, 0, 0, 0))
         }
 
         val result = try {
@@ -174,6 +188,25 @@ class AgentHeterogeneousRuntimeFabric(
                 reason = "heterogeneous worker runtime adapter failed",
                 usage = AgentRuntimeUsage(0, 0, 0, 0, 0)
             )
+        }
+
+        // A worker can lose its owner while executing. Do not publish an artifact
+        // after availability has been revoked; preserve measured usage on failure.
+        val stillAvailable = try {
+            registration.available()
+        } catch (_: Exception) {
+            false
+        }
+        if (!stillAvailable) {
+            return fail("heterogeneous worker runtime unavailable after execution", result.usage)
+        }
+        val currentGeneration = try {
+            registration.ownerGeneration?.invoke()
+        } catch (_: Exception) {
+            return fail("heterogeneous worker runtime generation unavailable", result.usage)
+        }
+        if (admittedGeneration != currentGeneration) {
+            return fail("heterogeneous worker runtime generation changed", result.usage)
         }
 
         return when (result) {
