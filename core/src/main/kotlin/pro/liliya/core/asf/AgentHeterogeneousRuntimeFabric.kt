@@ -176,6 +176,25 @@ class AgentHeterogeneousRuntimeFabric(
             return fail("heterogeneous worker runtime generation unavailable", AgentRuntimeUsage(0, 0, 0, 0, 0))
         }
 
+        // Owner identity can change while the admission generation is being read.
+        // Revalidate before invoking the adapter, not only before publishing output.
+        val readyBeforeExecution = try {
+            registration.available()
+        } catch (_: Exception) {
+            false
+        }
+        if (!readyBeforeExecution) {
+            return fail("heterogeneous worker runtime unavailable before execution", AgentRuntimeUsage(0, 0, 0, 0, 0))
+        }
+        val generationBeforeExecution = try {
+            registration.ownerGeneration?.invoke()
+        } catch (_: Exception) {
+            return fail("heterogeneous worker runtime generation unavailable", AgentRuntimeUsage(0, 0, 0, 0, 0))
+        }
+        if (admittedGeneration != generationBeforeExecution) {
+            return fail("heterogeneous worker runtime generation changed before execution", AgentRuntimeUsage(0, 0, 0, 0, 0))
+        }
+
         val result = try {
             registration.adapter.run(
                 AgentCognitiveRuntimeExecutionRequest(
