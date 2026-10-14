@@ -94,7 +94,12 @@ class StagedModelEngineLoadCoordinator(
                     }
                 }
 
-                override fun close(): ModelEngineCloseResult = lifecycle.close()
+                override fun close(): ModelEngineCloseResult {
+                    // Signal first: native close can wait for an active stream to return.
+                    // Cancellation is cooperative and must not run under closeLock.
+                    try { delegate.requestStreamCancellation() } catch (_: Exception) { }
+                    return lifecycle.close()
+                }
             }
         } else {
             object : ModelEngineSessionOwnership {
