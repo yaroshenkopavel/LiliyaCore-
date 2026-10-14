@@ -1,0 +1,85 @@
+name: Liliya toolchain export only 20261014
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/liliya-toolchain-export-only-20261014.yml'
+permissions:
+  contents: read
+jobs:
+  toolchain-export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: a7bce4c32e2ee301238ec86937e52215005e8077
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.1'
+      - uses: android-actions/setup-android@v3
+      - name: Install required Android packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager "platforms;android-35" "build-tools;35.0.0" "build-tools;36.0.0" "platform-tools" "ndk;29.0.13113456" "cmake;3.31.6"
+      - name: Prime dependency resolution without Kotlin compilation
+        shell: bash
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          gradle :core:dependencies :android-runtime:dependencies :android-app:dependencies --console=plain --no-daemon --max-workers=1
+      - name: Package installed tools and cache
+        shell: bash
+        run: |
+          set -euo pipefail
+          R="$RUNNER_TEMP/liliya-export"
+          mkdir -p "$R"/{jdk,gradle,sdk,cache}
+          GRADLE_ROOT="$(dirname "$(dirname "$(readlink -f "$(command -v gradle)")")")"
+          test -f "$JAVA_HOME/release"
+          test -x "$GRADLE_ROOT/bin/gradle"
+          test -d "$ANDROID_HOME/platforms/android-35"
+          test -d "$ANDROID_HOME/ndk/29.0.13113456"
+          printf '%s\n' 'SOURCE_SHA=a7bce4c32e2ee301238ec86937e52215005e8077' > "$R/metadata.txt"
+          java -version 2>> "$R/metadata.txt"
+          gradle --version >> "$R/metadata.txt"
+          tar -C "$JAVA_HOME" -czf "$R/jdk/payload.tar.gz" .
+          tar -C "$GRADLE_ROOT" -czf "$R/gradle/payload.tar.gz" .
+          tar -C "$ANDROID_HOME" -czf "$R/sdk/payload.tar.gz" platforms/android-35 build-tools/35.0.0 build-tools/36.0.0 platform-tools ndk/29.0.13113456 cmake/3.31.6 licenses
+          GRADLE_CACHE="${GRADLE_USER_HOME:-$HOME/.gradle}"
+          tar -C "$GRADLE_CACHE" -czf "$R/cache/payload.tar.gz" caches
+          for kind in jdk gradle sdk cache; do
+            split -b 150M -d -a 3 "$R/$kind/payload.tar.gz" "$R/$kind/chunk-"
+            rm "$R/$kind/payload.tar.gz"
+          done
+          (cd "$R" && find jdk gradle sdk cache -type f -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS.txt)
+          du -sh "$R"/*
+      - name: Upload JDK and Gradle
+        uses: actions/upload-artifact@v4
+        with:
+          name: liliya-restore-jdk-gradle-20261014
+          path: |
+            ${{ runner.temp }}/liliya-export/jdk/
+            ${{ runner.temp }}/liliya-export/gradle/
+            ${{ runner.temp }}/liliya-export/metadata.txt
+            ${{ runner.temp }}/liliya-export/SHA256SUMS.txt
+          retention-days: 4
+          if-no-files-found: error
+      - name: Upload Android SDK
+        uses: actions/upload-artifact@v4
+        with:
+          name: liliya-restore-sdk-20261014
+          path: ${{ runner.temp }}/liliya-export/sdk/
+          retention-days: 4
+          if-no-files-found: error
+      - name: Upload Gradle cache
+        uses: actions/upload-artifact@v4
+        with:
+          name: liliya-restore-cache-20261014
+          path: ${{ runner.temp }}/liliya-export/cache/
+          retention-days: 4
+          if-no-files-found: error
