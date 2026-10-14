@@ -84,6 +84,40 @@ class AndroidProductRuntimeAdvisoryLlmRegistrationContractTest {
     }
 
     @Test
+    fun session_closed_during_context_compilation_must_not_start_inference() {
+        var live = true
+        var inferenceCalls = 0
+        val registration = AndroidProductRuntimeAdvisoryLlmRegistration.create(
+            descriptor = descriptor,
+            available = { live },
+            contextCompiler = {
+                live = false
+                AndroidProductRuntimeAdvisoryLlmCompiledRequest(
+                    inference = CognitiveInferenceRequest(
+                        turn = turn,
+                        input = CognitiveInput("bounded advisory request"),
+                        context = CognitiveContextSnapshot(turn, emptyList())
+                    ),
+                    sourceReferences = listOf("evidence:agent-input")
+                )
+            },
+            inference = {
+                inferenceCalls++
+                CognitiveInferenceResult.Succeeded(turn, "must not run")
+            },
+            usageMeter = AndroidProductRuntimeAdvisoryLlmUsageMeter { _, _, _, _ ->
+                AgentRuntimeUsage(0, 0, 0, 0, 1)
+            }
+        )
+        val failed = assertIs<AgentCognitiveRuntimeExecutionResult.Failed>(
+            registration.adapter.run(executionRequest(descriptor))
+        )
+        assertEquals("advisory LLM session unavailable before inference", failed.reason)
+        assertEquals(0, inferenceCalls)
+        assertEquals(0, failed.usage.artifactCount)
+    }
+
+    @Test
     fun session_closed_during_inference_must_not_publish_stale_artifact() {
         var live = true
         var inferCalls = 0
