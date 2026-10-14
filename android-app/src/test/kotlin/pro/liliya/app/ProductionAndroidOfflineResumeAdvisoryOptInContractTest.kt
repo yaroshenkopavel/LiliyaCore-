@@ -72,6 +72,23 @@ class ProductionAndroidOfflineResumeAdvisoryOptInContractTest {
         assertFalse(ProductionAndroidAsfAvailabilityGate.accepts { error("unavailable") })
     }
 
+    @Test
+    fun availability_is_rechecked_after_session_state_changes() {
+        var ready = true
+        var evaluations = 0
+        val liveAvailability = {
+            evaluations += 1
+            ready
+        }
+
+        assertTrue(ProductionAndroidAsfAvailabilityGate.accepts(liveAvailability))
+        ready = false
+        assertFalse(ProductionAndroidAsfAvailabilityGate.accepts(liveAvailability))
+        ready = true
+        assertTrue(ProductionAndroidAsfAvailabilityGate.accepts(liveAvailability))
+        assertTrue(evaluations == 3)
+    }
+
     private inline fun <reified T> uninitialized(): T {
         val field = Unsafe::class.java.getDeclaredField("theUnsafe")
         field.isAccessible = true
