@@ -16,6 +16,8 @@ import pro.liliya.core.modelengine.ModelEngineInferenceRequest
 import pro.liliya.core.modelengine.ModelEngineInferenceResult
 import pro.liliya.core.modelengine.ModelEngineLoadFailure
 import pro.liliya.core.modelengine.ModelEngineLoadResult
+import pro.liliya.core.modelengine.ModelEngineStreamingSessionOwnership
+import pro.liliya.core.modelengine.ModelEngineStreamingSink
 import pro.liliya.core.modelengine.ModelEngineSessionOwnership
 import pro.liliya.core.modelengine.StagedModelEngineLoadCoordinator
 import pro.liliya.core.modelengine.StagedModelEngineLoaderPort
@@ -215,6 +217,60 @@ class LargeProtectedModelEngineUseContractTest {
         val blocked = assertIs<LargeProtectedModelStagingRetireResult.Rejected>(reentrantRetire)
         assertEquals(LargeProtectedModelStagingFailure.RETIRE_IN_USE, blocked.reason)
         assertIs<LargeProtectedModelStagingRetireResult.Retired>(ownership.retire())
+    }
+
+    @Test
+    fun streamed_session_close_signals_cancellation_before_waiting_for_provider_close() {
+        val staging = coordinator(FakeBackend())
+        val ownership = publish(staging)
+        val streamingEntered = CountDownLatch(1)
+        val cancelled = CountDownLatch(1)
+        val engine = object : ModelEngineStreamingSessionOwnership {
+            override val backendId = ModelEngineBackendId("streamed-engine")
+            override val handleId = ModelEngineHandleId("streamed-handle")
+            override fun infer(request: ModelEngineInferenceRequest): ModelEngineInferenceResult =
+                ModelEngineInferenceResult.Succeeded("unused")
+            override fun stream(
+                request: ModelEngineInferenceRequest,
+                sink: ModelEngineStreamingSink
+            ): ModelEngineInferenceResult {
+                streamingEntered.countDown()
+                return if (cancelled.await(5, TimeUnit.SECONDS)) {
+                    ModelEngineInferenceResult.Rejected(pro.liliya.core.modelengine.ModelEngineInferenceFailure.CANCELLED)
+                } else {
+                    ModelEngineInferenceResult.Rejected(pro.liliya.core.modelengine.ModelEngineInferenceFailure.TIMED_OUT)
+                }
+            }
+            override fun requestStreamCancellation(): Boolean {
+                cancelled.countDown()
+                return true
+            }
+            override fun close(): ModelEngineCloseResult {
+                check(cancelled.count == 0L) { "close happened before cancellation" }
+                return ModelEngineCloseResult.Closed
+            }
+        }
+        val loader = StagedModelEngineLoadCoordinator(staging,
+            StagedModelEngineLoaderPort { ModelEngineLoadResult.Loaded(engine) })
+        val leased = assertIs<ModelEngineLoadResult.Loaded>(loader.load(ownership)).ownership
+        val streamable = assertIs<ModelEngineStreamingSessionOwnership>(leased)
+        val threads = Executors.newFixedThreadPool(2)
+        try {
+            val streaming = threads.submit<ModelEngineInferenceResult> {
+                streamable.stream(ModelEngineInferenceRequest("test", 8), ModelEngineStreamingSink {
+                    pro.liliya.core.modelengine.ModelEngineStreamControl.CONTINUE
+                })
+            }
+            assertTrue(streamingEntered.await(5, TimeUnit.SECONDS))
+            val closing = threads.submit<ModelEngineCloseResult> { leased.close() }
+            assertIs<ModelEngineCloseResult.Closed>(closing.get(5, TimeUnit.SECONDS))
+            val rejected = assertIs<ModelEngineInferenceResult.Rejected>(streaming.get(5, TimeUnit.SECONDS))
+            assertEquals(pro.liliya.core.modelengine.ModelEngineInferenceFailure.CANCELLED, rejected.reason)
+            assertIs<LargeProtectedModelStagingRetireResult.Retired>(ownership.retire())
+        } finally {
+            cancelled.countDown()
+            threads.shutdownNow()
+        }
     }
 
     @Test
