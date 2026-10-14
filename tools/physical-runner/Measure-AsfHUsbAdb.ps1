@@ -44,7 +44,7 @@ function Get-BatterySnapshot {
 }
 
 function Get-MemorySample {
-    $raw = (& $Adb shell dumpsys meminfo pro.liliya.app 2>&1 | Out-String)
+    $raw = (& $Adb shell dumpsys meminfo pro.liliya.app.asfh 2>&1 | Out-String)
     $match = [regex]::Match($raw, 'TOTAL PSS:\s*(\d+)\s+TOTAL RSS:\s*(\d+)')
     if (-not $match.Success) { return $null }
     [pscustomobject]@{
@@ -54,10 +54,16 @@ function Get-MemorySample {
     }
 }
 
+# Guard physical acceptance against accidental production APK replacement.
+# The caller must supply isolated ASF-H build variants only.
+if ($AppApk -notmatch 'asfH' -or $TestApk -notmatch 'asfH') {
+    throw 'ASF_H_ISOLATED_APK_VARIANTS_REQUIRED'
+}
 if (-not (Test-Path $AppApk)) { throw "Missing AppApk: $AppApk" }
 if (-not (Test-Path $TestApk)) { throw "Missing TestApk: $TestApk" }
 
 Invoke-Adb devices '-l'
+# Do not uninstall or clear the production package under any circumstances.
 & $Adb install -r -t $AppApk
 if ($LASTEXITCODE -ne 0) { throw "App install failed" }
 & $Adb install -r -t $TestApk
@@ -74,7 +80,7 @@ foreach ($mode in @('FULL_ONLY', 'HIERARCHICAL')) {
         'shell','am','instrument','-w','-r',
         '-e','class','pro.liliya.app.AsfHierarchicalPhysicalResourceInstrumentedTest',
         '-e','asf_h_mode',$mode,
-        'pro.liliya.app.test/androidx.test.runner.AndroidJUnitRunner'
+        'pro.liliya.app.asfh.test/androidx.test.runner.AndroidJUnitRunner'
     )
     $started = [DateTime]::UtcNow
     $process = Start-Process -FilePath $Adb -ArgumentList $args -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru
@@ -90,7 +96,7 @@ foreach ($mode in @('FULL_ONLY', 'HIERARCHICAL')) {
     $instrumentation = Get-Content $stdout -Raw
     $passed = $instrumentation -match 'INSTRUMENTATION_CODE:\s*-1'
     $summaryName = if ($mode -eq 'FULL_ONLY') { 'asf-h-physical-full-only.json' } else { 'asf-h-physical-hierarchical.json' }
-    $summary = (& $Adb shell run-as pro.liliya.app cat "files/$summaryName" | Out-String) | ConvertFrom-Json
+    $summary = (& $Adb shell run-as pro.liliya.app.asfh cat "files/$summaryName" | Out-String) | ConvertFrom-Json
     $thermalAfter = Get-ThermalSnapshot
     $batteryAfter = Get-BatterySnapshot
     $pss = @($samples | ForEach-Object { $_.pssKb })
