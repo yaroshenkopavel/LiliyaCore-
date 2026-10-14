@@ -131,6 +131,20 @@ object AndroidProductRuntimeAdvisoryLlmRegistration {
                     return@llm failed("advisory LLM usage metering failed")
                 }
 
+                // A session may close or be replaced while inference is executing.
+                // Never publish its result after liveness has been revoked.
+                val stillAvailable = try {
+                    available()
+                } catch (_: Exception) {
+                    false
+                }
+                if (!stillAvailable) {
+                    return@llm AgentCognitiveRuntimeExecutionResult.Failed(
+                        reason = "advisory LLM session unavailable after inference",
+                        usage = failureUsage(usage)
+                    )
+                }
+
                 if (providerResult == null) {
                     return@llm AgentCognitiveRuntimeExecutionResult.Failed(
                         reason = "advisory LLM inference provider failed",
