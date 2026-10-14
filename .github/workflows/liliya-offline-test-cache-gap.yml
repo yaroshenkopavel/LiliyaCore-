@@ -1,0 +1,49 @@
+name: Liliya offline test cache gap export
+on:
+  pull_request:
+    paths: ['.github/workflows/liliya-offline-test-cache-gap.yml']
+permissions:
+  contents: read
+jobs:
+  cache-gap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: a7bce4c32e2ee301238ec86937e52215005e8077
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.1'
+      - name: Resolve and test Core with bounded Kotlin heap
+        shell: bash
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          gradle :core:test --console=plain --no-daemon --max-workers=1 '-Pkotlin.daemon.jvmargs=-Xmx3072m'
+      - name: Export verified test dependency modules
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="${GRADLE_USER_HOME:-$HOME/.gradle}/caches/modules-2/files-2.1"
+          OUT="$RUNNER_TEMP/liliya-cache-gap"
+          mkdir -p "$OUT"
+          test -f "$ROOT/org.jetbrains.kotlin/kotlin-test-junit5/2.3.21"/*/*.jar
+          (
+            cd "$ROOT"
+            find org.jetbrains.kotlin org.junit.jupiter org.junit.platform org.opentest4j org.apiguardian -type f 2>/dev/null |
+              grep -E '/(kotlin-test-junit5|junit-jupiter-api|junit-jupiter-engine|junit-platform-commons|junit-platform-engine|junit-platform-launcher|opentest4j|apiguardian-api)/' |
+              tar -czf "$OUT/test-jars.tar.gz" -T -
+          )
+          (cd "$OUT" && sha256sum test-jars.tar.gz > SHA256SUMS.txt)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-test-cache-gap-20261014
+          path: ${{ runner.temp }}/liliya-cache-gap/
+          retention-days: 4
+          if-no-files-found: error
