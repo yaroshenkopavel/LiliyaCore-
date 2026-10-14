@@ -7,6 +7,7 @@ import pro.liliya.android.llamacppengine.AndroidLlamaCppCognitiveModelAssembly
 import pro.liliya.android.llamacppengine.LlamaCppEnginePolicy
 import pro.liliya.android.protectedmodel.staging.AndroidProtectedModelStagingPolicy
 import pro.liliya.android.runtime.AndroidHeartProductionPersonaDefinition
+import pro.liliya.android.runtime.AndroidProductRuntimeAdvisoryLlamaConfiguration
 import pro.liliya.android.runtime.AndroidProductRuntimeCognitiveStructuralOwnersFactory
 import pro.liliya.android.runtime.AndroidProductRuntimeCognitiveStructuralOwnersResult
 import pro.liliya.android.runtime.AndroidProductRuntimeFirstWorkingLearningDisabled
@@ -84,7 +85,8 @@ internal object ProductionAndroidOfflineResumeAcceptedProcessPolicyFactory {
     fun create(
         context: Context,
         trust: AndroidProductRuntimeStartupTrustOwnership,
-        deploymentProfile: ProductionAndroidOfflineDeploymentProfile
+        deploymentProfile: ProductionAndroidOfflineDeploymentProfile,
+        advisoryLlama: AndroidProductRuntimeAdvisoryLlamaConfiguration? = null
     ): ProductionAndroidOfflineResumeProcessPolicy? = try {
         if (
             deploymentProfile.offlineResumePolicyId != ACCEPTED_POLICY_ID ||
@@ -197,6 +199,7 @@ internal object ProductionAndroidOfflineResumeAcceptedProcessPolicyFactory {
                 memoryStoreId = PersistentStoreId("offline-resume-placeholder-memory"),
                 knowledgeStoreId = PersistentStoreId("offline-resume-placeholder-knowledge"),
                 llamaAssembly = llamaAssembly,
+                advisoryLlama = advisoryLlama,
                 maxCandidatesPerSource = limits.maxRetrievalResults,
                 personaDefinition = personaDefinition(),
                 scope = CognitiveRuntimeScopeId(RUNTIME_SCOPE),
