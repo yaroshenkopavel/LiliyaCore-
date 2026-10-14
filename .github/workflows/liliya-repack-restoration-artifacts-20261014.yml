@@ -1,0 +1,80 @@
+name: Liliya repack restoration artifacts
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/liliya-repack-restoration-artifacts-20261014.yml'
+permissions:
+  contents: read
+  actions: read
+jobs:
+  repack:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: liliya-restore-sdk-20261014
+          run-id: 38543004415
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/original/sdk
+      - uses: actions/download-artifact@v4
+        with:
+          name: liliya-restore-cache-20261014
+          run-id: 38543004415
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/original/cache
+      - name: Locate chunks
+        shell: bash
+        run: |
+          set -euxo pipefail
+          find "$RUNNER_TEMP/original" -type f -printf '%P %s bytes\n'
+          test -f "$RUNNER_TEMP/original/sdk/chunk-006"
+          test -f "$RUNNER_TEMP/original/cache/chunk-006"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-sdk-000-002
+          path: |
+            ${{ runner.temp }}/original/sdk/chunk-000
+            ${{ runner.temp }}/original/sdk/chunk-001
+            ${{ runner.temp }}/original/sdk/chunk-002
+          compression-level: 0
+          retention-days: 3
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-sdk-003-005
+          path: |
+            ${{ runner.temp }}/original/sdk/chunk-003
+            ${{ runner.temp }}/original/sdk/chunk-004
+            ${{ runner.temp }}/original/sdk/chunk-005
+          compression-level: 0
+          retention-days: 3
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-sdk-006
+          path: ${{ runner.temp }}/original/sdk/chunk-006
+          compression-level: 0
+          retention-days: 3
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-cache-000-002
+          path: |
+            ${{ runner.temp }}/original/cache/chunk-000
+            ${{ runner.temp }}/original/cache/chunk-001
+            ${{ runner.temp }}/original/cache/chunk-002
+          compression-level: 0
+          retention-days: 3
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-cache-003-005
+          path: |
+            ${{ runner.temp }}/original/cache/chunk-003
+            ${{ runner.temp }}/original/cache/chunk-004
+            ${{ runner.temp }}/original/cache/chunk-005
+          compression-level: 0
+          retention-days: 3
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-cache-006
+          path: ${{ runner.temp }}/original/cache/chunk-006
+          compression-level: 0
+          retention-days: 3
