@@ -46,7 +46,9 @@ jobs:
               grep -E '/(kotlin-test-junit5|junit-jupiter-api|junit-jupiter-engine|junit-platform-commons|junit-platform-engine|junit-platform-launcher|opentest4j|apiguardian-api)/' |
               tar -czf "$OUT/test-jars.tar.gz" -T -
           )
-          (cd "$OUT" && sha256sum test-jars.tar.gz > SHA256SUMS.txt)
+          CACHE_ROOT="${GRADLE_USER_HOME:-$HOME/.gradle}"
+          (cd "$CACHE_ROOT" && tar -czf "$OUT/gradle-metadata.tar.gz" caches/modules-2/metadata-*)
+          (cd "$OUT" && sha256sum test-jars.tar.gz gradle-metadata.tar.gz > SHA256SUMS.txt)
       - uses: actions/upload-artifact@v4
         with:
           name: liliya-test-cache-gap-20261014
