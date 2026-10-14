@@ -3,6 +3,8 @@ package pro.liliya.app
 import android.content.ContextWrapper
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import org.junit.Test
 import pro.liliya.android.runtime.AndroidProductRuntimeAdvisoryLlamaConfiguration
 import pro.liliya.android.runtime.AndroidProductRuntimeStartupTrustOwnership
@@ -56,6 +58,18 @@ class ProductionAndroidOfflineResumeAdvisoryOptInContractTest {
                 advisoryLlama = uninitialized<AndroidProductRuntimeAdvisoryLlamaConfiguration>()
             )
         )
+    }
+
+    @Test
+    fun absent_asf_opt_in_does_not_block_standard_offline_resume() {
+        assertTrue(ProductionAndroidAsfAvailabilityGate.accepts(null))
+    }
+
+    @Test
+    fun explicit_asf_opt_in_must_be_available_and_fail_closed() {
+        assertTrue(ProductionAndroidAsfAvailabilityGate.accepts { true })
+        assertFalse(ProductionAndroidAsfAvailabilityGate.accepts { false })
+        assertFalse(ProductionAndroidAsfAvailabilityGate.accepts { error("unavailable") })
     }
 
     private inline fun <reified T> uninitialized(): T {
