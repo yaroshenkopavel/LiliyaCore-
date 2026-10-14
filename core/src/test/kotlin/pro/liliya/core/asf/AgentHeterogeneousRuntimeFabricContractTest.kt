@@ -315,6 +315,66 @@ class AgentHeterogeneousRuntimeFabricContractTest {
     }
 
     @Test
+    fun runtime_revoked_during_execution_cannot_publish_stale_artifact() {
+        var available = true
+        var executions = 0
+        val fabric = AgentHeterogeneousRuntimeFabric(listOf(
+            AgentCognitiveRuntimeRegistration(
+                descriptor = graphRuntime,
+                available = { available },
+                adapter = AgentCognitiveRuntimeAdapters.retrievalGraph {
+                    executions++
+                    available = false
+                    completed(it, "stale", AgentRuntimeUsage(10, 0, 8, 1, 1))
+                }
+            )
+        ))
+        val result = runSingleMicro(graphRuntime, fabric)
+        assertEquals(1, executions)
+        assertEquals(AgentCoordinatorTerminalState.FAILED, result.state)
+        assertEquals(0, result.completedSteps)
+        assertTrue(result.artifacts.isEmpty())
+    }
+
+    @Test
+    fun replacement_generation_cannot_publish_previous_owners_result() {
+        var generation = 17L
+        val fabric = AgentHeterogeneousRuntimeFabric(listOf(
+            AgentCognitiveRuntimeRegistration(
+                descriptor = graphRuntime,
+                available = { true }, // replacement is READY before the old call finishes
+                adapter = AgentCognitiveRuntimeAdapters.retrievalGraph {
+                    generation++
+                    completed(it, "old-generation", AgentRuntimeUsage(10, 0, 8, 1, 1))
+                },
+                ownerGeneration = { generation }
+            )
+        ))
+        val result = runSingleMicro(graphRuntime, fabric)
+        assertEquals(AgentCoordinatorTerminalState.FAILED, result.state)
+        assertEquals(0, result.completedSteps)
+        assertTrue(result.artifacts.isEmpty())
+    }
+
+    @Test
+    fun availability_callback_exception_fails_closed_before_execution() {
+        var executions = 0
+        val fabric = AgentHeterogeneousRuntimeFabric(listOf(
+            AgentCognitiveRuntimeRegistration(
+                descriptor = graphRuntime,
+                available = { error("session unavailable") },
+                adapter = AgentCognitiveRuntimeAdapters.retrievalGraph {
+                    executions++
+                    completed(it, "unexpected", AgentRuntimeUsage(10, 0, 8, 1, 1))
+                }
+            )
+        ))
+        val result = runSingleMicro(graphRuntime, fabric)
+        assertEquals(AgentCoordinatorTerminalState.FAILED, result.state)
+        assertEquals(0, executions)
+    }
+
+    @Test
     fun exact_runtime_and_model_identity_are_required_for_registration_match() {
         var calls = 0
         val registered = onnxRuntime
