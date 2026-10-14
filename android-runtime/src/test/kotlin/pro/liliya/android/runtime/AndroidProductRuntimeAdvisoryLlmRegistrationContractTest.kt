@@ -58,6 +58,45 @@ class AndroidProductRuntimeAdvisoryLlmRegistrationContractTest {
     }
 
     @Test
+    fun fabric_rejects_previous_model_generation_even_when_replacement_is_ready() {
+        var ownerGeneration = 31L
+        var inferCalls = 0
+        val registration = AndroidProductRuntimeAdvisoryLlmRegistration.create(
+            descriptor = descriptor,
+            available = { true },
+            contextCompiler = {
+                AndroidProductRuntimeAdvisoryLlmCompiledRequest(
+                    inference = CognitiveInferenceRequest(
+                        turn = turn,
+                        input = CognitiveInput("bounded advisory request"),
+                        context = CognitiveContextSnapshot(turn, emptyList())
+                    ),
+                    sourceReferences = listOf("evidence:agent-input")
+                )
+            },
+            inference = {
+                inferCalls++
+                ownerGeneration++ // Old inference completed after the replacement is READY.
+                CognitiveInferenceResult.Succeeded(turn, "old owner output")
+            },
+            usageMeter = AndroidProductRuntimeAdvisoryLlmUsageMeter { _, _, _, elapsed ->
+                AgentRuntimeUsage(elapsed, 3, 0, 0, 1)
+            },
+            nanoTime = sequenceNanoTime(10_000_000L, 12_000_000L),
+            ownerGeneration = { ownerGeneration }
+        )
+
+        val result = pro.liliya.core.asf.AgentHeterogeneousRuntimeFabric(
+            listOf(registration)
+        ).run(executionRequest(descriptor).context)
+        val failure = assertIs<pro.liliya.core.asf.AgentRuntimeOutcome.Failed>(result)
+        assertEquals("heterogeneous worker runtime generation changed", failure.reason)
+        assertEquals(0, failure.usage.artifactCount)
+        assertEquals(3, failure.usage.inferenceUnits)
+        assertEquals(1, inferCalls)
+    }
+
+    @Test
     fun exact_model_registration_runs_existing_cognitive_inference_port() {
         var inferenceCalls = 0
         val registration = AndroidProductRuntimeAdvisoryLlmRegistration.create(

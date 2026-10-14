@@ -198,15 +198,15 @@ class AgentHeterogeneousRuntimeFabric(
             false
         }
         if (!stillAvailable) {
-            return fail("heterogeneous worker runtime unavailable after execution", result.usage)
+            return fail("heterogeneous worker runtime unavailable after execution", result.usage.copy(artifactCount = 0))
         }
         val currentGeneration = try {
             registration.ownerGeneration?.invoke()
         } catch (_: Exception) {
-            return fail("heterogeneous worker runtime generation unavailable", result.usage)
+            return fail("heterogeneous worker runtime generation unavailable", result.usage.copy(artifactCount = 0))
         }
         if (admittedGeneration != currentGeneration) {
-            return fail("heterogeneous worker runtime generation changed", result.usage)
+            return fail("heterogeneous worker runtime generation changed", result.usage.copy(artifactCount = 0))
         }
 
         return when (result) {
