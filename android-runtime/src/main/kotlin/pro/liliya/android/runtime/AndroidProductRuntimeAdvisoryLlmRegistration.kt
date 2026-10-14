@@ -72,14 +72,16 @@ object AndroidProductRuntimeAdvisoryLlmRegistration {
         contextCompiler: AndroidProductRuntimeAdvisoryLlmContextCompiler,
         llamaAssembly: AndroidLlamaCppCognitiveModelAssembly,
         usageMeter: AndroidProductRuntimeAdvisoryLlmUsageMeter,
-        nanoTime: () -> Long = System::nanoTime
+        nanoTime: () -> Long = System::nanoTime,
+        ownerGeneration: (() -> Long)? = null
     ): AgentCognitiveRuntimeRegistration = create(
         descriptor = descriptor,
         available = available,
         contextCompiler = contextCompiler,
         inference = llamaAssembly.inferencePort,
         usageMeter = usageMeter,
-        nanoTime = nanoTime
+        nanoTime = nanoTime,
+        ownerGeneration = ownerGeneration
     )
 
     fun create(
@@ -88,7 +90,8 @@ object AndroidProductRuntimeAdvisoryLlmRegistration {
         contextCompiler: AndroidProductRuntimeAdvisoryLlmContextCompiler,
         inference: CognitiveInferencePort,
         usageMeter: AndroidProductRuntimeAdvisoryLlmUsageMeter,
-        nanoTime: () -> Long = System::nanoTime
+        nanoTime: () -> Long = System::nanoTime,
+        ownerGeneration: (() -> Long)? = null
     ): AgentCognitiveRuntimeRegistration {
         require(descriptor.kind == AgentWorkerRuntimeKind.LLM) {
             "advisory LLM registration requires LLM runtime kind"
@@ -100,6 +103,7 @@ object AndroidProductRuntimeAdvisoryLlmRegistration {
         return AgentCognitiveRuntimeRegistration(
             descriptor = descriptor,
             available = available,
+            ownerGeneration = ownerGeneration,
             adapter = AgentCognitiveRuntimeAdapters.llm { request ->
                 val compiled = try {
                     contextCompiler.compile(request)
