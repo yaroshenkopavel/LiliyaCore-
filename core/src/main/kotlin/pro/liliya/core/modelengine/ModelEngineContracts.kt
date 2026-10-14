@@ -115,7 +115,7 @@ interface ModelEngineStreamingSessionOwnership : ModelEngineSessionOwnership {
         sink: ModelEngineStreamingSink
     ): ModelEngineInferenceResult
 
-    /** Cooperative cancellation only; not a synchronous native close. */
+    /** Cooperative cancellation, never a synchronous native close. Unsupported engines return false. */
     fun requestStreamCancellation(): Boolean = false
 }
 
