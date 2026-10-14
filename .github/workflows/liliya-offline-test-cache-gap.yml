@@ -20,6 +20,12 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.6.1'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+      - name: Install required Android SDK and NDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager "platforms;android-35" "build-tools;35.0.0" "build-tools;36.0.0" "platform-tools" "ndk;29.0.13113456" "cmake;3.31.6"
       - name: Resolve and test Core with bounded Kotlin heap
         shell: bash
         continue-on-error: true
