@@ -21,12 +21,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.6.1'
-      - name: Use preinstalled Android SDK manager
-        shell: bash
-        run: |
-          set -euo pipefail
-          command -v sdkmanager
-          echo "ANDROID_HOME=$ANDROID_HOME"
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
       - name: Install required Android packages
         shell: bash
         run: |
