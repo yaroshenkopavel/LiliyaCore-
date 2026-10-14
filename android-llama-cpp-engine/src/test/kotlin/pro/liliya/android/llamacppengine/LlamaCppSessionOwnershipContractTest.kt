@@ -132,6 +132,53 @@ class LlamaCppSessionOwnershipContractTest {
     }
 
     @Test
+    fun asynchronous_stream_revocation_stops_before_user_sink_and_forbids_reuse() {
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val native = object : LlamaCppNativeSessionPort by FakeNativePort() {
+            override fun stream(
+                nativeSessionId: Long,
+                promptUtf8: ByteArray,
+                maxOutputChars: Int,
+                sink: LlamaCppNativeStreamingSink
+            ): LlamaCppNativeInferenceResult {
+                entered.countDown()
+                check(release.await(5, TimeUnit.SECONDS))
+                return if (!sink.onChunk("old".encodeToByteArray())) {
+                    LlamaCppNativeInferenceResult.Rejected(ModelEngineInferenceFailure.CANCELLED)
+                } else {
+                    LlamaCppNativeInferenceResult.Succeeded("old")
+                }
+            }
+        }
+        val session = session(native)
+        val executor = Executors.newSingleThreadExecutor()
+        try {
+            var delivered = 0
+            val pending = executor.submit<ModelEngineInferenceResult> {
+                session.stream(ModelEngineInferenceRequest("ok", maxOutputChars = 4),
+                    ModelEngineStreamingSink { delivered++; ModelEngineStreamControl.CONTINUE })
+            }
+            assertTrue(entered.await(5, TimeUnit.SECONDS))
+            session.requestStreamCancellation() // Must not wait on executionLock.
+            release.countDown()
+            val result = assertIs<ModelEngineInferenceResult.Rejected>(
+                pending.get(5, TimeUnit.SECONDS)
+            )
+            assertEquals(ModelEngineInferenceFailure.CANCELLED, result.reason)
+            assertEquals(0, delivered)
+            val retry = assertIs<ModelEngineInferenceResult.Rejected>(
+                session.infer(ModelEngineInferenceRequest("ok", maxOutputChars = 4))
+            )
+            assertEquals(ModelEngineInferenceFailure.SESSION_FAILED, retry.reason)
+            assertIs<ModelEngineCloseResult.Closed>(session.close())
+        } finally {
+            release.countDown()
+            executor.shutdownNow()
+        }
+    }
+
+    @Test
     fun output_character_budget_is_independent_and_close_is_idempotent() {
         val native = FakeNativePort().apply {
             inferResult = LlamaCppNativeInferenceResult.Succeeded("abcdefghij")

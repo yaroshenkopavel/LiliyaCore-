@@ -1,5 +1,6 @@
 package pro.liliya.android.llamacppengine
 
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 import pro.liliya.core.modelengine.ModelEngineBackendId
@@ -33,12 +34,20 @@ internal class LlamaCppSessionOwnership(
     // Fair serialization prevents a newly arriving infer from barging ahead of a queued close.
     // This is engine-local; no Core/staging/backend ownership lock is held during native work.
     private val executionLock = ReentrantLock(true)
+    // Revocation is independent of executionLock so the lifecycle owner can signal
+    // an in-flight streaming operation without touching its native pointer.
+    private val cancellationRequested = AtomicBoolean(false)
+
+    internal fun requestStreamCancellation() {
+        cancellationRequested.set(true)
+    }
+
     private var state = State.LIVE
     private var operationInProgress = false
 
     override fun infer(request: ModelEngineInferenceRequest): ModelEngineInferenceResult =
         executionLock.withLock {
-            if (state != State.LIVE) {
+            if (state != State.LIVE || cancellationRequested.get()) {
                 return@withLock ModelEngineInferenceResult.Rejected(
                     ModelEngineInferenceFailure.SESSION_FAILED
                 )
@@ -100,7 +109,7 @@ internal class LlamaCppSessionOwnership(
         request: ModelEngineInferenceRequest,
         sink: ModelEngineStreamingSink
     ): ModelEngineInferenceResult = executionLock.withLock {
-        if (state != State.LIVE) {
+        if (state != State.LIVE || cancellationRequested.get()) {
             return@withLock ModelEngineInferenceResult.Rejected(
                 ModelEngineInferenceFailure.SESSION_FAILED
             )
@@ -144,6 +153,10 @@ internal class LlamaCppSessionOwnership(
                 promptUtf8 = promptUtf8,
                 maxOutputChars = request.maxOutputChars,
                 sink = LlamaCppNativeStreamingSink { chunkUtf8 ->
+                    if (cancellationRequested.get()) {
+                        stopped = true
+                        return@LlamaCppNativeStreamingSink false
+                    }
                     if (chunkUtf8.isEmpty()) {
                         contractViolation = true
                         return@LlamaCppNativeStreamingSink false
