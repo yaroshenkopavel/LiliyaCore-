@@ -40,6 +40,24 @@ class AndroidProductRuntimeAdvisoryLlmRegistrationContractTest {
     )
 
     @Test
+    fun advisory_registration_forwards_optional_owner_generation_to_fabric() {
+        var currentGeneration = 21L
+        val registration = AndroidProductRuntimeAdvisoryLlmRegistration.create(
+            descriptor = descriptor,
+            available = { true },
+            contextCompiler = { error("not invoked") },
+            inference = { error("not invoked") },
+            usageMeter = AndroidProductRuntimeAdvisoryLlmUsageMeter { _, _, _, _ ->
+                AgentRuntimeUsage(0, 0, 0, 0, 0)
+            },
+            ownerGeneration = { currentGeneration }
+        )
+        assertEquals(21L, registration.ownerGeneration?.invoke())
+        currentGeneration = 22L
+        assertEquals(22L, registration.ownerGeneration?.invoke())
+    }
+
+    @Test
     fun exact_model_registration_runs_existing_cognitive_inference_port() {
         var inferenceCalls = 0
         val registration = AndroidProductRuntimeAdvisoryLlmRegistration.create(
