@@ -404,11 +404,11 @@ jobs:
           }
           Write-Host "ASF_H_USB_DEVICE=$($deviceLines[0])"
 
-          gradle.bat :android-app:assembleDebug :android-app:assembleDebugAndroidTest --console=plain
+          gradle.bat :android-app:assembleAsfH :android-app:assembleAsfHAndroidTest -PliliyaAsfHIsolation=true --console=plain
           if ($LASTEXITCODE -ne 0) { throw "ASF_H_APK_BUILD_FAILED_$LASTEXITCODE" }
 
-          $app = 'android-app\build\outputs\apk\debug\android-app-debug.apk'
-          $test = 'android-app\build\outputs\apk\androidTest\debug\android-app-debug-androidTest.apk'
+          $app = 'android-app\build\outputs\apk\asfH\android-app-asfH.apk'
+          $test = 'android-app\build\outputs\apk\androidTest\asfH\android-app-asfH-androidTest.apk'
           if (!(Test-Path $app) -or !(Test-Path $test)) {
             throw 'ASF_H_APK_OUTPUT_MISSING'
           }
