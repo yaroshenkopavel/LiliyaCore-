@@ -69,17 +69,143 @@ jobs:
             ${{ runner.temp }}/liliya-export/SHA256SUMS.txt
           retention-days: 4
           if-no-files-found: error
-      - name: Upload Android SDK
+      - name: Export sdk chunk 000
         uses: actions/upload-artifact@v4
         with:
-          name: liliya-restore-sdk-20261014
-          path: ${{ runner.temp }}/liliya-export/sdk/
+          name: liliya-restore-sdk-000-20261014
+          path: ${{ runner.temp }}/liliya-export/sdk/chunk-000
           retention-days: 4
-          if-no-files-found: error
-      - name: Upload Gradle cache
+          if-no-files-found: warn
+      - name: Export sdk chunk 001
         uses: actions/upload-artifact@v4
         with:
-          name: liliya-restore-cache-20261014
-          path: ${{ runner.temp }}/liliya-export/cache/
+          name: liliya-restore-sdk-001-20261014
+          path: ${{ runner.temp }}/liliya-export/sdk/chunk-001
           retention-days: 4
-          if-no-files-found: error
+          if-no-files-found: warn
+      - name: Export sdk chunk 002
+        uses: actions/upload-artifact@v4
+        with:
+          name: liliya-restore-sdk-002-20261014
+          path: ${{ runner.temp }}/liliya-export/sdk/chunk-002
+          retention-days: 4
+          if-no-files-found: warn
+      - name: Export sdk chunk 003
+        uses: actions/upload-artifact@v4
+        with:
+          name: liliya-restore-sdk-003-20261014
+          path: ${{ runner.temp }}/liliya-export/sdk/chunk-003
+          retention-days: 4
+          if-no-files-found: warn
+      - name: Export sdk chunk 004
+        uses: actions/upload-artifact@v4
+        with:
+          name: liliya-restore-sdk-004-20261014
+          path: ${{ runner.temp }}/liliya-export/sdk/chunk-004
+          retention-days: 4
+          if-no-files-found: warn
+      - name: Export sdk chunk 005
+        uses: actions/upload-artifact@v4
+        with:
+          name: liliya-restore-sdk-005-20261014
+          path: ${{ runner.temp }}/liliya-export/sdk/chunk-005
+          retention-days: 4
+          if-no-files-found: warn
+      - name: Export sdk chunk 006
+        uses: actions/upload-artifact@v4
+        with:
+          name: liliya-restore-sdk-006-20261014
+          path: ${{ runner.temp }}/liliya-export/sdk/chunk-006
+          retention-days: 4
+          if-no-files-found: warn
+      - name: Export sdk chunk 007
+        uses: actions/upload-artifact@v4
+        with:
+          name: liliya-restore-sdk-007-20261014
+          path: ${{ runner.temp }}/liliya-export/sdk/chunk-007
+          retention-days: 4
+          if-no-files-found: warn
+      - name: Export sdk chunk 008
+        uses: actions/upload-artifact@v4
+        with:
+          name: liliya-restore-sdk-008-20261014
+          path: ${{ runner.temp }}/liliya-export/sdk/chunk-008
+          retention-days: 4
+          if-no-files-found: warn
+      - name: Export sdk chunk 009
+        uses: actions/upload-artifact@v4
+        with:
+          name: liliya-restore-sdk-009-20261014
+          path: ${{ runner.temp }}/liliya-export/sdk/chunk-009
+          retention-days: 4
+          if-no-files-found: warn
+      - name: Export cache chunk 000
+        uses: actions/upload-artifact@v4
+        with:
+          name: liliya-restore-cache-000-20261014
+          path: ${{ runner.temp }}/liliya-export/cache/chunk-000
+          retention-days: 4
+          if-no-files-found: warn
+      - name: Export cache chunk 001
+        uses: actions/upload-artifact@v4
+        with:
+          name: liliya-restore-cache-001-20261014
+          path: ${{ runner.temp }}/liliya-export/cache/chunk-001
+          retention-days: 4
+          if-no-files-found: warn
+      - name: Export cache chunk 002
+        uses: actions/upload-artifact@v4
+        with:
+          name: liliya-restore-cache-002-20261014
+          path: ${{ runner.temp }}/liliya-export/cache/chunk-002
+          retention-days: 4
+          if-no-files-found: warn
+      - name: Export cache chunk 003
+        uses: actions/upload-artifact@v4
+        with:
+          name: liliya-restore-cache-003-20261014
+          path: ${{ runner.temp }}/liliya-export/cache/chunk-003
+          retention-days: 4
+          if-no-files-found: warn
+      - name: Export cache chunk 004
+        uses: actions/upload-artifact@v4
+        with:
+          name: liliya-restore-cache-004-20261014
+          path: ${{ runner.temp }}/liliya-export/cache/chunk-004
+          retention-days: 4
+          if-no-files-found: warn
+      - name: Export cache chunk 005
+        uses: actions/upload-artifact@v4
+        with:
+          name: liliya-restore-cache-005-20261014
+          path: ${{ runner.temp }}/liliya-export/cache/chunk-005
+          retention-days: 4
+          if-no-files-found: warn
+      - name: Export cache chunk 006
+        uses: actions/upload-artifact@v4
+        with:
+          name: liliya-restore-cache-006-20261014
+          path: ${{ runner.temp }}/liliya-export/cache/chunk-006
+          retention-days: 4
+          if-no-files-found: warn
+      - name: Export cache chunk 007
+        uses: actions/upload-artifact@v4
+        with:
+          name: liliya-restore-cache-007-20261014
+          path: ${{ runner.temp }}/liliya-export/cache/chunk-007
+          retention-days: 4
+          if-no-files-found: warn
+      - name: Export cache chunk 008
+        uses: actions/upload-artifact@v4
+        with:
+          name: liliya-restore-cache-008-20261014
+          path: ${{ runner.temp }}/liliya-export/cache/chunk-008
+          retention-days: 4
+          if-no-files-found: warn
+      - name: Export cache chunk 009
+        uses: actions/upload-artifact@v4
+        with:
+          name: liliya-restore-cache-009-20261014
+          path: ${{ runner.temp }}/liliya-export/cache/chunk-009
+          retention-days: 4
+          if-no-files-found: warn
