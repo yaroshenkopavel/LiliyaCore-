@@ -1,6 +1,7 @@
 package pro.liliya.app
 
 import android.content.ContextWrapper
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import org.junit.Test
 import pro.liliya.android.runtime.AndroidProductRuntimeAdvisoryLlamaConfiguration
@@ -30,6 +31,28 @@ class ProductionAndroidOfflineResumeAdvisoryOptInContractTest {
                 context = uninitialized<ContextWrapper>(),
                 trust = uninitialized(),
                 deploymentProfile = uninitialized(),
+                advisoryLlama = uninitialized<AndroidProductRuntimeAdvisoryLlamaConfiguration>()
+            )
+        )
+    }
+
+    @Test
+    fun product_input_factory_creation_remains_inert_without_explicit_opt_in() {
+        // The context is deliberately unusable: construction must not touch Android storage,
+        // admission, signed License state, or protected-model infrastructure.
+        assertNotNull(
+            ProductionAndroidOfflineResumeAcceptedProductInputFactory.create(
+                context = uninitialized<ContextWrapper>()
+            )
+        )
+    }
+
+    @Test
+    fun product_input_factory_creation_remains_inert_with_explicit_opt_in() {
+        // Capturing an advisory configuration cannot itself launch or admit ASF workers.
+        assertNotNull(
+            ProductionAndroidOfflineResumeAcceptedProductInputFactory.create(
+                context = uninitialized<ContextWrapper>(),
                 advisoryLlama = uninitialized<AndroidProductRuntimeAdvisoryLlamaConfiguration>()
             )
         )
