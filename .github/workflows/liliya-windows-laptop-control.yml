@@ -6,12 +6,13 @@ on:
   workflow_dispatch:
     inputs:
       command:
-        description: "Allowed command: health, usb-preflight, core-test, or asf-h-usb-evidence"
+        description: "Allowed command: health, usb-preflight, sdk-prep, core-test, or asf-h-usb-evidence"
         required: true
         type: choice
         options:
           - health
           - usb-preflight
+          - sdk-prep
           - core-test
           - asf-h-usb-evidence
       ref:
@@ -53,7 +54,7 @@ jobs:
               ref = context.payload.inputs.ref || 'main';
             } else {
               const body = (context.payload.comment.body || '').trim();
-              const match = body.match(/^\/liliya-laptop\s+(health|usb-preflight|core-test|asf-h-usb-evidence)$/);
+              const match = body.match(/^\/liliya-laptop\s+(health|usb-preflight|sdk-prep|core-test|asf-h-usb-evidence)$/);
               if (!match) {
                 core.setOutput('allowed', 'false');
                 return;
@@ -74,7 +75,7 @@ jobs:
                 ref = 'main';
               }
             }
-            if (!['health', 'usb-preflight', 'core-test', 'asf-h-usb-evidence'].includes(command)) {
+            if (!['health', 'usb-preflight', 'sdk-prep', 'core-test', 'asf-h-usb-evidence'].includes(command)) {
               core.setOutput('allowed', 'false');
               return;
             }
@@ -298,14 +299,14 @@ jobs:
           Write-Host 'ASF_H_SCRIPT_PREFLIGHT=PASS'
 
       - name: Set up Java 17 for ASF-H USB evidence
-        if: needs.resolve.outputs.command == 'asf-h-usb-evidence'
+        if: needs.resolve.outputs.command == 'asf-h-usb-evidence' || needs.resolve.outputs.command == 'sdk-prep'
         uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
         with:
           distribution: temurin
           java-version: '17'
 
       - name: Provision service-owned Android SDK for ASF-H USB evidence
-        if: needs.resolve.outputs.command == 'asf-h-usb-evidence'
+        if: needs.resolve.outputs.command == 'asf-h-usb-evidence' || needs.resolve.outputs.command == 'sdk-prep'
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
@@ -363,6 +364,31 @@ jobs:
           if (!(Test-Path $adb)) { throw "ADB_MISSING path=$adb" }
           if (!(Test-Path $platform)) { throw "ANDROID_PLATFORM_35_MISSING path=$platform" }
           if (!(Test-Path $buildTools)) { throw "ANDROID_BUILD_TOOLS_35_MISSING path=$buildTools" }
+          # Install missing native build prerequisites once in persistent service SDK.
+          # The physical measurement stage must never be the first consumer.
+          $required = @(
+            @{ Path = 'build-tools\36.0.0\aapt2.exe'; Package = 'build-tools;36.0.0' },
+            @{ Path = 'ndk\29.0.13113456\source.properties'; Package = 'ndk;29.0.13113456' },
+            @{ Path = 'cmake\3.31.6\bin\cmake.exe'; Package = 'cmake;3.31.6' }
+          )
+          $missing = @($required | Where-Object { -not (Test-Path (Join-Path $sdk $_.Path)) })
+          if ($missing.Count -gt 0) {
+            Write-Host "ANDROID_NATIVE_PREREQ_MISSING=$($missing.Count)"
+            $answers = Join-Path $env:RUNNER_TEMP 'android-sdk-native-answers.txt'
+            (1..100 | ForEach-Object { 'y' }) | Set-Content -LiteralPath $answers -Encoding ascii
+            $sdkmanager = Join-Path $sdk 'cmdline-tools\latest\bin\sdkmanager.bat'
+            $packages = ($missing | ForEach-Object { '"' + $_.Package + '"' }) -join ' '
+            $installCmd = '""' + $sdkmanager + '" --sdk_root="' + $sdk + '" ' + $packages + ' < "' + $answers + '""'
+            & cmd.exe /d /s /c $installCmd
+            if ($LASTEXITCODE -ne 0) { throw "ANDROID_NATIVE_PREREQ_INSTALL_FAILED_$LASTEXITCODE" }
+          }
+          foreach ($item in $required) {
+            if (-not (Test-Path (Join-Path $sdk $item.Path))) {
+              throw "ANDROID_NATIVE_PREREQ_NOT_READY_$($item.Package)"
+            }
+            Write-Host "ANDROID_NATIVE_PREREQ_READY=$($item.Package)"
+          }
+          Write-Host 'ANDROID_SERVICE_SDK_PREP=PASS'
           Write-Host "ANDROID_SDK_CACHE_PATH=$sdk"
 
           "ANDROID_HOME=$sdk" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
