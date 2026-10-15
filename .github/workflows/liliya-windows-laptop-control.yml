@@ -416,7 +416,9 @@ jobs:
             & git -C $sourceDir remote add origin 'https://github.com/ggml-org/llama.cpp.git'
             if ($LASTEXITCODE -ne 0) { throw 'LLAMA_SOURCE_REMOTE_FAILED' }
           }
-          $current = (& git -C $sourceDir rev-parse HEAD 2>$null | Out-String).Trim()
+          # Do not invoke rev-parse HEAD on the first run: git init has an unborn HEAD.
+          # rev-parse --verify --quiet emits no fatal diagnostics for that state.
+          $current = (& git -C $sourceDir rev-parse --verify --quiet HEAD | Out-String).Trim()
           if ($current -ne $commit) {
             # Only obtain the reviewed commit, not the full upstream history.
             & git -C $sourceDir -c protocol.version=2 fetch --depth=1 origin $commit
