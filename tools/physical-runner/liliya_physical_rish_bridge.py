@@ -67,6 +67,8 @@ GOVERNED_LEARNING_SEMANTIC_REBUILD_TEST = (
 UPLOADS = {
     "/v1/install/app": ("liliya-app-debug.apk", APP_PACKAGE),
     "/v1/install/test": ("liliya-app-debug-androidTest.apk", TEST_PACKAGE),
+    "/v1/install/asf-h-app": ("liliya-asf-h-app.apk", ASF_H_APP_PACKAGE),
+    "/v1/install/asf-h-test": ("liliya-asf-h-test.apk", ASF_H_TEST_PACKAGE),
     "/v1/install/semantic-app": (
         "liliya-semantic-host-debug.apk",
         SEMANTIC_APP_PACKAGE,
@@ -240,6 +242,15 @@ class Handler(BaseHTTPRequestHandler):
 
     def _install_upload(self, path: str) -> None:
         filename, package = UPLOADS[path]
+        isolated = package in (ASF_H_APP_PACKAGE, ASF_H_TEST_PACKAGE)
+        if isolated:
+            existing = run_rish(f"pm path {package}", timeout=30)
+            if existing.returncode != 0:
+                self._json(409, {"error": "cannot confirm isolated package absence", "package": package})
+                return
+            if any(line.startswith("package:") for line in existing.stdout.splitlines()):
+                self._json(409, {"error": "isolated package already installed; replacement forbidden", "package": package})
+                return
         try:
             length = int(self.headers.get("Content-Length", ""))
         except ValueError:
@@ -293,7 +304,7 @@ class Handler(BaseHTTPRequestHandler):
             f"rm -f '{device_destination}' && "
             f"cp '{destination}' '{device_destination}' && "
             f"chmod 0644 '{device_destination}' && "
-            f"pm install -r -t '{device_destination}'; "
+            f"pm install {'-t' if isolated else '-r -t'} '{device_destination}'; "
             "rc=$?; "
             f"rm -f '{device_destination}'; "
             "exit $rc"
