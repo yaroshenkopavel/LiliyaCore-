@@ -421,7 +421,11 @@ jobs:
           $current = (& git -C $sourceDir rev-parse --verify --quiet HEAD | Out-String).Trim()
           if ($current -ne $commit) {
             # Only obtain the reviewed commit, not the full upstream history.
-            & git -C $sourceDir -c protocol.version=2 fetch --depth=1 origin $commit
+            # Keep index-pack memory bounded on the 8 GB Windows laptop.
+            # Partial clone requests only the pinned commit's reachable objects;
+            # checkout subsequently retrieves needed blobs.
+            $env:GIT_HTTP_VERSION = 'HTTP/1.1'
+            & git -C $sourceDir -c protocol.version=2 -c http.version=HTTP/1.1 -c pack.threads=1 -c index.threads=1 fetch --no-tags --depth=1 --filter=blob:none origin $commit
             if ($LASTEXITCODE -ne 0) { throw 'LLAMA_SOURCE_PINNED_FETCH_FAILED' }
             & git -C $sourceDir -c core.longpaths=true checkout --force --detach $commit
             if ($LASTEXITCODE -ne 0) { throw 'LLAMA_SOURCE_CHECKOUT_FAILED' }
