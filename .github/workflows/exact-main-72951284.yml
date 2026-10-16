@@ -1,0 +1,29 @@
+name: Exact source transport 72951284
+on:
+  pull_request:
+    paths:
+      - .github/workflows/exact-main-72951284.yml
+permissions:
+  contents: read
+jobs:
+  transport:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 72951284146984077a06ba564edd60790fa62eae
+          persist-credentials: false
+      - run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/exact"
+          git rev-parse HEAD > "$RUNNER_TEMP/exact/HEAD.txt"
+          git rev-parse 'HEAD^{tree}' > "$RUNNER_TEMP/exact/TREE.txt"
+          test "$(cat "$RUNNER_TEMP/exact/HEAD.txt")" = "72951284146984077a06ba564edd60790fa62eae"
+          git archive HEAD | gzip -n > "$RUNNER_TEMP/exact/worktree.tar.gz"
+          tar -czf "$RUNNER_TEMP/exact/git.tar.gz" .git
+          (cd "$RUNNER_TEMP/exact" && sha256sum HEAD.txt TREE.txt worktree.tar.gz git.tar.gz > SHA256SUMS.txt)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: exact-main-72951284
+          path: ${{ runner.temp }}/exact/
+          retention-days: 2
