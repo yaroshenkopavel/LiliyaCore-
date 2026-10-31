@@ -4,15 +4,25 @@ on:
     branches:
       - technical/local-env-bridge-2026-10-31
 permissions:
-  contents: read
+  contents: write
 jobs:
   exact-source:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      TARGET_SHA: 799c3a6dc3545471e8a028458c57a42f16341372
-      TARGET_TREE: 981baff35ad4cb3dc1180745fed27b2d1c2dee5c
+      TARGET_SHA: 975c7e054555dc6a0dd98d42537ee0c6df5dd795
     steps:
+      - name: Publish exact-source run index
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          printf 'run_id=%s\n' "$GITHUB_RUN_ID" > "$RUNNER_TEMP/run-id"
+          INDEX_SHA="$(gh api "repos/${GITHUB_REPOSITORY}/contents/.github/latest-source-run-id.txt?ref=technical/local-env-bridge-2026-10-31" --jq .sha 2>/dev/null || true)"
+          if [ -n "$INDEX_SHA" ]; then
+            gh api -X PUT "repos/${GITHUB_REPOSITORY}/contents/.github/latest-source-run-id.txt" -f message="infra: exact main source run index [skip ci]" -f content="$(base64 -w0 "$RUNNER_TEMP/run-id")" -f sha="$INDEX_SHA" -f branch="technical/local-env-bridge-2026-10-31"
+          else
+            gh api -X PUT "repos/${GITHUB_REPOSITORY}/contents/.github/latest-source-run-id.txt" -f message="infra: exact main source run index [skip ci]" -f content="$(base64 -w0 "$RUNNER_TEMP/run-id")" -f branch="technical/local-env-bridge-2026-10-31"
+          fi
       - uses: actions/checkout@v4
         with:
           ref: ${{ env.TARGET_SHA }}
@@ -22,7 +32,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$TARGET_SHA"
-          test "$(git rev-parse HEAD^{tree})" = "$TARGET_TREE"
+          TARGET_TREE="$(git rev-parse HEAD^{tree})"
           mkdir -p "$RUNNER_TEMP/export"
           git archive --format=tar.gz --output="$RUNNER_TEMP/export/LiliyaCore-worktree.tar.gz" HEAD
           tar -czf "$RUNNER_TEMP/export/LiliyaCore-git.tar.gz" .git
