@@ -214,6 +214,14 @@ internal class LlamaCppSessionOwnership(
             promptUtf8.fill(0)
         }
 
+        // Cancellation may arrive after the last streamed chunk but before
+        // nativeStream returns; never report the abandoned operation as success.
+        if (cancellationRequested.get()) {
+            return@withLock ModelEngineInferenceResult.Rejected(
+                ModelEngineInferenceFailure.CANCELLED
+            )
+        }
+
         if (contractViolation) {
             return@withLock ModelEngineInferenceResult.Rejected(
                 ModelEngineInferenceFailure.PROVIDER_FAILED
