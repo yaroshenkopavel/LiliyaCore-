@@ -1,0 +1,42 @@
+name: Liliya Local Exact Source Bridge
+on:
+  push:
+    branches:
+      - technical/local-env-bridge-2026-10-31
+permissions:
+  contents: read
+jobs:
+  exact-source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      TARGET_SHA: 799c3a6dc3545471e8a028458c57a42f16341372
+      TARGET_TREE: 981baff35ad4cb3dc1180745fed27b2d1c2dee5c
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TARGET_SHA }}
+          fetch-depth: 0
+      - name: Verify exact canonical source and export
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          test "$(git rev-parse HEAD^{tree})" = "$TARGET_TREE"
+          mkdir -p "$RUNNER_TEMP/export"
+          git archive --format=tar.gz --output="$RUNNER_TEMP/export/LiliyaCore-worktree.tar.gz" HEAD
+          tar -czf "$RUNNER_TEMP/export/LiliyaCore-git.tar.gz" .git
+          { echo "target_sha=$TARGET_SHA"; echo "target_tree=$TARGET_TREE"; } > "$RUNNER_TEMP/export/source.env"
+          ( cd "$RUNNER_TEMP/export" && sha256sum LiliyaCore-worktree.tar.gz LiliyaCore-git.tar.gz > SHA256SUMS )
+          test -s "$RUNNER_TEMP/export/LiliyaCore-worktree.tar.gz"
+          test -s "$RUNNER_TEMP/export/LiliyaCore-git.tar.gz"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-exact-source-2026-10-31
+          path: |
+            ${{ runner.temp }}/export/LiliyaCore-worktree.tar.gz
+            ${{ runner.temp }}/export/LiliyaCore-git.tar.gz
+            ${{ runner.temp }}/export/source.env
+            ${{ runner.temp }}/export/SHA256SUMS
+          retention-days: 1
+          compression-level: 0
