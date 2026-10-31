@@ -179,6 +179,44 @@ class LlamaCppSessionOwnershipContractTest {
     }
 
     @Test
+    fun asynchronous_non_streaming_revocation_never_publishes_stale_success() {
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val native = object : LlamaCppNativeSessionPort by FakeNativePort() {
+            override fun infer(
+                nativeSessionId: Long,
+                promptUtf8: ByteArray,
+                maxOutputChars: Int
+            ): LlamaCppNativeInferenceResult {
+                entered.countDown()
+                check(release.await(5, TimeUnit.SECONDS))
+                return LlamaCppNativeInferenceResult.Succeeded("stale")
+            }
+        }
+        val session = session(native)
+        val executor = Executors.newSingleThreadExecutor()
+        try {
+            val pending = executor.submit<ModelEngineInferenceResult> {
+                session.infer(ModelEngineInferenceRequest("ok", maxOutputChars = 8))
+            }
+            assertTrue(entered.await(5, TimeUnit.SECONDS))
+            assertTrue(session.requestStreamCancellation())
+            release.countDown()
+            val result = assertIs<ModelEngineInferenceResult.Rejected>(
+                pending.get(5, TimeUnit.SECONDS)
+            )
+            assertEquals(ModelEngineInferenceFailure.CANCELLED, result.reason)
+            val retry = assertIs<ModelEngineInferenceResult.Rejected>(
+                session.infer(ModelEngineInferenceRequest("ok", maxOutputChars = 8))
+            )
+            assertEquals(ModelEngineInferenceFailure.SESSION_FAILED, retry.reason)
+        } finally {
+            release.countDown()
+            executor.shutdownNow()
+        }
+    }
+
+    @Test
     fun output_character_budget_is_independent_and_close_is_idempotent() {
         val native = FakeNativePort().apply {
             inferResult = LlamaCppNativeInferenceResult.Succeeded("abcdefghij")
