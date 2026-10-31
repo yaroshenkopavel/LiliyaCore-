@@ -1,0 +1,77 @@
+name: Liliya Local Toolchain Bridge
+on:
+  push:
+    branches: [technical/local-env-bridge-2026-10-31]
+permissions:
+  contents: read
+jobs:
+  toolchain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      TARGET_SHA: 799c3a6dc3545471e8a028458c57a42f16341372
+      TARGET_TREE: 981baff35ad4cb3dc1180745fed27b2d1c2dee5c
+      GRADLE_USER_HOME: ${{ github.workspace }}/.bridge-gradle-home
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TARGET_SHA }}
+      - name: Verify exact tree
+        run: |
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          test "$(git rev-parse HEAD^{tree})" = "$TARGET_TREE"
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: '9.6.1' }
+      - name: Install Android components
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'build-tools;36.0.0' 'platform-tools' 'ndk;29.0.13113456' 'cmake;3.31.6'
+      - name: Warm project-only cache and offline check
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle :core:test :android-runtime:testDebugUnitTest :android-app:testDebugUnitTest :android-app:compileDebugAndroidTestKotlin --no-daemon --console=plain
+          gradle :core:test --offline --no-daemon --console=plain
+      - name: Export real toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT="$RUNNER_TEMP/liliya-export"
+          mkdir -p "$OUT/sdk"
+          REAL_JAVA_HOME="$(readlink -f "$JAVA_HOME")"
+          test -x "$REAL_JAVA_HOME/bin/java"
+          tar -C "$(dirname "$REAL_JAVA_HOME")" -czf "$OUT/jdk17-real.tar.gz" "$(basename "$REAL_JAVA_HOME")"
+          tar -tzf "$OUT/jdk17-real.tar.gz" | grep -q '/bin/java$'
+          GRADLE_BIN="$(readlink -f "$(command -v gradle)")"
+          GRADLE_ROOT="$(cd "$(dirname "$GRADLE_BIN")/.." && pwd)"
+          tar -C "$(dirname "$GRADLE_ROOT")" -czf "$OUT/gradle-9.6.1.tar.gz" "$(basename "$GRADLE_ROOT")"
+          for p in platforms/android-35 build-tools/35.0.0 build-tools/36.0.0 platform-tools; do
+            mkdir -p "$OUT/sdk/$(dirname "$p")"
+            cp -a "$ANDROID_HOME/$p" "$OUT/sdk/$p"
+          done
+          tar -C "$OUT/sdk" -czf "$OUT/android-sdk-core.tar.gz" .
+          tar -C "$ANDROID_HOME/cmake" -czf "$OUT/cmake-3.31.6.tar.gz" 3.31.6
+          tar -C "$ANDROID_HOME/ndk" -czf - 29.0.13113456 | split -b 250M -d -a 3 - "$OUT/ndk.part."
+          tar -C "$(dirname "$GRADLE_USER_HOME")" -czf - "$(basename "$GRADLE_USER_HOME")" | split -b 250M -d -a 3 - "$OUT/gradle-home.part."
+          (cd "$OUT" && sha256sum *.tar.gz ndk.part.* gradle-home.part.* > SHA256SUMS)
+          { echo "target_sha=$TARGET_SHA"; echo "target_tree=$TARGET_TREE"; } > "$OUT/environment-manifest.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-runtime-core
+          path: |
+            ${{ runner.temp }}/liliya-export/*.tar.gz
+            ${{ runner.temp }}/liliya-export/SHA256SUMS
+            ${{ runner.temp }}/liliya-export/environment-manifest.txt
+          compression-level: 0
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-runtime-chunks
+          path: |
+            ${{ runner.temp }}/liliya-export/ndk.part.*
+            ${{ runner.temp }}/liliya-export/gradle-home.part.*
+          compression-level: 0
+          retention-days: 1
