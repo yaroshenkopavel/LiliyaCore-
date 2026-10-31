@@ -40,6 +40,8 @@ internal class LlamaCppSessionOwnership(
 
     override fun requestStreamCancellation(): Boolean {
         cancellationRequested.set(true)
+        // This method deliberately does not take executionLock.
+        try { nativePort.cancel(nativeSessionId) } catch (_: Throwable) { /* fail closed via Kotlin flag */ }
         return true
     }
 
@@ -210,6 +212,14 @@ internal class LlamaCppSessionOwnership(
         } finally {
             operationInProgress = false
             promptUtf8.fill(0)
+        }
+
+        // Cancellation may arrive after the last streamed chunk but before
+        // nativeStream returns; never report the abandoned operation as success.
+        if (cancellationRequested.get()) {
+            return@withLock ModelEngineInferenceResult.Rejected(
+                ModelEngineInferenceFailure.CANCELLED
+            )
         }
 
         if (contractViolation) {

@@ -54,5 +54,8 @@ internal object LlamaCppNativeBridge {
         sink: LlamaCppNativeStreamingSink
     ): ByteArray
 
+    /** Nonblocking, permanent per-session native cancellation. */
+    external fun nativeCancel(nativeSessionId: Long): Boolean
+
     external fun nativeClose(nativeSessionId: Long): Int
 }
