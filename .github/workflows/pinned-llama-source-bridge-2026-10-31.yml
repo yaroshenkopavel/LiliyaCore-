@@ -21,8 +21,10 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/llama-export"
-          git clone https://github.com/ggml-org/llama.cpp.git "$RUNNER_TEMP/llama-src"
-          git -C "$RUNNER_TEMP/llama-src" checkout --detach 0f3a71be15af836d277c9f918adfafb45732677e
+          git init "$RUNNER_TEMP/llama-src"
+          git -C "$RUNNER_TEMP/llama-src" remote add origin https://github.com/ggml-org/llama.cpp.git
+          git -C "$RUNNER_TEMP/llama-src" fetch --depth 1 origin 0f3a71be15af836d277c9f918adfafb45732677e
+          git -C "$RUNNER_TEMP/llama-src" checkout --detach FETCH_HEAD
           test "$(git -C "$RUNNER_TEMP/llama-src" rev-parse HEAD)" = 0f3a71be15af836d277c9f918adfafb45732677e
           tar -czf "$RUNNER_TEMP/llama-export/llama-src-with-git.tar.gz" -C "$RUNNER_TEMP" llama-src
           (cd "$RUNNER_TEMP/llama-export"; sha256sum llama-src-with-git.tar.gz > SHA256SUMS)
