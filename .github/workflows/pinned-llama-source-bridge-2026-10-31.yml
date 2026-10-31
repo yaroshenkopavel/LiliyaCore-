@@ -15,7 +15,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           printf 'run_id=%s\n' "$GITHUB_RUN_ID" > "$RUNNER_TEMP/run-id"
-          gh api -X PUT "repos/${GITHUB_REPOSITORY}/contents/.github/pinned-llama-run-id.txt" -f message="infra: pinned llama run index [skip ci]" -f content="$(base64 -w0 "$RUNNER_TEMP/run-id")" -f branch="technical/local-env-bridge-2026-10-31"
+          INDEX_SHA="$(gh api "repos/${GITHUB_REPOSITORY}/contents/.github/pinned-llama-run-id.txt?ref=technical/local-env-bridge-2026-10-31" --jq .sha 2>/dev/null || true)"
+          if [ -n "$INDEX_SHA" ]; then
+            gh api -X PUT "repos/${GITHUB_REPOSITORY}/contents/.github/pinned-llama-run-id.txt" -f message="infra: pinned llama run index [skip ci]" -f content="$(base64 -w0 "$RUNNER_TEMP/run-id")" -f sha="$INDEX_SHA" -f branch="technical/local-env-bridge-2026-10-31"
+          else
+            gh api -X PUT "repos/${GITHUB_REPOSITORY}/contents/.github/pinned-llama-run-id.txt" -f message="infra: pinned llama run index [skip ci]" -f content="$(base64 -w0 "$RUNNER_TEMP/run-id")" -f branch="technical/local-env-bridge-2026-10-31"
+          fi
       - name: Fetch exact llama.cpp revision
         shell: bash
         run: |
