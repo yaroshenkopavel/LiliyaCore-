@@ -40,6 +40,8 @@ internal class LlamaCppSessionOwnership(
 
     override fun requestStreamCancellation(): Boolean {
         cancellationRequested.set(true)
+        // This method deliberately does not take executionLock.
+        try { nativePort.cancel(nativeSessionId) } catch (_: Throwable) { /* fail closed via Kotlin flag */ }
         return true
     }
 
