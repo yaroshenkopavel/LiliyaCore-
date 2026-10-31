@@ -53,6 +53,8 @@ struct NativeSession {
     std::string chat_template;
     std::string output_grammar;
     std::mutex execution_mutex;
+    // Cancellation signal is independent from both execution and registry locks.
+    std::shared_ptr<std::atomic<bool>> cancelled = std::make_shared<std::atomic<bool>>(false);
 
     void release() noexcept {
         if (context != nullptr) {
@@ -72,6 +74,14 @@ struct NativeSession {
         release();
     }
 };
+
+// A separate table allows nativeCancel to return without waiting for llama_decode.
+std::mutex g_cancel_mutex;
+std::unordered_map<int64_t, std::shared_ptr<std::atomic<bool>>> g_cancel_tokens;
+
+bool abort_if_cancelled(void * data) {
+    return static_cast<std::atomic<bool> *>(data)->load(std::memory_order_acquire);
+}
 
 std::mutex g_registry_mutex;
 std::unordered_map<int64_t, std::unique_ptr<NativeSession>> g_sessions;
@@ -607,7 +617,10 @@ Java_pro_liliya_android_llamacppengine_LlamaCppNativeBridge_nativeLoad(
             chat_template.assign(model_template);
         }
 
+        auto cancel_token = std::make_shared<std::atomic<bool>>(false);
         llama_context_params context_params = llama_context_default_params();
+        context_params.abort_callback = abort_if_cancelled;
+        context_params.abort_callback_data = cancel_token.get();
         context_params.n_ctx = static_cast<uint32_t>(context_tokens);
         context_params.n_batch = static_cast<uint32_t>(batch_tokens);
         context_params.n_ubatch = static_cast<uint32_t>(micro_batch_tokens);
@@ -624,6 +637,7 @@ Java_pro_liliya_android_llamacppengine_LlamaCppNativeBridge_nativeLoad(
         llama_set_n_threads(context.get(), thread_count, thread_count);
 
         auto session = std::make_unique<NativeSession>();
+        session->cancelled = cancel_token;
         session->model = model.release();
         session->context = context.release();
         session->vocab = vocab;
@@ -650,6 +664,19 @@ Java_pro_liliya_android_llamacppengine_LlamaCppNativeBridge_nativeLoad(
             std::lock_guard<std::mutex> registry_guard(g_registry_mutex);
             const auto inserted = g_sessions.emplace(session_id, std::move(session));
             if (!inserted.second) {
+                return LOAD_PROVIDER_FAILED;
+            }
+            try {
+                std::lock_guard<std::mutex> cancel_guard(g_cancel_mutex);
+                const auto cancellation_inserted = g_cancel_tokens.emplace(session_id, cancel_token);
+                if (!cancellation_inserted.second) {
+                    g_sessions.erase(session_id);
+                    return LOAD_PROVIDER_FAILED;
+                }
+            } catch (...) {
+                // Roll back the native owner if the separately addressable signal
+                // cannot be registered; never leak a session with no cancel path.
+                g_sessions.erase(session_id);
                 return LOAD_PROVIDER_FAILED;
             }
         }
@@ -688,6 +715,9 @@ Java_pro_liliya_android_llamacppengine_LlamaCppNativeBridge_nativeInfer(
             session_guard = std::unique_lock<std::mutex>(session->execution_mutex);
         }
 
+        if (session->cancelled->load(std::memory_order_acquire)) {
+            return make_infer_packet(env, INFER_CANCELLED);
+        }
         const jsize prompt_size = env->GetArrayLength(prompt_utf8);
         if (prompt_size < 0) {
             return make_infer_packet(env, INFER_PROVIDER_FAILED);
@@ -757,8 +787,9 @@ Java_pro_liliya_android_llamacppengine_LlamaCppNativeBridge_nativeInfer(
                 const int32_t chunk = std::min(session->batch_tokens, token_count - offset);
                 llama_batch batch = llama_batch_get_one(tokens.data() + offset, chunk);
                 if (llama_decode(session->context, batch) != 0) {
+                    const bool cancelled = session->cancelled->load(std::memory_order_acquire);
                     llama_memory_clear(llama_get_memory(session->context), true);
-                    return make_infer_packet(env, INFER_OPERATION_FAILED);
+                    return make_infer_packet(env, cancelled ? INFER_CANCELLED : INFER_OPERATION_FAILED);
                 }
                 offset += chunk;
             }
@@ -804,12 +835,16 @@ Java_pro_liliya_android_llamacppengine_LlamaCppNativeBridge_nativeInfer(
                 llama_token next_token = token;
                 llama_batch next = llama_batch_get_one(&next_token, 1);
                 if (llama_decode(session->context, next) != 0) {
+                    const bool cancelled = session->cancelled->load(std::memory_order_acquire);
                     llama_memory_clear(llama_get_memory(session->context), true);
-                    return make_infer_packet(env, INFER_OPERATION_FAILED);
+                    return make_infer_packet(env, cancelled ? INFER_CANCELLED : INFER_OPERATION_FAILED);
                 }
             }
 
             llama_memory_clear(llama_get_memory(session->context), true);
+            if (session->cancelled->load(std::memory_order_acquire)) {
+                return make_infer_packet(env, INFER_CANCELLED);
+            }
             return make_infer_packet(env, INFER_OK, output);
         } catch (...) {
             llama_memory_clear(llama_get_memory(session->context), true);
@@ -866,6 +901,9 @@ Java_pro_liliya_android_llamacppengine_LlamaCppNativeBridge_nativeInferStreaming
             return make_infer_packet(env, INFER_PROVIDER_FAILED);
         }
 
+        if (session->cancelled->load(std::memory_order_acquire)) {
+            return make_infer_packet(env, INFER_CANCELLED);
+        }
         const jsize prompt_size = env->GetArrayLength(prompt_utf8);
         if (prompt_size < 0) {
             return make_infer_packet(env, INFER_PROVIDER_FAILED);
@@ -935,8 +973,9 @@ Java_pro_liliya_android_llamacppengine_LlamaCppNativeBridge_nativeInferStreaming
                 const int32_t chunk = std::min(session->batch_tokens, token_count - offset);
                 llama_batch batch = llama_batch_get_one(tokens.data() + offset, chunk);
                 if (llama_decode(session->context, batch) != 0) {
+                    const bool cancelled = session->cancelled->load(std::memory_order_acquire);
                     llama_memory_clear(llama_get_memory(session->context), true);
-                    return make_infer_packet(env, INFER_OPERATION_FAILED);
+                    return make_infer_packet(env, cancelled ? INFER_CANCELLED : INFER_OPERATION_FAILED);
                 }
                 offset += chunk;
             }
@@ -1014,8 +1053,9 @@ Java_pro_liliya_android_llamacppengine_LlamaCppNativeBridge_nativeInferStreaming
                 llama_token next_token = token;
                 llama_batch next = llama_batch_get_one(&next_token, 1);
                 if (llama_decode(session->context, next) != 0) {
+                    const bool cancelled = session->cancelled->load(std::memory_order_acquire);
                     llama_memory_clear(llama_get_memory(session->context), true);
-                    return make_infer_packet(env, INFER_OPERATION_FAILED);
+                    return make_infer_packet(env, cancelled ? INFER_CANCELLED : INFER_OPERATION_FAILED);
                 }
             }
 
@@ -1025,6 +1065,9 @@ Java_pro_liliya_android_llamacppengine_LlamaCppNativeBridge_nativeInferStreaming
             }
 
             llama_memory_clear(llama_get_memory(session->context), true);
+            if (session->cancelled->load(std::memory_order_acquire)) {
+                return make_infer_packet(env, INFER_CANCELLED);
+            }
             return make_infer_packet(env, INFER_OK, output);
         } catch (...) {
             llama_memory_clear(llama_get_memory(session->context), true);
@@ -1033,6 +1076,19 @@ Java_pro_liliya_android_llamacppengine_LlamaCppNativeBridge_nativeInferStreaming
     } catch (...) {
         return make_infer_packet(env, INFER_PROVIDER_FAILED);
     }
+}
+
+extern "C"
+JNIEXPORT jboolean JNICALL
+Java_pro_liliya_android_llamacppengine_LlamaCppNativeBridge_nativeCancel(
+    JNIEnv *, jobject, jlong native_session_id
+) {
+    if (native_session_id <= 0) return JNI_FALSE;
+    std::lock_guard<std::mutex> guard(g_cancel_mutex);
+    auto it = g_cancel_tokens.find(static_cast<int64_t>(native_session_id));
+    if (it == g_cancel_tokens.end()) return JNI_FALSE;
+    it->second->store(true, std::memory_order_release);
+    return JNI_TRUE;
 }
 
 extern "C"
@@ -1057,6 +1113,10 @@ Java_pro_liliya_android_llamacppengine_LlamaCppNativeBridge_nativeClose(
 
             NativeSession * session = it->second.get();
             std::unique_lock<std::mutex> session_guard(session->execution_mutex);
+            {
+                std::lock_guard<std::mutex> cancel_guard(g_cancel_mutex);
+                g_cancel_tokens.erase(static_cast<int64_t>(native_session_id));
+            }
             session->release();
             retired = std::move(it->second);
             g_sessions.erase(it);
@@ -1078,6 +1138,10 @@ JNI_OnUnload(JavaVM *, void *) {
             retired.swap(g_sessions);
         }
         retired.clear();
+        {
+            std::lock_guard<std::mutex> cancel_guard(g_cancel_mutex);
+            g_cancel_tokens.clear();
+        }
         if (g_backend_initialized.exchange(false, std::memory_order_acq_rel)) {
             llama_backend_free();
         }
