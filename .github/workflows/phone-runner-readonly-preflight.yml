@@ -1,0 +1,55 @@
+name: Read-only Android phone runner preflight
+on:
+  push:
+    branches:
+      - test/phone-runner-readonly-preflight-2026-11-01
+    paths:
+      - .github/workflows/phone-runner-readonly-preflight.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  phone-preflight:
+    runs-on: [self-hosted, ARM64, android-device]
+    timeout-minutes: 8
+    steps:
+      - name: Read-only device bridge probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "RUNNER_OS=$RUNNER_OS"
+          echo "RUNNER_ARCH=$RUNNER_ARCH"
+          uname -m
+          command -v python3
+          python3 - <<'PY'
+          import json, os, urllib.request
+          url = 'http://127.0.0.1:18765/v1/probe'
+          token_candidates = [
+              os.environ.get('LILIYA_PHYSICAL_BRIDGE_TOKEN_FILE', ''),
+              '/data/data/com.termux/files/home/.liliya-physical-bridge-token'
+          ]
+          token = None
+          for candidate in token_candidates:
+              if candidate and os.path.isfile(candidate):
+                  with open(candidate, encoding='utf-8') as f:
+                      token = f.read().strip()
+                  break
+          # Do not print or transmit credentials.
+          if not token:
+              print('BRIDGE_TOKEN_ACCESS=UNAVAILABLE_IN_RUNNER')
+              raise SystemExit(2)
+          req = urllib.request.Request(url, headers={'Authorization': 'Bearer ' + token})
+          try:
+              with urllib.request.urlopen(req, timeout=10) as response:
+                  data = json.load(response)
+              # Only non-secret diagnostic device facts.
+              print('BRIDGE_HTTP=200')
+              for key in ['model', 'primaryAbi', 'sdk', 'qemu']:
+                  item = data.get(key)
+                  if isinstance(item, dict):
+                      print(key + '_EXIT=' + str(item.get('exit')))
+                      print(key + '_VALUE=' + str(item.get('output',''))[:100])
+          except Exception as exc:
+              print('BRIDGE_PROBE_FAILURE=' + type(exc).__name__)
+              raise SystemExit(3)
+          PY
