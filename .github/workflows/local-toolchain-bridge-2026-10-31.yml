@@ -36,8 +36,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          gradle :core:test :android-runtime:testDebugUnitTest :android-app:testDebugUnitTest :android-app:compileDebugAndroidTestKotlin --no-daemon --console=plain
-          gradle :core:test --offline --no-daemon --console=plain
+          export GRADLE_OPTS='-Dorg.gradle.jvmargs=-Xmx1800m -Dorg.gradle.workers.max=1 -Dkotlin.compiler.execution.strategy=in-process -Dkotlin.daemon.jvmargs=-Xmx1200m'
+          gradle :core:test :android-runtime:testDebugUnitTest :android-app:testDebugUnitTest :android-app:compileDebugAndroidTestKotlin --max-workers=1 --no-daemon --console=plain
+          gradle :core:test --offline --max-workers=1 --no-daemon --console=plain
       - name: Export real toolchain
         shell: bash
         run: |
