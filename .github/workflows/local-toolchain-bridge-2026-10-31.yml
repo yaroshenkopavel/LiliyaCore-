@@ -62,21 +62,438 @@ jobs:
           tar -C "$ANDROID_HOME/ndk" -czf - 29.0.13113456 | split -b 250M -d -a 3 - "$OUT/ndk.part."
           tar -C "$(dirname "$GRADLE_USER_HOME")" -czf - "$(basename "$GRADLE_USER_HOME")" | split -b 250M -d -a 3 - "$OUT/gradle-home.part."
           (cd "$OUT" && sha256sum *.tar.gz ndk.part.* gradle-home.part.* > SHA256SUMS)
+          cd "$OUT"
+          for archive in *.tar.gz; do
+            split -b 250M -d -a 3 "$archive" "$archive.part."
+            rm "$archive"
+          done
+          sha256sum *.part.* > TRANSPORT_SHA256SUMS
           { echo "target_sha=$TARGET_SHA"; echo "target_tree=$TARGET_TREE"; } > "$OUT/environment-manifest.txt"
       - uses: actions/upload-artifact@v4
         with:
-          name: liliya-runtime-core
+          name: liliya-runtime-manifest
           path: |
-            ${{ runner.temp }}/liliya-export/*.tar.gz
             ${{ runner.temp }}/liliya-export/SHA256SUMS
+            ${{ runner.temp }}/liliya-export/TRANSPORT_SHA256SUMS
             ${{ runner.temp }}/liliya-export/environment-manifest.txt
-          compression-level: 0
           retention-days: 1
       - uses: actions/upload-artifact@v4
         with:
-          name: liliya-runtime-chunks
-          path: |
-            ${{ runner.temp }}/liliya-export/ndk.part.*
-            ${{ runner.temp }}/liliya-export/gradle-home.part.*
-          compression-level: 0
+          name: liliya-jdk17-real-tar-gz-000
+          path: ${{ runner.temp }}/liliya-export/jdk17-real.tar.gz.part.000
+          if-no-files-found: ignore
           retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-jdk17-real-tar-gz-001
+          path: ${{ runner.temp }}/liliya-export/jdk17-real.tar.gz.part.001
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-jdk17-real-tar-gz-002
+          path: ${{ runner.temp }}/liliya-export/jdk17-real.tar.gz.part.002
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-jdk17-real-tar-gz-003
+          path: ${{ runner.temp }}/liliya-export/jdk17-real.tar.gz.part.003
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-jdk17-real-tar-gz-004
+          path: ${{ runner.temp }}/liliya-export/jdk17-real.tar.gz.part.004
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-jdk17-real-tar-gz-005
+          path: ${{ runner.temp }}/liliya-export/jdk17-real.tar.gz.part.005
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-jdk17-real-tar-gz-006
+          path: ${{ runner.temp }}/liliya-export/jdk17-real.tar.gz.part.006
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-jdk17-real-tar-gz-007
+          path: ${{ runner.temp }}/liliya-export/jdk17-real.tar.gz.part.007
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-jdk17-real-tar-gz-008
+          path: ${{ runner.temp }}/liliya-export/jdk17-real.tar.gz.part.008
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-jdk17-real-tar-gz-009
+          path: ${{ runner.temp }}/liliya-export/jdk17-real.tar.gz.part.009
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-gradle-9-6-1-tar-gz-000
+          path: ${{ runner.temp }}/liliya-export/gradle-9.6.1.tar.gz.part.000
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-gradle-9-6-1-tar-gz-001
+          path: ${{ runner.temp }}/liliya-export/gradle-9.6.1.tar.gz.part.001
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-gradle-9-6-1-tar-gz-002
+          path: ${{ runner.temp }}/liliya-export/gradle-9.6.1.tar.gz.part.002
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-gradle-9-6-1-tar-gz-003
+          path: ${{ runner.temp }}/liliya-export/gradle-9.6.1.tar.gz.part.003
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-gradle-9-6-1-tar-gz-004
+          path: ${{ runner.temp }}/liliya-export/gradle-9.6.1.tar.gz.part.004
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-gradle-9-6-1-tar-gz-005
+          path: ${{ runner.temp }}/liliya-export/gradle-9.6.1.tar.gz.part.005
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-gradle-9-6-1-tar-gz-006
+          path: ${{ runner.temp }}/liliya-export/gradle-9.6.1.tar.gz.part.006
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-gradle-9-6-1-tar-gz-007
+          path: ${{ runner.temp }}/liliya-export/gradle-9.6.1.tar.gz.part.007
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-gradle-9-6-1-tar-gz-008
+          path: ${{ runner.temp }}/liliya-export/gradle-9.6.1.tar.gz.part.008
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-gradle-9-6-1-tar-gz-009
+          path: ${{ runner.temp }}/liliya-export/gradle-9.6.1.tar.gz.part.009
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-android-sdk-core-tar-gz-000
+          path: ${{ runner.temp }}/liliya-export/android-sdk-core.tar.gz.part.000
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-android-sdk-core-tar-gz-001
+          path: ${{ runner.temp }}/liliya-export/android-sdk-core.tar.gz.part.001
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-android-sdk-core-tar-gz-002
+          path: ${{ runner.temp }}/liliya-export/android-sdk-core.tar.gz.part.002
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-android-sdk-core-tar-gz-003
+          path: ${{ runner.temp }}/liliya-export/android-sdk-core.tar.gz.part.003
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-android-sdk-core-tar-gz-004
+          path: ${{ runner.temp }}/liliya-export/android-sdk-core.tar.gz.part.004
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-android-sdk-core-tar-gz-005
+          path: ${{ runner.temp }}/liliya-export/android-sdk-core.tar.gz.part.005
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-android-sdk-core-tar-gz-006
+          path: ${{ runner.temp }}/liliya-export/android-sdk-core.tar.gz.part.006
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-android-sdk-core-tar-gz-007
+          path: ${{ runner.temp }}/liliya-export/android-sdk-core.tar.gz.part.007
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-android-sdk-core-tar-gz-008
+          path: ${{ runner.temp }}/liliya-export/android-sdk-core.tar.gz.part.008
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-android-sdk-core-tar-gz-009
+          path: ${{ runner.temp }}/liliya-export/android-sdk-core.tar.gz.part.009
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-cmake-3-31-6-tar-gz-000
+          path: ${{ runner.temp }}/liliya-export/cmake-3.31.6.tar.gz.part.000
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-cmake-3-31-6-tar-gz-001
+          path: ${{ runner.temp }}/liliya-export/cmake-3.31.6.tar.gz.part.001
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-cmake-3-31-6-tar-gz-002
+          path: ${{ runner.temp }}/liliya-export/cmake-3.31.6.tar.gz.part.002
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-cmake-3-31-6-tar-gz-003
+          path: ${{ runner.temp }}/liliya-export/cmake-3.31.6.tar.gz.part.003
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-cmake-3-31-6-tar-gz-004
+          path: ${{ runner.temp }}/liliya-export/cmake-3.31.6.tar.gz.part.004
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-cmake-3-31-6-tar-gz-005
+          path: ${{ runner.temp }}/liliya-export/cmake-3.31.6.tar.gz.part.005
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-cmake-3-31-6-tar-gz-006
+          path: ${{ runner.temp }}/liliya-export/cmake-3.31.6.tar.gz.part.006
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-cmake-3-31-6-tar-gz-007
+          path: ${{ runner.temp }}/liliya-export/cmake-3.31.6.tar.gz.part.007
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-cmake-3-31-6-tar-gz-008
+          path: ${{ runner.temp }}/liliya-export/cmake-3.31.6.tar.gz.part.008
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-cmake-3-31-6-tar-gz-009
+          path: ${{ runner.temp }}/liliya-export/cmake-3.31.6.tar.gz.part.009
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-ndk-000
+          path: ${{ runner.temp }}/liliya-export/ndk.part.000
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-ndk-001
+          path: ${{ runner.temp }}/liliya-export/ndk.part.001
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-ndk-002
+          path: ${{ runner.temp }}/liliya-export/ndk.part.002
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-ndk-003
+          path: ${{ runner.temp }}/liliya-export/ndk.part.003
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-ndk-004
+          path: ${{ runner.temp }}/liliya-export/ndk.part.004
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-ndk-005
+          path: ${{ runner.temp }}/liliya-export/ndk.part.005
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-ndk-006
+          path: ${{ runner.temp }}/liliya-export/ndk.part.006
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-ndk-007
+          path: ${{ runner.temp }}/liliya-export/ndk.part.007
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-ndk-008
+          path: ${{ runner.temp }}/liliya-export/ndk.part.008
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-ndk-009
+          path: ${{ runner.temp }}/liliya-export/ndk.part.009
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-gradle-home-000
+          path: ${{ runner.temp }}/liliya-export/gradle-home.part.000
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-gradle-home-001
+          path: ${{ runner.temp }}/liliya-export/gradle-home.part.001
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-gradle-home-002
+          path: ${{ runner.temp }}/liliya-export/gradle-home.part.002
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-gradle-home-003
+          path: ${{ runner.temp }}/liliya-export/gradle-home.part.003
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-gradle-home-004
+          path: ${{ runner.temp }}/liliya-export/gradle-home.part.004
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-gradle-home-005
+          path: ${{ runner.temp }}/liliya-export/gradle-home.part.005
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-gradle-home-006
+          path: ${{ runner.temp }}/liliya-export/gradle-home.part.006
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-gradle-home-007
+          path: ${{ runner.temp }}/liliya-export/gradle-home.part.007
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-gradle-home-008
+          path: ${{ runner.temp }}/liliya-export/gradle-home.part.008
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-gradle-home-009
+          path: ${{ runner.temp }}/liliya-export/gradle-home.part.009
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
