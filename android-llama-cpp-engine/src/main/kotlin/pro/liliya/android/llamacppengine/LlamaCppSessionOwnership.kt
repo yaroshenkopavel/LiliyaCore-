@@ -95,6 +95,14 @@ internal class LlamaCppSessionOwnership(
                 promptUtf8.fill(0)
             }
 
+            // Revocation may arrive while the non-streaming native call is running.
+            // Never publish its result after the owner has withdrawn the session.
+            if (cancellationRequested.get()) {
+                return@withLock ModelEngineInferenceResult.Rejected(
+                    ModelEngineInferenceFailure.CANCELLED
+                )
+            }
+
             when (result) {
                 is LlamaCppNativeInferenceResult.Rejected ->
                     ModelEngineInferenceResult.Rejected(result.reason)
