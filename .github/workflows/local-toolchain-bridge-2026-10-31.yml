@@ -3,7 +3,7 @@ on:
   push:
     branches: [technical/local-env-bridge-2026-10-31]
 permissions:
-  contents: read
+  contents: write
 jobs:
   toolchain:
     runs-on: ubuntu-latest
@@ -497,3 +497,16 @@ jobs:
           if-no-files-found: ignore
           retention-days: 1
           compression-level: 0
+
+      - name: Publish artifact run ID to transport branch
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          printf 'run_id=%s\nsource_sha=%s\nsource_tree=%s\n' "$GITHUB_RUN_ID" "$TARGET_SHA" "$TARGET_TREE" > "$RUNNER_TEMP/bridge-run-index.txt"
+          B64="$(base64 -w0 "$RUNNER_TEMP/bridge-run-index.txt")"
+          gh api -X PUT "repos/${GITHUB_REPOSITORY}/contents/.github/liliya-bridge-run-index.txt" \
+            -f message="infra: publish exact-toolchain artifact run index [skip ci]" \
+            -f content="$B64" \
+            -f branch="technical/local-env-bridge-2026-10-31"
