@@ -51,6 +51,9 @@ internal interface LlamaCppNativeSessionPort {
     ): LlamaCppNativeInferenceResult =
         LlamaCppNativeInferenceResult.Rejected(ModelEngineInferenceFailure.REQUEST_REJECTED)
 
+    /** Optional for fake test ports; JNI implementation signals llama_decode directly. */
+    fun cancel(nativeSessionId: Long): Boolean = false
+
     fun close(nativeSessionId: Long): LlamaCppNativeCloseResult
 }
 
@@ -237,6 +240,9 @@ private object JniLlamaCppNativeSessionPort : LlamaCppNativeSessionPort {
             else -> LlamaCppNativeInferenceResult.Rejected(ModelEngineInferenceFailure.PROVIDER_FAILED)
         }
     }
+
+    override fun cancel(nativeSessionId: Long): Boolean =
+        LlamaCppNativeBridge.nativeCancel(nativeSessionId)
 
     override fun close(nativeSessionId: Long): LlamaCppNativeCloseResult =
         when (LlamaCppNativeBridge.nativeClose(nativeSessionId)) {
