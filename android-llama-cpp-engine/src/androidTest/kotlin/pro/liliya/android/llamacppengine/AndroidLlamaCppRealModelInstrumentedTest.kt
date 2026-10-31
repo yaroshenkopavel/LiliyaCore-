@@ -6,6 +6,9 @@ import androidx.test.platform.app.InstrumentationRegistry
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.InputStream
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
@@ -184,6 +187,54 @@ class AndroidLlamaCppRealModelInstrumentedTest {
 
             assertIs<ModelEngineCloseResult.Closed>(loaded.ownership.close())
             assertIs<LargeProtectedModelStagingRetireResult.Retired>(ownership.retire())
+        }
+
+    @Test
+    fun real_fixture_cross_thread_cancel_rejects_stream_and_closes_safely() =
+        withCleanRoot { targetContext, testContext ->
+            val backend = backend(targetContext)
+            val staging = coordinator(backend, STORIES_15M_BYTES)
+            val source = testContext.assets.open(STORIES_15M_ASSET).use { input ->
+                publishSegmented(staging, input, STORIES_15M_BYTES, "cancel-stories15m")
+            }
+            val loader = AndroidLlamaCppPhysicalEngineLoader(enginePolicy(maxGeneratedTokens = 8))
+            val loaded = assertIs<ModelEngineLoadResult.Loaded>(
+                StagedModelEngineLoadCoordinator(
+                    staging, AndroidAppPrivateStagedModelEngineLoader(backend, loader)
+                ).load(source)
+            )
+            val streaming = assertIs<ModelEngineStreamingSessionOwnership>(loaded.ownership)
+            val firstChunkEntered = CountDownLatch(1)
+            val resumeCallback = CountDownLatch(1)
+            val executor = Executors.newSingleThreadExecutor()
+            try {
+                val result = executor.submit<ModelEngineInferenceResult> {
+                    streaming.stream(
+                        ModelEngineInferenceRequest("Once upon a time", maxOutputChars = 64),
+                        ModelEngineStreamingSink {
+                            firstChunkEntered.countDown()
+                            check(resumeCallback.await(10, TimeUnit.SECONDS))
+                            ModelEngineStreamControl.CONTINUE
+                        }
+                    )
+                }
+                assertTrue(firstChunkEntered.await(60, TimeUnit.SECONDS))
+                // Cancellation must return while the native streaming operation is still live.
+                assertTrue(streaming.requestStreamCancellation())
+                resumeCallback.countDown()
+                val cancelled = assertIs<ModelEngineInferenceResult.Rejected>(
+                    result.get(60, TimeUnit.SECONDS)
+                )
+                assertEquals(
+                    pro.liliya.core.modelengine.ModelEngineInferenceFailure.CANCELLED,
+                    cancelled.reason
+                )
+                assertIs<ModelEngineCloseResult.Closed>(loaded.ownership.close())
+                assertIs<LargeProtectedModelStagingRetireResult.Retired>(source.retire())
+            } finally {
+                resumeCallback.countDown()
+                executor.shutdownNow()
+            }
         }
 
     @Test
