@@ -4,6 +4,12 @@ on:
     branches: [main]
     paths:
       - .github/workflows/phone-llama-cancellation-bundle.yml
+      - android-semantic-test-host/build.gradle.kts
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/phone-llama-cancellation-bundle.yml
+      - android-semantic-test-host/build.gradle.kts
   workflow_dispatch:
 permissions:
   contents: read
@@ -25,47 +31,32 @@ jobs:
         with:
           packages: platform-tools
       - run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools" "ndk;29.0.13113456" "cmake;3.31.6"
-      - name: Stage SHA256-pinned small GGUF fixture
+      - name: Stage verified small GGUF
         shell: bash
         run: |
           set -euo pipefail
-          asset='android-llama-cpp-engine/src/androidTest/assets/stories15M-q4_0.gguf'
+          asset="android-llama-cpp-engine/src/androidTest/assets/stories15M-q4_0.gguf"
           mkdir -p "$(dirname "$asset")"
-          curl --fail --location --retry 3 'https://huggingface.co/ggml-org/tiny-llamas/resolve/def3e2dd70df35ecbf6403ea347de4c5977220c1/stories15M-q4_0.gguf?download=true' --output "$asset"
+          curl --fail --location --retry 3 "https://huggingface.co/ggml-org/tiny-llamas/resolve/def3e2dd70df35ecbf6403ea347de4c5977220c1/stories15M-q4_0.gguf?download=true" --output "$asset"
           echo "6151b1929d7f5aa3385d9ddef3393e55587c0a55de661562322bc51dfda93a04  $asset" | sha256sum --check --strict
           test "$(stat -c%s "$asset")" -eq 19077344
-      - name: Build installable test targets
-        run: gradle :android-llama-cpp-engine:assembleDebug :android-llama-cpp-engine:assembleDebugAndroidTest --console=plain
-      - name: Inventory exact package outputs without installing
+      - name: Build existing installable semantic host and instrumentation
+        run: gradle :android-semantic-test-host:assembleDebug :android-semantic-test-host:assembleDebugAndroidTest --console=plain
+      - name: Verify and package exact APK pair
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/phone-bundle"
-          find android-llama-cpp-engine/build/outputs -type f \( -name '*.apk' -o -name '*.aar' \) -print | sort > "$RUNNER_TEMP/phone-bundle/files.txt"
-          test -s "$RUNNER_TEMP/phone-bundle/files.txt"
-          if ! grep -Eq '\.apk
-          while IFS= read -r file; do
-            cp "$file" "$RUNNER_TEMP/phone-bundle/"
-          done < "$RUNNER_TEMP/phone-bundle/files.txt"
-          (cd "$RUNNER_TEMP/phone-bundle"; find . -maxdepth 1 -type f \( -name "*.apk" -o -name "*.aar" \) -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS)
-          test -s "$RUNNER_TEMP/phone-bundle/SHA256SUMS"
-          echo "SOURCE_SHA=$GITHUB_SHA" > "$RUNNER_TEMP/phone-bundle/source.env"
-          cat "$RUNNER_TEMP/phone-bundle/files.txt"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: phone-llama-cancel-gguf-apks
-          path: ${{ runner.temp }}/phone-bundle/
-          retention-days: 3
- "$RUNNER_TEMP/phone-bundle/files.txt"; then
-            echo "No installable APK generated; library AAR alone is not a physical-test package" >&2
-            exit 1
-          fi
-          while IFS= read -r file; do
-            cp "$file" "$RUNNER_TEMP/phone-bundle/"
-          done < "$RUNNER_TEMP/phone-bundle/files.txt"
-          sha256sum "$RUNNER_TEMP/phone-bundle/"*.apk "$RUNNER_TEMP/phone-bundle/"*.aar > "$RUNNER_TEMP/phone-bundle/SHA256SUMS" 2>/dev/null || true
-          echo "SOURCE_SHA=$GITHUB_SHA" > "$RUNNER_TEMP/phone-bundle/source.env"
-          cat "$RUNNER_TEMP/phone-bundle/files.txt"
+          output="$RUNNER_TEMP/phone-bundle"
+          mkdir -p "$output"
+          app="android-semantic-test-host/build/outputs/apk/debug/android-semantic-test-host-debug.apk"
+          testapk="android-semantic-test-host/build/outputs/apk/androidTest/debug/android-semantic-test-host-debug-androidTest.apk"
+          test -s "$app"
+          test -s "$testapk"
+          cp "$app" "$output/semantic-app.apk"
+          cp "$testapk" "$output/semantic-test.apk"
+          (cd "$output" && sha256sum semantic-app.apk semantic-test.apk > SHA256SUMS)
+          printf 'SOURCE_SHA=%s\nTEST_CLASS=%s\n' "$GITHUB_SHA" 'pro.liliya.android.llamacppengine.AndroidLlamaCppRealModelInstrumentedTest#real_fixture_cross_thread_cancel_rejects_stream_and_closes_safely' > "$output/source.env"
+          ls -lh "$output"
       - uses: actions/upload-artifact@v4
         with:
           name: phone-llama-cancel-gguf-apks
