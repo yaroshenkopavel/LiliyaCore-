@@ -2,6 +2,7 @@ name: Read-only Android phone runner preflight
 on:
   push:
     branches:
+      - main
       - test/phone-runner-readonly-preflight-2026-11-01
     paths:
       - .github/workflows/phone-runner-readonly-preflight.yml
