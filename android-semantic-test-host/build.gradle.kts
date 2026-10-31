@@ -24,6 +24,10 @@ android {
             assets.directories.add(
                 "../android-offline-semantic-provider/src/androidTest/assets"
             )
+            assets.directories.add(
+                "../android-llama-cpp-engine/src/androidTest/assets"
+            )
+            java.srcDir("../android-llama-cpp-engine/src/androidTest/kotlin")
         }
     }
 
@@ -55,6 +59,7 @@ dependencies {
     androidTestImplementation(project(":android-offline-semantic-provider"))
     androidTestImplementation(files(providerFirebaseI8TestJar))
     androidTestImplementation(project(":android-llama-cpp-engine"))
+    androidTestImplementation(project(":android-protected-model-engine-source"))
     androidTestImplementation(project(":android-protected-model-staging"))
     androidTestImplementation(project(":android-runtime"))
     androidTestImplementation(project(":android-cognitive-storage"))
