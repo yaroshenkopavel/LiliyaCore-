@@ -43,6 +43,23 @@ jobs:
           mkdir -p "$RUNNER_TEMP/phone-bundle"
           find android-llama-cpp-engine/build/outputs -type f \( -name '*.apk' -o -name '*.aar' \) -print | sort > "$RUNNER_TEMP/phone-bundle/files.txt"
           test -s "$RUNNER_TEMP/phone-bundle/files.txt"
+          if ! grep -Eq '\.apk
+          while IFS= read -r file; do
+            cp "$file" "$RUNNER_TEMP/phone-bundle/"
+          done < "$RUNNER_TEMP/phone-bundle/files.txt"
+          (cd "$RUNNER_TEMP/phone-bundle"; find . -maxdepth 1 -type f \( -name "*.apk" -o -name "*.aar" \) -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS)
+          test -s "$RUNNER_TEMP/phone-bundle/SHA256SUMS"
+          echo "SOURCE_SHA=$GITHUB_SHA" > "$RUNNER_TEMP/phone-bundle/source.env"
+          cat "$RUNNER_TEMP/phone-bundle/files.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phone-llama-cancel-gguf-apks
+          path: ${{ runner.temp }}/phone-bundle/
+          retention-days: 3
+ "$RUNNER_TEMP/phone-bundle/files.txt"; then
+            echo "No installable APK generated; library AAR alone is not a physical-test package" >&2
+            exit 1
+          fi
           while IFS= read -r file; do
             cp "$file" "$RUNNER_TEMP/phone-bundle/"
           done < "$RUNNER_TEMP/phone-bundle/files.txt"
