@@ -1,0 +1,56 @@
+name: Prepare phone llama cancellation APK bundle
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/phone-llama-cancellation-bundle.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build-phone-bundle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@4c125117fe7c5aed11272ec4213f602f012f89f2
+        with:
+          gradle-version: '9.6.1'
+      - run: bash .github/ci/configure-gradle-memory.sh
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+        with:
+          packages: platform-tools
+      - run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools" "ndk;29.0.13113456" "cmake;3.31.6"
+      - name: Stage SHA256-pinned small GGUF fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          asset='android-llama-cpp-engine/src/androidTest/assets/stories15M-q4_0.gguf'
+          mkdir -p "$(dirname "$asset")"
+          curl --fail --location --retry 3 'https://huggingface.co/ggml-org/tiny-llamas/resolve/def3e2dd70df35ecbf6403ea347de4c5977220c1/stories15M-q4_0.gguf?download=true' --output "$asset"
+          echo "6151b1929d7f5aa3385d9ddef3393e55587c0a55de661562322bc51dfda93a04  $asset" | sha256sum --check --strict
+          test "$(stat -c%s "$asset")" -eq 19077344
+      - name: Build installable test targets
+        run: gradle :android-llama-cpp-engine:assembleDebug :android-llama-cpp-engine:assembleDebugAndroidTest --console=plain
+      - name: Inventory exact package outputs without installing
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/phone-bundle"
+          find android-llama-cpp-engine/build/outputs -type f \( -name '*.apk' -o -name '*.aar' \) -print | sort > "$RUNNER_TEMP/phone-bundle/files.txt"
+          test -s "$RUNNER_TEMP/phone-bundle/files.txt"
+          while IFS= read -r file; do
+            cp "$file" "$RUNNER_TEMP/phone-bundle/"
+          done < "$RUNNER_TEMP/phone-bundle/files.txt"
+          sha256sum "$RUNNER_TEMP/phone-bundle/"*.apk "$RUNNER_TEMP/phone-bundle/"*.aar > "$RUNNER_TEMP/phone-bundle/SHA256SUMS" 2>/dev/null || true
+          echo "SOURCE_SHA=$GITHUB_SHA" > "$RUNNER_TEMP/phone-bundle/source.env"
+          cat "$RUNNER_TEMP/phone-bundle/files.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phone-llama-cancel-gguf-apks
+          path: ${{ runner.temp }}/phone-bundle/
+          retention-days: 3
