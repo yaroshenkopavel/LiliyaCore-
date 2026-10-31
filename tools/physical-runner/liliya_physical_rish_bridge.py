@@ -58,6 +58,11 @@ QWEN3_RUSSIAN_CONTEXT_TEST = (
     "pro.liliya.android.semanticprovider."
     "Qwen3RussianQualityContextCandidateInstrumentedTest"
 )
+LLAMA_CROSS_THREAD_CANCEL_TEST = (
+    "pro.liliya.android.llamacppengine.AndroidLlamaCppRealModelInstrumentedTest#"
+    "real_fixture_cross_thread_cancel_rejects_stream_and_closes_safely"
+)
+
 GOVERNED_LEARNING_SEMANTIC_REBUILD_TEST = (
     "pro.liliya.android.semanticprovider.host."
     "AndroidHeartRuntimeColdStartInstrumentedTest#"
@@ -225,6 +230,14 @@ class Handler(BaseHTTPRequestHandler):
                 QWEN3_RUSSIAN_CONTEXT_TEST,
                 test_package=SEMANTIC_TEST_PACKAGE,
                 timeout=3600,
+            )
+            return
+
+        if path == "/v1/instrument/llama-cross-thread-cancel":
+            self._instrument(
+                LLAMA_CROSS_THREAD_CANCEL_TEST,
+                test_package=SEMANTIC_TEST_PACKAGE,
+                timeout=900,
             )
             return
 
