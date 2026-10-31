@@ -179,6 +179,42 @@ class LlamaCppSessionOwnershipContractTest {
     }
 
     @Test
+    fun late_stream_cancellation_rejects_native_success_without_any_more_chunks() {
+        val entered = CountDownLatch(1)
+        val released = CountDownLatch(1)
+        val native = object : LlamaCppNativeSessionPort by FakeNativePort() {
+            override fun stream(
+                nativeSessionId: Long,
+                promptUtf8: ByteArray,
+                maxOutputChars: Int,
+                sink: LlamaCppNativeStreamingSink
+            ): LlamaCppNativeInferenceResult {
+                entered.countDown()
+                check(released.await(5, TimeUnit.SECONDS))
+                return LlamaCppNativeInferenceResult.Succeeded("")
+            }
+        }
+        val session = session(native)
+        val worker = Executors.newSingleThreadExecutor()
+        try {
+            val result = worker.submit<ModelEngineInferenceResult> {
+                session.stream(
+                    ModelEngineInferenceRequest("ok", maxOutputChars = 8),
+                    ModelEngineStreamingSink { ModelEngineStreamControl.CONTINUE }
+                )
+            }
+            assertTrue(entered.await(5, TimeUnit.SECONDS))
+            assertTrue(session.requestStreamCancellation())
+            released.countDown()
+            val rejected = assertIs<ModelEngineInferenceResult.Rejected>(result.get(5, TimeUnit.SECONDS))
+            assertEquals(ModelEngineInferenceFailure.CANCELLED, rejected.reason)
+        } finally {
+            released.countDown()
+            worker.shutdownNow()
+        }
+    }
+
+    @Test
     fun cancellation_signals_native_without_acquiring_execution_lock() {
         val entered = CountDownLatch(1)
         val released = CountDownLatch(1)
