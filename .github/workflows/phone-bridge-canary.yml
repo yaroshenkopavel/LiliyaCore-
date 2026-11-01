@@ -1,0 +1,51 @@
+name: Canary test staged Shizuku bridge
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  canary:
+    runs-on: [self-hosted, ARM64, android-device]
+    timeout-minutes: 6
+    steps:
+      - name: Start staged bridge on alternate localhost port and stop it afterward
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os,pathlib,subprocess,time,urllib.request,urllib.error,hashlib,json
+          home=pathlib.Path('/data/data/com.termux/files/home')
+          staged=home/'.liliya_physical_rish_bridge.next.py'
+          token=(home/'.liliya-physical-bridge-token').read_text().strip()
+          expected='2a8c94e3fc2c8c639f050f5691be737e7826d92a4a7babe3a2c70990aa10f058'
+          if hashlib.sha256(staged.read_bytes()).hexdigest()!=expected: raise SystemExit('STAGED_HASH_MISMATCH')
+          env=os.environ.copy()
+          env['LILIYA_PHYSICAL_BRIDGE_PORT']='18766'
+          env['LILIYA_PHYSICAL_BRIDGE_TOKEN_FILE']=str(home/'.liliya-physical-bridge-token')
+          env['LILIYA_RISH_PATH']='/data/data/com.termux/files/usr/bin/rish'
+          p=subprocess.Popen(['/data/data/com.termux/files/usr/bin/python','-u',str(staged)],env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+          try:
+              for _ in range(30):
+                  if p.poll() is not None: raise RuntimeError('CANARY_EXITED')
+                  try:
+                      req=urllib.request.Request('http://127.0.0.1:18766/v1/semantic-installed-apk-digests',headers={'Authorization':'Bearer '+token})
+                      with urllib.request.urlopen(req,timeout=25) as resp:
+                          payload=json.load(resp)
+                          print('CANARY_SEMANTIC_HTTP='+str(resp.status))
+                          for name,value in payload.get('packages',{}).items():
+                              print(name+'_SHA256='+str(value.get('sha256','')))
+                          if len(payload.get('packages',{}))!=2: raise RuntimeError('INCOMPLETE_DIGESTS')
+                      break
+                  except urllib.error.HTTPError as ex:
+                      raise RuntimeError('CANARY_HTTP_'+str(ex.code))
+                  except (OSError,TimeoutError):
+                      time.sleep(.5)
+              else: raise RuntimeError('CANARY_NOT_READY')
+              req=urllib.request.Request('http://127.0.0.1:18765/v1/probe',headers={'Authorization':'Bearer '+token})
+              with urllib.request.urlopen(req,timeout=25) as resp: print('ACTIVE_BRIDGE_HTTP='+str(resp.status))
+          finally:
+              p.terminate()
+              try: p.communicate(timeout=6)
+              except subprocess.TimeoutExpired:
+                  p.kill();p.communicate()
+          PY
