@@ -1,0 +1,20 @@
+name: Phone semantic digest endpoint unit tests
+on:
+  pull_request:
+    paths:
+      - 'tools/physical-runner/liliya_physical_rish_bridge.py'
+      - 'tools/physical-runner/test_semantic_installed_digests.py'
+      - '.github/workflows/phone-semantic-digest-unit.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - run: python -m unittest discover -s tools/physical-runner -p test_semantic_installed_digests.py -v
