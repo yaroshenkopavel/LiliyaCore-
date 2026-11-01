@@ -1,0 +1,35 @@
+name: Stage updated phone bridge safely
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  stage-bridge:
+    runs-on: [self-hosted, ARM64, android-device]
+    timeout-minutes: 6
+    steps:
+      - name: Download pinned bridge into staging, never replace active bridge
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, os, pathlib, py_compile, urllib.request
+          source='https://raw.githubusercontent.com/yaroshenkopavel/LiliyaCore-/56df355ba2b9d5fb0cfa8ced210e79d1a513a7d5/tools/physical-runner/liliya_physical_rish_bridge.py'
+          home=pathlib.Path('/data/data/com.termux/files/home')
+          active=home/'liliya_physical_rish_bridge.py'
+          staged=home/'.liliya_physical_rish_bridge.next.py'
+          if not active.is_file():
+              raise SystemExit('ACTIVE_BRIDGE_MISSING')
+          with urllib.request.urlopen(source,timeout=25) as response: payload=response.read(250000)
+          if not (10000 < len(payload) < 250000):
+              raise SystemExit('BAD_SOURCE_LENGTH')
+          text=payload.decode('utf-8')
+          if '/v1/semantic-installed-apk-digests' not in text or 'HOST = "127.0.0.1"' not in text:
+              raise SystemExit('EXPECTED_ENDPOINT_MISSING')
+          compile(text,str(staged),'exec')
+          staged.write_bytes(payload)
+          print('ACTIVE_UNCHANGED=YES')
+          print('STAGED_SHA256='+hashlib.sha256(payload).hexdigest())
+          print('STAGED_SYNTAX=PASS')
+          print('STAGED_PATH='+str(staged))
+          PY
