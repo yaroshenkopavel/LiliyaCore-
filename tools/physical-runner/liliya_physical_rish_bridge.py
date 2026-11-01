@@ -171,7 +171,11 @@ class Handler(BaseHTTPRequestHandler):
             # Read-only attestation of the exact APK installed on the device.
             # Never expose app-private data or permit caller-selected commands.
             observed = {}
-            packages = (\n                (ASF_H_APP_PACKAGE, ASF_H_TEST_PACKAGE) if path == "/v1/asf-h-installed-apk-digests"\n                else (SEMANTIC_APP_PACKAGE, SEMANTIC_TEST_PACKAGE) if path == "/v1/semantic-installed-apk-digests"\n                else (APP_PACKAGE, TEST_PACKAGE)\n            )
+            packages = (
+                (ASF_H_APP_PACKAGE, ASF_H_TEST_PACKAGE) if path == "/v1/asf-h-installed-apk-digests"
+                else (SEMANTIC_APP_PACKAGE, SEMANTIC_TEST_PACKAGE) if path == "/v1/semantic-installed-apk-digests"
+                else (APP_PACKAGE, TEST_PACKAGE)
+            )
             for package in packages:
                 located = run_rish(f"pm path {package}", timeout=30)
                 paths = [
