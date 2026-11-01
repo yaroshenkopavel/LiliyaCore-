@@ -1,0 +1,19 @@
+name: Read only isolated v2 package inventory
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: [self-hosted, ARM64, android-device]
+    timeout-minutes: 5
+    steps:
+      - shell: bash
+        run: |
+          python3 - <<'PY'
+          import subprocess
+          rish='/data/data/com.termux/files/usr/bin/rish'
+          for pkg in ('pro.liliya.android.semanticprovider.llamacancel2','pro.liliya.android.semanticprovider.llamacancel2.test'):
+              r=subprocess.run([rish,'-c','pm path '+pkg],capture_output=True,text=True,timeout=30)
+              print('PACKAGE='+pkg+' EXIT='+str(r.returncode)+' PATH_LINES='+str(sum(x.startswith('package:') for x in r.stdout.splitlines()))+' STDERR='+r.stderr[:500])
+          PY
