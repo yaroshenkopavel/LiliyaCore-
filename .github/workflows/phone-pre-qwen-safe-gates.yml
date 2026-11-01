@@ -1,0 +1,46 @@
+name: Phone pre-Qwen read-only safety gates
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/phone-pre-qwen-safe-gates.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  safe-gates:
+    runs-on: [self-hosted, ARM64, android-device]
+    timeout-minutes: 5
+    steps:
+      - name: Read-only renamed model battery and memory
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os,pathlib,subprocess
+          p=pathlib.Path('/storage/emulated/0/Download new/Qwen3-1.7B-Q4_K_M.gguf')
+          print('RUN_ID='+os.getenv('GITHUB_RUN_ID',''),flush=True)
+          print('MODEL_RENAMED_PATH_PRESENT='+str(p.is_file()),flush=True)
+          if p.is_file():
+              n=p.stat().st_size
+              print('MODEL_BYTES='+str(n),flush=True)
+              with p.open('rb') as f: magic=f.read(4)
+              print('MODEL_GGUF_MAGIC_OK='+str(magic==b'GGUF'),flush=True)
+              if n!=1282439264 or magic!=b'GGUF': raise SystemExit('MODEL_HEADER_OR_SIZE_MISMATCH')
+          r='/data/data/com.termux/files/usr/bin/rish'
+          for name,cmd in [('BATTERY','dumpsys battery'),('THERMAL','dumpsys thermalservice'),('MEMINFO','cat /proc/meminfo')]:
+              x=subprocess.run([r,'-c',cmd],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=35)
+              print(name+'_EXIT='+str(x.returncode),flush=True)
+              if x.returncode!=0: raise SystemExit('FAIL_'+name)
+              if name=='BATTERY':
+                  for line in x.stdout.splitlines():
+                      if line.strip().startswith(('level:','status:','temperature:','powered:','USB powered:','AC powered:')):
+                          print('BATTERY_'+line.strip(),flush=True)
+              elif name=='MEMINFO':
+                  for line in x.stdout.splitlines():
+                      if line.startswith(('MemTotal:','MemAvailable:','SwapFree:')):
+                          print('MEMORY_'+line.strip(),flush=True)
+              else:
+                  print('THERMAL_RESPONSE_BYTES='+str(len(x.stdout)),flush=True)
+          print('PHONE_PRE_QWEN_READONLY=PASS',flush=True)
+          PY
