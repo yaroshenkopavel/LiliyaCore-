@@ -1,0 +1,56 @@
+name: Phone bridge read-only smoke 2026-11-02
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/phone-bridge-readonly-smoke-2026-11-02.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  phone-smoke:
+    runs-on: [self-hosted, ARM64, android-device]
+    timeout-minutes: 5
+    steps:
+      - name: Read-only ARM64, Shizuku, bridge and runner probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os, pathlib, platform, subprocess, urllib.request, urllib.error
+          print('SMOKE_SOURCE_SHA='+os.environ.get('GITHUB_SHA','UNKNOWN'))
+          print('SMOKE_RUN_ID='+os.environ.get('GITHUB_RUN_ID','UNKNOWN'))
+          print('RUNNER_NAME='+os.environ.get('RUNNER_NAME','UNKNOWN'))
+          print('HOST_ARCH='+platform.machine())
+          if platform.machine().lower() not in ('aarch64','arm64'):
+              raise SystemExit('FAIL_NOT_ARM64')
+          home=pathlib.Path('/data/data/com.termux/files/home')
+          rish=pathlib.Path('/data/data/com.termux/files/usr/bin/rish')
+          if not rish.is_file():
+              raise SystemExit('FAIL_RISH_MISSING')
+          res=subprocess.run([str(rish),'-c','getprop ro.build.version.sdk'],capture_output=True,text=True,timeout=25)
+          print('SDK_QUERY_EXIT='+str(res.returncode))
+          print('ANDROID_SDK='+res.stdout.strip()[:20])
+          if res.returncode!=0 or not res.stdout.strip().isdigit():
+              raise SystemExit('FAIL_RISH_SDK')
+          if int(res.stdout.strip())<29:
+              raise SystemExit('FAIL_SDK_TOO_OLD')
+          token=home/'.liliya-physical-bridge-token'
+          print('BRIDGE_TOKEN_FILE_PRESENT='+str(token.is_file()))
+          if not token.is_file():
+              raise SystemExit('FAIL_TOKEN_FILE_MISSING')
+          # Do not read or print the credential. An unauthenticated probe must not return 200.
+          url='http://127.0.0.1:18765/v1/probe'
+          try:
+              with urllib.request.urlopen(url, timeout=5) as response:
+                  status=response.status
+          except urllib.error.HTTPError as e:
+              status=e.code
+          except Exception as e:
+              print('BRIDGE_UNREACHABLE='+type(e).__name__)
+              raise SystemExit('FAIL_BRIDGE_UNREACHABLE')
+          print('BRIDGE_UNAUTH_STATUS='+str(status))
+          if status!=401:
+              raise SystemExit('FAIL_BRIDGE_AUTH_BOUNDARY')
+          print('PHONE_BRIDGE_READONLY_SMOKE=PASS')
+          PY
