@@ -64,7 +64,7 @@ jobs:
           test_signer="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$output/test-signing.txt")"
           test -n "$app_signer"
           test "$app_signer" = "$test_signer"
-          printf 'APP_PACKAGE=pro.liliya.android.semanticprovider\nTEST_PACKAGE=pro.liliya.android.semanticprovider.llamacancel.test\nSIGNER_SHA256=%s\n' "$app_signer" > "$output/apk-identity.env"
+          printf 'APP_PACKAGE=pro.liliya.android.semanticprovider.llamacancel\nTEST_PACKAGE=pro.liliya.android.semanticprovider.llamacancel.test\nSIGNER_SHA256=%s\n' "$app_signer" > "$output/apk-identity.env"
           rm "$output/app-signing.txt" "$output/test-signing.txt" "$output/app-badging.txt" "$output/test-badging.txt"
           (cd "$output" && sha256sum semantic-app.apk semantic-test.apk > SHA256SUMS)
           printf 'SOURCE_SHA=%s\nTEST_CLASS=%s\n' "$GITHUB_SHA" 'pro.liliya.android.llamacppengine.AndroidLlamaCppRealModelInstrumentedTest#real_fixture_cross_thread_cancel_rejects_stream_and_closes_safely' > "$output/source.env"
