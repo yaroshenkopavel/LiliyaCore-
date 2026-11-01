@@ -1,0 +1,62 @@
+name: Phone authenticated device preflight 2026-11-02
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/phone-authenticated-device-preflight-2026-11-02.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  authenticated-preflight:
+    runs-on: [self-hosted, ARM64, android-device]
+    timeout-minutes: 7
+    steps:
+      - name: Verify authorized probe and Android resource telemetry (read-only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, pathlib, platform, subprocess, urllib.request
+          print('SOURCE_SHA='+os.environ.get('GITHUB_SHA','UNKNOWN'),flush=True)
+          print('RUN_ID='+os.environ.get('GITHUB_RUN_ID','UNKNOWN'),flush=True)
+          print('RUNNER_NAME='+os.environ.get('RUNNER_NAME','UNKNOWN'),flush=True)
+          if platform.machine().lower() not in ('aarch64','arm64'):
+              raise SystemExit('FAIL_ARCH')
+          token_path=pathlib.Path('/data/data/com.termux/files/home/.liliya-physical-bridge-token')
+          if not token_path.is_file(): raise SystemExit('FAIL_TOKEN_PATH')
+          token=token_path.read_text().strip()
+          if not token or len(token)>4096: raise SystemExit('FAIL_TOKEN_FORMAT')
+          req=urllib.request.Request('http://127.0.0.1:18765/v1/probe',headers={'Authorization':'Bearer '+token})
+          del token
+          with urllib.request.urlopen(req,timeout=90) as response:
+              if response.status!=200: raise SystemExit('FAIL_AUTH_HTTP')
+              raw=response.read(16000)
+          data=json.loads(raw)
+          if data.get('backend')!='shizuku-rish': raise SystemExit('FAIL_BACKEND')
+          for key in ('shellIdentity','model','primaryAbi','sdk','qemu','appPath','testPath'):
+              v=data.get(key)
+              if not isinstance(v,dict) or v.get('exit')!=0:
+                  print('PROBE_KEY_FAIL='+key)
+                  raise SystemExit('FAIL_PROBE_EXIT')
+          sdk_value=str(data['sdk'].get('output','')).strip()
+          import re
+          sdk_candidates=[t.strip() for t in sdk_value.splitlines() if re.fullmatch(r'[0-9]{2}',t.strip())]
+          if len(sdk_candidates)!=1 or int(sdk_candidates[0])<29: raise SystemExit('FAIL_SDK')
+          abi=str(data['primaryAbi'].get('output','')).strip()
+          if 'arm64-v8a' not in abi: raise SystemExit('FAIL_ABI')
+          print('AUTH_HTTP=200')
+          print('PROBE_BACKEND=shizuku-rish')
+          print('ANDROID_SDK='+sdk_candidates[0])
+          print('ANDROID_ABI=arm64-v8a')
+          print('PROBE_KEYS_WITH_EXIT_0=7')
+          rish='/data/data/com.termux/files/usr/bin/rish'
+          for name,cmd in [('battery','dumpsys battery'),('thermal','dumpsys thermalservice')]:
+              p=subprocess.run([rish,'-c',cmd],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=40)
+              if p.returncode!=0:
+                  print('TELEMETRY_'+name.upper()+'_EXIT='+str(p.returncode))
+                  raise SystemExit('FAIL_TELEMETRY_'+name.upper())
+              if len(p.stdout.strip())<8: raise SystemExit('FAIL_TELEMETRY_EMPTY_'+name.upper())
+              print('TELEMETRY_'+name.upper()+'=AVAILABLE')
+          print('PHONE_AUTHENTICATED_DEVICE_PREFLIGHT=PASS')
+          PY
