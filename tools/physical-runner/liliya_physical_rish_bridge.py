@@ -47,6 +47,8 @@ ASF_H_APP_PACKAGE = "pro.liliya.app.asfh"
 ASF_H_TEST_PACKAGE = "pro.liliya.app.asfh.test"
 SEMANTIC_APP_PACKAGE = "pro.liliya.android.semanticprovider"
 SEMANTIC_TEST_PACKAGE = "pro.liliya.android.semanticprovider.test"
+ISOLATED_APP_PACKAGE = "pro.liliya.android.semanticprovider.llamacancel"
+ISOLATED_TEST_PACKAGE = "pro.liliya.android.semanticprovider.llamacancel.test"
 RUNNER = "androidx.test.runner.AndroidJUnitRunner"
 PROVISIONING_TEST = "pro.liliya.app.PhysicalProductAuthProvisioningToChatInstrumentedTest"
 COLD_START_TEST = "pro.liliya.app.DevelopmentFirstWorkingLiliyaColdStartInstrumentedTest"
@@ -76,6 +78,8 @@ UPLOADS = {
         "liliya-semantic-host-debug.apk",
         SEMANTIC_APP_PACKAGE,
     ),
+    "/v1/install/isolated-llama-app": ("liliya-isolated-llama-app.apk", ISOLATED_APP_PACKAGE),
+    "/v1/install/isolated-llama-test": ("liliya-isolated-llama-test.apk", ISOLATED_TEST_PACKAGE),
     "/v1/install/semantic-test": (
         "liliya-semantic-host-debug-androidTest.apk",
         SEMANTIC_TEST_PACKAGE,
@@ -167,13 +171,14 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/v1/probe":
             self._json(200, fixed_probe())
             return
-        if path in ("/v1/installed-apk-digests", "/v1/asf-h-installed-apk-digests", "/v1/semantic-installed-apk-digests"):
+        if path in ("/v1/installed-apk-digests", "/v1/asf-h-installed-apk-digests", "/v1/semantic-installed-apk-digests", "/v1/isolated-llama-installed-apk-digests"):
             # Read-only attestation of the exact APK installed on the device.
             # Never expose app-private data or permit caller-selected commands.
             observed = {}
             packages = (
                 (ASF_H_APP_PACKAGE, ASF_H_TEST_PACKAGE) if path == "/v1/asf-h-installed-apk-digests"
                 else (SEMANTIC_APP_PACKAGE, SEMANTIC_TEST_PACKAGE) if path == "/v1/semantic-installed-apk-digests"
+                else (ISOLATED_APP_PACKAGE, ISOLATED_TEST_PACKAGE) if path == "/v1/isolated-llama-installed-apk-digests"
                 else (APP_PACKAGE, TEST_PACKAGE)
             )
             for package in packages:
@@ -235,6 +240,10 @@ class Handler(BaseHTTPRequestHandler):
                 test_package=SEMANTIC_TEST_PACKAGE,
                 timeout=3600,
             )
+            return
+
+        if path == "/v1/instrument/isolated-llama-cross-thread-cancel":
+            self._instrument(LLAMA_CROSS_THREAD_CANCEL_TEST, test_package=ISOLATED_TEST_PACKAGE, timeout=900)
             return
 
         if path == "/v1/instrument/llama-cross-thread-cancel":
@@ -307,7 +316,7 @@ class Handler(BaseHTTPRequestHandler):
         # Phone llama acceptance must never replace an existing semantic package.
         # This is stricter than relying on Android's signature compatibility:
         # existing app/test packages are treated as a manual review blocker.
-        if package in (SEMANTIC_APP_PACKAGE, SEMANTIC_TEST_PACKAGE):
+        if package in (SEMANTIC_APP_PACKAGE, SEMANTIC_TEST_PACKAGE, ISOLATED_APP_PACKAGE, ISOLATED_TEST_PACKAGE):
             existing = run_rish(f"pm path {package}", timeout=30)
             existing_apks = [
                 line for line in existing.stdout.splitlines()
@@ -338,7 +347,7 @@ class Handler(BaseHTTPRequestHandler):
             f"rm -f '{device_destination}' && "
             f"cp '{destination}' '{device_destination}' && "
             f"chmod 0644 '{device_destination}' && "
-            f"pm install {'-t' if package in (SEMANTIC_APP_PACKAGE, SEMANTIC_TEST_PACKAGE) else '-r -t'} '{device_destination}'; "
+            f"pm install {'-t' if package in (SEMANTIC_APP_PACKAGE, SEMANTIC_TEST_PACKAGE, ISOLATED_APP_PACKAGE, ISOLATED_TEST_PACKAGE) else '-r -t'} '{device_destination}'; "
             "rc=$?; "
             f"rm -f '{device_destination}'; "
             "exit $rc"
