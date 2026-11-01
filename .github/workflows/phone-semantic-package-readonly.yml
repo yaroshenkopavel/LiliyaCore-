@@ -1,0 +1,34 @@
+name: Read-only phone semantic package presence
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  semantic-package-preflight:
+    runs-on: [self-hosted, ARM64, android-device]
+    timeout-minutes: 5
+    steps:
+      - name: Check installed semantic package paths via Shizuku rish
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os, subprocess
+          rish = os.environ.get('LILIYA_RISH_PATH', '/data/data/com.termux/files/usr/bin/rish')
+          if not os.path.isfile(rish):
+              print('RISH_AVAILABLE=NO')
+              raise SystemExit(2)
+          for package in ('pro.liliya.android.semanticprovider', 'pro.liliya.android.semanticprovider.test'):
+              result = subprocess.run([rish, '-c', 'pm path ' + package], text=True, capture_output=True, timeout=35)
+              paths = [v for v in result.stdout.splitlines() if v.startswith('package:')]
+              if result.returncode != 0:
+                  print(package + '=UNKNOWN_ERROR')
+                  raise SystemExit(3)
+              if paths:
+                  print(package + '=INSTALLED')
+              elif result.stdout.strip() or result.stderr.strip():
+                  print(package + '=UNKNOWN_OUTPUT')
+                  raise SystemExit(4)
+              else:
+                  print(package + '=ABSENT')
+          PY
