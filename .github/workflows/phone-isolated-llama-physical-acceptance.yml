@@ -1,0 +1,101 @@
+name: Physical isolated llama cancellation acceptance
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  physical-llama:
+    runs-on: [self-hosted, ARM64, android-device]
+    timeout-minutes: 28
+    steps:
+      - name: Download exact signed isolated APK bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: phone-llama-isolated-cancel-apks
+          run-id: 41342171872
+          github-token: ${{ github.token }}
+          path: isolated-bundle
+      - name: Preflight, install isolated APKs and execute real GGUF cancellation test
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib,json,os,pathlib,subprocess,time,urllib.request,urllib.error
+          home=pathlib.Path('/data/data/com.termux/files/home')
+          script=home/'.liliya_physical_rish_bridge.isolated-canary.py'
+          token_path=home/'.liliya-physical-bridge-token'
+          files=pathlib.Path('isolated-bundle')
+          expected={
+              'semantic-app.apk':'1a61e19fb34588f1888911dc4e3ae755c31f78f752cad5029de733d80b6136e3',
+              'semantic-test.apk':'df765923e230136f31949a0eb2e46c41d2c57d0e676e46f5b4768c2957884a4e'}
+          identity={
+              'APP_PACKAGE':'pro.liliya.android.semanticprovider.llamacancel',
+              'TEST_PACKAGE':'pro.liliya.android.semanticprovider.llamacancel.test'}
+          manifest=dict(line.strip().split('=',1) for line in (files/'apk-identity.env').read_text().splitlines() if '=' in line)
+          for k,v in identity.items():
+              if manifest.get(k)!=v:raise SystemExit('IDENTITY_MISMATCH_'+k)
+          if not script.is_file() or not token_path.is_file():raise SystemExit('CANARY_OR_TOKEN_MISSING')
+          if hashlib.sha256(script.read_bytes()).hexdigest()!='073c8cfc38ac41582a5bcdcc8a13c2168eb17ceccac6b22de87858717c46ec92':
+              raise SystemExit('CANARY_IDENTITY_MISMATCH')
+          for name,digest in expected.items():
+              file=files/name
+              if not file.is_file() or hashlib.sha256(file.read_bytes()).hexdigest()!=digest:
+                  raise SystemExit('APK_SHA_MISMATCH_'+name)
+              print('APK_VALIDATED='+name+' '+str(file.stat().st_size))
+          # Assert both package names absent independently, before any install.
+          rish='/data/data/com.termux/files/usr/bin/rish'
+          for pkg in identity.values():
+              result=subprocess.run([rish,'-c','pm path '+pkg],capture_output=True,text=True,timeout=30)
+              if result.returncode!=0 or result.stdout.strip():
+                  raise SystemExit('ISOLATED_PACKAGE_NOT_PROVEN_ABSENT_'+pkg)
+              print('ABSENT_CONFIRMED='+pkg)
+          token=token_path.read_text().strip()
+          env=os.environ.copy()
+          env['LILIYA_PHYSICAL_BRIDGE_PORT']='18767'
+          env['LILIYA_PHYSICAL_BRIDGE_TOKEN_FILE']=str(token_path)
+          bridge=subprocess.Popen(['/data/data/com.termux/files/usr/bin/python','-u',str(script)],
+              env=env,stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+          base='http://127.0.0.1:18767'
+          def call(path,method='GET',data=None,sha=None,timeout=200):
+              headers={'Authorization':'Bearer '+token}
+              if sha:headers['X-Liliya-Sha256']=sha
+              req=urllib.request.Request(base+path,method=method,data=data,headers=headers)
+              try:
+                  with urllib.request.urlopen(req,timeout=timeout) as resp:
+                      return resp.status,resp.read()
+              except urllib.error.HTTPError as exc:
+                  body=exc.read()
+                  raise RuntimeError('ROUTE_FAILED '+path+' HTTP='+str(exc.code)+' RESPONSE='+body[:1000].decode('utf-8','replace'))
+          try:
+              for i in range(40):
+                  if bridge.poll() is not None:raise RuntimeError('CANARY_EXITED')
+                  try:
+                      if call('/v1/probe',timeout=12)[0]==200:break
+                  except Exception:time.sleep(.5)
+              else:raise RuntimeError('CANARY_NOT_READY')
+              for name,path in [('semantic-app.apk','/v1/install/isolated-llama-app'),('semantic-test.apk','/v1/install/isolated-llama-test')]:
+                  status,output=call(path,method='POST',data=(files/name).read_bytes(),sha=expected[name],timeout=240)
+                  if status!=200:raise RuntimeError('INSTALL_UNSUCCESSFUL_'+name)
+                  result=json.loads(output)
+                  if result.get('installExit')!=0:raise RuntimeError('INSTALL_EXIT_NONZERO_'+name)
+                  print('INSTALLED='+name+' HTTP='+str(status))
+              status,output=call('/v1/isolated-llama-installed-apk-digests',timeout=140)
+              observed=json.loads(output).get('packages',{})
+              for pkg,name in zip(identity.values(),expected):
+                  if observed.get(pkg,{}).get('sha256')!=expected[name]:
+                      raise RuntimeError('ON_DEVICE_DIGEST_MISMATCH_'+pkg)
+              print('DEVICE_APK_SHA256=PASS')
+              status,output=call('/v1/instrument/isolated-llama-cross-thread-cancel',method='POST',data=b'',timeout=960)
+              body=output.decode('utf-8','replace')
+              print('INSTRUMENTATION_LOG_BEGIN')
+              print(body[-18000:])
+              print('INSTRUMENTATION_LOG_END')
+              if status!=200 or 'INSTRUMENTATION_CODE: -1' not in body or 'OK (1 test)' not in body:
+                  raise RuntimeError('PHYSICAL_INSTRUMENTATION_NOT_PASS')
+              print('PHYSICAL_LLAMA_CANCEL=PASS')
+          finally:
+              bridge.terminate()
+              try:bridge.wait(timeout=8)
+              except subprocess.TimeoutExpired:bridge.kill()
+          PY
