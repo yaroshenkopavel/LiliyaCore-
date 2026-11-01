@@ -1,0 +1,46 @@
+name: Phone downloaded GGUF read-only integrity check
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/phone-gguf-file-readonly-check.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  gguf-file:
+    runs-on: [self-hosted, ARM64, android-device]
+    timeout-minutes: 12
+    steps:
+      - name: Check exact GGUF size SHA256 and magic without writing
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib,os,hashlib,struct
+          p=pathlib.Path('/storage/emulated/0/Download new/Qwen3-1.7B-Q4_K_M.invalid-1107409472.gguf')
+          expected_size=1282439264
+          expected_sha='d2387ca2dbfee2ffabce7120d3770dadca0b293052bc2f0e138fdc940d9bc7b5'
+          print('RUN_ID='+os.environ.get('GITHUB_RUN_ID',''))
+          print('SOURCE_SHA='+os.environ.get('GITHUB_SHA',''))
+          print('FILE_PRESENT='+str(p.is_file()))
+          if not p.is_file():
+              print('MODEL_FILE_CHECK=NOT_FOUND')
+              raise SystemExit(2)
+          size=p.stat().st_size
+          print('FILE_SIZE_BYTES='+str(size))
+          with p.open('rb') as f:
+              header=f.read(8)
+              h=hashlib.sha256()
+              h.update(header)
+              for block in iter(lambda:f.read(4*1024*1024),b''):
+                  h.update(block)
+          print('GGUF_MAGIC='+header[:4].hex())
+          print('GGUF_VERSION='+str(struct.unpack('<I',header[4:8])[0]) if len(header)==8 else 'UNKNOWN')
+          digest=h.hexdigest()
+          print('FILE_SHA256='+digest)
+          print('EXPECTED_SIZE_MATCH='+str(size==expected_size))
+          print('EXPECTED_SHA256_MATCH='+str(digest==expected_sha))
+          print('GGUF_MAGIC_VALID='+str(header[:4]==b'GGUF'))
+          print('MODEL_FILE_CHECK='+('PASS' if size==expected_size and digest==expected_sha and header[:4]==b'GGUF' else 'MISMATCH'))
+          PY
