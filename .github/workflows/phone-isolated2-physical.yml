@@ -1,0 +1,91 @@
+name: Physical isolated llama v2 acceptance
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  physical:
+    runs-on: [self-hosted, ARM64, android-device]
+    timeout-minutes: 25
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: phone-llama-isolated2-cancel-apks
+          run-id: 41352771626
+          github-token: ${{ github.token }}
+          path: isolated2-bundle
+      - name: Verify, install never-before-used test identities, run physical test
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, pathlib, subprocess, re
+          directory=pathlib.Path('isolated2-bundle')
+          package='pro.liliya.android.semanticprovider.llamacancel2'
+          testpackage=package+'.test'
+          metadata=dict(line.split('=',1) for line in (directory/'apk-identity.env').read_text().splitlines() if '=' in line)
+          if metadata.get('APP_PACKAGE')!=package or metadata.get('TEST_PACKAGE')!=testpackage:
+              raise SystemExit('PACKAGE_IDENTITY_MISMATCH')
+          if not re.fullmatch('[a-f0-9]{64}',metadata.get('SIGNER_SHA256','')):
+              raise SystemExit('SIGNER_INVALID')
+          sums={}
+          for line in (directory/'SHA256SUMS').read_text().splitlines():
+              parts=line.split()
+              if len(parts)!=2 or parts[1] not in ('semantic-app.apk','semantic-test.apk'):
+                  raise SystemExit('INVALID_SUMS_FILE')
+              sums[parts[1]]=parts[0]
+          if len(sums)!=2:raise SystemExit('INCOMPLETE_SUMS')
+          rish='/data/data/com.termux/files/usr/bin/rish'
+          for name in sums:
+              data=(directory/name).read_bytes()
+              if hashlib.sha256(data).hexdigest()!=sums[name]:
+                  raise SystemExit('HASH_MISMATCH_'+name)
+              print('BUNDLE_VERIFIED='+name)
+          for pkg in (package,testpackage):
+              result=subprocess.run([rish,'-c','pm path '+pkg],capture_output=True,text=True,timeout=30)
+              if result.returncode!=0 or result.stdout.strip():
+                  raise SystemExit('PACKAGE_NOT_ABSENT_'+pkg)
+              print('ABSENT='+pkg)
+          # Copy only the two verified APKs to the fixed staging directory.
+          stage=pathlib.Path('/storage/emulated/0/Download/LiliyaPhysicalAcceptance')
+          stage.mkdir(parents=True,exist_ok=True)
+          for name in sums:
+              target=stage/('v2-'+name)
+              target.write_bytes((directory/name).read_bytes())
+              if hashlib.sha256(target.read_bytes()).hexdigest()!=sums[name]:
+                  raise SystemExit('STAGE_HASH_MISMATCH_'+name)
+          for name in ('semantic-app.apk','semantic-test.apk'):
+              filename='v2-'+name
+              src=stage/filename
+              dst='/data/local/tmp/liliya-physical-acceptance/'+filename
+              command=("mkdir -p /data/local/tmp/liliya-physical-acceptance && "
+                       "cp '"+str(src)+"' '"+dst+"' && chmod 0644 '"+dst+"' && "
+                       "pm install -t '"+dst+"'")
+              install=subprocess.run([rish,'-c',command],capture_output=True,text=True,timeout=240)
+              print('INSTALL_'+name+'_EXIT='+str(install.returncode))
+              print(install.stdout[-4000:])
+              if install.returncode!=0 or 'Success' not in install.stdout:
+                  raise SystemExit('INSTALL_FAILED_'+name)
+          # Verify actual installed APK content against bundle hashes.
+          for pkg,name in ((package,'semantic-app.apk'),(testpackage,'semantic-test.apk')):
+              path=subprocess.run([rish,'-c','pm path '+pkg],capture_output=True,text=True,timeout=30)
+              paths=[x[8:].strip() for x in path.stdout.splitlines() if x.startswith('package:')]
+              if path.returncode!=0 or len(paths)!=1 or not re.fullmatch('/[a-zA-Z0-9_./~=-]+\\.apk',paths[0]):
+                  raise SystemExit('INSTALLED_PATH_INVALID_'+pkg)
+              result=subprocess.run([rish,'-c',"sha256sum '"+paths[0]+"'"],capture_output=True,text=True,timeout=60)
+              if result.returncode!=0 or result.stdout.split()[0]!=sums[name]:
+                  raise SystemExit('INSTALLED_SHA_MISMATCH_'+pkg)
+              print('ON_DEVICE_SHA256=PASS '+pkg)
+          command=('am instrument -w -r -e class '
+                   'pro.liliya.android.llamacppengine.AndroidLlamaCppRealModelInstrumentedTest#'
+                   'real_fixture_cross_thread_cancel_rejects_stream_and_closes_safely '
+                   +testpackage+'/androidx.test.runner.AndroidJUnitRunner')
+          test=subprocess.run([rish,'-c',command],capture_output=True,text=True,timeout=960)
+          print('PHYSICAL_INSTRUMENTATION_OUTPUT_START')
+          print(test.stdout[-30000:])
+          print('PHYSICAL_INSTRUMENTATION_OUTPUT_END')
+          if test.returncode!=0 or 'INSTRUMENTATION_CODE: -1' not in test.stdout or 'OK (1 test)' not in test.stdout:
+              raise SystemExit('PHYSICAL_TEST_FAILED')
+          print('PHYSICAL_LLAMA_CANCEL=PASS')
+          PY
