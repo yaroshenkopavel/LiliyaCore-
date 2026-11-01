@@ -8,7 +8,7 @@ jobs:
     runs-on: [self-hosted, ARM64, android-device]
     timeout-minutes: 5
     steps:
-      - name: Check installed semantic package paths via Shizuku rish
+      - name: Check installed semantic packages via Shizuku rish
         shell: bash
         run: |
           set -euo pipefail
@@ -18,17 +18,15 @@ jobs:
           if not os.path.isfile(rish):
               print('RISH_AVAILABLE=NO')
               raise SystemExit(2)
-          for package in ('pro.liliya.android.semanticprovider', 'pro.liliya.android.semanticprovider.test'):
-              result = subprocess.run([rish, '-c', 'pm path ' + package], text=True, capture_output=True, timeout=35)
-              paths = [v for v in result.stdout.splitlines() if v.startswith('package:')]
-              if result.returncode != 0:
-                  print(package + '=UNKNOWN_ERROR')
-                  raise SystemExit(3)
-              if paths:
-                  print(package + '=INSTALLED')
-              elif result.stdout.strip() or result.stderr.strip():
-                  print(package + '=UNKNOWN_OUTPUT')
-                  raise SystemExit(4)
-              else:
-                  print(package + '=ABSENT')
+          result = subprocess.run([rish, '-c', 'pm list packages'], text=True, capture_output=True, timeout=45)
+          if result.returncode != 0 or not result.stdout.strip():
+              print('PACKAGE_LIST=UNAVAILABLE')
+              raise SystemExit(3)
+          packages = {line.removeprefix('package:').strip() for line in result.stdout.splitlines() if line.startswith('package:')}
+          if len(packages) < 10:
+              print('PACKAGE_LIST=INCOMPLETE')
+              raise SystemExit(4)
+          for name in ('pro.liliya.android.semanticprovider', 'pro.liliya.android.semanticprovider.test'):
+              print(name + '=' + ('INSTALLED' if name in packages else 'ABSENT'))
+          print('PACKAGE_LIST=OK')
           PY
