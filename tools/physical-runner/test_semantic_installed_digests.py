@@ -92,6 +92,29 @@ class SemanticInstalledDigestsTest(unittest.TestCase):
                 self.assertEqual(status, 409)
                 self.assertIn("error", body)
 
+    def test_isolated_digest_route_uses_only_isolated_packages(self):
+        import subprocess
+        self.url = self.url.replace("/v1/semantic-installed-apk-digests", "/v1/isolated-llama-installed-apk-digests")
+        def isolated_shell(command, timeout=30):
+            if command.startswith("pm path "):
+                self.assertIn(command.removeprefix("pm path "), (self.bridge.ISOLATED_APP_PACKAGE, self.bridge.ISOLATED_TEST_PACKAGE))
+                return subprocess.CompletedProcess([], 0, "package:/data/app/example/base.apk\n")
+            if command.startswith("sha256sum "):
+                return subprocess.CompletedProcess([], 0, ("b" * 64) + " /data/app/example/base.apk\n")
+            raise AssertionError(command)
+        with mock.patch.object(self.bridge, "run_rish", side_effect=isolated_shell) as shell:
+            status, data = self.get()
+        self.assertEqual(status, 200)
+        self.assertEqual(set(data["packages"]), {self.bridge.ISOLATED_APP_PACKAGE, self.bridge.ISOLATED_TEST_PACKAGE})
+        self.assertEqual(shell.call_count, 4)
+
+    def test_isolated_install_pair_refuses_replacement(self):
+        import subprocess
+        self.assertIn("/v1/install/isolated-llama-app", self.bridge.UPLOADS)
+        self.assertIn("/v1/install/isolated-llama-test", self.bridge.UPLOADS)
+        self.assertEqual(self.bridge.UPLOADS["/v1/install/isolated-llama-app"][1], self.bridge.ISOLATED_APP_PACKAGE)
+        self.assertEqual(self.bridge.UPLOADS["/v1/install/isolated-llama-test"][1], self.bridge.ISOLATED_TEST_PACKAGE)
+
     def test_rejects_bad_digest(self):
         import subprocess
         def bad_digest(cmd, timeout=30):
