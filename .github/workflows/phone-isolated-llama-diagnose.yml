@@ -1,0 +1,30 @@
+name: Diagnose installed isolated llama instrumentation
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  diagnose:
+    runs-on: [self-hosted, ARM64, android-device]
+    timeout-minutes: 5
+    steps:
+      - name: Capture complete AndroidJUnitRunner failure stack without changing APKs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import subprocess
+          rish='/data/data/com.termux/files/usr/bin/rish'
+          args=[
+             rish,'-c',
+             'am instrument -w -r -e class pro.liliya.android.llamacppengine.AndroidLlamaCppRealModelInstrumentedTest#real_fixture_cross_thread_cancel_rejects_stream_and_closes_safely pro.liliya.android.semanticprovider.llamacancel.test/androidx.test.runner.AndroidJUnitRunner'
+          ]
+          output=subprocess.run(args,capture_output=True,text=True,timeout=180)
+          print('INSTRUMENTATION_EXIT='+str(output.returncode))
+          print('INSTRUMENTATION_OUTPUT_START')
+          print(output.stdout[-16000:])
+          print(output.stderr[-2000:])
+          print('INSTRUMENTATION_OUTPUT_END')
+          if output.returncode or 'INSTRUMENTATION_CODE: -1' not in output.stdout or 'OK (1 test)' not in output.stdout:
+              raise SystemExit('INSTRUMENTATION_NOT_PASS')
+          PY
