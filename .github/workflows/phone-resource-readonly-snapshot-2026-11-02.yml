@@ -1,0 +1,35 @@
+name: Phone physical resource read-only snapshot
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/phone-resource-readonly-snapshot-2026-11-02.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  resource-snapshot:
+    runs-on: [self-hosted, ARM64, android-device]
+    timeout-minutes: 5
+    steps:
+      - name: Verify resource service responses without load
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os, platform, subprocess
+          print('SOURCE_SHA='+os.environ.get('GITHUB_SHA',''))
+          print('RUNNER_NAME='+os.environ.get('RUNNER_NAME',''))
+          print('HOST_ARCH='+platform.machine())
+          if platform.machine() not in ('aarch64','arm64'):
+              raise SystemExit('FAIL_ARCH')
+          rish='/data/data/com.termux/files/usr/bin/rish'
+          for kind,command in (('BATTERY','dumpsys battery'),('THERMAL','dumpsys thermalservice')):
+              result=subprocess.run([rish,'-c',command],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=40)
+              print(kind+'_EXIT='+str(result.returncode))
+              print(kind+'_OUTPUT_BYTES='+str(len(result.stdout.encode())))
+              if result.returncode != 0 or len(result.stdout.strip()) < 10:
+                  raise SystemExit('FAIL_'+kind)
+              print(kind+'_SERVICE=PASS')
+          print('PHONE_READONLY_RESOURCES=PASS')
+          PY
