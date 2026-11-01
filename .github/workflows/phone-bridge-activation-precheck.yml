@@ -1,0 +1,30 @@
+name: Phone bridge safe activation
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  activate:
+    runs-on: [self-hosted, ARM64, android-device]
+    timeout-minutes: 6
+    steps:
+      - name: Read-only activation prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os, pathlib, hashlib, urllib.request
+          home=pathlib.Path('/data/data/com.termux/files/home')
+          active=home/'liliya_physical_rish_bridge.py'
+          staged=home/'.liliya_physical_rish_bridge.next.py'
+          token=home/'.liliya-physical-bridge-token'
+          for name,path in [('active',active),('staged',staged),('token',token)]:
+              print(name.upper()+'_EXISTS='+str(path.is_file()))
+              if not path.is_file(): raise SystemExit(2)
+          expected='2a8c94e3fc2c8c639f050f5691be737e7826d92a4a7babe3a2c70990aa10f058'
+          actual=hashlib.sha256(staged.read_bytes()).hexdigest()
+          print('STAGED_HASH_MATCH='+str(actual==expected))
+          if actual!=expected: raise SystemExit(3)
+          with urllib.request.urlopen(urllib.request.Request('http://127.0.0.1:18765/v1/probe',headers={'Authorization':'Bearer '+token.read_text().strip()}),timeout=12) as r:
+              print('CURRENT_PROBE_HTTP='+str(r.status))
+          PY
