@@ -1,0 +1,64 @@
+name: Canary isolated llama bridge routes on physical phone
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  canary:
+    runs-on: [self-hosted, ARM64, android-device]
+    timeout-minutes: 6
+    steps:
+      - name: Stage exact source and test isolated routes on separate localhost port
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib,json,os,pathlib,subprocess,time,urllib.request,urllib.error
+          home=pathlib.Path('/data/data/com.termux/files/home')
+          staged=home/'.liliya_physical_rish_bridge.isolated-canary.py'
+          source='https://raw.githubusercontent.com/yaroshenkopavel/LiliyaCore-/4ff7114b7bd55b5aed7db308809323f397c57117/tools/physical-runner/liliya_physical_rish_bridge.py'
+          with urllib.request.urlopen(source,timeout=30) as response: payload=response.read(180000)
+          if not 10000<len(payload)<180000: raise SystemExit('SOURCE_SIZE_INVALID')
+          code=payload.decode('utf-8')
+          compile(code,str(staged),'exec')
+          for marker in ['/v1/install/isolated-llama-app','/v1/install/isolated-llama-test','/v1/instrument/isolated-llama-cross-thread-cancel']:
+              if marker not in code: raise SystemExit('ROUTE_MISSING')
+          staged.write_bytes(payload)
+          print('CANARY_SHA256='+hashlib.sha256(payload).hexdigest())
+          token=(home/'.liliya-physical-bridge-token').read_text().strip()
+          env=os.environ.copy()
+          env['LILIYA_PHYSICAL_BRIDGE_PORT']='18767'
+          env['LILIYA_PHYSICAL_BRIDGE_TOKEN_FILE']=str(home/'.liliya-physical-bridge-token')
+          p=subprocess.Popen(['/data/data/com.termux/files/usr/bin/python','-u',str(staged)],env=env,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+          try:
+              for _ in range(30):
+                  if p.poll() is not None: raise SystemExit('CANARY_FAILED_TO_START')
+                  try:
+                      req=urllib.request.Request('http://127.0.0.1:18767/v1/probe',headers={'Authorization':'Bearer '+token})
+                      with urllib.request.urlopen(req,timeout=12) as resp:
+                          if resp.status==200: break
+                  except OSError: time.sleep(.5)
+              else: raise SystemExit('CANARY_NOT_READY')
+              req=urllib.request.Request('http://127.0.0.1:18767/v1/isolated-llama-installed-apk-digests',headers={'Authorization':'Bearer '+token})
+              try:
+                  with urllib.request.urlopen(req,timeout=20) as response:
+                      print('ISOLATED_DIGEST_HTTP='+str(response.status))
+                      print('ISOLATED_DIGEST_PACKAGES='+str(len(json.load(response).get('packages',{}))))
+              except urllib.error.HTTPError as error:
+                  if error.code!=409: raise
+                  print('ISOLATED_DIGEST_HTTP=409_ABSENT_EXPECTED')
+              for route in ('/v1/install/isolated-llama-app','/v1/install/isolated-llama-test','/v1/instrument/isolated-llama-cross-thread-cancel'):
+                  req=urllib.request.Request('http://127.0.0.1:18767'+route,method='POST')
+                  try:
+                      urllib.request.urlopen(req,timeout=10)
+                      raise RuntimeError('UNAUTHENTICATED_ROUTE_ALLOWED')
+                  except urllib.error.HTTPError as error:
+                      if error.code!=401: raise
+                  print('AUTH_ENFORCED='+route)
+              req=urllib.request.Request('http://127.0.0.1:18765/v1/probe',headers={'Authorization':'Bearer '+token})
+              with urllib.request.urlopen(req,timeout=15) as resp: print('ACTIVE_UNCHANGED_HTTP='+str(resp.status))
+          finally:
+              p.terminate()
+              try:p.wait(timeout=6)
+              except subprocess.TimeoutExpired:p.kill()
+          PY
