@@ -28,7 +28,7 @@ android {
             assets.directories.add(
                 "../android-llama-cpp-engine/src/androidTest/assets"
             )
-            java.srcDir("../android-llama-cpp-engine/src/androidTest/kotlin")
+            kotlin.srcDir("../android-llama-cpp-engine/src/androidTest/kotlin")
         }
     }
 
