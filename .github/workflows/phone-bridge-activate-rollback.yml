@@ -1,0 +1,71 @@
+name: Activate phone bridge with rollback
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  activate:
+    runs-on: [self-hosted, ARM64, android-device]
+    timeout-minutes: 7
+    steps:
+      - name: Activate pinned bridge with local rollback
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib,os,pathlib,subprocess,time,urllib.request,urllib.error,signal,json
+          home=pathlib.Path('/data/data/com.termux/files/home')
+          active=home/'liliya_physical_rish_bridge.py'
+          staged=home/'.liliya_physical_rish_bridge.next.py'
+          backup=home/'.liliya_physical_rish_bridge.before-707.py'
+          token=(home/'.liliya-physical-bridge-token').read_text().strip()
+          expected='2a8c94e3fc2c8c639f050f5691be737e7826d92a4a7babe3a2c70990aa10f058'
+          if hashlib.sha256(staged.read_bytes()).hexdigest()!=expected: raise SystemExit('STAGED_HASH_MISMATCH')
+          if not active.is_file() or backup.exists(): raise SystemExit('BACKUP_PRECONDITION_FAILED')
+          import socket
+          def request_route(route):
+              req=urllib.request.Request('http://127.0.0.1:18765'+route,headers={'Authorization':'Bearer '+token})
+              try:
+                  with urllib.request.urlopen(req,timeout=8) as r: return r.status,r.read()
+              except urllib.error.HTTPError as e: return e.code,e.read()
+              except Exception: return 0,b''
+          if request_route('/v1/probe')[0]!=200: raise SystemExit('OLD_BRIDGE_UNHEALTHY')
+          ps=subprocess.run(['ps','-A','-o','pid=,args='],capture_output=True,text=True,timeout=10)
+          lines=[line.strip() for line in ps.stdout.splitlines() if 'liliya_physical_rish_bridge.py' in line and ('python' in line)]
+          candidates=[]
+          for line in lines:
+              parts=line.split(None,1)
+              if len(parts)==2 and parts[0].isdigit() and 'python' in parts[1] and ('/liliya_physical_rish_bridge.py' in parts[1] or ' liliya_physical_rish_bridge.py' in parts[1]):
+                  candidates.append(int(parts[0]))
+          if len(candidates)!=1: raise SystemExit('UNSAFE_PROCESS_COUNT_'+str(len(candidates)))
+          old_pid=candidates[0]
+          backup.write_bytes(active.read_bytes())
+          active.write_bytes(staged.read_bytes())
+          print('BACKUP_CREATED=YES')
+          try:
+              os.kill(old_pid,signal.SIGTERM)
+              for _ in range(25):
+                  if request_route('/v1/probe')[0]==0: break
+                  time.sleep(.2)
+              runner=subprocess.Popen(['/data/data/com.termux/files/usr/bin/python','-u',str(active)],stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=(home/'.liliya-bridge-activation.log').open('ab'),start_new_session=True)
+              for _ in range(40):
+                  time.sleep(.5)
+                  if runner.poll() is not None: break
+                  if request_route('/v1/probe')[0]==200:
+                      status,body=request_route('/v1/semantic-installed-apk-digests')
+                      print('SEMANTIC_ROUTE_HTTP='+str(status))
+                      if status==200:
+                          print('BRIDGE_ACTIVATION=PASS')
+                          print('NEW_PID='+str(runner.pid))
+                          raise SystemExit(0)
+              raise RuntimeError('NEW_BRIDGE_NOT_READY')
+          except BaseException:
+              active.write_bytes(backup.read_bytes())
+              if 'runner' in locals() and runner.poll() is None:
+                  runner.terminate()
+                  try: runner.wait(timeout=5)
+                  except subprocess.TimeoutExpired: runner.kill()
+              subprocess.Popen(['/data/data/com.termux/files/usr/bin/python','-u',str(active)],stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=(home/'.liliya-bridge-rollback.log').open('ab'),start_new_session=True)
+              print('BRIDGE_ACTIVATION=ROLLED_BACK')
+              raise
+          PY
