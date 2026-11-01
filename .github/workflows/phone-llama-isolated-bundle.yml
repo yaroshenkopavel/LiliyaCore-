@@ -37,6 +37,20 @@ jobs:
           test "$(stat -c%s "$asset")" -eq 19077344
       - name: Build existing installable semantic host and instrumentation
         run: gradle :android-semantic-test-host:assembleDebug :android-semantic-test-host:assembleDebugAndroidTest -PliliyaSemanticHostApplicationId=pro.liliya.android.semanticprovider.llamacancel --console=plain
+      - name: Assert required instrumentation class is inside the actual test APK
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+          apk=Path("android-semantic-test-host/build/outputs/apk/androidTest/debug/android-semantic-test-host-debug-androidTest.apk")
+          target=b"Lpro/liliya/android/llamacppengine/AndroidLlamaCppRealModelInstrumentedTest;"
+          with ZipFile(apk) as archive:
+              dex=[name for name in archive.namelist() if name.startswith("classes") and name.endswith(".dex")]
+              found=any(target in archive.read(name) for name in dex)
+          print("LLAMA_INSTRUMENTATION_DEX="+("PRESENT" if found else "MISSING"))
+          if not found: raise SystemExit("REQUIRED_TEST_CLASS_NOT_IN_APK")
+          PY
       - name: Verify and package exact APK pair
         shell: bash
         run: |
