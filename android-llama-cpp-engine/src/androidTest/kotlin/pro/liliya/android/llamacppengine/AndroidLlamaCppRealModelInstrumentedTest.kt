@@ -295,8 +295,7 @@ class AndroidLlamaCppRealModelInstrumentedTest {
     fun unknown_native_session_id_fails_closed_structurally() {
         val promptUtf8 = "probe".encodeToByteArray()
         val packet = try {
-            LlamaCppNativeBridge.nativeInfer(
-                nativeSessionId = Long.MAX_VALUE,
+            LlamaCppNativeStructuralTestAdapter.inferUnknownSession(
                 promptUtf8 = promptUtf8,
                 maxOutputChars = 8
             )
