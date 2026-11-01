@@ -1,0 +1,44 @@
+name: Phone installed APK integrity read-only 2026-11-02
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/phone-apk-integrity-readonly-2026-11-02.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  apk-integrity:
+    runs-on: [self-hosted, ARM64, android-device]
+    timeout-minutes: 8
+    steps:
+      - name: Read-only installed packages and SHA256 (no APK transfer)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os,subprocess,re,hashlib
+          rish='/data/data/com.termux/files/usr/bin/rish'
+          packages=[
+              'pro.liliya.app',
+              'pro.liliya.android.semanticprovider.llamacancel2',
+              'pro.liliya.android.semanticprovider.llamacancel2.test']
+          print('SOURCE_SHA='+os.environ.get('GITHUB_SHA',''))
+          print('RUN_ID='+os.environ.get('GITHUB_RUN_ID',''))
+          for package in packages:
+              cmd=subprocess.run([rish,'-c','pm path '+package],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=45)
+              paths=[ln[8:].strip() for ln in cmd.stdout.splitlines() if ln.startswith('package:')]
+              if cmd.returncode!=0 or len(paths)!=1:
+                  print('PACKAGE_'+package+'=NOT_SINGLE_BASE_APK')
+                  raise SystemExit('FAIL_PACKAGE_PATH')
+              path=paths[0]
+              if not re.fullmatch(r'/[a-zA-Z0-9_./~=-]+[.]apk',path) or '..' in path.split('/'):
+                  raise SystemExit('FAIL_UNSAFE_PATH')
+              h=subprocess.run([rish,'-c',"sha256sum '"+path+"'"],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=65)
+              values=[ln.split()[0] for ln in h.stdout.splitlines() if re.fullmatch(r'[0-9a-f]{64}\s+\S+',ln.strip())]
+              if h.returncode!=0 or len(values)!=1:
+                  raise SystemExit('FAIL_PACKAGE_SHA')
+              print('PACKAGE='+package)
+              print('ON_DEVICE_SHA256='+values[0])
+          print('APK_INTEGRITY_READONLY=PASS')
+          PY
