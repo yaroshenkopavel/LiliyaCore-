@@ -1,0 +1,76 @@
+name: Build isolated phone llama cancellation APK pair
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/phone-llama-isolated-bundle.yml
+      - android-semantic-test-host/build.gradle.kts
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build-phone-bundle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@4c125117fe7c5aed11272ec4213f602f012f89f2
+        with:
+          gradle-version: '9.6.1'
+      - run: bash .github/ci/configure-gradle-memory.sh
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+        with:
+          packages: platform-tools
+      - run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools" "ndk;29.0.13113456" "cmake;3.31.6"
+      - name: Stage verified small GGUF
+        shell: bash
+        run: |
+          set -euo pipefail
+          asset="android-llama-cpp-engine/src/androidTest/assets/stories15M-q4_0.gguf"
+          mkdir -p "$(dirname "$asset")"
+          curl --fail --location --retry 3 "https://huggingface.co/ggml-org/tiny-llamas/resolve/def3e2dd70df35ecbf6403ea347de4c5977220c1/stories15M-q4_0.gguf?download=true" --output "$asset"
+          echo "6151b1929d7f5aa3385d9ddef3393e55587c0a55de661562322bc51dfda93a04  $asset" | sha256sum --check --strict
+          test "$(stat -c%s "$asset")" -eq 19077344
+      - name: Build existing installable semantic host and instrumentation
+        run: gradle :android-semantic-test-host:assembleDebug :android-semantic-test-host:assembleDebugAndroidTest -PliliyaSemanticHostApplicationId=pro.liliya.android.semanticprovider.llamacancel --console=plain
+      - name: Verify and package exact APK pair
+        shell: bash
+        run: |
+          set -euo pipefail
+          output="$RUNNER_TEMP/phone-bundle"
+          mkdir -p "$output"
+          app="android-semantic-test-host/build/outputs/apk/debug/android-semantic-test-host-debug.apk"
+          testapk="android-semantic-test-host/build/outputs/apk/androidTest/debug/android-semantic-test-host-debug-androidTest.apk"
+          test -s "$app"
+          test -s "$testapk"
+          cp "$app" "$output/semantic-app.apk"
+          cp "$testapk" "$output/semantic-test.apk"
+          # Fail closed if package identity or signer identity differs from the expected pair.
+          aapt="$ANDROID_HOME/build-tools/35.0.0/aapt"
+          apksigner="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          test -x "$aapt"
+          test -x "$apksigner"
+          "$apksigner" verify --print-certs "$output/semantic-app.apk" > "$output/app-signing.txt"
+          "$apksigner" verify --print-certs "$output/semantic-test.apk" > "$output/test-signing.txt"
+          "$aapt" dump badging "$output/semantic-app.apk" > "$output/app-badging.txt"
+          "$aapt" dump badging "$output/semantic-test.apk" > "$output/test-badging.txt"
+          grep -Fq "package: name='pro.liliya.android.semanticprovider.llamacancel'" "$output/app-badging.txt"
+          grep -Fq "package: name='pro.liliya.android.semanticprovider.llamacancel.test'" "$output/test-badging.txt"
+          app_signer="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$output/app-signing.txt")"
+          test_signer="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$output/test-signing.txt")"
+          test -n "$app_signer"
+          test "$app_signer" = "$test_signer"
+          printf 'APP_PACKAGE=pro.liliya.android.semanticprovider\nTEST_PACKAGE=pro.liliya.android.semanticprovider.llamacancel.test\nSIGNER_SHA256=%s\n' "$app_signer" > "$output/apk-identity.env"
+          rm "$output/app-signing.txt" "$output/test-signing.txt" "$output/app-badging.txt" "$output/test-badging.txt"
+          (cd "$output" && sha256sum semantic-app.apk semantic-test.apk > SHA256SUMS)
+          printf 'SOURCE_SHA=%s\nTEST_CLASS=%s\n' "$GITHUB_SHA" 'pro.liliya.android.llamacppengine.AndroidLlamaCppRealModelInstrumentedTest#real_fixture_cross_thread_cancel_rejects_stream_and_closes_safely' > "$output/source.env"
+          ls -lh "$output"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phone-llama-isolated-cancel-apks
+          path: ${{ runner.temp }}/phone-bundle/
+          retention-days: 3
