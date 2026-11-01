@@ -7,7 +7,8 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        applicationId = providers.gradleProperty("liliyaSemanticHostApplicationId")\n            .getOrElse("pro.liliya.android.semanticprovider")
+        applicationId = providers.gradleProperty("liliyaSemanticHostApplicationId")
+            .getOrElse("pro.liliya.android.semanticprovider")
         minSdk = 29
         targetSdk = 35
         versionCode = 1
