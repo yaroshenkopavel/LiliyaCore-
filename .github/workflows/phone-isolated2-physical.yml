@@ -71,7 +71,7 @@ jobs:
           for pkg,name in ((package,'semantic-app.apk'),(testpackage,'semantic-test.apk')):
               path=subprocess.run([rish,'-c','pm path '+pkg],capture_output=True,text=True,timeout=30)
               paths=[x[8:].strip() for x in path.stdout.splitlines() if x.startswith('package:')]
-              if path.returncode!=0 or len(paths)!=1 or not re.fullmatch('/[a-zA-Z0-9_./~=-]+\\.apk',paths[0]):
+              if path.returncode!=0 or len(paths)!=1 or not re.fullmatch('/[a-zA-Z0-9_./~=-]+[.]apk',paths[0]):
                   raise SystemExit('INSTALLED_PATH_INVALID_'+pkg)
               result=subprocess.run([rish,'-c',"sha256sum '"+paths[0]+"'"],capture_output=True,text=True,timeout=60)
               if result.returncode!=0 or result.stdout.split()[0]!=sums[name]:
