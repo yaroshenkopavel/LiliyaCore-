@@ -305,10 +305,10 @@ class AndroidLlamaCppRealModelInstrumentedTest {
         }
 
         assertEquals(1, packet.size)
-        assertEquals(LlamaCppNativeBridge.INFER_STALE_SESSION, packet[0])
+        assertEquals(LlamaCppNativeStructuralTestAdapter.INFER_STALE_SESSION, packet[0])
         assertEquals(
-            LlamaCppNativeBridge.CLOSE_FAILED,
-            LlamaCppNativeBridge.nativeClose(Long.MAX_VALUE)
+            LlamaCppNativeStructuralTestAdapter.CLOSE_FAILED,
+            LlamaCppNativeStructuralTestAdapter.closeUnknownSession()
         )
     }
 
