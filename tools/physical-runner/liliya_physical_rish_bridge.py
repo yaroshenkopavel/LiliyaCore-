@@ -300,13 +300,41 @@ class Handler(BaseHTTPRequestHandler):
             self._json(500, {"error": f"upload staging failed: {exc}"})
             return
 
+        # Phone llama acceptance must never replace an existing semantic package.
+        # This is stricter than relying on Android's signature compatibility:
+        # existing app/test packages are treated as a manual review blocker.
+        if package in (SEMANTIC_APP_PACKAGE, SEMANTIC_TEST_PACKAGE):
+            existing = run_rish(f"pm path {package}", timeout=30)
+            existing_apks = [
+                line for line in existing.stdout.splitlines()
+                if line.strip().startswith("package:")
+            ]
+            if existing_apks:
+                destination.unlink(missing_ok=True)
+                self._json(409, {
+                    "error": "semantic package already installed; replacement refused",
+                    "package": package,
+                    "action": "no changes performed",
+                })
+                return
+            # Nonzero shell exits can mean unavailable pm, not just absent package.
+            # 'pm path' returns empty output for not-installed packages, and
+            # could include a tool error, so reject errors other than an empty result.
+            if existing.returncode != 0 or existing.stdout.strip():
+                destination.unlink(missing_ok=True)
+                self._json(409, {
+                    "error": "cannot prove semantic package absent; install refused",
+                    "package": package,
+                })
+                return
+
         device_destination = f"{DEVICE_INSTALL_DIR}/{filename}"
         install_command = (
             f"mkdir -p '{DEVICE_INSTALL_DIR}' && "
             f"rm -f '{device_destination}' && "
             f"cp '{destination}' '{device_destination}' && "
             f"chmod 0644 '{device_destination}' && "
-            f"pm install -r -t '{device_destination}'; "
+            f"pm install {'-t' if package in (SEMANTIC_APP_PACKAGE, SEMANTIC_TEST_PACKAGE) else '-r -t'} '{device_destination}'; "
             "rc=$?; "
             f"rm -f '{device_destination}'; "
             "exit $rc"
