@@ -1,0 +1,39 @@
+name: Phone bridge deployment inventory (read-only)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inventory:
+    runs-on: [self-hosted, ARM64, android-device]
+    timeout-minutes: 5
+    steps:
+      - name: Inspect phone bridge without restarting anything
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os, urllib.request, urllib.error
+          candidates=[
+            '/data/data/com.termux/files/home/liliya_physical_rish_bridge.py',
+            '/data/data/com.termux/files/home/LiliyaCore-/tools/physical-runner/liliya_physical_rish_bridge.py',
+            '/data/data/com.termux/files/home/liliya-physical-bridge/liliya_physical_rish_bridge.py'
+          ]
+          for path in candidates:
+              print('BRIDGE_CANDIDATE='+('PRESENT' if os.path.isfile(path) else 'NOT_FOUND')+' '+path)
+          token_path=os.environ.get('LILIYA_PHYSICAL_BRIDGE_TOKEN_FILE','/data/data/com.termux/files/home/.liliya-physical-bridge-token')
+          if not os.path.isfile(token_path):
+              print('TOKEN_FILE=NOT_ACCESSIBLE')
+              raise SystemExit(2)
+          with open(token_path,encoding='utf-8') as f: token=f.read().strip()
+          for route in ('/v1/probe','/v1/semantic-installed-apk-digests'):
+              req=urllib.request.Request('http://127.0.0.1:18765'+route,headers={'Authorization':'Bearer '+token})
+              try:
+                  with urllib.request.urlopen(req,timeout=15) as response:
+                      data=response.read()
+                      print('ROUTE='+route+' HTTP='+str(response.status)+' LENGTH='+str(len(data)))
+              except urllib.error.HTTPError as error:
+                  print('ROUTE='+route+' HTTP='+str(error.code))
+              except Exception as error:
+                  print('ROUTE='+route+' ERROR='+type(error).__name__)
+          PY
