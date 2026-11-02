@@ -1,0 +1,130 @@
+name: Local toolchain exact transport
+on:
+  push:
+    branches: [technical/local-env-bridge-2026-11-02]
+permissions:
+  contents: read
+jobs:
+  toolchain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 110
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: b22afe0025576b9a45cde9b0e62009d5f470665e
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.1'
+      - uses: android-actions/setup-android@v3
+      - name: Install exact SDK requirements
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "build-tools;36.0.0" "platform-tools" "ndk;29.0.13113456" "cmake;3.31.6"
+      - name: Build exact caches and portable exports
+        shell: bash
+        run: |
+          set -euo pipefail
+          E="$RUNNER_TEMP/export"; mkdir -p "$E" "$E/sdk-core"
+          export GRADLE_USER_HOME="$GITHUB_WORKSPACE/.bridge-gradle-home"
+          gradle :core:test :android-runtime:testDebugUnitTest :android-app:testDebugUnitTest :android-app:compileDebugAndroidTestKotlin --console=plain --no-daemon
+          gradle :core:test --offline --console=plain --no-daemon
+          REAL_JAVA_HOME="$(readlink -f "$JAVA_HOME")"
+          tar -C "$(dirname "$REAL_JAVA_HOME")" -czf "$E/jdk17-real.tar.gz" "$(basename "$REAL_JAVA_HOME")"
+          GRADLE_BIN="$(readlink -f "$(command -v gradle)")"
+          GRADLE_ROOT="$(cd "$(dirname "$GRADLE_BIN")/.." && pwd)"
+          tar -C "$(dirname "$GRADLE_ROOT")" -czf "$E/gradle-9.6.1.tar.gz" "$(basename "$GRADLE_ROOT")"
+          for p in platforms/android-35 build-tools/35.0.0 build-tools/36.0.0 platform-tools; do mkdir -p "$E/sdk-core/$(dirname "$p")"; cp -a "$ANDROID_HOME/$p" "$E/sdk-core/$p"; done
+          tar -C "$E/sdk-core" -czf "$E/android-sdk-core.tar.gz" .
+          tar -C "$ANDROID_HOME/cmake" -czf "$E/cmake-3.31.6.tar.gz" 3.31.6
+          tar -C "$ANDROID_HOME/ndk" -czf "$E/ndk-full.tar.gz" 29.0.13113456
+          split -b 280M -d -a 2 "$E/ndk-full.tar.gz" "$E/ndk.part."
+          tar -C "$GITHUB_WORKSPACE" -czf "$E/gradle-home-full.tar.gz" .bridge-gradle-home
+          split -b 280M -d -a 2 "$E/gradle-home-full.tar.gz" "$E/gradle-home.part."
+          (cd "$E" && sha256sum *.tar.gz *.part.* > SHA256SUMS)
+          { echo "java=$(java -version 2>&1 | head -1)"; gradle --version | grep '^Gradle '; echo "sdk=$ANDROID_HOME"; } > "$E/toolchain-manifest.txt"
+          ls -lh "$E"/*.tar.gz "$E"/*.part.*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-toolchain-base-20261102
+          path: |
+            ${{ runner.temp }}/export/jdk17-real.tar.gz
+            ${{ runner.temp }}/export/gradle-9.6.1.tar.gz
+            ${{ runner.temp }}/export/android-sdk-core.tar.gz
+            ${{ runner.temp }}/export/cmake-3.31.6.tar.gz
+            ${{ runner.temp }}/export/SHA256SUMS
+            ${{ runner.temp }}/export/toolchain-manifest.txt
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-ndk-00-20261102
+          path: ${{ runner.temp }}/export/ndk.part.00
+          if-no-files-found: ignore
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-gradle-home-00-20261102
+          path: ${{ runner.temp }}/export/gradle-home.part.00
+          if-no-files-found: ignore
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-ndk-01-20261102
+          path: ${{ runner.temp }}/export/ndk.part.01
+          if-no-files-found: ignore
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-gradle-home-01-20261102
+          path: ${{ runner.temp }}/export/gradle-home.part.01
+          if-no-files-found: ignore
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-ndk-02-20261102
+          path: ${{ runner.temp }}/export/ndk.part.02
+          if-no-files-found: ignore
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-gradle-home-02-20261102
+          path: ${{ runner.temp }}/export/gradle-home.part.02
+          if-no-files-found: ignore
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-ndk-03-20261102
+          path: ${{ runner.temp }}/export/ndk.part.03
+          if-no-files-found: ignore
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-gradle-home-03-20261102
+          path: ${{ runner.temp }}/export/gradle-home.part.03
+          if-no-files-found: ignore
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-ndk-04-20261102
+          path: ${{ runner.temp }}/export/ndk.part.04
+          if-no-files-found: ignore
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-gradle-home-04-20261102
+          path: ${{ runner.temp }}/export/gradle-home.part.04
+          if-no-files-found: ignore
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-ndk-05-20261102
+          path: ${{ runner.temp }}/export/ndk.part.05
+          if-no-files-found: ignore
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-gradle-home-05-20261102
+          path: ${{ runner.temp }}/export/gradle-home.part.05
+          if-no-files-found: ignore
+          retention-days: 1
