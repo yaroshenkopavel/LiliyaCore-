@@ -1,6 +1,9 @@
 package pro.liliya.android.llamacppengine
 
 import android.net.Uri
+import java.io.File
+import java.io.FileOutputStream
+import java.security.MessageDigest
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
@@ -36,9 +39,31 @@ class Qwen3NativeFdShortGenerationInstrumentedTest {
             useMmap = true,
             promptFormatPolicy = LlamaCppPromptFormatPolicy.MODEL_DEFAULT_CHAT_TEMPLATE
         )
-        context.contentResolver.openFileDescriptor(uri, "r")!!.use { fd ->
-            assertEquals(1_282_439_264L, fd.statSize)
-            val path = "/proc/self/fd/${fd.fd}"
+        val staged = File(context.cacheDir, "qwen3-1.7b-physical-once.gguf")
+        require(context.cacheDir.usableSpace > 1_600_000_000L) {
+            "QWEN3_INSUFFICIENT_STAGING_SPACE"
+        }
+        try {
+            val digest = MessageDigest.getInstance("SHA-256")
+            var copied = 0L
+            context.contentResolver.openInputStream(uri)!!.use { sourceStream ->
+                FileOutputStream(staged).use { output ->
+                    val buffer = ByteArray(1024 * 1024)
+                    while (true) {
+                        val n = sourceStream.read(buffer)
+                        if (n == -1) break
+                        output.write(buffer, 0, n)
+                        digest.update(buffer, 0, n)
+                        copied += n
+                    }
+                    output.fd.sync()
+                }
+            }
+            assertEquals(1_282_439_264L, copied)
+            val sha = digest.digest().joinToString("") { "%02x".format(it) }
+            assertEquals("d2387ca2dbfee2ffabce7120d3770dadca0b293052bc2f0e138fdc940d9bc7b5", sha)
+            println("QWEN3_LOCAL_STAGE_SHA256=PASS bytes=$copied")
+            val path = staged.absolutePath
             val started = System.nanoTime()
             val loaded = LlamaCppNativeBridge.nativeLoad(
                 path.toByteArray(Charsets.UTF_8), policy.contextTokens,
@@ -48,7 +73,7 @@ class Qwen3NativeFdShortGenerationInstrumentedTest {
                 byteArrayOf()
             )
             check(loaded > 0L) {
-                "QWEN3_NATIVE_FD_LOAD_FAILED: $loaded"
+                "QWEN3_PRIVATE_STAGE_LOAD_FAILED: $loaded"
             }
             println("QWEN3_NATIVE_FD_LOAD=PASS ms=" +
                 ((System.nanoTime() - started) / 1_000_000))
@@ -67,6 +92,9 @@ class Qwen3NativeFdShortGenerationInstrumentedTest {
                 val closed = LlamaCppNativeBridge.nativeClose(loaded)
                 println("QWEN3_NATIVE_CLOSE=" + closed)
             }
+        } finally {
+            val removed = staged.delete()
+            println("QWEN3_TEMP_STAGE_REMOVED=$removed")
         }
     }
 }
