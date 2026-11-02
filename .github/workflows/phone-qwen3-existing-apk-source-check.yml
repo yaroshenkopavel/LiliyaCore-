@@ -1,0 +1,37 @@
+name: Phone Qwen3 existing installed APK model source check
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/phone-qwen3-existing-apk-source-check.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify-existing:
+    runs-on: [self-hosted, ARM64, android-device]
+    timeout-minutes: 12
+    steps:
+      - name: Run existing installed instrumentation without APK changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import subprocess
+          rish='/data/data/com.termux/files/usr/bin/rish'
+          app='pro.liliya.android.semanticprovider.qwenlocal'
+          test=app+'.test'
+          for package in [app,test]:
+              p=subprocess.run([rish,'-c','pm path '+package],capture_output=True,text=True,timeout=30)
+              if p.returncode or not any(x.startswith('package:') for x in p.stdout.splitlines()):
+                  raise SystemExit('ISOLATED_PACKAGE_MISSING: '+package)
+              print('INSTALLED_PACKAGE_PRESENT='+package,flush=True)
+          cmd='am instrument -w -r -e class pro.liliya.android.semanticprovider.host.Qwen3LocalSourcePreflightInstrumentedTest#authorized_local_gguf_matches_exact_candidate '+test+'/androidx.test.runner.AndroidJUnitRunner'
+          p=subprocess.run([rish,'-c',cmd],capture_output=True,text=True,timeout=500)
+          print('ANDROID_INSTRUMENTATION_EXIT='+str(p.returncode),flush=True)
+          print('ANDROID_INSTRUMENTATION_LOG_BEGIN',flush=True)
+          print((p.stdout+p.stderr)[-16000:],flush=True)
+          print('ANDROID_INSTRUMENTATION_LOG_END',flush=True)
+          if p.returncode!=0 or 'OK (1 test)' not in p.stdout or 'QWEN3_LOCAL_SOURCE_PREFLIGHT=PASS' not in p.stdout:
+              raise SystemExit('EXISTING_QWEN3_SOURCE_INSTRUMENTATION_NOT_PASS')
+          print('EXISTING_QWEN3_SOURCE_INSTRUMENTATION=PASS',flush=True)
+          PY
