@@ -6,6 +6,6 @@
         android:supportsRtl="false">
         <activity
             android:name="pro.liliya.android.semanticprovider.host.Qwen3SourcePickerActivity"
-            android:exported="false" />
+            android:exported="true" />
     </application>
 </manifest>
