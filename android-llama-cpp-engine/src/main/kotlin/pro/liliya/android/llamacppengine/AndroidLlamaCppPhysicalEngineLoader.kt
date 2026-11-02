@@ -148,7 +148,7 @@ private object PublicHandleIds {
     }
 }
 
-private object JniLlamaCppNativeSessionPort : LlamaCppNativeSessionPort {
+internal object JniLlamaCppNativeSessionPort : LlamaCppNativeSessionPort {
     override fun load(
         sourcePath: String,
         policy: LlamaCppEnginePolicy,
