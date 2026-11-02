@@ -37,8 +37,8 @@ jobs:
           mkdir -p qwen3-local-host-bundle
           cp android-semantic-test-host/build/outputs/apk/debug/android-semantic-test-host-debug.apk qwen3-local-host-bundle/semantic-app.apk
           cp android-semantic-test-host/build/outputs/apk/androidTest/debug/android-semantic-test-host-debug-androidTest.apk qwen3-local-host-bundle/semantic-test.apk
-          aapt dump badging qwen3-local-host-bundle/semantic-app.apk | grep -m1 "^package: name='pro.liliya.android.semanticprovider.qwenlocal'"
-          aapt dump badging qwen3-local-host-bundle/semantic-test.apk | grep -m1 "^package: name='pro.liliya.android.semanticprovider.qwenlocal.test'"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging qwen3-local-host-bundle/semantic-app.apk | grep -m1 "^package: name='pro.liliya.android.semanticprovider.qwenlocal'"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging qwen3-local-host-bundle/semantic-test.apk | grep -m1 "^package: name='pro.liliya.android.semanticprovider.qwenlocal.test'"
           (cd qwen3-local-host-bundle && sha256sum semantic-app.apk semantic-test.apk > SHA256SUMS)
           printf 'APP_PACKAGE=pro.liliya.android.semanticprovider.qwenlocal\\nTEST_PACKAGE=pro.liliya.android.semanticprovider.qwenlocal.test\\nSOURCE_SHA=%s\\n' "$GITHUB_SHA" > qwen3-local-host-bundle/apk-identity.env
       - uses: actions/upload-artifact@v4
