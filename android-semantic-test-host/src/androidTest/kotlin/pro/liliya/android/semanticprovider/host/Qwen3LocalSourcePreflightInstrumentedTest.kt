@@ -23,8 +23,11 @@ class Qwen3LocalSourcePreflightInstrumentedTest {
     @Test
     fun authorized_local_gguf_matches_exact_candidate() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val targetContext = instrumentation.targetContext
         val rawUri = InstrumentationRegistry.getArguments().getString("qwen3LocalUri")
-            ?: error("missing qwen3LocalUri: must supply a granted content:// URI")
+            ?: targetContext.getSharedPreferences("qwen3-local-source-test-v1", 0)
+                .getString("selected-content-uri", null)
+            ?: error("No granted content URI. Select GGUF using the test host document picker.")
         val uri = Uri.parse(rawUri)
         require(uri.scheme == "content" && !uri.authority.isNullOrBlank()) {
             "qwen3LocalUri must be a granted content:// URI"
