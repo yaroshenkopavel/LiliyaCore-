@@ -1,0 +1,53 @@
+name: Qwen3 local-host APK signing compatibility
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/qwen3-local-host-signer-compatibility.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  verify-signers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: qwen3-local-host-isolated-apks
+          run-id: 41445658194
+          github-token: ${{ github.token }}
+          path: old
+      - uses: actions/download-artifact@v4
+        with:
+          name: qwen3-local-host-isolated-apks
+          run-id: 41460690563
+          github-token: ${{ github.token }}
+          path: new
+      - name: Compare exact APK signing certificate digests read-only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib,pathlib
+          for root in (pathlib.Path('old'),pathlib.Path('new')):
+              parts={}
+              for line in (root/'SHA256SUMS').read_text().splitlines():
+                  sha,name=line.split()
+                  assert name in ('semantic-app.apk','semantic-test.apk')
+                  assert hashlib.sha256((root/name).read_bytes()).hexdigest()==sha
+                  parts[name]=sha
+              assert len(parts)==2
+              print('BUNDLE_SHA256=PASS '+str(root))
+          PY
+          for file in semantic-app.apk semantic-test.apk; do
+            for version in old new; do
+              keytool -printcert -jarfile "$version/$file" | grep -E 'SHA256:' | head -1 > "$version-$file.cert"
+              test -s "$version-$file.cert"
+            done
+            echo "CERT_$file:"
+            cat "old-$file.cert" "new-$file.cert"
+            cmp "old-$file.cert" "new-$file.cert"
+            echo "SIGNER_COMPATIBLE_$file=PASS"
+          done
+          echo "QWENLOCAL_APK_SIGNER_COMPATIBILITY=PASS"
