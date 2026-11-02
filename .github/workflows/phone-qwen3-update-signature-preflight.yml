@@ -1,0 +1,51 @@
+name: Phone isolated Qwen3 APK signature compatibility preflight
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/phone-qwen3-update-signature-preflight.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  signature-preflight:
+    runs-on: [self-hosted, ARM64, android-device]
+    timeout-minutes: 12
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: qwen3-local-host-isolated-apks
+          run-id: 41460690563
+          github-token: ${{ github.token }}
+          path: qwen3-update-bundle
+      - name: Compare APK signer compatibility without installing anything
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib,hashlib,subprocess,re
+          root=pathlib.Path('qwen3-update-bundle')
+          sums={}
+          for line in (root/'SHA256SUMS').read_text().splitlines():
+              parts=line.split()
+              if len(parts)!=2 or parts[1] not in ('semantic-app.apk','semantic-test.apk'):raise SystemExit('BAD_MANIFEST')
+              sums[parts[1]]=parts[0]
+          if len(sums)!=2:raise SystemExit('INCOMPLETE_MANIFEST')
+          for file,sha in sums.items():
+              if hashlib.sha256((root/file).read_bytes()).hexdigest()!=sha:raise SystemExit('BAD_APK_SHA256')
+          print('NEW_BUNDLE_SHA256=PASS')
+          rish='/data/data/com.termux/files/usr/bin/rish'
+          packages=(('pro.liliya.android.semanticprovider.qwenlocal','semantic-app.apk'),('pro.liliya.android.semanticprovider.qwenlocal.test','semantic-test.apk'))
+          for pkg,file in packages:
+              p=subprocess.run([rish,'-c','pm path '+pkg],capture_output=True,text=True,timeout=35)
+              found=[x[8:].strip() for x in p.stdout.splitlines() if x.startswith('package:')]
+              if p.returncode!=0 or len(found)!=1 or not re.fullmatch(r'/[a-zA-Z0-9_./~=-]+[.]apk',found[0]):raise SystemExit('INSTALLED_PATH_UNAVAILABLE')
+              def signer(path):
+                  x=subprocess.run([rish,'-c',"apksigner verify --print-certs '"+path+"'"],capture_output=True,text=True,timeout=50)
+                  return x.returncode,x.stdout+x.stderr
+              code,details=signer(found[0])
+              print('INSTALLED_SIGNER_TOOL_EXIT='+str(code))
+              print('INSTALLED_SIGNER_DETAIL_AVAILABLE='+str('Signer #1 certificate SHA-256 digest:' in details))
+              print('NEW_APK_BYTES='+str((root/file).stat().st_size))
+          print('QWENLOCAL_SIGNATURE_DISCOVERY=PASS')
+          PY
