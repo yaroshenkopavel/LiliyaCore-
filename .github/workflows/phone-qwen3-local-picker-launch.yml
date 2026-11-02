@@ -1,0 +1,35 @@
+name: Phone Qwen3 local file consent picker
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/phone-qwen3-local-picker-launch.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  launch-picker:
+    runs-on: [self-hosted, ARM64, android-device]
+    timeout-minutes: 4
+    steps:
+      - name: Verify installed test host and open Android Documents picker
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import subprocess
+          r='/data/data/com.termux/files/usr/bin/rish'
+          package='pro.liliya.android.semanticprovider.qwenlocal'
+          expected='pro.liliya.android.semanticprovider.host.Qwen3SourcePickerActivity'
+          check=subprocess.run([r,'-c','pm path '+package],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=30)
+          paths=[x for x in check.stdout.splitlines() if x.startswith('package:')]
+          if check.returncode!=0 or len(paths)!=1:
+              raise SystemExit('ISOLATED_HOST_NOT_INSTALLED')
+          print('ISOLATED_HOST_PRESENT=PASS',flush=True)
+          cmd='am start -W -n '+package+'/'+expected
+          opened=subprocess.run([r,'-c',cmd],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=35)
+          print('PICKER_ACTIVITY_EXIT='+str(opened.returncode),flush=True)
+          print('PICKER_ACTIVITY_OUTPUT='+opened.stdout[-1200:].replace('\\n',' '),flush=True)
+          if opened.returncode!=0 or 'Error' in opened.stdout or 'Exception' in opened.stdout:
+              raise SystemExit('PICKER_ACTIVITY_LAUNCH_FAILED')
+          print('QWEN3_LOCAL_DOCUMENT_PICKER_LAUNCHED=PASS',flush=True)
+          PY
