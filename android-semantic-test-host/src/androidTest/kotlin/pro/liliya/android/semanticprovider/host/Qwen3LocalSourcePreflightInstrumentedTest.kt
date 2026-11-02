@@ -34,6 +34,14 @@ class Qwen3LocalSourcePreflightInstrumentedTest {
         }
 
         val context = instrumentation.targetContext
+        val grantedRead = context.contentResolver.persistedUriPermissions.any { permission ->
+            permission.uri == uri && permission.isReadPermission
+        }
+        assertTrue(
+            "No persisted read permission for selected GGUF URI; reopen the document picker.",
+            grantedRead
+        )
+
         val digest = MessageDigest.getInstance("SHA-256")
         var count = 0L
         val magic = ByteArray(4)
