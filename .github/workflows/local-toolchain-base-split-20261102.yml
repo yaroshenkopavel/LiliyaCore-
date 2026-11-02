@@ -1,0 +1,51 @@
+name: Local toolchain base split transport
+on:
+  push:
+    branches: [technical/local-env-bridge-2026-11-02]
+permissions:
+  actions: read
+  contents: read
+jobs:
+  split-base:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch previously exported base without rebuilding
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p base split
+          gh run download 41517479042 --repo ${{ github.repository }} --name liliya-toolchain-base-20261102 --dir base
+          for f in jdk17-real.tar.gz gradle-9.6.1.tar.gz android-sdk-core.tar.gz cmake-3.31.6.tar.gz; do
+            test -s "base/$f"
+            split -b 180M -d -a 2 "base/$f" "split/$f.part."
+          done
+          cp base/SHA256SUMS base/toolchain-manifest.txt split/
+          ls -lh split
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-jdk-parts-20261102
+          path: split/jdk17-real.tar.gz.part.*
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-gradle-parts-20261102
+          path: split/gradle-9.6.1.tar.gz.part.*
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-sdk-parts-20261102
+          path: split/android-sdk-core.tar.gz.part.*
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-cmake-parts-20261102
+          path: split/cmake-3.31.6.tar.gz.part.*
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-toolchain-manifest-20261102
+          path: |
+            split/SHA256SUMS
+            split/toolchain-manifest.txt
+          retention-days: 1
