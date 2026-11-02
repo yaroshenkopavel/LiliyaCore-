@@ -33,8 +33,9 @@ jobs:
           set -euo pipefail
           E="$RUNNER_TEMP/export"; mkdir -p "$E" "$E/sdk-core"
           export GRADLE_USER_HOME="$GITHUB_WORKSPACE/.bridge-gradle-home"
-          gradle :core:test :android-runtime:testDebugUnitTest :android-app:testDebugUnitTest :android-app:compileDebugAndroidTestKotlin --console=plain --no-daemon
-          gradle :core:test --offline --console=plain --no-daemon
+          gradle :core:dependencies --configuration testRuntimeClasspath --console=plain --no-daemon
+          gradle :android-app:dependencies --configuration debugAndroidTestRuntimeClasspath --console=plain --no-daemon
+          gradle :core:dependencies --configuration testRuntimeClasspath --offline --console=plain --no-daemon
           REAL_JAVA_HOME="$(readlink -f "$JAVA_HOME")"
           tar -C "$(dirname "$REAL_JAVA_HOME")" -czf "$E/jdk17-real.tar.gz" "$(basename "$REAL_JAVA_HOME")"
           GRADLE_BIN="$(readlink -f "$(command -v gradle)")"
