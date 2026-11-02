@@ -1,0 +1,31 @@
+name: Local exact source mirror transport
+on:
+  push:
+    branches: [technical/local-env-bridge-2026-11-02]
+permissions:
+  contents: read
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: b22afe0025576b9a45cde9b0e62009d5f470665e
+          fetch-depth: 0
+      - name: Verify source identity and export
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "b22afe0025576b9a45cde9b0e62009d5f470665e"
+          test "$(git rev-parse HEAD^{tree})" = "8d9707cc04fb7dfdab565cf377e3954bd79e1332"
+          mkdir -p "$RUNNER_TEMP/source"
+          git archive --format=tar.gz --output="$RUNNER_TEMP/source/LiliyaCore-worktree.tar.gz" HEAD
+          tar -czf "$RUNNER_TEMP/source/LiliyaCore-git.tar.gz" .git
+          { echo "head=b22afe0025576b9a45cde9b0e62009d5f470665e"; echo "tree=8d9707cc04fb7dfdab565cf377e3954bd79e1332"; } > "$RUNNER_TEMP/source/source-identity.txt"
+          (cd "$RUNNER_TEMP/source" && sha256sum *.tar.gz > SHA256SUMS)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-exact-main-source-20261102
+          path: ${{ runner.temp }}/source/
+          retention-days: 1
