@@ -40,25 +40,31 @@ class Qwen3NativeFdShortGenerationInstrumentedTest {
             assertEquals(1_282_439_264L, fd.statSize)
             val path = "/proc/self/fd/${fd.fd}"
             val started = System.nanoTime()
-            val loaded = JniLlamaCppNativeSessionPort.load(path, policy)
-            check(loaded is LlamaCppNativeLoadResult.Loaded) {
+            val loaded = LlamaCppNativeBridge.nativeLoad(
+                path.toByteArray(Charsets.UTF_8), policy.contextTokens,
+                policy.maxPromptTokens, policy.maxGeneratedTokens, policy.batchTokens,
+                policy.microBatchTokens, policy.threadCount, policy.maxPromptUtf8Bytes,
+                policy.maxOutputUtf8Bytes, policy.useMmap, policy.promptFormatPolicy.nativeCode,
+                byteArrayOf()
+            )
+            check(loaded > 0L) {
                 "QWEN3_NATIVE_FD_LOAD_FAILED: $loaded"
             }
             println("QWEN3_NATIVE_FD_LOAD=PASS ms=" +
                 ((System.nanoTime() - started) / 1_000_000))
             try {
-                val result = JniLlamaCppNativeSessionPort.infer(
-                    loaded.nativeSessionId,
+                val result = LlamaCppNativeBridge.nativeInfer(
+                    loaded,
                     "Ответь одним словом: привет".toByteArray(Charsets.UTF_8),
                     128
                 )
-                check(result is LlamaCppNativeInferenceResult.Succeeded) {
+                check(result.isNotEmpty() && result[0] == LlamaCppNativeBridge.INFER_OK) {
                     "QWEN3_INFERENCE_FAILED: $result"
                 }
-                assertTrue(result.output.isNotEmpty())
-                println("QWEN3_REAL_GENERATION=PASS output=" + result.output.take(128))
+                assertTrue(result.size > 1)
+                println("QWEN3_REAL_GENERATION=PASS output=" + result.copyOfRange(1, result.size).toString(Charsets.UTF_8).take(128))
             } finally {
-                val closed = JniLlamaCppNativeSessionPort.close(loaded.nativeSessionId)
+                val closed = LlamaCppNativeBridge.nativeClose(loaded)
                 println("QWEN3_NATIVE_CLOSE=" + closed)
             }
         }
