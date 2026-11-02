@@ -16,7 +16,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: qwen3-local-host-isolated-apks
-          run-id: 41441992703
+          run-id: 41445658194
           github-token: ${{ github.token }}
           path: qwen3-host-bundle
       - name: Verify identity and install only unused isolated package names
@@ -29,7 +29,7 @@ jobs:
           app='pro.liliya.android.semanticprovider.qwenlocal'
           test=app+'.test'
           identity=dict(line.split('=',1) for line in (files/'apk-identity.env').read_text().splitlines() if '=' in line)
-          if identity.get('APP_PACKAGE')!=app or identity.get('TEST_PACKAGE')!=test or identity.get('SOURCE_SHA')!='7a900fc7b1bbfca44347470cb82d4d39e81c4742':
+          if identity.get('APP_PACKAGE')!=app or identity.get('TEST_PACKAGE')!=test or identity.get('SOURCE_SHA')!='5c7083797f68b7870081950f32eb88d5b52b0a0f':
               raise SystemExit('WRONG_BUNDLE_IDENTITY')
           sums={}
           for line in (files/'SHA256SUMS').read_text().splitlines():
