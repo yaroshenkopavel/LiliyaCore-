@@ -1,5 +1,5 @@
 name: Qwen3 isolated local-source host APK bundle
-# Rebuild after persisted-URI instrumentation checks merged in PR #729.
+# Build standalone FD bridge test from PR #736 for Qwen3 model.
 on:
   push:
     branches: [main]
