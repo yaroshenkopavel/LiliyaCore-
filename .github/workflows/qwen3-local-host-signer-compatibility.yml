@@ -24,7 +24,6 @@ jobs:
           run-id: 41460690563
           github-token: ${{ github.token }}
           path: new
-      - uses: android-actions/setup-android@v3
       - name: Compare exact APK signing certificate digests read-only
         shell: bash
         run: |
@@ -41,7 +40,7 @@ jobs:
               assert len(parts)==2
               print('BUNDLE_SHA256=PASS '+str(root))
           PY
-          yes | sdkmanager "build-tools;35.0.0" >/dev/null
+          test -x "$ANDROID_HOME/build-tools/35.0.0/apksigner" || { yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "build-tools;35.0.0" >/dev/null; }
           for file in semantic-app.apk semantic-test.apk; do
             for version in old new; do
               "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs "$version/$file" | grep -m1 'Signer #1 certificate SHA-256 digest:' > "$version-$file.cert"
