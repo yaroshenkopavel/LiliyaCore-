@@ -1,0 +1,35 @@
+name: Phone Qwen3 test host read-only inventory
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/phone-qwen3-host-readonly-inventory.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inventory:
+    runs-on: [self-hosted, ARM64, android-device]
+    timeout-minutes: 5
+    steps:
+      - name: Inspect existing test package identities and storage without writes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os,pathlib,subprocess,shutil
+          rish='/data/data/com.termux/files/usr/bin/rish'
+          print('RUNNER_NAME='+os.environ.get('RUNNER_NAME',''))
+          for package in ('pro.liliya.app','pro.liliya.android.semanticprovider','pro.liliya.android.semanticprovider.test','pro.liliya.android.semanticprovider.qwenlocal','pro.liliya.android.semanticprovider.qwenlocal.test'):
+              result=subprocess.run([rish,'-c','pm path '+package],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=30)
+              found=sum(line.startswith('package:') for line in result.stdout.splitlines())
+              print('PKG '+package+' EXIT='+str(result.returncode)+' APK_PATH_COUNT='+str(found))
+          root=pathlib.Path('/storage/emulated/0/Download new')
+          model=root/'Qwen3-1.7B-Q4_K_M.gguf'
+          print('GGUF_PRESENT='+str(model.is_file()))
+          if model.is_file():
+              print('GGUF_BYTES='+str(model.stat().st_size))
+          usage=shutil.disk_usage(root)
+          print('SHARED_FREE_BYTES='+str(usage.free))
+          print('HOST_INVENTORY_READONLY=PASS')
+          PY
