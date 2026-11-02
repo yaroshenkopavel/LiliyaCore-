@@ -1,0 +1,71 @@
+name: Phone install isolated Qwen3 local-source host
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/phone-qwen3-local-host-install.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  isolated-host:
+    runs-on: [self-hosted, ARM64, android-device]
+    timeout-minutes: 12
+    steps:
+      - name: Get signed isolated package artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: qwen3-local-host-isolated-apks
+          run-id: 41441992703
+          github-token: ${{ github.token }}
+          path: qwen3-host-bundle
+      - name: Verify identity and install only unused isolated package names
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib,pathlib,re,subprocess
+          files=pathlib.Path('qwen3-host-bundle')
+          app='pro.liliya.android.semanticprovider.qwenlocal'
+          test=app+'.test'
+          identity=dict(line.split('=',1) for line in (files/'apk-identity.env').read_text().splitlines() if '=' in line)
+          if identity.get('APP_PACKAGE')!=app or identity.get('TEST_PACKAGE')!=test or identity.get('SOURCE_SHA')!='7a900fc7b1bbfca44347470cb82d4d39e81c4742':
+              raise SystemExit('WRONG_BUNDLE_IDENTITY')
+          sums={}
+          for line in (files/'SHA256SUMS').read_text().splitlines():
+              parts=line.split()
+              if len(parts)!=2 or parts[1] not in ('semantic-app.apk','semantic-test.apk') or not re.fullmatch(r'[a-f0-9]{64}',parts[0]):
+                  raise SystemExit('UNEXPECTED_SUMS')
+              sums[parts[1]]=parts[0]
+          if len(sums)!=2:raise SystemExit('INCOMPLETE_BUNDLE')
+          for name,expected in sums.items():
+              if hashlib.sha256((files/name).read_bytes()).hexdigest()!=expected:raise SystemExit('BAD_BUNDLE_'+name)
+              print('BUNDLE_SHA256_OK='+name,flush=True)
+          rish='/data/data/com.termux/files/usr/bin/rish'
+          for package in (app,test):
+              p=subprocess.run([rish,'-c','pm path '+package],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=30)
+              paths=[x for x in p.stdout.splitlines() if x.startswith('package:')]
+              if p.returncode!=0 or paths or p.stdout.strip():
+                  raise SystemExit('ISOLATED_PACKAGE_NOT_ABSENT_'+package)
+              print('ABSENT_CONFIRMED='+package,flush=True)
+          stage=pathlib.Path('/storage/emulated/0/Download/LiliyaPhysicalAcceptance')
+          stage.mkdir(parents=True,exist_ok=True)
+          for name,package in [('semantic-app.apk',app),('semantic-test.apk',test)]:
+              dst=stage/('qwenlocal-'+name)
+              dst.write_bytes((files/name).read_bytes())
+              if hashlib.sha256(dst.read_bytes()).hexdigest()!=sums[name]:raise SystemExit('STAGING_INTEGRITY_FAILED')
+              device='/data/local/tmp/liliya-physical-acceptance/qwenlocal-'+name
+              cmd="mkdir -p /data/local/tmp/liliya-physical-acceptance && cp '"+str(dst)+"' '"+device+"' && chmod 0644 '"+device+"' && pm install -t '"+device+"'"
+              result=subprocess.run([rish,'-c',cmd],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=240)
+              if result.returncode!=0 or 'Success' not in result.stdout:
+                  raise SystemExit('ISOLATED_INSTALL_FAILED_'+name+' '+result.stdout[-500:])
+              print('ISOLATED_INSTALLED='+package,flush=True)
+              p=subprocess.run([rish,'-c','pm path '+package],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=30)
+              paths=[x[len('package:'):].strip() for x in p.stdout.splitlines() if x.startswith('package:')]
+              if p.returncode!=0 or len(paths)!=1 or not re.fullmatch(r'/[a-zA-Z0-9_./~=-]+[.]apk',paths[0]):
+                  raise SystemExit('INSTALLED_PACKAGE_INVALID_'+package)
+              v=subprocess.run([rish,'-c',"sha256sum '"+paths[0]+"'"],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=60)
+              if v.returncode!=0 or v.stdout.split()[0]!=sums[name]:raise SystemExit('ON_DEVICE_DIGEST_FAIL_'+package)
+              print('INSTALLED_SHA256_PASS='+package,flush=True)
+          print('QWENLOCAL_ISOLATED_HOST_INSTALL=PASS')
+          PY
