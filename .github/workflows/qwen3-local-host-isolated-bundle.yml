@@ -30,7 +30,7 @@ jobs:
         run: bash .github/ci/configure-gradle-memory.sh
       - name: Build only separately named Qwen3 host APK pair
         run: |
-          gradle :android-semantic-test-host:assembleDebug :android-semantic-test-host:assembleDebugAndroidTest -PliliyaSemanticHostApplicationId=pro.liliya.android.semanticprovider.qwenlocal --console=plain
+          gradle :android-semantic-test-host:assembleDebug :android-semantic-test-host:assembleDebugAndroidTest -PliliyaSemanticHostApplicationId=pro.liliya.android.semanticprovider.qwenfd --console=plain
       - name: Verify Android package identity and create SHA256 manifest
         shell: bash
         run: |
@@ -38,21 +38,21 @@ jobs:
           mkdir -p qwen3-local-host-bundle
           cp android-semantic-test-host/build/outputs/apk/debug/android-semantic-test-host-debug.apk qwen3-local-host-bundle/semantic-app.apk
           cp android-semantic-test-host/build/outputs/apk/androidTest/debug/android-semantic-test-host-debug-androidTest.apk qwen3-local-host-bundle/semantic-test.apk
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging qwen3-local-host-bundle/semantic-app.apk | grep -m1 "^package: name='pro.liliya.android.semanticprovider.qwenlocal'"
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging qwen3-local-host-bundle/semantic-test.apk | grep -m1 "^package: name='pro.liliya.android.semanticprovider.qwenlocal.test'"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging qwen3-local-host-bundle/semantic-app.apk | grep -m1 "^package: name='pro.liliya.android.semanticprovider.qwenfd'"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging qwen3-local-host-bundle/semantic-test.apk | grep -m1 "^package: name='pro.liliya.android.semanticprovider.qwenfd.test'"
           (cd qwen3-local-host-bundle && sha256sum semantic-app.apk semantic-test.apk > SHA256SUMS)
-          printf '%s\n' 'APP_PACKAGE=pro.liliya.android.semanticprovider.qwenlocal' 'TEST_PACKAGE=pro.liliya.android.semanticprovider.qwenlocal.test' "SOURCE_SHA=$GITHUB_SHA" > qwen3-local-host-bundle/apk-identity.env
+          printf '%s\n' 'APP_PACKAGE=pro.liliya.android.semanticprovider.qwenfd' 'TEST_PACKAGE=pro.liliya.android.semanticprovider.qwenfd.test' "SOURCE_SHA=$GITHUB_SHA" > qwen3-local-host-bundle/apk-identity.env
           python3 - <<'PY'
           import os,pathlib
           p=pathlib.Path('qwen3-local-host-bundle/apk-identity.env')
           fields=dict(line.split('=',1) for line in p.read_text().splitlines())
-          expected={'APP_PACKAGE':'pro.liliya.android.semanticprovider.qwenlocal','TEST_PACKAGE':'pro.liliya.android.semanticprovider.qwenlocal.test','SOURCE_SHA':os.environ['GITHUB_SHA']}
+          expected={'APP_PACKAGE':'pro.liliya.android.semanticprovider.qwenfd','TEST_PACKAGE':'pro.liliya.android.semanticprovider.qwenfd.test','SOURCE_SHA':os.environ['GITHUB_SHA']}
           if fields!=expected:raise SystemExit('APK_IDENTITY_MANIFEST_INVALID')
           print('APK_IDENTITY_MANIFEST=PASS')
           PY
       - uses: actions/upload-artifact@v4
         with:
-          name: qwen3-local-host-isolated-apks
+          name: qwen3-fd-dedicated-host-apks
           path: qwen3-local-host-bundle/
           if-no-files-found: error
           retention-days: 14
