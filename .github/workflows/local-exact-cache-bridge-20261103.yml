@@ -27,13 +27,13 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@v3
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.6.1'
       - name: Install exact Android components
         run: |
-          yes | sdkmanager --licenses >/dev/null || true
+          export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          export ANDROID_SDK_ROOT="$ANDROID_HOME"
           sdkmanager "platforms;android-35" "build-tools;35.0.0" "build-tools;36.0.0" "ndk;29.0.13113456" "cmake;3.31.6"
       - name: Warm project cache and verify offline acceptance
         run: |
@@ -45,6 +45,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/cache-export"
+          if [ ! -d "$GRADLE_USER_HOME" ]; then echo 'NO_CACHE_TO_EXPORT'; exit 1; fi
           tar -czf "$RUNNER_TEMP/cache-export/project-gradle-cache.tar.gz" -C "$GITHUB_WORKSPACE" .bridge-gradle-home
           cd "$RUNNER_TEMP/cache-export"
           split -b 250M -d -a 2 project-gradle-cache.tar.gz cache.part.
