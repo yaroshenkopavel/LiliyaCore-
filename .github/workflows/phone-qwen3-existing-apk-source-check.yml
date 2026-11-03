@@ -1,7 +1,7 @@
 name: Phone Qwen3 existing installed APK model source check
 on:
   push:
-    branches: [main]
+    branches: [technical/phone-gpt-server-preflight-2026-11-03]
     paths: [.github/workflows/phone-qwen3-existing-apk-source-check.yml]
   workflow_dispatch:
 permissions:
