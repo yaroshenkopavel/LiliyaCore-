@@ -1,7 +1,7 @@
 name: Phone authenticated device preflight 2026-11-02
 on:
   push:
-    branches: [main]
+    branches: [technical/phone-gpt-server-preflight-2026-11-03]
     paths:
       - .github/workflows/phone-authenticated-device-preflight-2026-11-02.yml
   workflow_dispatch:
