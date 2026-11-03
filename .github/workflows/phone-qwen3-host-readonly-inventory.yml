@@ -1,7 +1,7 @@
 name: Phone Qwen3 test host read-only inventory
 on:
   push:
-    branches: [main]
+    branches: [technical/phone-gpt-server-preflight-2026-11-03]
     paths:
       - .github/workflows/phone-qwen3-host-readonly-inventory.yml
   workflow_dispatch:
