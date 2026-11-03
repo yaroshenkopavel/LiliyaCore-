@@ -36,4 +36,11 @@ jobs:
           if p.returncode!=0 or 'OK (1 test)' not in p.stdout or 'qwen3LocalSource=EXACT_SOURCE_VERIFIED' not in p.stdout or expected_bytes not in p.stdout or ('qwen3Sha256='+expected_sha) not in p.stdout:
               raise SystemExit('EXISTING_QWEN3_SOURCE_INSTRUMENTATION_NOT_PASS')
           print('EXISTING_QWEN3_SOURCE_INSTRUMENTATION=PASS',flush=True)
+          fd_cmd='am instrument -w -r -e class pro.liliya.android.semanticprovider.host.Qwen3LocalFdBridgeInstrumentedTest#existing_qwen3_grant_exposes_seekable_descriptor_for_native_model_load '+test+'/androidx.test.runner.AndroidJUnitRunner'
+          fd=subprocess.run([rish,'-c',fd_cmd],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=120)
+          print('ANDROID_FD_INSTRUMENTATION_EXIT='+str(fd.returncode),flush=True)
+          print(fd.stdout[-8000:],flush=True)
+          if fd.returncode!=0 or 'OK (1 test)' not in fd.stdout or 'QWEN3_SAF_FD_NATIVE_PATH_READY=PASS' not in fd.stdout:
+              raise SystemExit('EXISTING_QWEN3_FD_PREFLIGHT_NOT_PASS')
+          print('EXISTING_QWEN3_FD_PREFLIGHT=PASS',flush=True)
           PY
