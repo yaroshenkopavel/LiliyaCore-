@@ -31,7 +31,9 @@ jobs:
           print('ANDROID_INSTRUMENTATION_LOG_BEGIN',flush=True)
           print(p.stdout[-16000:],flush=True)
           print('ANDROID_INSTRUMENTATION_LOG_END',flush=True)
-          if p.returncode!=0 or 'OK (1 test)' not in p.stdout or 'QWEN3_LOCAL_SOURCE_PREFLIGHT=PASS' not in p.stdout:
+          expected_sha='d2387ca2dbfee2ffabce7120d3770dadca0b293052bc2f0e138fdc940d9bc7b5'
+          expected_bytes='qwen3Bytes=1282439264'
+          if p.returncode!=0 or 'OK (1 test)' not in p.stdout or 'qwen3LocalSource=EXACT_SOURCE_VERIFIED' not in p.stdout or expected_bytes not in p.stdout or ('qwen3Sha256='+expected_sha) not in p.stdout:
               raise SystemExit('EXISTING_QWEN3_SOURCE_INSTRUMENTATION_NOT_PASS')
           print('EXISTING_QWEN3_SOURCE_INSTRUMENTATION=PASS',flush=True)
           PY
