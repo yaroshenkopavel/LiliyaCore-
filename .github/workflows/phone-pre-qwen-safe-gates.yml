@@ -1,7 +1,7 @@
 name: Phone pre-Qwen read-only safety gates
 on:
   push:
-    branches: [main]
+    branches: [technical/phone-gpt-server-preflight-2026-11-03]
     paths:
       - .github/workflows/phone-pre-qwen-safe-gates.yml
   workflow_dispatch:
