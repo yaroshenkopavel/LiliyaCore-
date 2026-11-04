@@ -18,7 +18,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import os,pathlib,re,subprocess,hashlib,zipfile,io
+          import os,pathlib,re,subprocess,hashlib,zipfile,io,shlex
           dex='/data/data/com.termux/files/usr/bin/rish_shizuku.dex'
           if pathlib.Path(dex).stat().st_mode & 0o222:
               raise SystemExit('RISH_DEX_STILL_WRITABLE')
@@ -46,29 +46,45 @@ jobs:
               for entry in entries: entry.unlink()
           else:
               snapshot.mkdir(parents=True)
+          shared_stage=pathlib.Path('/storage/emulated/0/Download/LiliyaPhysicalAcceptance/qwen3-snapshot-'+os.environ.get('GITHUB_RUN_ID','local'))
+          shared_stage.mkdir(parents=True,exist_ok=True)
+          def read_installed_apk(package,device_path,name):
+              shared=shared_stage/name
+              try:
+                  result=shizuku('cp '+shlex.quote(device_path)+' '+shlex.quote(str(shared)),timeout=120)
+                  if result.returncode:
+                      raise SystemExit('INSTALLED_APK_COPY_TO_SHARED_FAILED_'+package+' '+(result.stdout or '')[-1000:])
+                  data=shared.read_bytes()
+                  if len(data)<1024*1024:
+                      raise SystemExit('INSTALLED_APK_SNAPSHOT_FAILED_'+package)
+                  try:
+                      with zipfile.ZipFile(io.BytesIO(data)) as apk:
+                          if 'AndroidManifest.xml' not in apk.namelist():
+                              raise SystemExit('INSTALLED_APK_MANIFEST_MISSING_'+package)
+                  except zipfile.BadZipFile as exc:
+                      raise SystemExit('INSTALLED_APK_NOT_VALID_ZIP_'+package+' '+str(exc))
+                  return data
+              finally:
+                  shared.unlink(missing_ok=True)
           for package,name in ((app,'semantic-app.apk'),(test,'semantic-test.apk')):
               result=shizuku('pm path '+package)
               paths=[line[len('package:'):].strip() for line in result.stdout.splitlines()
                      if line.startswith('package:')]
               if result.returncode or len(paths)!=1 or not re.fullmatch(r'/[A-Za-z0-9_./~=-]+[.]apk',paths[0]):
                   raise SystemExit('INSTALLED_APK_PATH_UNSAFE_'+package)
-              copied=shizuku('cat '+paths[0],timeout=120,binary=True)
-              if copied.returncode or len(copied.stdout)<1024*1024:
-                  raise SystemExit('INSTALLED_APK_SNAPSHOT_FAILED_'+package)
-              try:
-                  with zipfile.ZipFile(io.BytesIO(copied.stdout)) as apk:
-                      if 'AndroidManifest.xml' not in apk.namelist():
-                          raise SystemExit('INSTALLED_APK_MANIFEST_MISSING_'+package)
-              except zipfile.BadZipFile as exc:
-                  raise SystemExit('INSTALLED_APK_NOT_VALID_ZIP_'+package+' '+str(exc))
+              copied=read_installed_apk(package,paths[0],name)
               target=snapshot/name
-              target.write_bytes(copied.stdout)
+              target.write_bytes(copied)
               print('SNAPSHOT '+package+' bytes='+str(target.stat().st_size)+
-                    ' sha256='+hashlib.sha256(copied.stdout).hexdigest(),flush=True)
+                    ' sha256='+hashlib.sha256(copied).hexdigest(),flush=True)
               dump=shizuku('dumpsys package '+package)
               version=next((line.strip() for line in dump.stdout.splitlines()
                             if 'versionCode=' in line and 'versionName=' in line),'version_info_unavailable')
               print('INSTALLED_VERSION '+package+' '+version,flush=True)
+          try: shared_stage.rmdir()
+          except OSError: pass
+          try: shared_stage.parent.rmdir()
+          except OSError: pass
           state=[]
           for command,timeout in (('cat /proc/meminfo',30),('dumpsys battery',30),('dumpsys thermalservice',30)):
               result=shizuku(command,timeout=timeout)
