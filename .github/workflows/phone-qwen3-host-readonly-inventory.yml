@@ -20,13 +20,15 @@ jobs:
           import os,pathlib,subprocess,shutil
           rish='/data/data/com.termux/files/usr/bin/rish'
           dex=pathlib.Path('/data/data/com.termux/files/usr/bin/rish_shizuku.dex')
-          if not dex.is_file(): raise SystemExit('RISH_DEX_NOT_FOUND')
-          before=dex.stat().st_mode & 0o777
-          print('RISH_DEX_MODE_BEFORE='+oct(before),flush=True)
-          dex.chmod(before & ~0o222)
-          after=dex.stat().st_mode & 0o777
-          print('RISH_DEX_MODE_AFTER='+oct(after),flush=True)
-          if after & 0o222: raise SystemExit('RISH_DEX_STILL_WRITABLE')
+          for item in (pathlib.Path(rish),dex):
+              st=item.stat()
+              print('RISH_FILE '+str(item)+' real='+str(item.resolve())+' mode='+oct(st.st_mode & 0o777)+' uid='+str(st.st_uid)+' gid='+str(st.st_gid)+' bytes='+str(st.st_size)+' symlink='+str(item.is_symlink()),flush=True)
+          try:
+              for line in pathlib.Path(rish).read_text(errors='replace').splitlines():
+                  if any(word in line.lower() for word in ('dex','chmod','writable','app_process')):
+                      print('RISH_SCRIPT='+line[:300],flush=True)
+          except Exception as e:
+              print('RISH_SCRIPT_READ_ERROR='+repr(e),flush=True)
           probe=subprocess.run([rish,'-c','id'],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=30)
           print('RISH_PROBE_EXIT='+str(probe.returncode)+' OUTPUT='+repr(probe.stdout),flush=True)
           if probe.returncode: raise SystemExit('RISH_PROBE_FAILED')
