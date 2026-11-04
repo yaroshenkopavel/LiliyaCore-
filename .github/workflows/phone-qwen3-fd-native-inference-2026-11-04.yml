@@ -1,0 +1,294 @@
+name: Physical Qwen3 SAF descriptor native inference
+on:
+  push:
+    branches: [technical/qwen3-fd-native-inference-2026-11-04]
+    paths:
+      - .github/workflows/phone-qwen3-fd-native-inference-2026-11-04.yml
+      - android-llama-cpp-engine/src/androidTest/kotlin/pro/liliya/android/llamacppengine/AndroidLlamaCppRealModelInstrumentedTest.kt
+permissions:
+  contents: read
+  actions: read
+jobs:
+  phone-preflight:
+    runs-on: [self-hosted, ARM64, android-device]
+    timeout-minutes: 15
+    steps:
+      - name: Verify existing read-only Qwen descriptor gate and snapshot test APKs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os,pathlib,re,subprocess,hashlib
+          dex='/data/data/com.termux/files/usr/bin/rish_shizuku.dex'
+          if pathlib.Path(dex).stat().st_mode & 0o222:
+              raise SystemExit('RISH_DEX_STILL_WRITABLE')
+          env=os.environ.copy()
+          env['RISH_APPLICATION_ID']='com.termux'
+          prefix=['/system/bin/app_process','-Djava.class.path='+dex,'/system/bin','--nice-name=rish','rikka.shizuku.shell.ShizukuShellLoader','-c']
+          def shizuku(command,timeout=60,binary=False):
+              return subprocess.run(prefix+[command],stdout=subprocess.PIPE,stderr=subprocess.PIPE,
+                                    text=not binary,timeout=timeout,env=env)
+          probe=shizuku('id')
+          if probe.returncode or 'uid=2000(shell)' not in probe.stdout:
+              raise SystemExit('SHIZUKU_SHELL_IDENTITY_FAILED')
+          print('SHIZUKU_DIRECT_APP_PROCESS=PASS',flush=True)
+          app='pro.liliya.android.semanticprovider.qwenfd'
+          test=app+'.test'
+          snapshot=pathlib.Path('qwen3-device-snapshot')
+          snapshot.mkdir(parents=True,exist_ok=False)
+          for package,name in ((app,'semantic-app.apk'),(test,'semantic-test.apk')):
+              result=shizuku('pm path '+package)
+              paths=[line[len('package:'):].strip() for line in result.stdout.splitlines()
+                     if line.startswith('package:')]
+              if result.returncode or len(paths)!=1 or not re.fullmatch(r'/[A-Za-z0-9_./~=-]+[.]apk',paths[0]):
+                  raise SystemExit('INSTALLED_APK_PATH_UNSAFE_'+package)
+              copied=shizuku('cat '+paths[0],timeout=120,binary=True)
+              if copied.returncode or len(copied.stdout)<1024*1024:
+                  raise SystemExit('INSTALLED_APK_SNAPSHOT_FAILED_'+package)
+              target=snapshot/name
+              target.write_bytes(copied.stdout)
+              print('SNAPSHOT '+package+' bytes='+str(target.stat().st_size)+
+                    ' sha256='+hashlib.sha256(copied.stdout).hexdigest(),flush=True)
+              dump=shizuku('dumpsys package '+package)
+              version=next((line.strip() for line in dump.stdout.splitlines()
+                            if 'versionCode=' in line and 'versionName=' in line),'version_info_unavailable')
+              print('INSTALLED_VERSION '+package+' '+version,flush=True)
+          (snapshot/'device-state.txt').write_text(
+              'RUNNER_NAME='+os.environ.get('RUNNER_NAME','')+'\n'+
+              shizuku('cat /proc/meminfo').stdout+'\n'+
+              shizuku('dumpsys battery').stdout+'\n'+
+              shizuku('dumpsys thermalservice',timeout=30).stdout
+          )
+          gate=shizuku('am instrument -w -r -e class '+
+                       'pro.liliya.android.semanticprovider.host.Qwen3LocalFdBridgeInstrumentedTest#'+
+                       'existing_qwen3_grant_exposes_seekable_descriptor_for_native_model_load '+
+                       test+'/androidx.test.runner.AndroidJUnitRunner',timeout=360)
+          output=gate.stdout+gate.stderr
+          print('EXISTING_FD_GATE_BEGIN',flush=True)
+          print(output[-12000:],flush=True)
+          print('EXISTING_FD_GATE_END',flush=True)
+          if gate.returncode or 'OK (1 test)' not in gate.stdout:
+              raise SystemExit('EXISTING_QWEN3_FD_GATE_FAILED')
+          (snapshot/'SHA256SUMS').write_text(
+              ''.join(hashlib.sha256((snapshot/name).read_bytes()).hexdigest()+'  '+name+'\n'
+                      for name in ('semantic-app.apk','semantic-test.apk'))
+          )
+          print('QWEN3_DEVICE_PREFLIGHT=PASS',flush=True)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qwen3-device-snapshot
+          path: qwen3-device-snapshot/
+          if-no-files-found: error
+          retention-days: 14
+  build:
+    needs: phone-preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.1'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - name: Install pinned Android toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'platform-tools' 'ndk;29.0.13113456' 'cmake;3.31.6'
+      - uses: actions/download-artifact@v4
+        with:
+          name: qwen3-device-snapshot
+          path: qwen3-device-snapshot
+      - name: Build the isolated Qwen3 host and test APK pair
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash .github/ci/configure-gradle-memory.sh
+          gradle :android-semantic-test-host:assembleDebug :android-semantic-test-host:assembleDebugAndroidTest \
+            -PliliyaSemanticHostApplicationId=pro.liliya.android.semanticprovider.qwenfd --console=plain
+      - name: Verify test class, package IDs, and signer compatibility before any phone install
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p qwen3-inference-bundle
+          cp android-semantic-test-host/build/outputs/apk/debug/android-semantic-test-host-debug.apk qwen3-inference-bundle/semantic-app.apk
+          cp android-semantic-test-host/build/outputs/apk/androidTest/debug/android-semantic-test-host-debug-androidTest.apk qwen3-inference-bundle/semantic-test.apk
+          aapt="$ANDROID_HOME/build-tools/35.0.0/aapt"
+          signer="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          app_package=pro.liliya.android.semanticprovider.qwenfd
+          test_package=$app_package.test
+          "$aapt" dump badging qwen3-inference-bundle/semantic-app.apk | grep -m1 "^package: name='$app_package'"
+          "$aapt" dump badging qwen3-inference-bundle/semantic-test.apk | grep -m1 "^package: name='$test_package'"
+          python3 - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+          apk=Path('qwen3-inference-bundle/semantic-test.apk')
+          needle=b'authorized_qwen3_seekable_fd_reaches_real_mmap_load_and_generation_without_copy'
+          with ZipFile(apk) as z:
+              dex=[n for n in z.namelist() if n.startswith('classes') and n.endswith('.dex')]
+              if not any(needle in z.read(n) for n in dex):
+                  raise SystemExit('QWEN3_REAL_INFERENCE_TEST_METHOD_MISSING')
+          print('QWEN3_REAL_INFERENCE_TEST_METHOD=PASS')
+          PY
+          python3 - <<'PY'
+          import hashlib,pathlib
+          root=pathlib.Path('qwen3-device-snapshot')
+          sums={}
+          for line in (root/'SHA256SUMS').read_text().splitlines():
+              sha,name=line.split()
+              if name not in ('semantic-app.apk','semantic-test.apk'):raise SystemExit('BAD_DEVICE_MANIFEST')
+              if hashlib.sha256((root/name).read_bytes()).hexdigest()!=sha:raise SystemExit('DEVICE_APK_HASH_MISMATCH')
+              sums[name]=sha
+          if len(sums)!=2:raise SystemExit('INCOMPLETE_DEVICE_SNAPSHOT')
+          print('DEVICE_SNAPSHOT_SHA256=PASS')
+          PY
+          cert() { "$signer" verify --print-certs "$1" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p'; }
+          old_app_cert="$(cert qwen3-device-snapshot/semantic-app.apk)"
+          old_test_cert="$(cert qwen3-device-snapshot/semantic-test.apk)"
+          new_app_cert="$(cert qwen3-inference-bundle/semantic-app.apk)"
+          new_test_cert="$(cert qwen3-inference-bundle/semantic-test.apk)"
+          test -n "$old_app_cert" && test -n "$old_test_cert" && test -n "$new_app_cert" && test -n "$new_test_cert"
+          printf 'INSTALLED_APP_SIGNER=%s\nINSTALLED_TEST_SIGNER=%s\nBUILD_APP_SIGNER=%s\nBUILD_TEST_SIGNER=%s\n' \
+            "$old_app_cert" "$old_test_cert" "$new_app_cert" "$new_test_cert"
+          test "$old_app_cert" = "$new_app_cert"
+          test "$old_test_cert" = "$new_test_cert"
+          test "$new_app_cert" = "$new_test_cert"
+          printf 'APP_PACKAGE=%s\nTEST_PACKAGE=%s\nSIGNER_SHA256=%s\nTEST_CLASS=%s\nSOURCE_SHA=%s\n' \
+            "$app_package" "$test_package" "$new_test_cert" \
+            'pro.liliya.android.llamacppengine.AndroidLlamaCppRealModelInstrumentedTest#authorized_qwen3_seekable_fd_reaches_real_mmap_load_and_generation_without_copy' \
+            "$GITHUB_SHA" > qwen3-inference-bundle/apk-identity.env
+          (cd qwen3-inference-bundle && sha256sum semantic-app.apk semantic-test.apk > SHA256SUMS)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qwen3-fd-native-inference-bundle
+          path: qwen3-inference-bundle/
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+  physical-test:
+    needs: [phone-preflight, build]
+    runs-on: [self-hosted, ARM64, android-device]
+    timeout-minutes: 45
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: qwen3-device-snapshot
+          path: qwen3-device-snapshot
+      - uses: actions/download-artifact@v4
+        with:
+          name: qwen3-fd-native-inference-bundle
+          path: qwen3-inference-bundle
+      - name: Install only the signer-verified instrumentation APK, run Qwen inference, restore the original test APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib,os,pathlib,re,shlex,subprocess
+          dex='/data/data/com.termux/files/usr/bin/rish_shizuku.dex'
+          env=os.environ.copy()
+          env['RISH_APPLICATION_ID']='com.termux'
+          prefix=['/system/bin/app_process','-Djava.class.path='+dex,'/system/bin','--nice-name=rish','rikka.shizuku.shell.ShizukuShellLoader','-c']
+          def shell(command,timeout=60,binary=False):
+              return subprocess.run(prefix+[command],stdout=subprocess.PIPE,stderr=subprocess.PIPE,
+                                    text=not binary,timeout=timeout,env=env)
+          def installed_apk(package):
+              p=shell('pm path '+package)
+              paths=[line[len('package:'):].strip() for line in p.stdout.splitlines()
+                     if line.startswith('package:')]
+              if p.returncode or len(paths)!=1 or not re.fullmatch(r'/[A-Za-z0-9_./~=-]+[.]apk',paths[0]):
+                  raise RuntimeError('INSTALLED_PACKAGE_PATH_UNSAFE_'+package)
+              data=shell('cat '+shlex.quote(paths[0]),timeout=180,binary=True)
+              if data.returncode or len(data.stdout)<1024*1024:
+                  raise RuntimeError('INSTALLED_APK_READ_FAILED_'+package)
+              return paths[0],data.stdout
+          snap=pathlib.Path('qwen3-device-snapshot')
+          bundle=pathlib.Path('qwen3-inference-bundle')
+          identity=dict(line.split('=',1) for line in (bundle/'apk-identity.env').read_text().splitlines())
+          app='pro.liliya.android.semanticprovider.qwenfd'
+          test=app+'.test'
+          expected_class='pro.liliya.android.llamacppengine.AndroidLlamaCppRealModelInstrumentedTest#authorized_qwen3_seekable_fd_reaches_real_mmap_load_and_generation_without_copy'
+          if identity.get('APP_PACKAGE')!=app or identity.get('TEST_PACKAGE')!=test or identity.get('TEST_CLASS')!=expected_class:
+              raise SystemExit('BUNDLE_IDENTITY_MISMATCH')
+          for name in ('semantic-app.apk','semantic-test.apk'):
+              expected=dict(line.split(None,1) for line in (bundle/'SHA256SUMS').read_text().splitlines())[name]
+              if hashlib.sha256((bundle/name).read_bytes()).hexdigest()!=expected:
+                  raise SystemExit('BUNDLE_SHA256_MISMATCH_'+name)
+          for package,name in ((app,'semantic-app.apk'),(test,'semantic-test.apk')):
+              _,now=installed_apk(package)
+              before=(snap/name).read_bytes()
+              if hashlib.sha256(now).digest()!=hashlib.sha256(before).digest():
+                  raise SystemExit('DEVICE_PACKAGE_CHANGED_AFTER_PREFLIGHT_'+package)
+              print('DEVICE_PACKAGE_UNCHANGED='+package,flush=True)
+          stage=pathlib.Path('/storage/emulated/0/Download/LiliyaPhysicalAcceptance/qwen3-fd-'+os.environ.get('GITHUB_RUN_ID','local'))
+          stage.mkdir(parents=True,exist_ok=True)
+          new_shared=stage/'semantic-test-new.apk'
+          old_shared=stage/'semantic-test-original.apk'
+          new_shared.write_bytes((bundle/'semantic-test.apk').read_bytes())
+          old_shared.write_bytes((snap/'semantic-test.apk').read_bytes())
+          remote='/data/local/tmp/liliya-qwen3-fd-'+os.environ.get('GITHUB_RUN_ID','local')
+          q=shlex.quote
+          prepared=shell('mkdir -p '+q(remote)+' && cp '+q(str(new_shared))+' '+q(remote+'/semantic-test-new.apk')+
+                         ' && cp '+q(str(old_shared))+' '+q(remote+'/semantic-test-original.apk')+
+                         ' && chmod 0644 '+q(remote+'/semantic-test-new.apk')+' '+q(remote+'/semantic-test-original.apk'))
+          if prepared.returncode:raise SystemExit('PHONE_APK_STAGE_FAILED '+prepared.stdout+prepared.stderr)
+          installed_new=False
+          test_output=''
+          test_exit=0
+          restore_error=None
+          try:
+              install=shell('pm install -r -t '+q(remote+'/semantic-test-new.apk'),timeout=300)
+              print('TEST_APK_INSTALL_EXIT='+str(install.returncode),flush=True)
+              print((install.stdout+install.stderr)[-4000:],flush=True)
+              if install.returncode or 'Success' not in install.stdout:
+                  raise RuntimeError('TEST_APK_INSTALL_FAILED')
+              installed_new=True
+              _,installed_bytes=installed_apk(test)
+              expected_new=hashlib.sha256((bundle/'semantic-test.apk').read_bytes()).hexdigest()
+              if hashlib.sha256(installed_bytes).hexdigest()!=expected_new:
+                  raise RuntimeError('INSTALLED_TEST_APK_HASH_MISMATCH')
+              print('INSTALLED_TEST_APK_SHA256=PASS',flush=True)
+              command=('am instrument -w -r -e class '+q(expected_class)+' '+
+                       q(test+'/androidx.test.runner.AndroidJUnitRunner'))
+              result=shell(command,timeout=2400)
+              test_exit=result.returncode
+              test_output=result.stdout+result.stderr
+              print('QWEN3_NATIVE_INFERENCE_OUTPUT_BEGIN',flush=True)
+              print(test_output[-30000:],flush=True)
+              print('QWEN3_NATIVE_INFERENCE_OUTPUT_END',flush=True)
+              if test_exit or 'OK (1 test)' not in test_output or 'INSTRUMENTATION_CODE: -1' not in test_output:
+                  raise RuntimeError('QWEN3_NATIVE_INFERENCE_TEST_FAILED')
+              print('QWEN3_SAF_FD_NATIVE_INFERENCE=PASS',flush=True)
+          except Exception as e:
+              print('PHYSICAL_INFERENCE_ERROR='+str(e),flush=True)
+              raise
+          finally:
+              if installed_new:
+                  restore=shell('pm install -r -d -t '+q(remote+'/semantic-test-original.apk'),timeout=300)
+                  print('TEST_APK_RESTORE_EXIT='+str(restore.returncode),flush=True)
+                  print((restore.stdout+restore.stderr)[-3000:],flush=True)
+                  if restore.returncode or 'Success' not in restore.stdout:
+                      restore_error='ORIGINAL_TEST_APK_RESTORE_FAILED'
+                  else:
+                      _,restored=installed_apk(test)
+                      original_hash=hashlib.sha256((snap/'semantic-test.apk').read_bytes()).hexdigest()
+                      if hashlib.sha256(restored).hexdigest()!=original_hash:
+                          restore_error='ORIGINAL_TEST_APK_RESTORE_HASH_MISMATCH'
+                      else:
+                          print('ORIGINAL_TEST_APK_RESTORED=PASS',flush=True)
+              shell('rm -f '+q(remote+'/semantic-test-new.apk')+' '+q(remote+'/semantic-test-original.apk')+
+                    ' && rmdir '+q(remote),timeout=60)
+              for p in (new_shared,old_shared):
+                  p.unlink(missing_ok=True)
+              try:stage.rmdir()
+              except OSError:pass
+              try:stage.parent.rmdir()
+              except OSError:pass
+              if restore_error:raise RuntimeError(restore_error)
+          PY
