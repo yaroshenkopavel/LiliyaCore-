@@ -1,6 +1,7 @@
 package pro.liliya.android.llamacppengine
 
 import android.content.Context
+import android.net.Uri
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.ByteArrayInputStream
@@ -40,6 +41,59 @@ import pro.liliya.core.protectedmodel.ProtectedModelReference
 
 @RunWith(AndroidJUnit4::class)
 class AndroidLlamaCppRealModelInstrumentedTest {
+
+    @Test
+    fun authorized_qwen3_seekable_fd_reaches_real_mmap_load_and_generation_without_copy() {
+        val targetContext = InstrumentationRegistry.getInstrumentation().targetContext
+        val rawUri = targetContext.getSharedPreferences("qwen3-local-source-test-v1", 0)
+            .getString("selected-content-uri", null)
+            ?: error("No selected Qwen3 GGUF; retain and use prior Android document grant")
+        val uri = Uri.parse(rawUri)
+        assertTrue(uri.scheme == "content")
+        assertTrue(targetContext.contentResolver.persistedUriPermissions.any {
+            it.uri == uri && it.isReadPermission
+        })
+
+        targetContext.contentResolver.openFileDescriptor(uri, "r")!!.use { descriptor ->
+            assertEquals(1_282_439_264L, descriptor.statSize)
+            val fdPath = File("/proc/self/fd/${descriptor.fd}")
+            assertTrue(fdPath.exists())
+
+            val loader = AndroidLlamaCppPhysicalEngineLoader(
+                LlamaCppEnginePolicy(
+                    contextTokens = 128,
+                    maxPromptTokens = 32,
+                    maxGeneratedTokens = 8,
+                    batchTokens = 32,
+                    microBatchTokens = 16,
+                    threadCount = 1,
+                    maxPromptChars = 128,
+                    maxPromptUtf8Bytes = 256,
+                    maxOutputChars = 64,
+                    maxOutputUtf8Bytes = 256,
+                    useMmap = true,
+                    promptFormatPolicy = LlamaCppPromptFormatPolicy.MODEL_DEFAULT_CHAT_TEMPLATE
+                )
+            )
+            val loaded = assertIs<ModelEngineLoadResult.Loaded>(
+                loadThroughInternalPhysicalPath(loader, fdPath)
+            )
+            try {
+                val inference = assertIs<ModelEngineInferenceResult.Succeeded>(
+                    loaded.ownership.infer(
+                        ModelEngineInferenceRequest(
+                            prompt = "Say OK.",
+                            maxOutputChars = 64
+                        )
+                    )
+                )
+                assertTrue(inference.output.isNotBlank())
+                println("QWEN3_SAF_FD_NATIVE_INFERENCE=PASS output_chars=${inference.output.length}")
+            } finally {
+                assertIs<ModelEngineCloseResult.Closed>(loaded.ownership.close())
+            }
+        }
+    }
 
     @Test
     fun verified_upstream_fixture_reaches_real_load_infer_close_through_capability_path() =
@@ -324,6 +378,19 @@ class AndroidLlamaCppRealModelInstrumentedTest {
         maxOutputUtf8Bytes = 256,
         useMmap = true
     )
+
+    /** Keep the native path-only entry point internal; this host test intentionally probes it. */
+    private fun loadThroughInternalPhysicalPath(
+        loader: AndroidLlamaCppPhysicalEngineLoader,
+        source: File
+    ): ModelEngineLoadResult {
+        val method = loader.javaClass.declaredMethods.singleOrNull {
+            it.name.startsWith("loadValidatedPhysicalSource") &&
+                it.parameterTypes.size == 1 && it.parameterTypes[0] == File::class.java
+        } ?: error("internal physical source loader entry point is missing")
+        method.isAccessible = true
+        return method.invoke(loader, source) as ModelEngineLoadResult
+    }
 
     private fun backend(context: Context) = AndroidAppPrivateProtectedModelStagingBackend(
         context,
