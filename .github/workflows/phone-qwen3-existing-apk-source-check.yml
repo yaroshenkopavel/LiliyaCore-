@@ -16,56 +16,41 @@ jobs:
         run: |
           set -euo pipefail
           python3 - <<'PY'
+          import os
           import subprocess
           rish='/data/data/com.termux/files/usr/bin/rish'
+          dex='/data/data/com.termux/files/usr/bin/rish_shizuku.dex'
+          def shizuku(cmd,timeout=500):
+              env=os.environ.copy()
+              env['RISH_APPLICATION_ID']='com.termux'
+              return subprocess.run(['/system/bin/app_process','-Djava.class.path='+dex,'/system/bin','--nice-name=rish','rikka.shizuku.shell.ShizukuShellLoader','-c',cmd],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=timeout,env=env)
           app='pro.liliya.android.semanticprovider.qwenlocal'
           test=app+'.test'
-          for package in [app,test]:
-              p=subprocess.run([rish,'-c','pm path '+package],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=30)
+          fd_app='pro.liliya.android.semanticprovider.qwenfd'
+          fd_test=fd_app+'.test'
+          for package in [app,test,fd_app,fd_test]:
+              p=shizuku('pm path '+package,timeout=30)
               if p.returncode or not any(x.startswith('package:') for x in p.stdout.splitlines()):
-                  raise SystemExit('ISOLATED_PACKAGE_MISSING: '+package)
+                  raise SystemExit('ISOLATED_PACKAGE_MISSING: '+package+' '+p.stdout[-1000:])
               print('INSTALLED_PACKAGE_PRESENT='+package,flush=True)
           cmd='am instrument -w -r -e class pro.liliya.android.semanticprovider.host.Qwen3LocalSourcePreflightInstrumentedTest#authorized_local_gguf_matches_exact_candidate '+test+'/androidx.test.runner.AndroidJUnitRunner'
-          p=subprocess.run([rish,'-c',cmd],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=500)
-          print('ANDROID_INSTRUMENTATION_EXIT='+str(p.returncode),flush=True)
-          print('ANDROID_INSTRUMENTATION_LOG_BEGIN',flush=True)
-          print(p.stdout[-16000:],flush=True)
-          print('ANDROID_INSTRUMENTATION_LOG_END',flush=True)
+          p=shizuku(cmd)
+          print('ANDROID_SOURCE_INSTRUMENTATION_EXIT='+str(p.returncode),flush=True)
+          print('ANDROID_SOURCE_LOG_BEGIN',flush=True)
+          print(p.stdout[-12000:],flush=True)
+          print('ANDROID_SOURCE_LOG_END',flush=True)
           expected_sha='d2387ca2dbfee2ffabce7120d3770dadca0b293052bc2f0e138fdc940d9bc7b5'
           expected_bytes='qwen3Bytes=1282439264'
           if p.returncode!=0 or 'OK (1 test)' not in p.stdout or 'qwen3LocalSource=EXACT_SOURCE_VERIFIED' not in p.stdout or expected_bytes not in p.stdout or ('qwen3Sha256='+expected_sha) not in p.stdout:
               raise SystemExit('EXISTING_QWEN3_SOURCE_INSTRUMENTATION_NOT_PASS')
           print('EXISTING_QWEN3_SOURCE_INSTRUMENTATION=PASS',flush=True)
-          import io
-          import re
-          import zipfile
-          path_result=subprocess.run([rish,'-c','pm path '+test],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=30)
-          apk_path=next((x[len('package:'):] for x in path_result.stdout.splitlines() if x.startswith('package:')),None)
-          if path_result.returncode or not apk_path:
-              raise SystemExit('TEST_APK_PATH_UNAVAILABLE')
-          apk_result=subprocess.run([rish,'-c','cat '+apk_path],stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=90)
-          if apk_result.returncode:
-              raise SystemExit('TEST_APK_READ_FAILED: '+apk_result.stderr.decode(errors='replace')[-1000:])
-          class_names=set()
-          with zipfile.ZipFile(io.BytesIO(apk_result.stdout)) as z:
-              for name in z.namelist():
-                  if re.fullmatch(r'classes(?:[0-9]+)?\\.dex',name):
-                      dex=z.read(name)
-                      for item in re.findall(rb'L[A-Za-z0-9_/$]{2,240};',dex):
-                          value=item.decode('ascii','ignore')
-                          if any(token in value.lower() for token in ['qwen','llama','semanticprovider/host']):
-                              class_names.add(value)
-          for value in sorted(class_names):
-              print('INSTALLED_TEST_DEX_CLASS='+value,flush=True)
-          fd_class='Lpro/liliya/android/semanticprovider/host/Qwen3LocalFdBridgeInstrumentedTest;'
-          if fd_class in class_names:
-              fd_cmd='am instrument -w -r -e class pro.liliya.android.semanticprovider.host.Qwen3LocalFdBridgeInstrumentedTest#existing_qwen3_grant_exposes_seekable_descriptor_for_native_model_load '+test+'/androidx.test.runner.AndroidJUnitRunner'
-              fd=subprocess.run([rish,'-c',fd_cmd],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=120)
-              print('ANDROID_FD_INSTRUMENTATION_EXIT='+str(fd.returncode),flush=True)
-              print(fd.stdout[-8000:],flush=True)
-              if fd.returncode!=0 or 'OK (1 test)' not in fd.stdout or 'QWEN3_SAF_FD_NATIVE_PATH_READY=PASS' not in fd.stdout:
-                  raise SystemExit('EXISTING_QWEN3_FD_PREFLIGHT_NOT_PASS')
-              print('EXISTING_QWEN3_FD_PREFLIGHT=PASS',flush=True)
-          else:
-              print('EXISTING_QWEN3_FD_PREFLIGHT=SKIP_CLASS_NOT_INSTALLED',flush=True)
+          fd_cmd='am instrument -w -r -e class pro.liliya.android.semanticprovider.host.Qwen3LocalFdBridgeInstrumentedTest#existing_qwen3_grant_exposes_seekable_descriptor_for_native_model_load '+fd_test+'/androidx.test.runner.AndroidJUnitRunner'
+          fd=shizuku(fd_cmd,timeout=180)
+          print('ANDROID_FD_INSTRUMENTATION_EXIT='+str(fd.returncode),flush=True)
+          print('ANDROID_FD_LOG_BEGIN',flush=True)
+          print(fd.stdout[-10000:],flush=True)
+          print('ANDROID_FD_LOG_END',flush=True)
+          if fd.returncode!=0 or 'OK (1 test)' not in fd.stdout or 'QWEN3_SAF_FD_NATIVE_PATH_READY=PASS' not in fd.stdout:
+              raise SystemExit('EXISTING_QWEN3_FD_PREFLIGHT_NOT_PASS')
+          print('EXISTING_QWEN3_FD_PREFLIGHT=PASS',flush=True)
           PY
