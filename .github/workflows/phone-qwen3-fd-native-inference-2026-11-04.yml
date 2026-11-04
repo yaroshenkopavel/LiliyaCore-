@@ -269,17 +269,17 @@ jobs:
                          ' && cp '+q(str(old_shared))+' '+q(remote+'/semantic-test-original.apk')+
                          ' && chmod 0644 '+q(remote+'/semantic-test-new.apk')+' '+q(remote+'/semantic-test-original.apk'))
           if prepared.returncode:raise SystemExit('PHONE_APK_STAGE_FAILED '+prepared.stdout+prepared.stderr)
-          installed_new=False
+          install_attempted=False
           test_output=''
           test_exit=0
           restore_error=None
           try:
+              install_attempted=True
               install=shell('pm install -r -t '+q(remote+'/semantic-test-new.apk'),timeout=300)
               print('TEST_APK_INSTALL_EXIT='+str(install.returncode),flush=True)
               print((install.stdout+install.stderr)[-4000:],flush=True)
               if install.returncode or 'Success' not in install.stdout:
                   raise RuntimeError('TEST_APK_INSTALL_FAILED')
-              installed_new=True
               _,installed_bytes=installed_apk(test)
               expected_new=hashlib.sha256((bundle/'semantic-test.apk').read_bytes()).hexdigest()
               if hashlib.sha256(installed_bytes).hexdigest()!=expected_new:
@@ -300,7 +300,7 @@ jobs:
               print('PHYSICAL_INFERENCE_ERROR='+str(e),flush=True)
               raise
           finally:
-              if installed_new:
+              if install_attempted:
                   restore=shell('pm install -r -d -t '+q(remote+'/semantic-test-original.apk'),timeout=300)
                   print('TEST_APK_RESTORE_EXIT='+str(restore.returncode),flush=True)
                   print((restore.stdout+restore.stderr)[-3000:],flush=True)
