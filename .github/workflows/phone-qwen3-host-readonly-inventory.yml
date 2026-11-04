@@ -48,35 +48,16 @@ jobs:
               print('GGUF_BYTES='+str(model.stat().st_size))
           usage=shutil.disk_usage(root)
           print('SHARED_FREE_BYTES='+str(usage.free))
-          test_packages=('pro.liliya.android.semanticprovider.test','pro.liliya.android.semanticprovider.qwenlocal.test','pro.liliya.android.semanticprovider.qwenfd.test','pro.liliya.android.semanticprovider.llamacancel.test','pro.liliya.android.semanticprovider.llamacancel2.test')
-          def shizuku_bytes(cmd,timeout=90):
-              env=os.environ.copy()
-              env['RISH_APPLICATION_ID']='com.termux'
-              return subprocess.run(['/system/bin/app_process','-Djava.class.path='+dex,'/system/bin','--nice-name=rish','rikka.shizuku.shell.ShizukuShellLoader','-c',cmd],stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=timeout,env=env)
-          for package in test_packages:
-              pr=shizuku('pm path '+package)
-              apk_path=next((line[len('package:'):] for line in pr.stdout.splitlines() if line.startswith('package:')),None)
-              if not apk_path:
-                  print('TEST_PACKAGE_ABSENT='+package,flush=True)
+          probe_packages=('pro.liliya.android.semanticprovider.test','pro.liliya.android.semanticprovider.qwenlocal.test','pro.liliya.android.semanticprovider.qwenfd.test','pro.liliya.android.semanticprovider.llamacancel.test','pro.liliya.android.semanticprovider.llamacancel2.test')
+          for package in probe_packages:
+              path_result=shizuku('pm path '+package)
+              if not any(line.startswith('package:') for line in path_result.stdout.splitlines()):
                   continue
-              blob=shizuku_bytes('cat '+apk_path)
-              if blob.returncode:
-                  print('TEST_APK_READ_FAILED='+package+' '+blob.stderr.decode(errors='replace')[-500:],flush=True)
-                  continue
-              classes=set()
-              try:
-                  with zipfile.ZipFile(io.BytesIO(blob.stdout)) as z:
-                      for name in z.namelist():
-                          if re.fullmatch(r'classes(?:[0-9]+)?\\.dex',name):
-                              for item in re.findall(rb'L[A-Za-z0-9_/$]{2,240};',z.read(name)):
-                                  value=item.decode('ascii','ignore')
-                                  if any(token in value.lower() for token in ('test','qwen','llama','host')):
-                                      classes.add(value)
-              except Exception as e:
-                  print('TEST_APK_PARSE_FAILED='+package+' '+repr(e),flush=True)
-                  continue
-              print('TEST_APK_BYTES='+package+' '+str(len(blob.stdout)),flush=True)
-              for value in sorted(classes):
-                  print('TEST_APK_CLASS='+package+' '+value,flush=True)
+              cmd='am instrument -w -r -e listTestsForOrchestrator true '+package+'/androidx.test.runner.AndroidJUnitRunner'
+              result=shizuku(cmd,timeout=90)
+              print('TEST_LIST_PACKAGE='+package+' EXIT='+str(result.returncode),flush=True)
+              print('TEST_LIST_OUTPUT_BEGIN',flush=True)
+              print(result.stdout[-12000:],flush=True)
+              print('TEST_LIST_OUTPUT_END',flush=True)
           print('HOST_INVENTORY_READONLY=PASS')
           PY
