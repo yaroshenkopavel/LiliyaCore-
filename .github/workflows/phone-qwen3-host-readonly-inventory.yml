@@ -19,28 +19,24 @@ jobs:
           python3 - <<'PY'
           import os,pathlib,subprocess,shutil
           rish='/data/data/com.termux/files/usr/bin/rish'
-          dex=pathlib.Path('/data/data/com.termux/files/usr/bin/rish_shizuku.dex')
-          for item in (pathlib.Path(rish),dex):
-              st=item.stat()
-              print('RISH_FILE '+str(item)+' real='+str(item.resolve())+' mode='+oct(st.st_mode & 0o777)+' uid='+str(st.st_uid)+' gid='+str(st.st_gid)+' bytes='+str(st.st_size)+' symlink='+str(item.is_symlink()),flush=True)
-          try:
-              for line in pathlib.Path(rish).read_text(errors='replace').splitlines():
-                  if any(word in line.lower() for word in ('dex','chmod','writable','app_process')):
-                      print('RISH_SCRIPT='+line[:300],flush=True)
-          except Exception as e:
-              print('RISH_SCRIPT_READ_ERROR='+repr(e),flush=True)
-          probe=subprocess.run([rish,'-c','id'],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=30)
-          print('RISH_PROBE_EXIT='+str(probe.returncode)+' OUTPUT='+repr(probe.stdout),flush=True)
-          if probe.returncode: raise SystemExit('RISH_PROBE_FAILED')
+          dex='/data/data/com.termux/files/usr/bin/rish_shizuku.dex'
+          mode=pathlib.Path(dex).stat().st_mode & 0o777
+          print('RISH_DEX_MODE='+oct(mode),flush=True)
+          if mode & 0o222: raise SystemExit('RISH_DEX_STILL_WRITABLE')
+          def shizuku(cmd,timeout=30):
+              return subprocess.run(['/system/bin/app_process','-Djava.class.path='+dex,'/system/bin','--nice-name=rish','rikka.shizuku.shell.ShizukuShellLoader','-c',cmd],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=timeout)
+          probe=shizuku('id')
+          print('SHIZUKU_DIRECT_APP_PROCESS_PROBE_EXIT='+str(probe.returncode)+' OUTPUT='+repr(probe.stdout),flush=True)
+          if probe.returncode: raise SystemExit('SHIZUKU_DIRECT_APP_PROCESS_PROBE_FAILED')
           print('RUNNER_NAME='+os.environ.get('RUNNER_NAME',''))
-          who=subprocess.run([rish,'-c','id'],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=30)
+          who=shizuku('id')
           print('RISH_ID_EXIT='+str(who.returncode)+' OUTPUT='+repr(who.stdout))
-          listed=subprocess.run([rish,'-c','pm list packages -3'],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=30)
+          listed=shizuku('pm list packages -3')
           print('THIRD_PARTY_PACKAGES_EXIT='+str(listed.returncode))
           for line in listed.stdout.splitlines():
               if 'liliya' in line.lower() or 'qwen' in line.lower() or 'semanticprovider' in line.lower(): print('PHONE_PACKAGE='+line)
           for package in ('pro.liliya.app','pro.liliya.android.semanticprovider','pro.liliya.android.semanticprovider.test','pro.liliya.android.semanticprovider.qwenlocal','pro.liliya.android.semanticprovider.qwenlocal.test'):
-              result=subprocess.run([rish,'-c','pm path '+package],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=30)
+              result=shizuku('pm path '+package)
               found=sum(line.startswith('package:') for line in result.stdout.splitlines())
               print('PKG '+package+' EXIT='+str(result.returncode)+' APK_PATH_COUNT='+str(found)+' OUTPUT='+repr(result.stdout))
           root=pathlib.Path('/storage/emulated/0/Download new')
