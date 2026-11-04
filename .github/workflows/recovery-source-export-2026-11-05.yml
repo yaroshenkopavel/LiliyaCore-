@@ -1,0 +1,38 @@
+name: Recovery source export (isolated)
+on:
+  push:
+    branches:
+      - recovery/source-export-2026-11-05
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  source-export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify and bundle exact main
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/liliya-source"
+          git fetch --no-tags origin b22afe0025576b9a45cde9b0e62009d5f470665e
+          git checkout --detach b22afe0025576b9a45cde9b0e62009d5f470665e
+          test "$(git rev-parse HEAD)" = b22afe0025576b9a45cde9b0e62009d5f470665e
+          test "$(git rev-parse HEAD^{tree})" = 8d9707cc04fb7dfdab565cf377e3954bd79e1332
+          git fsck --full
+          git bundle create "$RUNNER_TEMP/liliya-source/LiliyaCore.bundle" --all
+          git bundle verify "$RUNNER_TEMP/liliya-source/LiliyaCore.bundle"
+          git rev-parse HEAD > "$RUNNER_TEMP/liliya-source/HEAD.txt"
+          git rev-parse HEAD^{tree} > "$RUNNER_TEMP/liliya-source/TREE.txt"
+          (cd "$RUNNER_TEMP/liliya-source" && sha256sum LiliyaCore.bundle > SHA256SUMS)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-exact-main-source-${{ github.run_id }}
+          path: ${{ runner.temp }}/liliya-source/
+          if-no-files-found: error
+          retention-days: 14
