@@ -26,7 +26,7 @@ jobs:
           env['RISH_APPLICATION_ID']='com.termux'
           prefix=['/system/bin/app_process','-Djava.class.path='+dex,'/system/bin','--nice-name=rish','rikka.shizuku.shell.ShizukuShellLoader','-c']
           def shizuku(command,timeout=60,binary=False):
-              return subprocess.run(prefix+[command],stdout=subprocess.PIPE,stderr=subprocess.PIPE,
+              return subprocess.run(prefix+[command],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,
                                     text=not binary,timeout=timeout,env=env)
           probe=shizuku('id')
           if probe.returncode or 'uid=2000(shell)' not in probe.stdout:
