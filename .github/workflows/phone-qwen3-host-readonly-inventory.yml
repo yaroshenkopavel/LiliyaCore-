@@ -20,10 +20,16 @@ jobs:
           import os,pathlib,subprocess,shutil
           rish='/data/data/com.termux/files/usr/bin/rish'
           print('RUNNER_NAME='+os.environ.get('RUNNER_NAME',''))
+          who=subprocess.run([rish,'-c','id'],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=30)
+          print('RISH_ID_EXIT='+str(who.returncode)+' OUTPUT='+repr(who.stdout))
+          listed=subprocess.run([rish,'-c','pm list packages -3'],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=30)
+          print('THIRD_PARTY_PACKAGES_EXIT='+str(listed.returncode))
+          for line in listed.stdout.splitlines():
+              if 'liliya' in line.lower() or 'qwen' in line.lower() or 'semanticprovider' in line.lower(): print('PHONE_PACKAGE='+line)
           for package in ('pro.liliya.app','pro.liliya.android.semanticprovider','pro.liliya.android.semanticprovider.test','pro.liliya.android.semanticprovider.qwenlocal','pro.liliya.android.semanticprovider.qwenlocal.test'):
               result=subprocess.run([rish,'-c','pm path '+package],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=30)
               found=sum(line.startswith('package:') for line in result.stdout.splitlines())
-              print('PKG '+package+' EXIT='+str(result.returncode)+' APK_PATH_COUNT='+str(found))
+              print('PKG '+package+' EXIT='+str(result.returncode)+' APK_PATH_COUNT='+str(found)+' OUTPUT='+repr(result.stdout))
           root=pathlib.Path('/storage/emulated/0/Download new')
           model=root/'Qwen3-1.7B-Q4_K_M.gguf'
           print('GGUF_PRESENT='+str(model.is_file()))
