@@ -48,7 +48,7 @@ jobs:
               print('GGUF_BYTES='+str(model.stat().st_size))
           usage=shutil.disk_usage(root)
           print('SHARED_FREE_BYTES='+str(usage.free))
-          probe_packages=('pro.liliya.android.semanticprovider.test','pro.liliya.android.semanticprovider.qwenlocal.test','pro.liliya.android.semanticprovider.qwenfd.test','pro.liliya.android.semanticprovider.llamacancel.test','pro.liliya.android.semanticprovider.llamacancel2.test')
+          probe_packages=('pro.liliya.android.semanticprovider.test','pro.liliya.android.semanticprovider.qwenlocal.test','pro.liliya.android.semanticprovider.qwenfd.test','pro.liliya.android.semanticprovider.llamacancel.test','pro.liliya.android.semanticprovider.llamacancel2.test','pro.liliya.app.test','pro.liliya.app.asfh.test','pro.liliya.android.licensetransport.test')
           for package in probe_packages:
               path_result=shizuku('pm path '+package)
               if not any(line.startswith('package:') for line in path_result.stdout.splitlines()):
