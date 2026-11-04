@@ -24,7 +24,9 @@ jobs:
           print('RISH_DEX_MODE='+oct(mode),flush=True)
           if mode & 0o222: raise SystemExit('RISH_DEX_STILL_WRITABLE')
           def shizuku(cmd,timeout=30):
-              return subprocess.run(['/system/bin/app_process','-Djava.class.path='+dex,'/system/bin','--nice-name=rish','rikka.shizuku.shell.ShizukuShellLoader','-c',cmd],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=timeout)
+              env=os.environ.copy()
+              env['RISH_APPLICATION_ID']='com.termux'
+              return subprocess.run(['/system/bin/app_process','-Djava.class.path='+dex,'/system/bin','--nice-name=rish','rikka.shizuku.shell.ShizukuShellLoader','-c',cmd],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=timeout,env=env)
           probe=shizuku('id')
           print('SHIZUKU_DIRECT_APP_PROCESS_PROBE_EXIT='+str(probe.returncode)+' OUTPUT='+repr(probe.stdout),flush=True)
           if probe.returncode: raise SystemExit('SHIZUKU_DIRECT_APP_PROCESS_PROBE_FAILED')
