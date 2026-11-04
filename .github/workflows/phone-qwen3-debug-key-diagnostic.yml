@@ -1,0 +1,55 @@
+name: Read-only phone debug signing key diagnostic
+on:
+  push:
+    branches: [technical/qwen3-fd-native-inference-2026-11-04]
+    paths:
+      - .github/workflows/phone-qwen3-debug-key-diagnostic.yml
+permissions:
+  contents: read
+jobs:
+  inspect-runner-key:
+    runs-on: [self-hosted, ARM64, android-device]
+    timeout-minutes: 5
+    steps:
+      - name: Check only known local debug keystore paths and report public certificate fingerprints
+        shell: bash
+        run: |
+          set -uo pipefail
+          printf 'RUNNER_HOME=%s\n' "${HOME:-unset}"
+          if command -v java >/dev/null 2>&1; then
+            java -version 2>&1 | head -n 1
+          else
+            echo 'JAVA=NOT_FOUND'
+          fi
+          if ! command -v keytool >/dev/null 2>&1; then
+            echo 'KEYTOOL=NOT_FOUND'
+            exit 0
+          fi
+          candidates=(
+            "${HOME:-/root}/.android/debug.keystore"
+            "${ANDROID_USER_HOME:-/nonexistent}/debug.keystore"
+            /root/.android/debug.keystore
+            /home/ubuntu/.android/debug.keystore
+            /data/data/com.termux/files/home/.android/debug.keystore
+          )
+          declare -A seen=()
+          found=0
+          for path in "${candidates[@]}"; do
+            [[ -n "$path" && -f "$path" ]] || continue
+            [[ -z "${seen[$path]:-}" ]] || continue
+            seen[$path]=1
+            found=1
+            out="$(keytool -list -v -keystore "$path" -storepass android -alias androiddebugkey 2>/dev/null)" || {
+              echo 'DEBUG_KEYSTORE_PRESENT_BUT_DEFAULT_CREDENTIALS_OR_ALIAS_FAILED'
+              continue
+            }
+            fingerprint="$(printf '%s\n' "$out" | sed -n 's/^[[:space:]]*SHA256:[[:space:]]*//p' | head -n 1 | tr -d ':[:space:]' | tr '[:upper:]' '[:lower:]')"
+            if [[ -n "$fingerprint" ]]; then
+              printf 'DEBUG_KEY_CERT_SHA256=%s\n' "$fingerprint"
+            else
+              echo 'DEBUG_KEYSTORE_PRESENT_BUT_CERT_FINGERPRINT_UNAVAILABLE'
+            fi
+          done
+          if [[ "$found" -eq 0 ]]; then
+            echo 'KNOWN_DEBUG_KEYSTORE=NOT_FOUND'
+          fi
