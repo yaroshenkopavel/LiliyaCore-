@@ -25,7 +25,7 @@ jobs:
           test "$(git rev-parse HEAD)" = b22afe0025576b9a45cde9b0e62009d5f470665e
           test "$(git rev-parse HEAD^{tree})" = 8d9707cc04fb7dfdab565cf377e3954bd79e1332
           git fsck --full
-          git bundle create "$RUNNER_TEMP/liliya-source/LiliyaCore.bundle" --all
+          # Keep the verified exact commit reachable inside the portable bundle.\n          git update-ref refs/heads/recovery-exact-main b22afe0025576b9a45cde9b0e62009d5f470665e\n          git bundle create "$RUNNER_TEMP/liliya-source/LiliyaCore.bundle" --all
           git bundle verify "$RUNNER_TEMP/liliya-source/LiliyaCore.bundle"
           git rev-parse HEAD > "$RUNNER_TEMP/liliya-source/HEAD.txt"
           git rev-parse HEAD^{tree} > "$RUNNER_TEMP/liliya-source/TREE.txt"
