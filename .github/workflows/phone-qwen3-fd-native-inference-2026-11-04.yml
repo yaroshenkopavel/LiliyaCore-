@@ -35,7 +35,16 @@ jobs:
           app='pro.liliya.android.semanticprovider.qwenfd'
           test=app+'.test'
           snapshot=pathlib.Path('qwen3-device-snapshot')
-          snapshot.mkdir(parents=True,exist_ok=False)
+          if snapshot.exists():
+              allowed={'semantic-app.apk','semantic-test.apk','device-state.txt','SHA256SUMS'}
+              if snapshot.is_symlink() or not snapshot.is_dir():
+                  raise SystemExit('DEVICE_SNAPSHOT_PATH_UNSAFE')
+              entries=list(snapshot.iterdir())
+              if any(x.name not in allowed or x.is_symlink() or not x.is_file() for x in entries):
+                  raise SystemExit('DEVICE_SNAPSHOT_CONTENTS_UNSAFE')
+              for entry in entries: entry.unlink()
+          else:
+              snapshot.mkdir(parents=True)
           for package,name in ((app,'semantic-app.apk'),(test,'semantic-test.apk')):
               result=shizuku('pm path '+package)
               paths=[line[len('package:'):].strip() for line in result.stdout.splitlines()
@@ -53,21 +62,20 @@ jobs:
               version=next((line.strip() for line in dump.stdout.splitlines()
                             if 'versionCode=' in line and 'versionName=' in line),'version_info_unavailable')
               print('INSTALLED_VERSION '+package+' '+version,flush=True)
-          (snapshot/'device-state.txt').write_text(
-              'RUNNER_NAME='+os.environ.get('RUNNER_NAME','')+'\n'+
-              shizuku('cat /proc/meminfo').stdout+'\n'+
-              shizuku('dumpsys battery').stdout+'\n'+
-              shizuku('dumpsys thermalservice',timeout=30).stdout
-          )
+          state=[]
+          for command,timeout in (('cat /proc/meminfo',30),('dumpsys battery',30),('dumpsys thermalservice',30)):
+              result=shizuku(command,timeout=timeout)
+              state.append(result.stdout or '')
+          (snapshot/'device-state.txt').write_text('RUNNER_NAME='+os.environ.get('RUNNER_NAME','')+'\\n'+'\\n'.join(state))
           gate=shizuku('am instrument -w -r -e class '+
                        'pro.liliya.android.semanticprovider.host.Qwen3LocalFdBridgeInstrumentedTest#'+
                        'existing_qwen3_grant_exposes_seekable_descriptor_for_native_model_load '+
                        test+'/androidx.test.runner.AndroidJUnitRunner',timeout=360)
-          output=gate.stdout+gate.stderr
+          output=gate.stdout or ''
           print('EXISTING_FD_GATE_BEGIN',flush=True)
           print(output[-12000:],flush=True)
           print('EXISTING_FD_GATE_END',flush=True)
-          if gate.returncode or 'OK (1 test)' not in gate.stdout:
+          if gate.returncode or 'OK (1 test)' not in output:
               raise SystemExit('EXISTING_QWEN3_FD_GATE_FAILED')
           (snapshot/'SHA256SUMS').write_text(
               ''.join(hashlib.sha256((snapshot/name).read_bytes()).hexdigest()+'  '+name+'\n'
