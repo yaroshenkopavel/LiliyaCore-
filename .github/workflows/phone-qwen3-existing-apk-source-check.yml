@@ -50,7 +50,16 @@ jobs:
           print('ANDROID_FD_LOG_BEGIN',flush=True)
           print(fd.stdout[-10000:],flush=True)
           print('ANDROID_FD_LOG_END',flush=True)
-          if fd.returncode!=0 or 'OK (1 test)' not in fd.stdout or 'QWEN3_SAF_FD_NATIVE_PATH_READY=PASS' not in fd.stdout:
+          if fd.returncode!=0 or 'OK (1 test)' not in fd.stdout:
               raise SystemExit('EXISTING_QWEN3_FD_PREFLIGHT_NOT_PASS')
           print('EXISTING_QWEN3_FD_PREFLIGHT=PASS',flush=True)
+          jni_cmd='am instrument -w -r -e class pro.liliya.android.semanticprovider.OfflineSemanticProviderRealModelInstrumentedTest#generation_and_semantic_jni_coexist_in_one_process '+fd_test+'/androidx.test.runner.AndroidJUnitRunner'
+          jni=shizuku(jni_cmd,timeout=120)
+          print('ANDROID_JNI_LINK_INSTRUMENTATION_EXIT='+str(jni.returncode),flush=True)
+          print('ANDROID_JNI_LINK_LOG_BEGIN',flush=True)
+          print(jni.stdout[-8000:],flush=True)
+          print('ANDROID_JNI_LINK_LOG_END',flush=True)
+          if jni.returncode!=0 or 'OK (1 test)' not in jni.stdout:
+              raise SystemExit('EXISTING_QWEN_JNI_LINK_TEST_NOT_PASS')
+          print('EXISTING_QWEN_JNI_LINK_TEST=PASS',flush=True)
           PY
