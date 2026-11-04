@@ -1,0 +1,45 @@
+name: Liliya pinned llama.cpp source export
+on:
+  push:
+    branches: [technical/liliya-llama-source-export-2026-11-04]
+    paths:
+      - .github/workflows/liliya-llama-source-export-2026-11-04.yml
+permissions:
+  contents: read
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Fetch and verify the exact llama.cpp revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          commit=0f3a71be15af836d277c9f918adfafb45732677e
+          src="$RUNNER_TEMP/llama-cpp-src"
+          out="$RUNNER_TEMP/llama-cpp-export"
+          mkdir -p "$out"
+          git init "$src"
+          git -C "$src" remote add origin https://github.com/ggml-org/llama.cpp.git
+          git -C "$src" -c protocol.version=2 -c http.version=HTTP/1.1 -c pack.threads=1 fetch --depth=1 --no-tags --filter=blob:none origin "$commit"
+          git -C "$src" checkout --force --detach FETCH_HEAD
+          test "$(git -C "$src" rev-parse HEAD)" = "$commit"
+          test -z "$(git -C "$src" status --porcelain --untracked-files=no)"
+          tree="$(git -C "$src" rev-parse 'HEAD^{tree}')"
+          tar -C "$RUNNER_TEMP" -czf "$out/llama-cpp-pinned.tar.gz" llama-cpp-src
+          size="$(stat -c%s "$out/llama-cpp-pinned.tar.gz")"
+          test "$size" -lt 450000000
+          (cd "$out" && sha256sum llama-cpp-pinned.tar.gz > SHA256SUMS)
+          printf 'COMMIT=%s\nTREE=%s\nSIZE_BYTES=%s\n' "$commit" "$tree" "$size" > "$out/SOURCE_IDENTITY.txt"
+          cat "$out/SOURCE_IDENTITY.txt"
+          cat "$out/SHA256SUMS"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-llama-cpp-source-0f3a71be
+          path: |
+            ${{ runner.temp }}/llama-cpp-export/llama-cpp-pinned.tar.gz
+            ${{ runner.temp }}/llama-cpp-export/SHA256SUMS
+            ${{ runner.temp }}/llama-cpp-export/SOURCE_IDENTITY.txt
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
