@@ -1,4 +1,4 @@
-name: Isolated Qwen3 native FD APKs 1105
+name: Isolated Qwen3 repeated inference APKs 1105
 on:
   push:
     branches: [test/qwen3-timed-instrumentation-2026-11-05]
@@ -27,20 +27,20 @@ jobs:
       - name: Configure memory policy
         run: bash .github/ci/configure-gradle-memory.sh
       - name: Build isolated test APKs
-        run: gradle :android-semantic-test-host:assembleDebug :android-semantic-test-host:assembleDebugAndroidTest -PliliyaSemanticHostApplicationId=pro.liliya.android.semanticprovider.qwenfd.timing1105 --console=plain
+        run: gradle :android-semantic-test-host:assembleDebug :android-semantic-test-host:assembleDebugAndroidTest -PliliyaSemanticHostApplicationId=pro.liliya.android.semanticprovider.qwenfd.repeat1105 --console=plain
       - name: Verify package names and prepare artifact
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p timing1105
-          cp android-semantic-test-host/build/outputs/apk/debug/android-semantic-test-host-debug.apk timing1105/app.apk
-          cp android-semantic-test-host/build/outputs/apk/androidTest/debug/android-semantic-test-host-debug-androidTest.apk timing1105/test.apk
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging timing1105/app.apk | grep -m1 "package: name='pro.liliya.android.semanticprovider.qwenfd.timing1105'"
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging timing1105/test.apk | grep -m1 "package: name='pro.liliya.android.semanticprovider.qwenfd.timing1105.test'"
-          (cd timing1105 && sha256sum app.apk test.apk > SHA256SUMS)
+          mkdir -p repeat1105
+          cp android-semantic-test-host/build/outputs/apk/debug/android-semantic-test-host-debug.apk repeat1105/app.apk
+          cp android-semantic-test-host/build/outputs/apk/androidTest/debug/android-semantic-test-host-debug-androidTest.apk repeat1105/test.apk
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging repeat1105/app.apk | grep -m1 "package: name='pro.liliya.android.semanticprovider.qwenfd.repeat1105'"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging repeat1105/test.apk | grep -m1 "package: name='pro.liliya.android.semanticprovider.qwenfd.repeat1105.test'"
+          (cd repeat1105 && sha256sum app.apk test.apk > SHA256SUMS)
       - uses: actions/upload-artifact@v4
         with:
-          name: qwen3-timing1105-apks
-          path: timing1105/
+          name: qwen3-repeat1105-apks
+          path: repeat1105/
           if-no-files-found: error
           retention-days: 14
