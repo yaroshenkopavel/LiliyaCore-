@@ -1,0 +1,35 @@
+{
+  "evidenceClass": "asf-h-manual-physical-evidence-index-v1",
+  "sourceCommit": "3e35138e1033836f66eec516b4a26562120b2c45",
+  "originalFilename": "ASF-H-physical-final.json",
+  "originalSizeBytes": 42349,
+  "originalSha256": "4417b7257bc23a4f4940108c82d3fed60ca8fb412d79da081b02a6819c9b2c22",
+  "rawEvidenceClass": "asf-h-android-physical-resource-evidence-v1",
+  "androidModel": "23030RAC7Y",
+  "androidSdk": 34,
+  "architecture": "arm64-v8a",
+  "packages": [
+    "pro.liliya.app.asfh",
+    "pro.liliya.app.asfh.test"
+  ],
+  "instrumentationPassed": true,
+  "workload": "physical-synthetic-bounded-runtime-v1",
+  "verdict": "MEASURED_NO_PRODUCT_BUDGET_APPLIED",
+  "modes": {
+    "FULL_ONLY": {
+      "actualElapsedMillis": 2169,
+      "peakTotalPssKb": 55976,
+      "peakTotalRssKb": 155952,
+      "memorySamples": 10
+    },
+    "HIERARCHICAL": {
+      "actualElapsedMillis": 2059,
+      "peakTotalPssKb": 56039,
+      "peakTotalRssKb": 156824,
+      "memorySamples": 9
+    }
+  },
+  "qualityFingerprintsEqual": true,
+  "formalGithubPhysicalJobPassed": false,
+  "formalClosure": "PENDING_REVIEW"
+}
