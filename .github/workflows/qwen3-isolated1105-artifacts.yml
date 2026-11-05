@@ -1,4 +1,4 @@
-name: Isolated Qwen3 20-call stress APKs 1105
+name: Isolated Qwen3 response diagnostics APKs 1105
 on:
   push:
     branches: [test/qwen3-timed-instrumentation-2026-11-05]
@@ -27,20 +27,20 @@ jobs:
       - name: Configure memory policy
         run: bash .github/ci/configure-gradle-memory.sh
       - name: Build isolated test APKs
-        run: gradle :android-semantic-test-host:assembleDebug :android-semantic-test-host:assembleDebugAndroidTest -PliliyaSemanticHostApplicationId=pro.liliya.android.semanticprovider.qwenfd.stress1105 --console=plain
+        run: gradle :android-semantic-test-host:assembleDebug :android-semantic-test-host:assembleDebugAndroidTest -PliliyaSemanticHostApplicationId=pro.liliya.android.semanticprovider.qwenfd.diag1105 --console=plain
       - name: Verify package names and prepare artifact
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p stress1105
-          cp android-semantic-test-host/build/outputs/apk/debug/android-semantic-test-host-debug.apk stress1105/app.apk
-          cp android-semantic-test-host/build/outputs/apk/androidTest/debug/android-semantic-test-host-debug-androidTest.apk stress1105/test.apk
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging stress1105/app.apk | grep -m1 "package: name='pro.liliya.android.semanticprovider.qwenfd.stress1105'"
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging stress1105/test.apk | grep -m1 "package: name='pro.liliya.android.semanticprovider.qwenfd.stress1105.test'"
-          (cd stress1105 && sha256sum app.apk test.apk > SHA256SUMS)
+          mkdir -p diag1105
+          cp android-semantic-test-host/build/outputs/apk/debug/android-semantic-test-host-debug.apk diag1105/app.apk
+          cp android-semantic-test-host/build/outputs/apk/androidTest/debug/android-semantic-test-host-debug-androidTest.apk diag1105/test.apk
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging diag1105/app.apk | grep -m1 "package: name='pro.liliya.android.semanticprovider.qwenfd.diag1105'"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging diag1105/test.apk | grep -m1 "package: name='pro.liliya.android.semanticprovider.qwenfd.diag1105.test'"
+          (cd diag1105 && sha256sum app.apk test.apk > SHA256SUMS)
       - uses: actions/upload-artifact@v4
         with:
-          name: qwen3-stress1105-apks
-          path: stress1105/
+          name: qwen3-diag1105-apks
+          path: diag1105/
           if-no-files-found: error
           retention-days: 14
