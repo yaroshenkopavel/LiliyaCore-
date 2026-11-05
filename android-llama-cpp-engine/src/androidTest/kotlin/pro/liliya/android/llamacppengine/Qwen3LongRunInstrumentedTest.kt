@@ -93,6 +93,14 @@ class Qwen3LongRunInstrumentedTest {
                     }
                     report("QWEN3_STRESS_INFER_${i}_MS", elapsed)
                     report("QWEN3_STRESS_OUTPUT_${i}_BYTES", result.size - 1)
+                    val output = result.copyOfRange(1, result.size)
+                    val outputSha = MessageDigest.getInstance("SHA-256").digest(output)
+                        .joinToString("") { "%02x".format(it) }
+                    report("QWEN3_STRESS_OUTPUT_${i}_SHA256", outputSha)
+                    if (i <= 2) {
+                        report("QWEN3_STRESS_OUTPUT_${i}_BASE64",
+                            android.util.Base64.encodeToString(output, android.util.Base64.NO_WRAP))
+                    }
                     report("QWEN3_STRESS_PSS_${i}_KB", pssKb())
                 }
                 report("QWEN3_STRESS_COMPLETED_CALLS", 20)
