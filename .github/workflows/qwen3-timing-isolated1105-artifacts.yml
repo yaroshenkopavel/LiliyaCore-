@@ -1,0 +1,46 @@
+name: Isolated Qwen3 timing APKs 1105
+on:
+  push:
+    branches: [test/qwen3-timed-instrumentation-2026-11-05]
+    paths: [.github/workflows/qwen3-timing-isolated1105-artifacts.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.1'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - name: Install Android SDK
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools" "ndk;29.0.13113456" "cmake;3.31.6"
+      - name: Configure memory policy
+        run: bash .github/ci/configure-gradle-memory.sh
+      - name: Build isolated test APKs
+        run: gradle :android-semantic-test-host:assembleDebug :android-semantic-test-host:assembleDebugAndroidTest -PliliyaSemanticHostApplicationId=pro.liliya.android.semanticprovider.qwenfd.isolated1105 --console=plain
+      - name: Verify package names and prepare artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p qwen3-timing1105
+          cp android-semantic-test-host/build/outputs/apk/debug/android-semantic-test-host-debug.apk qwen3-timing1105/app.apk
+          cp android-semantic-test-host/build/outputs/apk/androidTest/debug/android-semantic-test-host-debug-androidTest.apk qwen3-timing1105/test.apk
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging qwen3-timing1105/app.apk | grep -m1 "package: name='pro.liliya.android.semanticprovider.qwenfd.isolated1105'"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging qwen3-timing1105/test.apk | grep -m1 "package: name='pro.liliya.android.semanticprovider.qwenfd.isolated1105.test'"
+          (cd qwen3-timing1105 && sha256sum app.apk test.apk > SHA256SUMS)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qwen3-timing-isolated1105-apks
+          path: qwen3-timing1105/
+          if-no-files-found: error
+          retention-days: 14
