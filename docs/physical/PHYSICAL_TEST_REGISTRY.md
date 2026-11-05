@@ -47,3 +47,17 @@ Connector query checked latest-attempt jobs and artifact metadata (first page) f
 | [42072938367](https://github.com/yaroshenkopavel/LiliyaCore-/actions/runs/42072938367) | build SUCCESS | `13435924530`, `qwen3-nothink1105-apks` | Build only; 4-call physical result from user-supplied instrumentation output |
 
 Artifact metadata is not the same as downloading and inspecting artifact contents. An expired/retained status is point-in-time. Do not infer that a skipped physical job passed because the workflow or its build jobs succeeded.
+
+## Further audit — ASF603 supplemental workflow (2026-11-05)
+
+- [Run 38258728790](https://github.com/yaroshenkopavel/LiliyaCore-/actions/runs/38258728790): job **`Verify pinned operator ASF603 V2 ZIP (not official ARM64 acceptance)` = SUCCESS**.
+- Artifact metadata: `11751202168`, `asf603-operator-v2-supplemental-verification`, not expired at check time.
+- **Classification: operator supplemental verification, not a physical ARM64 acceptance.** This run must not be counted as a successful device-side ASF test.
+- GitHub commit searches for `ASF-H physical`, `license physical` and `phone-preflight` returned candidate historical commits; search hits are **leads, not proof of execution**. Exact runs and device logs still require correlation.
+
+### Historical verification priority
+
+1. Locate a genuine successful phone-side ASF-H run and inspect its physical job, rather than reusing run `38194163562` (physical job skipped).
+2. Match license provisioning/revocation scripts to a **device-side** instrumentation log and explicit verdict.
+3. Match November phone-preflight and smoke runner console timestamps to GitHub run IDs; preserve initial failures as well as later successes.
+4. Archive standalone phone instrumentation logs with SHA256; the Qwen3 no-think test was run via `rish am instrument`, not as the hosted APK-build job.
