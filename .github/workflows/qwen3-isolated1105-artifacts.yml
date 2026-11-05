@@ -2,7 +2,7 @@ name: Isolated Qwen3 native FD APKs 1105
 on:
   push:
     branches: [test/qwen3-timed-instrumentation-2026-11-05]
-    paths: [.github/workflows/qwen3-timing1105-artifacts.yml]
+    paths: [.github/workflows/qwen3-isolated1105-artifacts.yml]
   workflow_dispatch:
 permissions:
   contents: read
