@@ -1,7 +1,7 @@
 package pro.liliya.android.llamacppengine
 
 /** Engine-local prompt framing. Selection/authorization remains outside this adapter. */
-enum class LlamaCppPromptFormatPolicy(internal val nativeCode: Int) {
+enum class LlamaCppPromptFormatPolicy(val nativeCode: Int) {
     RAW(0),
     MODEL_DEFAULT_CHAT_TEMPLATE(1)
 }
