@@ -128,3 +128,16 @@ GitHub commit search established source-history anchors (these are **not executi
 ### Evidence recovery protocol
 
 Use commit timestamps and workflow filenames to locate candidate historical runs, then verify **run ID → attempt → job ID → runner labels → log success marker → artifact**. In particular, a build on `ubuntu-latest` must not be confused with a self-hosted ARM64 job. Retain any failure/retry sequence, and never promote source-history links into physical PASS without a device execution log. No workflow dispatch or phone changes occurred during this review.
+
+## Artifact creation confirmed from build job logs — 2026-11-06
+
+**Important refinement to the earlier zero-artifact API observation:** the current artifact-list endpoint returned an empty array for the following build runs, **but their archived job logs explicitly prove successful artifact upload at build time**. An empty current listing must not be described as evidence that no artifact was ever uploaded.
+
+| Version | Build run | Job ID | Artifact name | Artifact ID | Final size | Uploaded ZIP SHA-256 |
+| --- | --- | --- | --- | --- | ---: | --- |
+| Isolated llama v1 | [41342171872](https://github.com/yaroshenkopavel/LiliyaCore-/actions/runs/41342171872) | `124954318856` | `phone-llama-isolated-cancel-apks` | `13098231575` | 47,089,888 bytes | `aa71fa0c69af9ff1f659e08134431c83a9d64f912afdae1a0ba2f6ec283b8d44` |
+| Isolated llama v2 | [41352771626](https://github.com/yaroshenkopavel/LiliyaCore-/actions/runs/41352771626) | `124986338641` | `phone-llama-isolated2-cancel-apks` | `13102395676` | 47,108,816 bytes | `71dc4a8992397e87113bdd291bcda1255b2bf54a208cbac89ff416ffd4acb490` |
+
+Both job logs contain `Artifact ... has been successfully uploaded!` and the exact artifact ID and size. This verifies **historical upload**, not present downloadability, the integrity of a freshly downloaded copy, or physical-device acceptance. These SHA-256 values are for uploaded ZIPs, not individual APKs. Preserve the distinct v1/v2 provenance.
+
+Commit-associated workflow-run lookup for source commits `658fc35e`, `820c1bec` and `6233581b` returned empty results, but that connector lookup is restricted to PR-triggered runs and cannot establish absence of push/dispatch runs. Continue historical run-ID discovery through other evidence rather than concluding the tests never ran.
