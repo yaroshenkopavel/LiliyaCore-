@@ -78,3 +78,18 @@ Job-level IDs additionally recovered:
 - `38258728790`: supplemental operator verification job `114843445117` SUCCESS; not official ARM64 acceptance.
 
 No new physical tests were run in this audit. Historical phone-side licensing and runner smoke execution still require independent run/log provenance.
+
+## Licensing and phone-runner provenance audit — 2026-11-06
+
+Read repository test source `android-app/src/androidTest/kotlin/pro/liliya/app/PhysicalLaptopRevocationPostContactInstrumentedTest.kt`: its method `successful_online_contact_advances_revocation_and_denies_old_license` uses an HTTPS endpoint, pre-existing license envelope, CA certificate and encrypted bearer credential. **Source presence and assertions are not proof the test ran or passed.** The historical `Revoke-LiliyaPhysicalLicense.ps1` console output in PHY-004 establishes a reported backend revocation result only; device-side post-contact acceptance remains unverified.
+
+Read `android-app/src/androidTest/kotlin/pro/liliya/app/PhysicalProductionAuthorityAdmissionInstrumentedTest.kt` as a further candidate requiring device-side execution evidence. Do not conflate authority-admission test existence with licensing physical PASS.
+
+Read `.github/workflows/phone-isolated-llama-physical-acceptance.yml`: it defines a `workflow_dispatch` job `physical-llama` targeted at `[self-hosted, ARM64, android-device]`, references APK bundle build run `41342171872`, and contains explicit SHA256 checks and isolated package preflight. **This is workflow definition, not a verified execution result**; a matching run ID, job conclusion and phone instrumentation log are still required. It is not safe to trigger this workflow just to reconstruct history.
+
+The Nov 1 runner console records `phone-preflight`, `physical-llama` and `phone-smoke` as eventually succeeded, with earlier failures, but lacks exact GitHub run IDs. These are retained at the historical-console evidence level pending correlation.
+
+### Required corroboration
+- Licensing: physical device instrumentation `OK`, time, test class, endpoint identity (non-secret), signed evidence, corresponding backend revocation event.
+- Phone runner: GitHub run ID, attempt, job ID, status, execution log and artifact identity for each success and preceding failure.
+- Do not store tokens, private keys, CA private material, credentials, or raw sensitive device identifiers in this registry.
