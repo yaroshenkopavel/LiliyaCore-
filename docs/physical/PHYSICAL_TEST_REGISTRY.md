@@ -113,3 +113,18 @@ Inspected `.github/workflows/phone-isolated2-physical.yml` and checked its refer
 - The older `phone-isolated-llama-physical-acceptance.yml` and v2 workflow are distinct attempts; do not merge their outcomes.
 
 Also inspected `.github/workflows/phone-bridge-readonly-smoke-2026-11-02.yml`: its `phone-smoke` job requires ARM64, Shizuku `rish`, SDK >=29, existing bridge token file, and unauthenticated `/v1/probe` HTTP 401 before printing `PHONE_BRIDGE_READONLY_SMOKE=PASS`. These are **source-defined acceptance criteria only**, not a newly verified run.
+
+## Historical implementation-to-execution trace — 2026-11-06
+
+GitHub commit search established source-history anchors (these are **not execution verdicts**):
+
+| Subsystem | Source-history anchor | What it supports | What it does NOT support |
+| --- | --- | --- | --- |
+| Isolated llama v2 | [`6233581ba6855e1cea87a3386fdd656dcef6860a`](https://github.com/yaroshenkopavel/LiliyaCore-/commit/6233581ba6855e1cea87a3386fdd656dcef6860a) | Commit message records guarded physical llama acceptance with fresh isolated v2 identities | No physical job PASS or device log |
+| Phone bridge smoke | [`820c1bec62a19c0fe74118a3675fbe99f74ef762`](https://github.com/yaroshenkopavel/LiliyaCore-/commit/820c1bec62a19c0fe74118a3675fbe99f74ef762) | Introduces one-shot read-only bridge smoke on main | No run outcome |
+| Phone bridge smoke fix | [`658fc35e9f3031f12869d8c868b21bfab71d930c`](https://github.com/yaroshenkopavel/LiliyaCore-/commit/658fc35e9f3031f12869d8c868b21bfab71d930c) | Records fix for merged Shizuku `rish` output | No proof earlier failed runs or later PASS |
+| ASF603 physical dispatch | [`1a535de0a88044a7bab9d1e149c321e02a0b5d35`](https://github.com/yaroshenkopavel/LiliyaCore-/commit/1a535de0a88044a7bab9d1e149c321e02a0b5d35) | Records trusted exact-head physical dispatch design | No proof device-side acceptance |
+
+### Evidence recovery protocol
+
+Use commit timestamps and workflow filenames to locate candidate historical runs, then verify **run ID → attempt → job ID → runner labels → log success marker → artifact**. In particular, a build on `ubuntu-latest` must not be confused with a self-hosted ARM64 job. Retain any failure/retry sequence, and never promote source-history links into physical PASS without a device execution log. No workflow dispatch or phone changes occurred during this review.
