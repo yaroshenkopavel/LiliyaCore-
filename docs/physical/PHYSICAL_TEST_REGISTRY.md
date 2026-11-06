@@ -61,3 +61,20 @@ Artifact metadata is not the same as downloading and inspecting artifact content
 2. Match license provisioning/revocation scripts to a **device-side** instrumentation log and explicit verdict.
 3. Match November phone-preflight and smoke runner console timestamps to GitHub run IDs; preserve initial failures as well as later successes.
 4. Archive standalone phone instrumentation logs with SHA256; the Qwen3 no-think test was run via `rish am instrument`, not as the hosted APK-build job.
+
+## ASF-H committed JSON revalidation — 2026-11-06
+
+Read and parsed `evidence/asf-h/asf-h-usb-adb-physical-resource-evidence-e66f4fa7.json` on this branch, not merely its filename. It identifies device `23030RAC7Y`, source commit `e66f4fa762595e204675fddb73ade3ba976839b3` and verdict `MEASURED_NO_PRODUCT_BUDGET_APPLIED`.
+
+| Mode | Instrumentation | Wall elapsed | Samples | PSS peak | RSS peak | Thermal after status |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| FULL_ONLY | PASS | 18,323 ms | 8 | 58,945 KiB | 160,132 KiB | 0 |
+| HIERARCHICAL | PASS | 5,555 ms | 11 | 59,929 KiB | 161,204 KiB | 0 |
+
+**Interpretation:** the committed file contains physical measurements and passed instrumentation for both modes. It **does not** certify compliance with a final product resource budget. It is independent of workflow run `38194163562`, whose physical job was skipped.
+
+Job-level IDs additionally recovered:
+- `38194163562`: contract validation job `114633064387` SUCCESS; APK build job `114633086099` SUCCESS; physical ARM64 job `114634287567` SKIPPED.
+- `38258728790`: supplemental operator verification job `114843445117` SUCCESS; not official ARM64 acceptance.
+
+No new physical tests were run in this audit. Historical phone-side licensing and runner smoke execution still require independent run/log provenance.
