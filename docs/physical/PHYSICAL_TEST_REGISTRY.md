@@ -93,3 +93,11 @@ The Nov 1 runner console records `phone-preflight`, `physical-llama` and `phone-
 - Licensing: physical device instrumentation `OK`, time, test class, endpoint identity (non-secret), signed evidence, corresponding backend revocation event.
 - Phone runner: GitHub run ID, attempt, job ID, status, execution log and artifact identity for each success and preceding failure.
 - Do not store tokens, private keys, CA private material, credentials, or raw sensitive device identifiers in this registry.
+
+## Isolated llama bundle build provenance — 2026-11-06
+
+- The `phone-isolated-llama-physical-acceptance.yml` workflow references build run `41342171872` for its isolated cancellation APK bundle.
+- [Run 41342171872](https://github.com/yaroshenkopavel/LiliyaCore-/actions/runs/41342171872): job `build-phone-bundle`, job ID `124954318856`, **SUCCESS**. GitHub Actions job log was retrieved and inspected; it finishes with normal post-job cleanup at 2026-11-01 19:36:58 UTC.
+- The artifact-list endpoint returned **zero artifacts** for this run at the time of inspection. This does not prove an artifact never existed or that its content is valid. Workflow source refers to a bundle, but the current artifact listing does not independently confirm its availability.
+- **Verdict: APK build verified; physical llama cancellation execution NOT established by this run.** Find the separately dispatched self-hosted `physical-llama` run and inspect its actual device-side job and logs before recording a physical PASS.
+- No workflow was dispatched and no phone process was changed during this read-only audit.
