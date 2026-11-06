@@ -141,3 +141,12 @@ Use commit timestamps and workflow filenames to locate candidate historical runs
 Both job logs contain `Artifact ... has been successfully uploaded!` and the exact artifact ID and size. This verifies **historical upload**, not present downloadability, the integrity of a freshly downloaded copy, or physical-device acceptance. These SHA-256 values are for uploaded ZIPs, not individual APKs. Preserve the distinct v1/v2 provenance.
 
 Commit-associated workflow-run lookup for source commits `658fc35e`, `820c1bec` and `6233581b` returned empty results, but that connector lookup is restricted to PR-triggered runs and cannot establish absence of push/dispatch runs. Continue historical run-ID discovery through other evidence rather than concluding the tests never ran.
+
+## Canonical documentation cross-check: recovered physical run IDs — 2026-11-06
+
+The separate canonical `yaroshenkopavel/Documents-LiliyaCore-` `docs/current/STATUS.yaml` (November 3 snapshot) already recorded two historical run IDs previously treated as unresolved here. Independently rechecked the **actual GitHub Actions jobs and decoded logs**:
+
+1. **Phone bridge smoke:** [run 41359911916](https://github.com/yaroshenkopavel/LiliyaCore-/actions/runs/41359911916), job `phone-smoke` ID `125007897822`, **SUCCESS**. Log reports `SMOKE_SOURCE_SHA=658fc35e9f3031f12869d8c868b21bfab71d930c`, `SMOKE_RUN_ID=41359911916`, `RUNNER_NAME=liliya-redmi-note12s`, `BRIDGE_UNAUTH_STATUS=401`, `PHONE_BRIDGE_READONLY_SMOKE=PASS`. Scope: ARM64/read-only bridge smoke and unauthenticated boundary only.
+2. **Isolated llama physical cancellation:** [run 41354283009](https://github.com/yaroshenkopavel/LiliyaCore-/actions/runs/41354283009), job `physical` ID `124990904945`, **SUCCESS**. Log includes actual device test output `OK (1 test)`, `INSTRUMENTATION_CODE: -1`, and `PHYSICAL_LLAMA_CANCEL=PASS`. Canonical November 3 status binds this result to source `8437d1a88bc6f32d35598f1d8383748216ba61b2`. Scope: recorded isolated cancellation test, **not** production model inference and **not** later current-main source acceptance.
+
+These are **historical recovered successes**, not tests re-run on November 6. They supersede the earlier registry's assertions that these particular run IDs were still missing. Other historical licensing and resource provenance gaps remain open. See canonical cross-repository review `Documents-LiliyaCore-/docs/audits/DOCUMENTATION_CROSS_REPOSITORY_REVIEW_2026-11-06.md`.
