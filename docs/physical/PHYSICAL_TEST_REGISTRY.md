@@ -101,3 +101,15 @@ The Nov 1 runner console records `phone-preflight`, `physical-llama` and `phone-
 - The artifact-list endpoint returned **zero artifacts** for this run at the time of inspection. This does not prove an artifact never existed or that its content is valid. Workflow source refers to a bundle, but the current artifact listing does not independently confirm its availability.
 - **Verdict: APK build verified; physical llama cancellation execution NOT established by this run.** Find the separately dispatched self-hosted `physical-llama` run and inspect its actual device-side job and logs before recording a physical PASS.
 - No workflow was dispatched and no phone process was changed during this read-only audit.
+
+## Isolated llama v2 physical-workflow trace — 2026-11-06
+
+Inspected `.github/workflows/phone-isolated2-physical.yml` and checked its referenced build run:
+
+- [Run 41352771626](https://github.com/yaroshenkopavel/LiliyaCore-/actions/runs/41352771626): job `build-phone-bundle`, job ID `124986338641`, conclusion **SUCCESS**. The artifact-list endpoint currently returned no artifacts; do not infer the package was never produced.
+- The **separate** workflow `phone-isolated2-physical.yml` defines `workflow_dispatch`, self-hosted `ARM64`/`android-device` job `physical`, a 25-minute timeout, bundle `phone-llama-isolated2-cancel-apks`, package `pro.liliya.android.semanticprovider.llamacancel2`, and an instrumented method `AndroidLlamaCppRealModelInstrumentedTest#real_fixture_cross_thread_cancel_rejects_stream_and_closes_safely`.
+- Its script verifies bundle checksums, package identity, staged and installed APK hashes, then requires `INSTRUMENTATION_CODE: -1`, `OK (1 test)` and prints `PHYSICAL_LLAMA_CANCEL=PASS` on success.
+- **Verdict:** build SUCCESS verified, workflow physical acceptance criteria inspected; **actual device-side v2 PASS remains unverified** until its separately dispatched run ID and job logs are recovered.
+- The older `phone-isolated-llama-physical-acceptance.yml` and v2 workflow are distinct attempts; do not merge their outcomes.
+
+Also inspected `.github/workflows/phone-bridge-readonly-smoke-2026-11-02.yml`: its `phone-smoke` job requires ARM64, Shizuku `rish`, SDK >=29, existing bridge token file, and unauthenticated `/v1/probe` HTTP 401 before printing `PHONE_BRIDGE_READONLY_SMOKE=PASS`. These are **source-defined acceptance criteria only**, not a newly verified run.
