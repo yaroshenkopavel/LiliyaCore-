@@ -25,7 +25,7 @@ internal sealed interface LlamaCppNativeCloseResult {
     data class Failed(val reason: ModelEngineCloseFailure) : LlamaCppNativeCloseResult
 }
 
-internal fun interface LlamaCppNativeStreamingSink {
+fun interface LlamaCppNativeStreamingSink {
     /** Returns false to request cooperative cancellation. */
     fun onChunk(chunkUtf8: ByteArray): Boolean
 }
@@ -148,7 +148,7 @@ private object PublicHandleIds {
     }
 }
 
-private object JniLlamaCppNativeSessionPort : LlamaCppNativeSessionPort {
+internal object JniLlamaCppNativeSessionPort : LlamaCppNativeSessionPort {
     override fun load(
         sourcePath: String,
         policy: LlamaCppEnginePolicy,

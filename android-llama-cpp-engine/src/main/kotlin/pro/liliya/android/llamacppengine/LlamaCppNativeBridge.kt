@@ -1,7 +1,7 @@
 package pro.liliya.android.llamacppengine
 
 /** Narrow structural JNI protocol for the pinned llama.cpp backend. */
-internal object LlamaCppNativeBridge {
+object LlamaCppNativeBridge {
     const val LOAD_RESOURCE_REJECTED = -1L
     const val LOAD_UNSUPPORTED = -2L
     const val LOAD_REJECTED = -3L
