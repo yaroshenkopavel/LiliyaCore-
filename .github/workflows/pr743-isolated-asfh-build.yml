@@ -101,6 +101,25 @@ jobs:
           git rev-parse HEAD > "$RUNNER_TEMP/pr743-asfh/SOURCE_COMMIT"
           git rev-parse HEAD^{tree} > "$RUNNER_TEMP/pr743-asfh/SOURCE_TREE"
           echo "ISOLATED_ASFH_BUILD=PASS"
+      - name: Verify stable isolated APK signing certificate
+        shell: bash
+        run: |
+          set -euo pipefail
+          apksigner="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          app="android-app/build/outputs/apk/asfH/android-app-asfH.apk"
+          test_apk="android-app/build/outputs/apk/androidTest/asfH/android-app-asfH-androidTest.apk"
+          expected="b04992d3784447a6a01099f6ad2c7f7196b6cffd86c9f378cc4b406d48e7d953"
+          app_digest=$("$apksigner" verify --print-certs "$app" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
+          test_digest=$("$apksigner" verify --print-certs "$test_apk" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
+          test -n "$app_digest"
+          test "$app_digest" = "$test_digest"
+          printf 'APK_SIGNER_SHA256=%s\n' "$app_digest" | tee "$RUNNER_TEMP/pr743-asfh/SIGNER_SHA256"
+          if [[ -n "${LILIYA_ASFH_KEYSTORE_PATH:-}" ]]; then
+            test "$app_digest" = "$expected"
+            echo "ASF_H_STABLE_SIGNING=PASS"
+          else
+            echo "ASF_H_STABLE_SIGNING=NOT_CONFIGURED"
+          fi
       - name: Publish APKs without device installation
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
