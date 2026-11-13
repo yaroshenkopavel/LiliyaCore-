@@ -36,12 +36,21 @@ class PhysicalProductionColdResumeFailClosedInstrumentedTest {
             application.runtimeOwner.state()
         )
 
+        // A clean install has no Product Auth credential. Missing credentials must not
+        // prevent verification of the cold-start fail-closed boundary; when a durable
+        // credential is present, verify that it remains readable after process restart.
         val durableProductAuth = ProductionAndroidProductAuthEncryptedStore.create(application)
-        val secret = durableProductAuth.openSecret()
-        try {
-            assertTrue(secret.isNotEmpty())
-        } finally {
-            secret.fill(0)
+        val productAuthState = try {
+            val secret = durableProductAuth.openSecret()
+            try {
+                assertTrue(secret.isNotEmpty())
+                "AVAILABLE"
+            } finally {
+                secret.fill(0)
+            }
+        } catch (unavailable: IllegalStateException) {
+            assertEquals("product auth credential unavailable", unavailable.message)
+            "MISSING"
         }
         val activatedLicenseState = application.activatedLicenseState()
         val expectedLauncherStatus = when (activatedLicenseState) {
@@ -101,7 +110,7 @@ class PhysicalProductionColdResumeFailClosedInstrumentedTest {
 
             instrumentation.sendStatus(2, Bundle().apply {
                 putString("coldResume.launcher", "PROVISIONING")
-                putString("coldResume.productAuthDurable", "true")
+                putString("coldResume.productAuthDurable", productAuthState)
                 putString("coldResume.activatedLicenseState", activatedLicenseState.name)
                 putString("coldResume.runtimeStartupProcessLocal", "absent")
                 putString("coldResume.productProfileProcessLocal", "absent")
