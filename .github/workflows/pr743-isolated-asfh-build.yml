@@ -6,6 +6,7 @@ on:
       - test/pr743-isolated-asfh-build-20261113
     paths:
       - 'android-app/src/androidTest/kotlin/pro/liliya/app/PhysicalInstrumentedActivityLaunch.kt'
+      - 'android-app/src/androidTest/kotlin/pro/liliya/app/PhysicalProductionOfflineResumeColdLaunchUiInstrumentedTest.kt'
       - '.github/workflows/pr743-isolated-asfh-build.yml'
   pull_request:
     paths:
