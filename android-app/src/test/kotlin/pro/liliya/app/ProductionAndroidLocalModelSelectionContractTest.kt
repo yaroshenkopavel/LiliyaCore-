@@ -163,6 +163,41 @@ class ProductionAndroidLocalModelSelectionContractTest {
     }
 
     @Test
+    fun acquisition_rejects_same_size_same_mtime_mutation_after_receipt_restore() {
+        val root = Files.createTempDirectory("liliya-model-selection-same-metadata").toFile()
+            .also(roots::add)
+        val selected = assertIs<ProductionAndroidLocalModelSelectionResult.Selected>(
+            ProductionAndroidLocalModelSelection.importSelected(root, maxImportBytes = 1024) {
+                ByteArrayInputStream(byteArrayOf(1, 2, 3, 4))
+            }
+        ).file
+        val originalModified = selected.lastModified()
+        selected.writeBytes(byteArrayOf(4, 3, 2, 1))
+        assertTrue(selected.setLastModified(originalModified))
+        ProductionAndroidLocalModelSelection.clearForTests()
+
+        // The metadata receipt is intentionally O(1) and is not an integrity proof.
+        assertEquals(selected.canonicalFile, ProductionAndroidLocalModelSelection.restore(root))
+        // At the first-run/activation trust boundary the full bytes must be verified.
+        assertNull(ProductionAndroidLocalModelSelection.verifiedForAcquisition())
+        assertNull(ProductionAndroidLocalModelSelection.current())
+    }
+
+    @Test
+    fun acquisition_accepts_untampered_restored_model() {
+        val root = Files.createTempDirectory("liliya-model-selection-verified").toFile()
+            .also(roots::add)
+        val selected = assertIs<ProductionAndroidLocalModelSelectionResult.Selected>(
+            ProductionAndroidLocalModelSelection.importSelected(root, maxImportBytes = 1024) {
+                ByteArrayInputStream(byteArrayOf(1, 2, 3, 4))
+            }
+        ).file
+        ProductionAndroidLocalModelSelection.clearForTests()
+        assertEquals(selected.canonicalFile, ProductionAndroidLocalModelSelection.restore(root))
+        assertEquals(selected.canonicalFile, ProductionAndroidLocalModelSelection.verifiedForAcquisition())
+    }
+
+    @Test
     fun allocatable_storage_budget_preserves_fixed_safety_reserve() {
         val reserve = 512L * 1024L * 1024L
         assertNull(ProductionAndroidLocalModelSelection.importBudgetForAllocatableBytes(reserve))
