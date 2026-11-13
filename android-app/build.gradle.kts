@@ -48,10 +48,35 @@ android {
         }
     }
 
+    // Stable signing for isolated physical tests only. Never use production signing material.
+    val isolatedStorePath = providers.environmentVariable("LILIYA_ASFH_KEYSTORE_PATH").orNull
+    val isolatedStorePassword = providers.environmentVariable("LILIYA_ASFH_STORE_PASSWORD").orNull
+    val isolatedKeyAlias = providers.environmentVariable("LILIYA_ASFH_KEY_ALIAS").orNull
+    val isolatedKeyPassword = providers.environmentVariable("LILIYA_ASFH_KEY_PASSWORD").orNull
+    val isolatedSigningValues = listOf(
+        isolatedStorePath, isolatedStorePassword, isolatedKeyAlias, isolatedKeyPassword
+    )
+    require(isolatedSigningValues.all { it != null } || isolatedSigningValues.all { it == null }) {
+        "Isolated signing configuration must provide all four LILIYA_ASFH_* variables"
+    }
+    if (isolatedStorePath != null) {
+        signingConfigs {
+            create("asfHStable") {
+                storeFile = file(isolatedStorePath)
+                storePassword = isolatedStorePassword
+                keyAlias = isolatedKeyAlias
+                keyPassword = isolatedKeyPassword
+            }
+        }
+    }
+
     buildTypes {
         create("asfH") {
             initWith(getByName("debug"))
             applicationIdSuffix = ".asfh"
+            if (isolatedStorePath != null) {
+                signingConfig = signingConfigs.getByName("asfHStable")
+            }
             isDebuggable = true
             matchingFallbacks += listOf("debug")
         }
