@@ -29,6 +29,9 @@ class LiliyaApplication : Application() {
     @Volatile
     private var activationTask = ProductionAndroidActivationTask()
 
+    @Volatile
+    private var offlineResumeTask = ProductionAndroidOfflineResumeTask()
+
     override fun onCreate() {
         super.onCreate()
         ProductionAndroidConversationSessionState.initialize(this)
@@ -91,6 +94,18 @@ class LiliyaApplication : Application() {
         ensureProductionOfflineResumePolicy()
         return ProductionAndroidOfflineResumeBootstrap.prepareAndInstall(this)
     }
+
+    internal fun requestOfflineResume(
+        listener: (ProductionAndroidOfflineResumeTaskSnapshot.Completed) -> Unit
+    ): ProductionAndroidOfflineResumeTaskRequestResult =
+        offlineResumeTask.request(resume = ::attemptOfflineResume, listener = listener)
+
+    internal fun observeOfflineResume(
+        listener: (ProductionAndroidOfflineResumeTaskSnapshot.Completed) -> Unit
+    ): ProductionAndroidOfflineResumeTaskSnapshot = offlineResumeTask.observe(listener)
+
+    internal fun consumeOfflineResume(requestId: Long): Boolean =
+        offlineResumeTask.consume(requestId)
 
     private fun ensureProductionOfflineResumePolicy(): Boolean {
         if (ProductionAndroidOfflineResumePolicyOwner.current() != null) return true
