@@ -16,22 +16,26 @@ jobs:
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import subprocess
-          rish='/data/data/com.termux/files/usr/bin/rish'
-          app='pro.liliya.android.semanticprovider.qwenlocal'
-          test=app+'.test'
-          for package in [app,test]:
-              p=subprocess.run([rish,'-c','pm path '+package],capture_output=True,text=True,timeout=30)
-              if p.returncode or not any(x.startswith('package:') for x in p.stdout.splitlines()):
-                  raise SystemExit('ISOLATED_PACKAGE_MISSING: '+package)
-              print('INSTALLED_PACKAGE_PRESENT='+package,flush=True)
-          cmd='am instrument -w -r -e class pro.liliya.android.semanticprovider.host.Qwen3LocalSourcePreflightInstrumentedTest#authorized_local_gguf_matches_exact_candidate '+test+'/androidx.test.runner.AndroidJUnitRunner'
-          p=subprocess.run([rish,'-c',cmd],capture_output=True,text=True,timeout=500)
-          print('ANDROID_INSTRUMENTATION_EXIT='+str(p.returncode),flush=True)
-          print('ANDROID_INSTRUMENTATION_LOG_BEGIN',flush=True)
-          print((p.stdout+p.stderr)[-16000:],flush=True)
-          print('ANDROID_INSTRUMENTATION_LOG_END',flush=True)
-          if p.returncode!=0 or 'OK (1 test)' not in p.stdout or 'QWEN3_LOCAL_SOURCE_PREFLIGHT=PASS' not in p.stdout:
-              raise SystemExit('EXISTING_QWEN3_SOURCE_INSTRUMENTATION_NOT_PASS')
-          print('EXISTING_QWEN3_SOURCE_INSTRUMENTATION=PASS',flush=True)
+          import json, os, pathlib, platform, urllib.request, urllib.error
+          print("SOURCE_SHA="+os.environ.get("GITHUB_SHA",""), flush=True)
+          print("RUNNER_NAME="+os.environ.get("RUNNER_NAME",""), flush=True)
+          print("HOST_ARCH="+platform.machine(), flush=True)
+          if platform.machine() not in ("aarch64","arm64"):
+              raise SystemExit("FAIL_ARCH")
+          token_path=pathlib.Path("/data/data/com.termux/files/home/.liliya-physical-bridge-token")
+          token=token_path.read_text().strip()
+          req=urllib.request.Request("http://127.0.0.1:18765/v1/qwen3-existing-source-check",headers={"Authorization":"Bearer "+token})
+          try:
+              with urllib.request.urlopen(req,timeout=570) as response:
+                  payload=json.load(response)
+          except urllib.error.HTTPError as exc:
+              raise SystemExit("BRIDGE_HTTP_ERROR="+str(exc.code)+" "+exc.read(1000).decode("utf-8","replace"))
+          output=payload.get("output","")
+          print("ANDROID_INSTRUMENTATION_EXIT="+str(payload.get("exit")),flush=True)
+          print("ANDROID_INSTRUMENTATION_LOG_BEGIN",flush=True)
+          print(output[-16000:],flush=True)
+          print("ANDROID_INSTRUMENTATION_LOG_END",flush=True)
+          if payload.get("passed") is not True:
+              raise SystemExit("EXISTING_QWEN3_SOURCE_INSTRUMENTATION_NOT_PASS")
+          print("EXISTING_QWEN3_SOURCE_INSTRUMENTATION=PASS",flush=True)
           PY
