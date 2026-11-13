@@ -271,7 +271,43 @@ class LiliyaProvisioningActivity : Activity() {
     }
 
     private fun attemptOfflineResumeFromLauncher() {
-        when (val result = app.attemptOfflineResume()) {
+        when (val snapshot = app.observeOfflineResume(::deliverOfflineResumeCompletion)) {
+            ProductionAndroidOfflineResumeTaskSnapshot.Idle -> {
+                renderColdResumeInFlight()
+                when (app.requestOfflineResume(::deliverOfflineResumeCompletion)) {
+                    is ProductionAndroidOfflineResumeTaskRequestResult.Started -> Unit
+                    ProductionAndroidOfflineResumeTaskRequestResult.Busy -> Unit
+                }
+            }
+            is ProductionAndroidOfflineResumeTaskSnapshot.InFlight ->
+                renderColdResumeInFlight()
+            is ProductionAndroidOfflineResumeTaskSnapshot.Completed ->
+                deliverOfflineResumeCompletion(snapshot)
+        }
+    }
+
+    private fun renderColdResumeInFlight() {
+        status.text = "Проверка сохранённой модели и восстановление офлайн-запуска…"
+        activationCode.isEnabled = false
+        activationCode.visibility = View.GONE
+        activateProduct.isEnabled = false
+        activateProduct.visibility = View.GONE
+        selectCredential.isEnabled = false
+        selectCredential.visibility = View.GONE
+    }
+
+    private fun deliverOfflineResumeCompletion(
+        completed: ProductionAndroidOfflineResumeTaskSnapshot.Completed
+    ) {
+        runOnUiThread {
+            if (isFinishing || isDestroyed || isChangingConfigurations || stateSaved) return@runOnUiThread
+            if (!app.consumeOfflineResume(completed.requestId)) return@runOnUiThread
+            renderOfflineResumeResult(completed.result)
+        }
+    }
+
+    private fun renderOfflineResumeResult(result: ProductionAndroidOfflineResumeBootstrapResult) {
+        when (result) {
             is ProductionAndroidOfflineResumeBootstrapResult.Ready ->
                 openRuntimeHost()
 
