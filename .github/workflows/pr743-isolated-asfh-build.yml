@@ -48,7 +48,7 @@ jobs:
           sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools" "ndk;29.0.13113456" "cmake;3.31.6"
       - name: Compile isolated APKs and production resume tests
         run: |
-          gradle :android-app:testDebugUnitTest :android-app:assembleAsfH :android-app:assembleAsfHAndroidTest --max-workers=2 -Pkotlin.daemon.jvmargs=-Xmx1536m --console=plain
+          gradle :android-app:testDebugUnitTest :android-app:assembleAsfH :android-app:assembleAsfHAndroidTest -PliliyaAsfHIsolation=true --max-workers=2 -Pkotlin.daemon.jvmargs=-Xmx1536m --console=plain
       - name: Verify isolation and manifest with SHA256
         shell: bash
         run: |
