@@ -528,4 +528,8 @@ jobs:
           arch: x86_64
           profile: pixel_6
           disable-animations: true
-          script: gradle :android-llama-cpp-engine:connectedDebugAndroidTest --console=plain
+          # Hosted AVD has no user-granted SAF URI; keep user-consent Qwen3 FD tests on provisioned physical devices.
+          script: >-
+            gradle :android-llama-cpp-engine:connectedDebugAndroidTest
+            -Pandroid.testInstrumentationRunnerArguments.class=pro.liliya.android.llamacppengine.AndroidLlamaCppRealModelInstrumentedTest,pro.liliya.android.llamacppengine.AndroidLlamaCppCognitiveAssemblyInstrumentedTest
+            --console=plain
