@@ -114,7 +114,7 @@ class LiliyaApplication : Application() {
 
     internal fun acquireAndConfigureFirstRun(): ProductionAndroidFirstRunAcquisitionResult =
         ProductionAndroidFirstRunConfiguredAcquisition.prepareAndInstall(
-            localModelFile = ProductionAndroidLocalModelSelection.current()
+            localModelFile = ProductionAndroidLocalModelSelection.verifiedForAcquisition()
         )
 
     internal fun acquireAndConfigureFirstRun(
@@ -122,7 +122,7 @@ class LiliyaApplication : Application() {
         productInput: ProductionAndroidFirstRunProductInputPort
     ): ProductionAndroidFirstRunAcquisitionResult =
         ProductionAndroidFirstRunAcquisitionOrchestrator.prepareAndInstall(
-            localModelFile = ProductionAndroidLocalModelSelection.current(),
+            localModelFile = ProductionAndroidLocalModelSelection.verifiedForAcquisition(),
             licenseAcquisition = licenseAcquisition,
             productInput = productInput
         )
@@ -154,7 +154,7 @@ class LiliyaApplication : Application() {
                             context = this,
                             rebindCode = activationCode,
                             localModelFile =
-                                ProductionAndroidLocalModelSelection.current()
+                                ProductionAndroidLocalModelSelection.verifiedForAcquisition()
                         )
                     ) {
                         ProductionAndroidDeviceRebindResult.ProfileRequired ->
@@ -183,7 +183,7 @@ class LiliyaApplication : Application() {
                         context = this,
                         activationCode = activationCode,
                         localModelFile =
-                            ProductionAndroidLocalModelSelection.current()
+                            ProductionAndroidLocalModelSelection.verifiedForAcquisition()
                     )
                 }
             },
