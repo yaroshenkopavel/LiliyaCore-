@@ -70,7 +70,7 @@ internal object ProductionAndroidOfflineResumeMaterialLoader {
                 ProductionAndroidOfflineResumeMetadataEncryptedStore.create(context).load()
             },
             localModelPort = ProductionAndroidOfflineResumeLocalModelPort {
-                ProductionAndroidLocalModelSelection.current()
+                ProductionAndroidLocalModelSelection.verifiedForAcquisition()
             }
         )
 
