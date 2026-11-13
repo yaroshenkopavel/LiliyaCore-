@@ -8,6 +8,7 @@ on:
       - 'android-app/src/androidTest/kotlin/pro/liliya/app/PhysicalInstrumentedActivityLaunch.kt'
       - 'android-app/src/androidTest/kotlin/pro/liliya/app/PhysicalProductionOfflineResumeColdLaunchUiInstrumentedTest.kt'
       - '.github/workflows/pr743-isolated-asfh-build.yml'
+      - 'android-app/build.gradle.kts'
   pull_request:
     paths:
       - '.github/workflows/pr743-isolated-asfh-build.yml'
@@ -53,6 +54,31 @@ jobs:
       - name: Install pinned Android toolchain
         run: |
           sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools" "ndk;29.0.13113456" "cmake;3.31.6"
+      - name: Restore dedicated isolated signing identity when configured
+        shell: bash
+        env:
+          ASFH_KEYSTORE_B64: ${{ secrets.LILIYA_ASFH_KEYSTORE_B64 }}
+          ASFH_STORE_PASSWORD: ${{ secrets.LILIYA_ASFH_STORE_PASSWORD }}
+          ASFH_KEY_ALIAS: ${{ secrets.LILIYA_ASFH_KEY_ALIAS }}
+          ASFH_KEY_PASSWORD: ${{ secrets.LILIYA_ASFH_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$ASFH_KEYSTORE_B64" && -z "$ASFH_STORE_PASSWORD" && -z "$ASFH_KEY_ALIAS" && -z "$ASFH_KEY_PASSWORD" ]]; then
+            echo "::warning::Dedicated ASF-H signing secrets not configured; ephemeral Android debug signer will change across runners"
+            exit 0
+          fi
+          if [[ -z "$ASFH_KEYSTORE_B64" || -z "$ASFH_STORE_PASSWORD" || -z "$ASFH_KEY_ALIAS" || -z "$ASFH_KEY_PASSWORD" ]]; then
+            echo "::error::Incomplete dedicated ASF-H signing secrets"
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/liliya-asfh-signing"
+          printf '%s' "$ASFH_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/liliya-asfh-signing/isolated.jks"
+          chmod 600 "$RUNNER_TEMP/liliya-asfh-signing/isolated.jks"
+          echo "LILIYA_ASFH_KEYSTORE_PATH=$RUNNER_TEMP/liliya-asfh-signing/isolated.jks" >> "$GITHUB_ENV"
+          echo "LILIYA_ASFH_STORE_PASSWORD=$ASFH_STORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "LILIYA_ASFH_KEY_ALIAS=$ASFH_KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "LILIYA_ASFH_KEY_PASSWORD=$ASFH_KEY_PASSWORD" >> "$GITHUB_ENV"
+          echo "ASF_H_STABLE_SIGNING=CONFIGURED"
       - name: Compile isolated APKs and production resume tests
         run: |
           gradle :android-app:testAsfHUnitTest :android-app:assembleAsfH :android-app:assembleAsfHAndroidTest -PliliyaAsfHIsolation=true --max-workers=2 -Pkotlin.daemon.jvmargs=-Xmx1536m --console=plain
