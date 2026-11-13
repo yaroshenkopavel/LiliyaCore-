@@ -1,6 +1,12 @@
 name: PR743 isolated ASF-H APK build evidence
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - test/pr743-isolated-asfh-build-20261113
+    paths:
+      - 'android-app/src/androidTest/kotlin/pro/liliya/app/PhysicalInstrumentedActivityLaunch.kt'
+      - '.github/workflows/pr743-isolated-asfh-build.yml'
   pull_request:
     paths:
       - '.github/workflows/pr743-isolated-asfh-build.yml'
