@@ -45,7 +45,7 @@ class PhysicalProductionOfflineResumeColdLaunchUiInstrumentedTest {
             val launch = instrumentation.uiAutomation.executeShellCommand(
                 "am start -W -n " +
                     instrumentation.targetContext.packageName +
-                    "/.LiliyaProvisioningActivity"
+                    "/" + LiliyaProvisioningActivity::class.java.name
             )
             launch.close()
 
