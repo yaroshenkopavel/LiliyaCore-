@@ -102,9 +102,10 @@ class LiliyaActivitySavedStateChatTerminalInstrumentedTest {
 
             val retained = assertIs<ProductionAndroidAppChatTaskSnapshot.Completed>(chatTask.snapshot())
             assertEquals(started.requestId, retained.requestId)
-            assertTrue(hasTextContaining(instrumentation, launched, "Saved-state reply"))
+            // Saved Activity state must not receive a terminal render before recreation.
+            assertTrue(!hasTextContaining(instrumentation, launched, "Saved-state reply"))
             assertEquals(
-                1,
+                0,
                 countTextOccurrences(instrumentation, launched, "Saved-state reply")
             )
 
