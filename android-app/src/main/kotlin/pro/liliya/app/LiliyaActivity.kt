@@ -345,10 +345,8 @@ class LiliyaActivity : Activity() {
                 return@runOnUiThread
             }
             if (stateSaved) {
-                if (renderedTerminalChatRequestId != completed.requestId) {
-                    applyApplicationChatCompletion(completed)
-                    renderedTerminalChatRequestId = completed.requestId
-                }
+                // Keep the terminal result in the application task until onStart/onResume
+                // restores the Activity after its instance state has been saved.
                 return@runOnUiThread
             }
             if (renderedTerminalChatRequestId != completed.requestId) {

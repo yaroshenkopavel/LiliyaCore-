@@ -15,7 +15,7 @@ internal object PhysicalInstrumentedActivityLaunch {
         )
 
         val shellLaunch = instrumentation.uiAutomation.executeShellCommand(
-            "am start -W -n ${instrumentation.targetContext.packageName}/.LiliyaProvisioningActivity"
+            "am start -W -n ${instrumentation.targetContext.packageName}/${LiliyaProvisioningActivity::class.java.name}"
         )
         shellLaunch.close()
 
