@@ -27,3 +27,8 @@
 - Full `PhysicalProductionHostBootstrapFirstChatInstrumentedTest` was **not run**.
 - Its required app-private one-time activation code file `files/physical-activation-code.once` is **absent**. The test also requires genuine HTTPS activation endpoint, trusted CA, license public key and product ID arguments. Do not fake or bypass activation.
 - Next: establish legitimate activation fixture and run exact physical first-chat test, collecting instrumentation logs and resource evidence. Avoid destructive data resets.
+## Physical device binding verification (same session)
+- Executed: `adb shell am instrument -w -r -e class pro.liliya.app.PhysicalActivationDeviceBindingInstrumentedTest#production_activation_binding_is_stable_and_keystore_backed pro.liliya.app.asfh.test/androidx.test.runner.AndroidJUnitRunner`.
+- Result: `OK (1 test)`, `INSTRUMENTATION_CODE: -1`, time `0.062 s`.
+- Assertion scope: stable installation ID and device-key fingerprint across two Android Keystore-backed provider reads. This does **not** prove a redeemed license or completed first chat.
+- Read-only prerequisite check: `files/physical-activation-code.once` absent; no listener found on laptop ports 8443, 9443, 8080 at check time.
