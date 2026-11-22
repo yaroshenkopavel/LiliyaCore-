@@ -30,3 +30,10 @@
 - Source inspection places the caught exception in `LicensingProductionService.create(...)`, before `service.start()`. This narrows the failure to production composition, not runtime listener readiness. Exact underlying cause not yet established.
 - Existing local Licensing Service source checkout has an **uncommitted diagnostic change** in `issuer-deployment/.../LicensingDeploymentMain.kt` that prints exception class only. Preserve it and do not overwrite without provenance review.
 - No license code issued, no database changes, no production key material exported.
+
+## Root cause and successful restoration
+- Independently tested the existing OpenBao runtime token via `bao token lookup -format=json`, without exposing the token. Result: HTTP 403 `permission denied` (CLI exit 2). This explains why production composition could not access the required signing keys.
+- Ran deployed `Rotate-LiliyaOpenBaoRuntimeToken.ps1` (owner laptop, established rotation procedure): `OPENBAO_RUNTIME_TOKEN_ROTATION_READY`; `NEW_TOKEN_RENEWAL=PASS`; `TRANSIT_READ_SIGN=PASS`; `OLD_TOKEN_REVOKED=PASS`. Periodic runtime token: 168 hours. Secret values not logged or exported.
+- Re-ran deployed `Start-LiliyaLicensingService.ps1`: `RUNTIME_READY`, `HTTPS_READY`, `SECRET_LOG_GUARD=PASS`, `LICENSING_SERVICE_STARTUP_READY`, Java PID 6800.
+- Independently verified pinned-CA HTTPS: `GET https://127.0.0.1:8443/health/ready` returned `{"status":"ready"}`; invalid empty POST to `/v1/activation/redeem` and `/v1/activation/rebind` each returned expected HTTP 400.
+- **Resolved**: Licensing backend startup failure. **Not yet tested**: issuance/redeeming of a genuine activation code or full Android first chat. The startup scheduled task remains disabled; no reboot/autostart acceptance has been claimed.
