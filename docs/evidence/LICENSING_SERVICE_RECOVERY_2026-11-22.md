@@ -44,3 +44,10 @@
 - The deployed HTTPS certificate's SAN includes DNS `localhost` and IP `127.0.0.1` (`certutil -dump`). Thus the intended physical-test URL is `https://127.0.0.1:8443/v1/activation/redeem` over the USB reverse bridge, subject to pinned CA validation in the app.
 - Confirmed built issuer CLI launcher exists at `issuer-activation-cli/build/install/issuer-activation-cli/bin/issuer-activation-cli.bat`. The physical test expects the `model.local` feature and an explicitly supplied `activationProductId`.
 - No activation credential has been generated, installed or redeemed yet; the actual product ID and authorization parameters must be established before issuing a one-time production code.
+
+## Battery-mode and physical model preservation check
+- Windows WMI battery check: 56%, on battery (`BatteryStatus=1`); avoid Gradle builds and large model copies while mains power is absent.
+- Connected Redmi Note 12s ADB serial `IVKZ4XS8FAKJKZFY` is `device`; USB reverse remains `tcp:8443 -> tcp:8443`; Licensing HTTPS listener still on 8443.
+- Verified separate Qwen3 GGUF copies by listing exact paths: `/sdcard/Download new/Qwen3-1.7B-Q4_K_M.gguf` and isolated `pro.liliya.app.asfh/files/Qwen3-1.7B-Q4_K_M.gguf`, each 1,282,439,264 bytes. This is a size/presence check, not a fresh SHA256 check.
+- The physical HostBootstrap first-chat test explicitly calls `modelSource.delete()` on its isolated app-private GGUF after preparing the protected model package. Preserve the shared-storage backup and avoid running the test until activation and all prerequisite evidence are ready.
+- No full physical first-chat test was launched during battery operation; no source GGUF was deleted.
