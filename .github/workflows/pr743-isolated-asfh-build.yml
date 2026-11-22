@@ -15,6 +15,7 @@ on:
       - '.github/workflows/pr743-isolated-asfh-build.yml'
 permissions:
   contents: read
+  actions: read
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -80,6 +81,28 @@ jobs:
           echo "LILIYA_ASFH_KEY_ALIAS=$ASFH_KEY_ALIAS" >> "$GITHUB_ENV"
           echo "LILIYA_ASFH_KEY_PASSWORD=$ASFH_KEY_PASSWORD" >> "$GITHUB_ENV"
           echo "ASF_H_STABLE_SIGNING=CONFIGURED"
+      - name: Restore pinned semantic ONNX models from verified artifact
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/semantic-onnx-provenance.zip"
+          curl --fail --location --retry 3 --silent --show-error \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/13079844314/zip" \
+            --output "$archive"
+          unzip -q "$archive" -d "$RUNNER_TEMP/semantic-onnx"
+          source_dir="$RUNNER_TEMP/semantic-onnx/semantic-onnx-a"
+          dest="android-app/src/androidTest/assets"
+          mkdir -p "$dest"
+          cp "$source_dir/multilingual-e5-small-liliya-v0.1.onnx" "$dest/"
+          cp "$source_dir/multilingual-e5-small-tokenizer-v0.1.onnx" "$dest/"
+          printf '%s  %s\n' \
+            '11f460a6600163508a6eca0f2ccd8df9272fafbbee10579b3dafa74217b084dc' "$dest/multilingual-e5-small-liliya-v0.1.onnx" \
+            '4d28a2a61017a7b222164065d832e51103fbb3a4451c4e4938a2eeb8e83e44e8' "$dest/multilingual-e5-small-tokenizer-v0.1.onnx" | sha256sum --check --strict
+          echo 'SEMANTIC_ONNX_PROVENANCE=PASS'
       - name: Compile isolated APKs and production resume tests
         run: |
           gradle :android-app:testAsfHUnitTest :android-app:assembleAsfH :android-app:assembleAsfHAndroidTest -PliliyaAsfHIsolation=true --max-workers=2 -Pkotlin.daemon.jvmargs=-Xmx1536m --console=plain
