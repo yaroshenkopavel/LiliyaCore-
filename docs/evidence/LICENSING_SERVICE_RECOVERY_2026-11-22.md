@@ -37,3 +37,10 @@
 - Re-ran deployed `Start-LiliyaLicensingService.ps1`: `RUNTIME_READY`, `HTTPS_READY`, `SECRET_LOG_GUARD=PASS`, `LICENSING_SERVICE_STARTUP_READY`, Java PID 6800.
 - Independently verified pinned-CA HTTPS: `GET https://127.0.0.1:8443/health/ready` returned `{"status":"ready"}`; invalid empty POST to `/v1/activation/redeem` and `/v1/activation/rebind` each returned expected HTTP 400.
 - **Resolved**: Licensing backend startup failure. **Not yet tested**: issuance/redeeming of a genuine activation code or full Android first chat. The startup scheduled task remains disabled; no reboot/autostart acceptance has been claimed.
+
+## Physical USB activation transport preflight
+- Confirmed laptop Licensing listener still active on TCP 8443.
+- Set up `adb reverse tcp:8443 tcp:8443` for the connected Redmi Note 12s; `adb reverse --list` reported `UsbFfs tcp:8443 tcp:8443`.
+- The deployed HTTPS certificate's SAN includes DNS `localhost` and IP `127.0.0.1` (`certutil -dump`). Thus the intended physical-test URL is `https://127.0.0.1:8443/v1/activation/redeem` over the USB reverse bridge, subject to pinned CA validation in the app.
+- Confirmed built issuer CLI launcher exists at `issuer-activation-cli/build/install/issuer-activation-cli/bin/issuer-activation-cli.bat`. The physical test expects the `model.local` feature and an explicitly supplied `activationProductId`.
+- No activation credential has been generated, installed or redeemed yet; the actual product ID and authorization parameters must be established before issuing a one-time production code.
