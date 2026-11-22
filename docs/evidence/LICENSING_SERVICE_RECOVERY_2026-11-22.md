@@ -22,3 +22,11 @@
 1. Diagnose why Licensing startup helper waits after OpenBao readiness; inspect launcher child-process and stdout/pipe handling, preserving service and secret boundaries.
 2. Establish Licensing 8443 and verify `/health/ready` with pinned Licensing CA.
 3. Use owner-authorized activation issuance CLI and genuine device-bound code, then execute physical first-chat test with real TLS and license verification.
+## Follow-up isolation (same date)
+- Re-ran the deployed OpenBao launcher independently: `OPENBAO_STARTUP_READY`, exit 0, both 8200/8201 PASS.
+- Verified `/v1/sys/seal-status` with pinned `C:\LiliyaServer\config\openbao\tls\ca.crt`: initialized=true, sealed=false.
+- Retried deployed Licensing launcher; returned exit 1: `Licensing Service exited before RUNTIME_READY`.
+- Service stdout: `BOOTSTRAP_REJECTED`, `INTERNAL_FAILURE`, `detail=NONE`; stderr: `LICENSING_BOOTSTRAP_FAILURE_TYPE=java.lang.IllegalStateException`. No Java listener on 8443.
+- Source inspection places the caught exception in `LicensingProductionService.create(...)`, before `service.start()`. This narrows the failure to production composition, not runtime listener readiness. Exact underlying cause not yet established.
+- Existing local Licensing Service source checkout has an **uncommitted diagnostic change** in `issuer-deployment/.../LicensingDeploymentMain.kt` that prints exception class only. Preserve it and do not overwrite without provenance review.
+- No license code issued, no database changes, no production key material exported.
