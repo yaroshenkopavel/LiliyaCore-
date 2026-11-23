@@ -262,6 +262,9 @@ class AndroidAppPrivateProtectedModelStagingBackend private constructor(
             return@synchronized try {
                 Files.move(source, target, StandardCopyOption.ATOMIC_MOVE)
                 record.path = target.toFile()
+                // The atomic move is already visible. Any subsequent digest read failure must
+                // poison this record rather than leave a moved file marked WORKING.
+                record.state = PhysicalState.POISONED
                 record.sealedDigest = sha256(target)
                 record.state = PhysicalState.SEALED
                 LargeProtectedModelStagingSealResult.Sealed(
@@ -326,11 +329,16 @@ class AndroidAppPrivateProtectedModelStagingBackend private constructor(
         val record = records[artifactId]
             ?: return@synchronized LargeProtectedModelStagingDeleteResult.Rejected()
         val expectedParent = when (record.state) {
-            PhysicalState.WORKING, PhysicalState.POISONED -> workingRoot
+            PhysicalState.WORKING -> workingRoot
             PhysicalState.SEALED -> sealedRoot
+            PhysicalState.POISONED -> record.path.toPath().toAbsolutePath().normalize().parent
         }
         val path = record.path.toPath().toAbsolutePath().normalize()
-        if (path.parent != expectedParent) {
+        if (
+            path.parent != expectedParent ||
+            (record.state == PhysicalState.POISONED &&
+                path.parent != workingRoot && path.parent != sealedRoot)
+        ) {
             return@synchronized LargeProtectedModelStagingDeleteResult.Rejected()
         }
 
