@@ -54,3 +54,9 @@ Built isolated `:android-app:assemblePhysicalNov22AndroidTest -PliliyaPhysicalNo
 - `DevelopmentFirstWorkingLiliyaColdStartInstrumentedTest`: OK (1 test), 17.424s; configured first-run runtime, reached READY and returned nonempty first chat reply through `application.runtimeOwner.send("Hello Liliya")` with Stories15M. This is an isolated, test-product fixture and is **not** production Qwen3 UI-to-model acceptance.
 
 Evidence: `C:\LiliyaServer\logs\physical-fixture-prerequisite-20261123.log`, `physical-first-chat-stories15m-20261123.log`, `rebuild-physical-test-20261123-fixture.log`. Model/ONNX binary fixtures are deliberately **not committed** to Git; they are cached locally and must be staged via verified provenance for repeatable builds.
+
+## Repeatable fixture verification and production Qwen preflight
+
+Added `tools/physical/verify-first-chat-fixtures.ps1` with mandatory `-ProvenanceDirectory` and `-StoriesModelPath`, default verify-only, optional `-Stage`. It checks manifest-pinned SHA-256 and sizes for both semantic ONNX artifacts and the workflow-pinned Stories15M GGUF before copying anything into androidTest assets. Ran verify-only against cached artifacts: PASS for all three, with no staging or changes to installed applications. Binary test fixtures remain outside Git.
+
+Production Qwen acceptance (`PhysicalProductionTrustedQwenRuntimeInstrumentedTest`) remains blocked by separate activation prerequisites: `activationEndpoint` (HTTPS), `activationCaBase64`, `activationLicenseKeyDerBase64`, `activationProductId`, app-private activation code and pinned GGUF. The test consumes/deletes its one-time activation code, so do not run it as a generic smoke test or use an existing production code. No production activation performed in this phase.
