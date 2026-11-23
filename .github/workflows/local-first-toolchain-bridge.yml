@@ -1,0 +1,100 @@
+name: Local-first toolchain artifact bridge
+on:
+  push:
+    branches:
+      - technical/local-env-bridge-2026-11-23
+  workflow_dispatch:
+permissions:
+  contents: read
+env:
+  TARGET_SHA: dd30b64de5d9f85b0fba728ec8b015424d356d60
+  TARGET_TREE: 36868ab643e3261567864e1150f5bcc912b85c37
+  GRADLE_USER_HOME: ${{ github.workspace }}/.bridge-gradle-home
+jobs:
+  export-toolchain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TARGET_SHA }}
+          fetch-depth: 0
+      - name: Verify exact canonical source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          test "$(git rev-parse HEAD^{tree})" = "$TARGET_TREE"
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.1'
+      - name: Install exact Android SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager --install "platforms;android-35" "build-tools;35.0.0" "build-tools;36.0.0" "platform-tools" "ndk;29.0.13113456" "cmake;3.31.6"
+      - name: Warm project-specific Gradle cache
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle :core:test :android-runtime:testDebugUnitTest :android-app:testDebugUnitTest :android-app:compileDebugAndroidTestKotlin --console=plain --no-daemon
+          gradle :core:test --offline --console=plain --no-daemon
+      - name: Export toolchain and manifest with 300 MiB parts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/liliya-export"
+          E="$RUNNER_TEMP/liliya-export"
+          REAL_JAVA_HOME="$(readlink -f "$JAVA_HOME")"
+          test -x "$REAL_JAVA_HOME/bin/java"
+          tar -C "$(dirname "$REAL_JAVA_HOME")" -czf "$E/jdk17-real.tar.gz" "$(basename "$REAL_JAVA_HOME")"
+          tar -tzf "$E/jdk17-real.tar.gz" | grep -q '/bin/java$'
+          GRADLE_BIN="$(readlink -f "$(command -v gradle)")"
+          GRADLE_ROOT="$(cd "$(dirname "$GRADLE_BIN")/.." && pwd)"
+          tar -C "$(dirname "$GRADLE_ROOT")" -czf "$E/gradle-9.6.1.tar.gz" "$(basename "$GRADLE_ROOT")"
+          mkdir -p "$RUNNER_TEMP/sdk-export"
+          for p in platforms/android-35 build-tools/35.0.0 build-tools/36.0.0 platform-tools; do
+            mkdir -p "$RUNNER_TEMP/sdk-export/$(dirname "$p")"
+            cp -a "$ANDROID_HOME/$p" "$RUNNER_TEMP/sdk-export/$p"
+          done
+          tar -C "$RUNNER_TEMP/sdk-export" -czf "$E/android-sdk-core.tar.gz" .
+          tar -C "$ANDROID_HOME/cmake" -czf "$E/cmake-3.31.6.tar.gz" 3.31.6
+          tar -C "$ANDROID_HOME/ndk" -czf "$RUNNER_TEMP/ndk.tar.gz" 29.0.13113456
+          split -b 300M -d -a 3 "$RUNNER_TEMP/ndk.tar.gz" "$E/ndk.part."
+          tar -C "$(dirname "$GRADLE_USER_HOME")" -czf "$RUNNER_TEMP/gradle-home.tar.gz" "$(basename "$GRADLE_USER_HOME")"
+          split -b 300M -d -a 3 "$RUNNER_TEMP/gradle-home.tar.gz" "$E/gradle-home.part."
+          {
+            echo "target_sha=$(git rev-parse HEAD)"
+            echo "target_tree=$(git rev-parse HEAD^{tree})"
+            java -version 2>&1 | head -1
+            gradle --version | grep '^Gradle '
+            echo "android_home=$ANDROID_HOME"
+            (cd "$E" && sha256sum *.tar.gz ndk.part.* gradle-home.part.*)
+          } > "$E/environment-manifest.txt"
+          for f in "$E"/*; do
+            test "$(stat -c %s "$f")" -lt 450000000
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-toolchain-core-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/liliya-export/jdk17-real.tar.gz
+            ${{ runner.temp }}/liliya-export/gradle-9.6.1.tar.gz
+            ${{ runner.temp }}/liliya-export/android-sdk-core.tar.gz
+            ${{ runner.temp }}/liliya-export/cmake-3.31.6.tar.gz
+            ${{ runner.temp }}/liliya-export/environment-manifest.txt
+          retention-days: 3
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-toolchain-ndk-${{ github.run_id }}
+          path: ${{ runner.temp }}/liliya-export/ndk.part.*
+          retention-days: 3
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liliya-toolchain-gradle-cache-${{ github.run_id }}
+          path: ${{ runner.temp }}/liliya-export/gradle-home.part.*
+          retention-days: 3
