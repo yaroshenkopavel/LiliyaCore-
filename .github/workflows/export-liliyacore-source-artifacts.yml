@@ -1,0 +1,52 @@
+name: Export LiliyaCore source artifacts (300 MiB max)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  export-source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Export pinned source and full Git history
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/liliya-export/snapshot" "$RUNNER_TEMP/liliya-export/bundle"
+          git fsck --full
+          HEAD_SHA="$(git rev-parse HEAD)"
+          git archive --format=tar HEAD | gzip -1 > "$RUNNER_TEMP/liliya-export/snapshot/LiliyaCore-source.tar.gz"
+          printf '%s\n' "$HEAD_SHA" > "$RUNNER_TEMP/liliya-export/snapshot/HEAD.txt"
+          git rev-parse 'HEAD^{tree}' > "$RUNNER_TEMP/liliya-export/snapshot/TREE.txt"
+          (cd "$RUNNER_TEMP/liliya-export/snapshot"; sha256sum LiliyaCore-source.tar.gz > SHA256SUMS)
+          git bundle create "$RUNNER_TEMP/liliya-export/LiliyaCore.bundle" --all
+          mkdir -p "$RUNNER_TEMP/liliya-export/verify"
+          git -C "$RUNNER_TEMP/liliya-export/verify" init -q
+          git -C "$RUNNER_TEMP/liliya-export/verify" bundle verify "$RUNNER_TEMP/liliya-export/LiliyaCore.bundle"
+          split -b 300M -d -a 4 "$RUNNER_TEMP/liliya-export/LiliyaCore.bundle" "$RUNNER_TEMP/liliya-export/bundle/LiliyaCore.bundle.part-"
+          printf '%s\n' "$HEAD_SHA" > "$RUNNER_TEMP/liliya-export/bundle/HEAD.txt"
+          (cd "$RUNNER_TEMP/liliya-export/bundle"; sha256sum LiliyaCore.bundle.part-* > SHA256SUMS)
+          test "$(stat -c%s "$RUNNER_TEMP/liliya-export/snapshot/LiliyaCore-source.tar.gz")" -le 450000000
+          find "$RUNNER_TEMP/liliya-export/bundle" -name 'LiliyaCore.bundle.part-*' -type f -print0 | while IFS= read -r -d '' part; do
+            test "$(stat -c%s "$part")" -le 500000000
+          done
+          printf 'HEAD=%s\n' "$HEAD_SHA"
+          du -h "$RUNNER_TEMP/liliya-export/snapshot/LiliyaCore-source.tar.gz" "$RUNNER_TEMP/liliya-export/bundle/"*
+      - name: Upload source snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: liliyacore-source-snapshot-${{ github.run_id }}
+          path: ${{ runner.temp }}/liliya-export/snapshot/
+          retention-days: 14
+          if-no-files-found: error
+      - name: Upload Git bundle parts
+        uses: actions/upload-artifact@v4
+        with:
+          name: liliyacore-git-bundle-parts-${{ github.run_id }}
+          path: ${{ runner.temp }}/liliya-export/bundle/
+          retention-days: 14
+          if-no-files-found: error
