@@ -31,3 +31,9 @@ USB ADB connection remained healthy; battery 42%, battery temperature 36.2 C bef
 - `LiliyaProductSurfaceAccessibilityInstrumentedTest`
 
 Result: `OK (5 tests)`, 9.73 seconds. Evidence: `C:\LiliyaServer\logs\physical-expanded-regression-20261123.log`. Together with previous 5-test regression this covers 10 passing instrumented test cases in the isolated variant (not a full application acceptance test).
+
+## Existing Qwen3 NoThink physical native inference
+
+Used already-installed `pro.liliya.android.semanticprovider.qwenfd.nothink1105.test` (not the main `pro.liliya.app` production pipeline), invoking `Qwen3NoThinkQualityInstrumentedTest#four_no_think_quality_inferences` over USB ADB. Test result: `OK (1 test)` in 41.52 seconds. Model stage SHA-256 PASS, load 3436 ms, four completed inferences 7038 / 5446 / 5240 / 4818 ms, output byte lengths 40 / 34 / 40 / 34. `CLOSE_RESULT=0`, `STAGE_REMOVED=true`; battery 42%, temperature after 37.2 C. These prove native model generation in the specialized test host, not end-to-end production LiliyaCore chat acceptance. Evidence: `C:\LiliyaServer\logs\qwen3-nothink-physical-20261123.log`.
+
+The production `PhysicalProductionTrustedQwenRuntimeInstrumentedTest` is a different acceptance test: it requires HTTPS activation endpoint, CA certificate, trusted license verification key and an app-private pinned GGUF. Do not invoke without explicitly staged prerequisites; it also deletes a one-time activation code file as part of its protocol.
