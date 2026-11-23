@@ -19,3 +19,15 @@ Inspection found two contradictory test expectations: `LiliyaActivitySavedStateC
 - Isolated rerun after test assertion correction: OK (1 test), 1.762s.
 - Combined USB instrumentation regression: OK (5 tests), 8.143s, including lifecycle recreation, async startup, saved-state resume, and terminal chat restoration.
 - Evidence: `C:\LiliyaServer\logs\physical-regression-contract-20261123.log`.
+
+## Expanded isolated instrumentation regression
+
+USB ADB connection remained healthy; battery 42%, battery temperature 36.2 C before the run. Additional five tests executed on Redmi Note 12S with `pro.liliya.app.physicalnov22.test/androidx.test.runner.AndroidJUnitRunner`:
+
+- `LiliyaActivityConsumedTerminalChatInstrumentedTest`
+- `LiliyaActivityFirstRunAcquisitionRecreationInstrumentedTest`
+- `LiliyaActivityLocalModelImportRecreationInstrumentedTest`
+- `LiliyaActivitySavedStateLocalModelImportTerminalInstrumentedTest`
+- `LiliyaProductSurfaceAccessibilityInstrumentedTest`
+
+Result: `OK (5 tests)`, 9.73 seconds. Evidence: `C:\LiliyaServer\logs\physical-expanded-regression-20261123.log`. Together with previous 5-test regression this covers 10 passing instrumented test cases in the isolated variant (not a full application acceptance test).
