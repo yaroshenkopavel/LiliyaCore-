@@ -1,7 +1,7 @@
 package pro.liliya.app
 
 import android.app.Activity
-import android.content.Intent
+import android.app.Instrumentation
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
@@ -25,11 +25,7 @@ class LiliyaProvisioningActivityDeploymentProfileRequiredInstrumentedTest {
 
         var launched: LiliyaProvisioningActivity? = null
         try {
-            launched = instrumentation.startActivitySync(
-                Intent(instrumentation.targetContext, LiliyaProvisioningActivity::class.java).apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-            ) as LiliyaProvisioningActivity
+            launched = launchProvisioningActivityViaShell(instrumentation)
             instrumentation.waitForIdleSync()
 
             instrumentation.runOnMainSync {
@@ -59,6 +55,19 @@ class LiliyaProvisioningActivityDeploymentProfileRequiredInstrumentedTest {
                 }
             }
             instrumentation.waitForIdleSync()
+        }
+    }
+
+    private fun launchProvisioningActivityViaShell(instrumentation: Instrumentation): LiliyaProvisioningActivity {
+        val monitor = instrumentation.addMonitor(LiliyaProvisioningActivity::class.java.name, null, false)
+        try {
+            instrumentation.uiAutomation.executeShellCommand(
+                "am start -W -n ${instrumentation.targetContext.packageName}/pro.liliya.app.LiliyaProvisioningActivity"
+            ).close()
+            return monitor.waitForActivityWithTimeout(15_000L) as? LiliyaProvisioningActivity
+                ?: error("provisioning Activity did not launch within 15s")
+        } finally {
+            instrumentation.removeMonitor(monitor)
         }
     }
 
