@@ -49,6 +49,12 @@ android {
     }
 
     buildTypes {
+        create("physicalNov22") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".physicalnov22"
+            isDebuggable = true
+            matchingFallbacks += listOf("debug")
+        }
         create("asfH") {
             initWith(getByName("debug"))
             applicationIdSuffix = ".asfh"
@@ -57,6 +63,9 @@ android {
         }
     }
 
+    if (providers.gradleProperty("liliyaPhysicalNov22Isolation").orNull == "true") {
+        testBuildType = "physicalNov22"
+    }
     if (providers.gradleProperty("liliyaAsfHIsolation").orNull == "true") {
         testBuildType = "asfH"
     }
