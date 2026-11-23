@@ -30,7 +30,7 @@ jobs:
           split -b 300M -d -a 4 "$RUNNER_TEMP/liliya-export/LiliyaCore.bundle" "$RUNNER_TEMP/liliya-export/bundle/LiliyaCore.bundle.part-"
           printf '%s\n' "$HEAD_SHA" > "$RUNNER_TEMP/liliya-export/bundle/HEAD.txt"
           (cd "$RUNNER_TEMP/liliya-export/bundle"; sha256sum LiliyaCore.bundle.part-* > SHA256SUMS)
-          test "$(stat -c%s "$RUNNER_TEMP/liliya-export/snapshot/LiliyaCore-source.tar.gz")" -le 500000000
+          test "$(stat -c%s "$RUNNER_TEMP/liliya-export/snapshot/LiliyaCore-source.tar.gz")" -le 450000000
           find "$RUNNER_TEMP/liliya-export/bundle" -name 'LiliyaCore.bundle.part-*' -type f -print0 | while IFS= read -r -d '' part; do
             test "$(stat -c%s "$part")" -le 500000000
           done
