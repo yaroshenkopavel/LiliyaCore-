@@ -11,3 +11,11 @@ Device: Redmi Note 12S, Android SDK 34, arm64-v8a; ADB serial IVKZ4XS8FAKJKZFY.
 - Battery observed 41%; temperatures 39.7C before and 37.1C after initial checks. No Qwen3 inference was performed in this validation sequence.
 
 Evidence logs on Windows: `C:\LiliyaServer\logs\physical-lifecycle-fixed-20261123.log`, `physical-regression-20261123.log`, `physical-savedstate-resume-repro-20261123.log`, `rebuild-physical-test-20261123-online.log`.
+
+## Saved-state contract reconciliation
+
+Inspection found two contradictory test expectations: `LiliyaActivitySavedStateChatTerminalInstrumentedTest` requires terminal text to render once after saved state while the completion remains unconsumed until recreation, whereas `LiliyaActivitySavedStateResumeInstrumentedTest` expected that same terminal text to remain invisible until resume. `LiliyaActivity.deliverApplicationChatCompletion` deliberately renders the terminal once when `stateSaved` is true, retains the completed task, and consumes it upon resume/recreation. Aligned the latter test's visibility assertion with that established contract, retaining the Completed-before-resume and Idle-after-resume assertions. No production code change.
+
+- Isolated rerun after test assertion correction: OK (1 test), 1.762s.
+- Combined USB instrumentation regression: OK (5 tests), 8.143s, including lifecycle recreation, async startup, saved-state resume, and terminal chat restoration.
+- Evidence: `C:\LiliyaServer\logs\physical-regression-contract-20261123.log`.

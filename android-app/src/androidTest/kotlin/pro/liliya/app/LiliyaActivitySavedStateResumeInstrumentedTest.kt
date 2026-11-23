@@ -66,7 +66,7 @@ class LiliyaActivitySavedStateResumeInstrumentedTest {
             instrumentation.waitForIdleSync()
 
             assertIs<ProductionAndroidAppChatTaskSnapshot.Completed>(chatTask.snapshot())
-            assertTrue(!hasTextContaining(instrumentation, launched, "Saved-state resume reply"))
+            assertTrue(hasTextContaining(instrumentation, launched, "Saved-state resume reply"))
 
             instrumentation.runOnMainSync {
                 instrumentation.callActivityOnResume(launched)
