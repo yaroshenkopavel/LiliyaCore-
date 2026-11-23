@@ -4,6 +4,9 @@ on:
     branches:
       - technical/local-env-bridge-2026-11-23
   workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/local-first-toolchain-bridge.yml'
 permissions:
   contents: read
 env:
