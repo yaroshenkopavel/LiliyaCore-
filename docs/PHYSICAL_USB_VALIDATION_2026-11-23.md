@@ -43,3 +43,14 @@ The production `PhysicalProductionTrustedQwenRuntimeInstrumentedTest` is a diffe
 The physical `DevelopmentFirstWorkingLiliyaColdStartInstrumentedTest` requires `stories15M-q4_0.gguf` (19,077,344 bytes) plus the `multilingual-e5-small-liliya-v0.1.onnx` and tokenizer test assets. Inspection of the installed isolated androidTest APK archive found zero entries matching those asset names; do not report this test as passed or execute it until fixtures are assembled. The test also recursively deletes dedicated fixture/staging and semantic directories inside its **target test app** context, so preserve the original production app and run only in isolated package. This fixture tests Stories15M, not Qwen3.
 
 The existing full-size Qwen3 file is present on shared phone storage at `/sdcard/Download new/Qwen3-1.7B-Q4_K_M.gguf` (1,282,439,264 bytes), but that alone does not establish app-private staging, licensing, or end-to-end product chat. Phone storage observed 15 GB free. Avoid unnecessary model copies.
+
+## First-working Liliya physical cold-start chat (Stories15M fixture)
+
+Recovered `semantic-onnx-provenance` from successful GitHub Actions run 41298211173, artifact ID 13079844314. Encoder `multilingual-e5-small-liliya-v0.1.onnx`: 118258170 bytes, SHA-256 `11f460a6600163508a6eca0f2ccd8df9272fafbbee10579b3dafa74217b084dc`. Tokenizer `multilingual-e5-small-tokenizer-v0.1.onnx`: 5069533 bytes, SHA-256 `4d28a2a61017a7b222164065d832e51103fbb3a4451c4e4938a2eeb8e83e44e8`. Both match the downloaded provenance JSON. Downloaded pinned `stories15M-q4_0.gguf`: 19077344 bytes, SHA-256 `6151b1929d7f5aa3385d9ddef3393e55587c0a55de661562322bc51dfda93a04`, matching workflow pin.
+
+Built isolated `:android-app:assemblePhysicalNov22AndroidTest -PliliyaPhysicalNov22Isolation=true` with these three untracked test assets (BUILD SUCCESSFUL in 47s); APK archive contains all three. Installed only the isolated test package, preserving original production app. On physical Redmi Note 12S:
+
+- `DevelopmentFirstWorkingLiliyaColdStartFixturePrerequisiteInstrumentedTest`: OK (1 test), 2.442s; semantic provisioning and GGUF fixture validation.
+- `DevelopmentFirstWorkingLiliyaColdStartInstrumentedTest`: OK (1 test), 17.424s; configured first-run runtime, reached READY and returned nonempty first chat reply through `application.runtimeOwner.send("Hello Liliya")` with Stories15M. This is an isolated, test-product fixture and is **not** production Qwen3 UI-to-model acceptance.
+
+Evidence: `C:\LiliyaServer\logs\physical-fixture-prerequisite-20261123.log`, `physical-first-chat-stories15m-20261123.log`, `rebuild-physical-test-20261123-fixture.log`. Model/ONNX binary fixtures are deliberately **not committed** to Git; they are cached locally and must be staged via verified provenance for repeatable builds.
