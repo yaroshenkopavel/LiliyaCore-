@@ -2,7 +2,7 @@ package pro.liliya.app
 
 import android.app.Activity
 import android.app.Application
-import android.content.Intent
+import android.app.Instrumentation
 import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
@@ -58,11 +58,7 @@ class LiliyaProvisioningActivityProductAuthRecreationInstrumentedTest {
         var firstForCleanup: LiliyaProvisioningActivity? = null
         var recreatedForCleanup: LiliyaProvisioningActivity? = null
         try {
-            val launched = instrumentation.startActivitySync(
-                Intent(instrumentation.targetContext, LiliyaProvisioningActivity::class.java).apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-            ) as LiliyaProvisioningActivity
+            val launched = launchProvisioningActivityViaShell(instrumentation)
             firstForCleanup = launched
             instrumentation.waitForIdleSync()
 
@@ -100,6 +96,19 @@ class LiliyaProvisioningActivityProductAuthRecreationInstrumentedTest {
                 }
             }
             instrumentation.waitForIdleSync()
+        }
+    }
+
+    private fun launchProvisioningActivityViaShell(instrumentation: Instrumentation): LiliyaProvisioningActivity {
+        val monitor = instrumentation.addMonitor(LiliyaProvisioningActivity::class.java.name, null, false)
+        try {
+            instrumentation.uiAutomation.executeShellCommand(
+                "am start -W -n ${instrumentation.targetContext.packageName}/pro.liliya.app.LiliyaProvisioningActivity"
+            ).close()
+            return monitor.waitForActivityWithTimeout(15_000L) as? LiliyaProvisioningActivity
+                ?: error("provisioning Activity did not launch within 15s")
+        } finally {
+            instrumentation.removeMonitor(monitor)
         }
     }
 
