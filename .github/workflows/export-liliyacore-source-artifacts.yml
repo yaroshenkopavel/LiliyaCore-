@@ -1,6 +1,10 @@
 name: Export LiliyaCore source artifacts (300 MiB max)
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/export-liliyacore-source-artifacts.yml'
 permissions:
   contents: read
 jobs:
