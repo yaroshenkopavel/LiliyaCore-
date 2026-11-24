@@ -140,6 +140,25 @@ object ProductionAndroidLocalModelSelection {
         }
     }
 
+    /**
+     * Verify model bytes at the trust handoff rather than hashing every cold startup.
+     * A v2 receipt is a fast selection hint, not a cryptographic integrity proof.
+     */
+    @Synchronized
+    internal fun verifiedForAcquisition(): File? {
+        val candidate = selectedModel ?: return null
+        val match = MODEL_FILE_NAME.matchEntire(candidate.name) ?: run {
+            selectedModel = null
+            return null
+        }
+        val expected = match.groupValues[1]
+        if (!matchesDigest(candidate, expected)) {
+            selectedModel = null
+            return null
+        }
+        return candidate
+    }
+
     internal fun current(): File? = selectedModel
 
     internal fun importBudgetForAllocatableBytes(allocatableBytes: Long): Long? {

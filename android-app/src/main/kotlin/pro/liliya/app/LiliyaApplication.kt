@@ -29,6 +29,9 @@ class LiliyaApplication : Application() {
     @Volatile
     private var activationTask = ProductionAndroidActivationTask()
 
+    @Volatile
+    private var offlineResumeTask = ProductionAndroidOfflineResumeTask()
+
     override fun onCreate() {
         super.onCreate()
         ProductionAndroidConversationSessionState.initialize(this)
@@ -92,6 +95,18 @@ class LiliyaApplication : Application() {
         return ProductionAndroidOfflineResumeBootstrap.prepareAndInstall(this)
     }
 
+    internal fun requestOfflineResume(
+        listener: (ProductionAndroidOfflineResumeTaskSnapshot.Completed) -> Unit
+    ): ProductionAndroidOfflineResumeTaskRequestResult =
+        offlineResumeTask.request(resume = ::attemptOfflineResume, listener = listener)
+
+    internal fun observeOfflineResume(
+        listener: (ProductionAndroidOfflineResumeTaskSnapshot.Completed) -> Unit
+    ): ProductionAndroidOfflineResumeTaskSnapshot = offlineResumeTask.observe(listener)
+
+    internal fun consumeOfflineResume(requestId: Long): Boolean =
+        offlineResumeTask.consume(requestId)
+
     private fun ensureProductionOfflineResumePolicy(): Boolean {
         if (ProductionAndroidOfflineResumePolicyOwner.current() != null) return true
         return try {
@@ -114,7 +129,7 @@ class LiliyaApplication : Application() {
 
     internal fun acquireAndConfigureFirstRun(): ProductionAndroidFirstRunAcquisitionResult =
         ProductionAndroidFirstRunConfiguredAcquisition.prepareAndInstall(
-            localModelFile = ProductionAndroidLocalModelSelection.current()
+            localModelFile = ProductionAndroidLocalModelSelection.verifiedForAcquisition()
         )
 
     internal fun acquireAndConfigureFirstRun(
@@ -122,7 +137,7 @@ class LiliyaApplication : Application() {
         productInput: ProductionAndroidFirstRunProductInputPort
     ): ProductionAndroidFirstRunAcquisitionResult =
         ProductionAndroidFirstRunAcquisitionOrchestrator.prepareAndInstall(
-            localModelFile = ProductionAndroidLocalModelSelection.current(),
+            localModelFile = ProductionAndroidLocalModelSelection.verifiedForAcquisition(),
             licenseAcquisition = licenseAcquisition,
             productInput = productInput
         )
@@ -154,7 +169,7 @@ class LiliyaApplication : Application() {
                             context = this,
                             rebindCode = activationCode,
                             localModelFile =
-                                ProductionAndroidLocalModelSelection.current()
+                                ProductionAndroidLocalModelSelection.verifiedForAcquisition()
                         )
                     ) {
                         ProductionAndroidDeviceRebindResult.ProfileRequired ->
@@ -183,7 +198,7 @@ class LiliyaApplication : Application() {
                         context = this,
                         activationCode = activationCode,
                         localModelFile =
-                            ProductionAndroidLocalModelSelection.current()
+                            ProductionAndroidLocalModelSelection.verifiedForAcquisition()
                     )
                 }
             },
