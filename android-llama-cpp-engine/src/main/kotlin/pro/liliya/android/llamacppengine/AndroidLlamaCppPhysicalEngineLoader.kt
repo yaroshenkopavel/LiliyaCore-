@@ -30,6 +30,8 @@ internal fun interface LlamaCppNativeStreamingSink {
     fun onChunk(chunkUtf8: ByteArray): Boolean
 }
 
+internal enum class LlamaCppGenerationMode { SESSION_DEFAULT, PLAIN_DIALOGUE }
+
 internal interface LlamaCppNativeSessionPort {
     fun load(
         sourcePath: String,
@@ -51,6 +53,14 @@ internal interface LlamaCppNativeSessionPort {
     ): LlamaCppNativeInferenceResult =
         LlamaCppNativeInferenceResult.Rejected(ModelEngineInferenceFailure.REQUEST_REJECTED)
 
+    fun inferWithMode(
+        nativeSessionId: Long, promptUtf8: ByteArray, maxOutputChars: Int,
+        mode: LlamaCppGenerationMode
+    ): LlamaCppNativeInferenceResult =
+        if (mode == LlamaCppGenerationMode.SESSION_DEFAULT)
+            infer(nativeSessionId, promptUtf8, maxOutputChars)
+        else LlamaCppNativeInferenceResult.Rejected(ModelEngineInferenceFailure.REQUEST_REJECTED)
+
     /** Optional for fake test ports; JNI implementation signals llama_decode directly. */
     fun cancel(nativeSessionId: Long): Boolean = false
 
@@ -61,7 +71,8 @@ internal interface LlamaCppNativeSessionPort {
 class AndroidLlamaCppPhysicalEngineLoader internal constructor(
     private val policy: LlamaCppEnginePolicy,
     private val nativePort: LlamaCppNativeSessionPort,
-    private val outputGrammar: String? = null
+    private val outputGrammar: String? = null,
+    private val allowPlainDialogue: Boolean = false
 ) : AndroidProtectedModelPhysicalEngineLoaderPort {
 
     constructor(policy: LlamaCppEnginePolicy) : this(
@@ -123,7 +134,8 @@ class AndroidLlamaCppPhysicalEngineLoader internal constructor(
                             handleId = publicHandleId,
                             nativeSessionId = nativeResult.nativeSessionId,
                             nativePort = nativePort,
-                            policy = policy
+                            policy = policy,
+                            allowPlainDialogue = allowPlainDialogue
                         )
                     )
                 }
@@ -216,6 +228,14 @@ private object JniLlamaCppNativeSessionPort : LlamaCppNativeSessionPort {
                 sink = sink
             )
         )
+
+    override fun inferWithMode(
+        nativeSessionId: Long, promptUtf8: ByteArray, maxOutputChars: Int,
+        mode: LlamaCppGenerationMode
+    ): LlamaCppNativeInferenceResult = decodeInferencePacket(
+        LlamaCppNativeBridge.nativeInfer(nativeSessionId, promptUtf8, maxOutputChars,
+            useGrammar = mode == LlamaCppGenerationMode.SESSION_DEFAULT)
+    )
 
     private fun decodeInferencePacket(packet: ByteArray): LlamaCppNativeInferenceResult {
         if (packet.isEmpty()) {

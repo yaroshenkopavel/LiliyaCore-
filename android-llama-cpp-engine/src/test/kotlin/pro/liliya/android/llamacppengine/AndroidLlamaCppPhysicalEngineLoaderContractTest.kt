@@ -104,6 +104,26 @@ class AndroidLlamaCppPhysicalEngineLoaderContractTest {
         }
     }
 
+    @Test
+    fun plain_dialogue_is_rejected_without_explicit_session_permission() {
+        val native = FakeNativePort().apply {
+            loadResult = LlamaCppNativeLoadResult.Loaded(123L)
+            inferResult = LlamaCppNativeInferenceResult.Succeeded("answer")
+        }
+        val loaded = assertIs<ModelEngineLoadResult.Loaded>(
+            AndroidLlamaCppPhysicalEngineLoader(policy(), native, "root ::= \"ok\"")
+                .loadValidatedPhysicalSource(File("/private/model.gguf"))
+        )
+        val session = assertIs<LlamaCppSessionOwnership>(loaded.ownership)
+        val request = ModelEngineInferenceRequest("hello", 32)
+        val rejected = assertIs<ModelEngineInferenceResult.Rejected>(
+            session.inferWithMode(request, LlamaCppGenerationMode.PLAIN_DIALOGUE)
+        )
+        assertEquals(pro.liliya.core.modelengine.ModelEngineInferenceFailure.REQUEST_REJECTED, rejected.reason)
+        assertEquals("answer", assertIs<ModelEngineInferenceResult.Succeeded>(session.infer(request)).output)
+        assertIs<ModelEngineCloseResult.Closed>(session.close())
+    }
+
     private fun policy(): LlamaCppEnginePolicy = LlamaCppEnginePolicy(
         contextTokens = 64,
         maxPromptTokens = 32,

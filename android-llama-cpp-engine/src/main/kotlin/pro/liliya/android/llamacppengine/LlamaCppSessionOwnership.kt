@@ -22,7 +22,8 @@ internal class LlamaCppSessionOwnership(
     override val handleId: ModelEngineHandleId,
     private val nativeSessionId: Long,
     private val nativePort: LlamaCppNativeSessionPort,
-    private val policy: LlamaCppEnginePolicy
+    private val policy: LlamaCppEnginePolicy,
+    private val allowPlainDialogue: Boolean = false
 ) : ModelEngineStreamingSessionOwnership {
 
     init {
@@ -49,7 +50,18 @@ internal class LlamaCppSessionOwnership(
     private var operationInProgress = false
 
     override fun infer(request: ModelEngineInferenceRequest): ModelEngineInferenceResult =
+        inferWithMode(request, LlamaCppGenerationMode.SESSION_DEFAULT)
+
+    internal fun inferWithMode(
+        request: ModelEngineInferenceRequest,
+        mode: LlamaCppGenerationMode
+    ): ModelEngineInferenceResult =
         executionLock.withLock {
+            if (mode == LlamaCppGenerationMode.PLAIN_DIALOGUE && !allowPlainDialogue) {
+                return@withLock ModelEngineInferenceResult.Rejected(
+                    ModelEngineInferenceFailure.REQUEST_REJECTED
+                )
+            }
             if (state != State.LIVE || cancellationRequested.get()) {
                 return@withLock ModelEngineInferenceResult.Rejected(
                     ModelEngineInferenceFailure.SESSION_FAILED
@@ -85,11 +97,11 @@ internal class LlamaCppSessionOwnership(
 
             operationInProgress = true
             val result = try {
-                nativePort.infer(
-                    nativeSessionId = nativeSessionId,
-                    promptUtf8 = promptUtf8,
-                    maxOutputChars = request.maxOutputChars
-                )
+                if (mode == LlamaCppGenerationMode.SESSION_DEFAULT) {
+                    nativePort.infer(nativeSessionId, promptUtf8, request.maxOutputChars)
+                } else {
+                    nativePort.inferWithMode(nativeSessionId, promptUtf8, request.maxOutputChars, mode)
+                }
             } catch (_: Throwable) {
                 LlamaCppNativeInferenceResult.Rejected(ModelEngineInferenceFailure.PROVIDER_FAILED)
             } finally {
