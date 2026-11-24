@@ -127,6 +127,32 @@ class AndroidProtectedModelEngineSourceValidationInstrumentedTest {
         }
     }
 
+    @Test
+    fun equal_length_sealed_file_mutation_is_rejected_before_loader() = withCleanRoot { context ->
+        val fixture = capabilityFixture(context, token('f'))
+        val physical = assertNotNull(
+            fixture.backend.physicalFileForTesting(fixture.ownership.source.sourceId)
+        )
+        val original = physical.readBytes()
+        assertTrue(original.isNotEmpty())
+        val changed = original.copyOf()
+        changed[0] = (changed[0].toInt() xor 1).toByte()
+        physical.writeBytes(changed)
+        assertEquals(original.size.toLong(), physical.length())
+
+        var providerCalls = 0
+        val result = fixture.backend.loadEngineSource(
+            fixture.capability,
+            AndroidProtectedModelPhysicalEngineLoaderPort { source, _ ->
+                providerCalls++
+                assertTrue(source.readBytes().contentEquals(changed))
+                ModelEngineLoadResult.Rejected(ModelEngineLoadFailure.UNSUPPORTED_MODEL)
+            }
+        )
+        assertIs<ModelEngineLoadResult.Rejected>(result)
+        assertEquals(ModelEngineLoadFailure.LOAD_REJECTED, result.reason)
+        assertEquals(0, providerCalls)
+    }
     private fun removeFixturePhysical(fixture: CapabilityFixture) {
         val physical = assertNotNull(
             fixture.backend.physicalFileForTesting(fixture.ownership.source.sourceId)

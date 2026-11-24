@@ -60,6 +60,42 @@ class AndroidAppPrivateProtectedModelStagingHardeningInstrumentedTest {
         assertFalse(sealed.toString().contains(knownFile.parentFile?.absolutePath.orEmpty()))
     }
 
+    @Test
+    fun post_move_digest_failure_poisoned_artifact_can_be_deleted() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext
+        var fail = true
+        val backend = AndroidAppPrivateProtectedModelStagingBackend(
+            context, AndroidProtectedModelStagingPolicy(0), { "8".repeat(32) },
+            { if (fail) throw java.io.IOException("injected digest failure") }
+        )
+        val root = backend.adapterRootForTesting()
+        root.deleteRecursively()
+        try {
+            val prepared = assertIs<LargeProtectedModelStagingPrepareResult.Prepared>(
+                backend.prepare(attempt(), 5)
+            )
+            assertIs<LargeProtectedModelStagingAppendBackendResult.Appended>(
+                backend.append(prepared.handle, 0, "alpha".encodeToByteArray())
+            )
+            assertIs<LargeProtectedModelStagingSealResult.Failed>(backend.seal(prepared.handle))
+            assertIs<LargeProtectedModelStagingSealResult.Rejected>(backend.seal(prepared.handle))
+            val moved = assertNotNull(backend.physicalFileForTesting(prepared.handle.artifactId))
+            assertTrue(moved.exists())
+            backend.delete(prepared.handle.artifactId)
+            assertFalse(moved.exists())
+            fail = false
+            val retry = assertIs<LargeProtectedModelStagingPrepareResult.Prepared>(
+                backend.prepare(attempt(), 5)
+            )
+            assertIs<LargeProtectedModelStagingAppendBackendResult.Appended>(
+                backend.append(retry.handle, 0, "alpha".encodeToByteArray())
+            )
+            assertIs<LargeProtectedModelStagingSealResult.Sealed>(backend.seal(retry.handle))
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
     private fun attempt() = LargeProtectedModelStagingAttemptReference(
         generation = LargeProtectedModelStagingGeneration(1),
         model = ProtectedModelReference(

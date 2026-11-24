@@ -7,6 +7,7 @@ import java.nio.file.FileAlreadyExistsException
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.StandardCopyOption
+import java.security.MessageDigest
 import java.security.SecureRandom
 import pro.liliya.core.modelengine.ModelEngineLoadFailure
 import pro.liliya.core.modelengine.ModelEngineLoadResult
@@ -57,7 +58,8 @@ fun interface AndroidProtectedModelPhysicalEngineLoaderPort {
 class AndroidAppPrivateProtectedModelStagingBackend private constructor(
     context: Context,
     private val policy: AndroidProtectedModelStagingPolicy,
-    private val tokenSource: TokenSource
+    private val tokenSource: TokenSource,
+    private val beforeSealDigest: () -> Unit = {}
 ) : LargeProtectedModelStagingBackend {
 
     constructor(
@@ -78,6 +80,13 @@ class AndroidAppPrivateProtectedModelStagingBackend private constructor(
         policy = policy,
         tokenSource = LambdaTokenSource(tokenSource)
     )
+
+    internal constructor(
+        context: Context,
+        policy: AndroidProtectedModelStagingPolicy,
+        tokenSource: () -> String,
+        beforeSealDigest: () -> Unit
+    ) : this(context.applicationContext, policy, LambdaTokenSource(tokenSource), beforeSealDigest)
 
     override val backendId: LargeProtectedModelStagingBackendId =
         LargeProtectedModelStagingBackendId(BACKEND_ID)
@@ -261,6 +270,11 @@ class AndroidAppPrivateProtectedModelStagingBackend private constructor(
             return@synchronized try {
                 Files.move(source, target, StandardCopyOption.ATOMIC_MOVE)
                 record.path = target.toFile()
+                // The atomic move is already visible. Any subsequent digest read failure must
+                // poison this record rather than leave a moved file marked WORKING.
+                record.state = PhysicalState.POISONED
+                beforeSealDigest()
+                record.sealedDigest = sha256(target)
                 record.state = PhysicalState.SEALED
                 LargeProtectedModelStagingSealResult.Sealed(
                     LargeProtectedModelSealedArtifactCandidate(
@@ -304,6 +318,11 @@ class AndroidAppPrivateProtectedModelStagingBackend private constructor(
         } ?: return ModelEngineLoadResult.Rejected(ModelEngineLoadFailure.LOAD_REJECTED)
 
         return try {
+            val expected = synchronized(lock) { records[capability.sourceId]?.sealedDigest?.copyOf() }
+                ?: return ModelEngineLoadResult.Rejected(ModelEngineLoadFailure.LOAD_REJECTED)
+            if (!MessageDigest.isEqual(expected, sha256(source.toPath()))) {
+                return ModelEngineLoadResult.Rejected(ModelEngineLoadFailure.LOAD_REJECTED)
+            }
             loader.load(source, capability)
         } catch (_: Throwable) {
             ModelEngineLoadResult.Rejected(ModelEngineLoadFailure.PROVIDER_FAILED)
@@ -319,11 +338,16 @@ class AndroidAppPrivateProtectedModelStagingBackend private constructor(
         val record = records[artifactId]
             ?: return@synchronized LargeProtectedModelStagingDeleteResult.Rejected()
         val expectedParent = when (record.state) {
-            PhysicalState.WORKING, PhysicalState.POISONED -> workingRoot
+            PhysicalState.WORKING -> workingRoot
             PhysicalState.SEALED -> sealedRoot
+            PhysicalState.POISONED -> record.path.toPath().toAbsolutePath().normalize().parent
         }
         val path = record.path.toPath().toAbsolutePath().normalize()
-        if (path.parent != expectedParent) {
+        if (
+            path.parent != expectedParent ||
+            (record.state == PhysicalState.POISONED &&
+                path.parent != workingRoot && path.parent != sealedRoot)
+        ) {
             return@synchronized LargeProtectedModelStagingDeleteResult.Rejected()
         }
 
@@ -450,8 +474,22 @@ class AndroidAppPrivateProtectedModelStagingBackend private constructor(
         var path: File,
         val expectedPlaintextBytes: Long,
         var appendedBytes: Long,
-        var state: PhysicalState
+        var state: PhysicalState,
+        var sealedDigest: ByteArray? = null
     )
+
+    private fun sha256(path: java.nio.file.Path): ByteArray {
+        val digest = MessageDigest.getInstance("SHA-256")
+        Files.newInputStream(path).use { input ->
+            val buffer = ByteArray(64 * 1024)
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                digest.update(buffer, 0, count)
+            }
+        }
+        return digest.digest()
+    }
 
     private enum class PhysicalState {
         WORKING,
