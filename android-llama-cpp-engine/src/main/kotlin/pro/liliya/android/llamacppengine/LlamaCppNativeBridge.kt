@@ -44,13 +44,15 @@ internal object LlamaCppNativeBridge {
     external fun nativeInfer(
         nativeSessionId: Long,
         promptUtf8: ByteArray,
-        maxOutputChars: Int
+        maxOutputChars: Int,
+        useGrammar: Boolean = true
     ): ByteArray
 
     external fun nativeInferStreaming(
         nativeSessionId: Long,
         promptUtf8: ByteArray,
         maxOutputChars: Int,
+        useGrammar: Boolean = true,
         sink: LlamaCppNativeStreamingSink
     ): ByteArray
 

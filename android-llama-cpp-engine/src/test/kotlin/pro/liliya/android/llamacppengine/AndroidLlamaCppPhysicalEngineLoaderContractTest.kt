@@ -28,7 +28,7 @@ class AndroidLlamaCppPhysicalEngineLoaderContractTest {
             loader.loadValidatedPhysicalSource(File(privatePath))
         )
 
-        assertEquals(privatePath, native.loadedPath)
+        assertEquals(File(privatePath).absolutePath, native.loadedPath)
         assertEquals(policy(), native.loadedPolicy)
         assertEquals(grammar, native.loadedGrammar)
         assertFalse(loaded.ownership.handleId.value.contains(privatePath))

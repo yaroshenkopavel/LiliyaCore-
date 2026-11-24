@@ -440,12 +440,12 @@ StreamCallbackResult emit_stream_chunk(
 }
 
 std::unique_ptr<llama_sampler, decltype(&llama_sampler_free)> create_generation_sampler(
-    const NativeSession * session
+    const NativeSession * session, bool use_grammar
 ) {
     if (session == nullptr || session->vocab == nullptr) {
         return {nullptr, llama_sampler_free};
     }
-    if (session->output_grammar.empty()) {
+    if (!use_grammar || session->output_grammar.empty()) {
         return {
             llama_sampler_init_greedy(),
             llama_sampler_free
@@ -693,7 +693,8 @@ Java_pro_liliya_android_llamacppengine_LlamaCppNativeBridge_nativeInfer(
     jobject,
     jlong native_session_id,
     jbyteArray prompt_utf8,
-    jint max_output_chars
+    jint max_output_chars,
+    jboolean use_grammar
 ) {
     if (native_session_id <= 0) {
         return make_infer_packet(env, INFER_STALE_SESSION);
@@ -794,7 +795,7 @@ Java_pro_liliya_android_llamacppengine_LlamaCppNativeBridge_nativeInfer(
                 offset += chunk;
             }
 
-            auto sampler = create_generation_sampler(session);
+            auto sampler = create_generation_sampler(session, use_grammar == JNI_TRUE);
             if (sampler == nullptr) {
                 llama_memory_clear(llama_get_memory(session->context), true);
                 return make_infer_packet(env, INFER_PROVIDER_FAILED);
@@ -863,6 +864,7 @@ Java_pro_liliya_android_llamacppengine_LlamaCppNativeBridge_nativeInferStreaming
     jlong native_session_id,
     jbyteArray prompt_utf8,
     jint max_output_chars,
+    jboolean use_grammar,
     jobject sink
 ) {
     if (native_session_id <= 0) {
@@ -980,7 +982,7 @@ Java_pro_liliya_android_llamacppengine_LlamaCppNativeBridge_nativeInferStreaming
                 offset += chunk;
             }
 
-            auto sampler = create_generation_sampler(session);
+            auto sampler = create_generation_sampler(session, use_grammar == JNI_TRUE);
             if (sampler == nullptr) {
                 llama_memory_clear(llama_get_memory(session->context), true);
                 return make_infer_packet(env, INFER_PROVIDER_FAILED);

@@ -311,6 +311,49 @@ class AndroidLlamaCppRealModelInstrumentedTest {
         )
     }
 
+    @Test
+    fun native_sampler_mode_switches_without_reloading_fixture() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val file = File.createTempFile("mode-control-", ".gguf", instrumentation.targetContext.cacheDir)
+        try {
+            instrumentation.context.assets.open(STORIES_15M_ASSET).use { input ->
+                file.outputStream().use { output -> input.copyTo(output) }
+            }
+            assertEquals(STORIES_15M_BYTES, file.length())
+            val id = LlamaCppNativeBridge.nativeLoad(
+                file.absolutePath.encodeToByteArray(), 128, 32, 8, 32, 16, 1,
+                256, 256, true, 0, "root ::= \"Z\"".encodeToByteArray()
+            )
+            assertTrue(id > 0L)
+            try {
+                val prompt = "Once upon a time".encodeToByteArray()
+                fun infer(grammar: Boolean): String {
+                    val packet = LlamaCppNativeBridge.nativeInfer(id, prompt, 64, grammar)
+                    assertEquals(LlamaCppNativeBridge.INFER_OK, packet[0])
+                    return packet.copyOfRange(1, packet.size).decodeToString()
+                }
+                assertEquals("Z", infer(true))
+                val plain = infer(false)
+                assertTrue(plain.isNotBlank())
+                assertTrue(plain != "Z")
+                assertEquals("Z", infer(true))
+                val chunks = StringBuilder()
+                val packet = LlamaCppNativeBridge.nativeInferStreaming(id, prompt, 64, true,
+                    LlamaCppNativeStreamingSink { bytes ->
+                        chunks.append(bytes.decodeToString())
+                        true
+                    })
+                assertEquals(LlamaCppNativeBridge.INFER_OK, packet[0])
+                assertEquals("Z", chunks.toString())
+                assertEquals("Z", packet.copyOfRange(1, packet.size).decodeToString())
+            } finally {
+                assertEquals(LlamaCppNativeBridge.CLOSE_OK, LlamaCppNativeBridge.nativeClose(id))
+            }
+        } finally {
+            file.delete()
+        }
+    }
+
     private fun enginePolicy(maxGeneratedTokens: Int = 8) = LlamaCppEnginePolicy(
         contextTokens = 128,
         maxPromptTokens = 32,
