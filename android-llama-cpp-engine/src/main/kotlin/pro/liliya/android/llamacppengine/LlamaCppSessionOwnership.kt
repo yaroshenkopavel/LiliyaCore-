@@ -52,6 +52,12 @@ internal class LlamaCppSessionOwnership(
     override fun infer(request: ModelEngineInferenceRequest): ModelEngineInferenceResult =
         inferWithMode(request, LlamaCppGenerationMode.SESSION_DEFAULT)
 
+    override fun inferWithMode(request: ModelEngineInferenceRequest, mode: pro.liliya.core.modelengine.ModelEngineGenerationMode): ModelEngineInferenceResult =
+        inferWithMode(request, when (mode) {
+            pro.liliya.core.modelengine.ModelEngineGenerationMode.SESSION_DEFAULT -> LlamaCppGenerationMode.SESSION_DEFAULT
+            pro.liliya.core.modelengine.ModelEngineGenerationMode.PLAIN_DIALOGUE -> LlamaCppGenerationMode.PLAIN_DIALOGUE
+        })
+
     internal fun inferWithMode(
         request: ModelEngineInferenceRequest,
         mode: LlamaCppGenerationMode

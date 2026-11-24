@@ -73,6 +73,10 @@ class StagedModelEngineLoadCoordinator(
                 ): ModelEngineInferenceResult =
                     lifecycle.infer(request)
 
+                override fun inferWithMode(request: ModelEngineInferenceRequest, mode: ModelEngineGenerationMode): ModelEngineInferenceResult =
+                    lifecycle.inferWithMode(request, mode)
+
+
                 override fun stream(
                     request: ModelEngineInferenceRequest,
                     sink: ModelEngineStreamingSink
@@ -111,6 +115,10 @@ class StagedModelEngineLoadCoordinator(
                 ): ModelEngineInferenceResult =
                     lifecycle.infer(request)
 
+                override fun inferWithMode(request: ModelEngineInferenceRequest, mode: ModelEngineGenerationMode): ModelEngineInferenceResult =
+                    lifecycle.inferWithMode(request, mode)
+
+
                 override fun close(): ModelEngineCloseResult = lifecycle.close()
             }
         }
@@ -135,6 +143,11 @@ class StagedModelEngineLoadCoordinator(
                 )
             }
             return delegate.infer(request)
+        }
+
+        fun inferWithMode(request: ModelEngineInferenceRequest, mode: ModelEngineGenerationMode): ModelEngineInferenceResult {
+            if (!operationAllowed()) return ModelEngineInferenceResult.Rejected(ModelEngineInferenceFailure.SESSION_FAILED)
+            return delegate.inferWithMode(request, mode)
         }
 
         fun close(): ModelEngineCloseResult = synchronized(closeLock) {

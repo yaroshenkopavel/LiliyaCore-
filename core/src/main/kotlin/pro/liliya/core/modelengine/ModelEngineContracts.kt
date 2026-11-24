@@ -132,7 +132,13 @@ sealed interface ModelEngineCloseResult {
     ) : ModelEngineCloseResult
 }
 
+enum class ModelEngineGenerationMode { SESSION_DEFAULT, PLAIN_DIALOGUE }
+
 interface ModelEngineSessionOwnership {
+    fun inferWithMode(request: ModelEngineInferenceRequest, mode: ModelEngineGenerationMode): ModelEngineInferenceResult =
+        if (mode == ModelEngineGenerationMode.SESSION_DEFAULT) infer(request)
+        else ModelEngineInferenceResult.Rejected(ModelEngineInferenceFailure.REQUEST_REJECTED)
+
     val backendId: ModelEngineBackendId
     val handleId: ModelEngineHandleId
 

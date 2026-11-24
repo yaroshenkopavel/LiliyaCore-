@@ -8,6 +8,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
+import pro.liliya.core.modelengine.ModelEngineGenerationMode
+import pro.liliya.core.modelengine.ModelEngineInferenceFailure
 import pro.liliya.core.modelengine.ModelEngineBackendId
 import pro.liliya.core.modelengine.ModelEngineCloseFailure
 import pro.liliya.core.modelengine.ModelEngineCloseResult
@@ -287,6 +289,49 @@ class LargeProtectedModelEngineUseContractTest {
         assertFalse(rendered.contains("/data/"))
         assertEquals(ownership.source.sourceId, lease.source.sourceId)
         assertEquals(ownership.source.plaintextBytes, lease.source.plaintextBytes)
+    }
+
+    @Test
+    fun explicit_mode_is_forwarded_and_closed_lease_rejects_it() {
+        val staging = coordinator(FakeBackend())
+        val ownership = publish(staging)
+        var calls = 0
+        val engine = object : ModelEngineSessionOwnership {
+            override val backendId = ModelEngineBackendId("mode-engine")
+            override val handleId = ModelEngineHandleId("mode-handle")
+            override fun infer(request: ModelEngineInferenceRequest) = ModelEngineInferenceResult.Succeeded("default")
+            override fun inferWithMode(request: ModelEngineInferenceRequest, mode: ModelEngineGenerationMode): ModelEngineInferenceResult {
+                calls++
+                assertEquals(ModelEngineGenerationMode.PLAIN_DIALOGUE, mode)
+                return ModelEngineInferenceResult.Succeeded("plain")
+            }
+            override fun close() = ModelEngineCloseResult.Closed
+        }
+        val leased = assertIs<ModelEngineLoadResult.Loaded>(
+            StagedModelEngineLoadCoordinator(staging, StagedModelEngineLoaderPort { ModelEngineLoadResult.Loaded(engine) }).load(ownership)
+        ).ownership
+        val request = ModelEngineInferenceRequest("hello", 16)
+        assertEquals("plain", assertIs<ModelEngineInferenceResult.Succeeded>(leased.inferWithMode(request, ModelEngineGenerationMode.PLAIN_DIALOGUE)).output)
+        assertIs<LargeProtectedModelStagingRetireResult.Rejected>(ownership.retire())
+        assertIs<ModelEngineCloseResult.Closed>(leased.close())
+        assertEquals(ModelEngineInferenceFailure.SESSION_FAILED, assertIs<ModelEngineInferenceResult.Rejected>(leased.inferWithMode(request, ModelEngineGenerationMode.PLAIN_DIALOGUE)).reason)
+        assertEquals(1, calls)
+        assertIs<LargeProtectedModelStagingRetireResult.Retired>(ownership.retire())
+    }
+
+    @Test
+    fun unsupported_engine_rejects_plain_mode() {
+        val staging = coordinator(FakeBackend())
+        val ownership = publish(staging)
+        val engine = FakeEngineSession(ArrayDeque())
+        val leased = assertIs<ModelEngineLoadResult.Loaded>(
+            StagedModelEngineLoadCoordinator(staging, StagedModelEngineLoaderPort { ModelEngineLoadResult.Loaded(engine) }).load(ownership)
+        ).ownership
+        val request = ModelEngineInferenceRequest("hello", 16)
+        assertEquals(ModelEngineInferenceFailure.REQUEST_REJECTED, assertIs<ModelEngineInferenceResult.Rejected>(leased.inferWithMode(request, ModelEngineGenerationMode.PLAIN_DIALOGUE)).reason)
+        assertIs<ModelEngineInferenceResult.Succeeded>(leased.infer(request))
+        assertIs<ModelEngineCloseResult.Closed>(leased.close())
+        assertIs<LargeProtectedModelStagingRetireResult.Retired>(ownership.retire())
     }
 
     private fun coordinator(backend: FakeBackend) = LargeProtectedModelStagingCoordinator(
