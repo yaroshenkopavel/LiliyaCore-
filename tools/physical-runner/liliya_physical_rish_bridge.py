@@ -128,6 +128,40 @@ def fixed_probe() -> dict[str, object]:
     return result
 
 
+def fixed_resources() -> dict[str, object]:
+    result: dict[str, object] = {"evidenceClass": "phone-readonly-resources-v1"}
+    for key, command in (("battery", "dumpsys battery"), ("thermal", "dumpsys thermalservice")):
+        completed = run_rish(command, timeout=40)
+        if completed.returncode != 0 or len(completed.stdout.strip()) < 10:
+            raise RuntimeError(f"{key} service unavailable (exit={completed.returncode})")
+        result[key] = {"exit": completed.returncode, "output": completed.stdout[:32768]}
+    return result
+
+
+def fixed_qwen3_source_check() -> dict[str, object]:
+    app = "pro.liliya.android.semanticprovider.qwenlocal"
+    test = app + ".test"
+    for package in (app, test):
+        completed = run_rish(f"pm path {package}", timeout=30)
+        paths = [line for line in completed.stdout.splitlines() if line.startswith("package:")]
+        if completed.returncode != 0 or len(paths) != 1:
+            raise RuntimeError(f"isolated package missing: {package}")
+    command = (
+        "am instrument -w -r -e class "
+        "pro.liliya.android.semanticprovider.host.Qwen3LocalSourcePreflightInstrumentedTest"
+        "#authorized_local_gguf_matches_exact_candidate "
+        + test + "/" + RUNNER
+    )
+    completed = run_rish(command, timeout=500)
+    output = completed.stdout
+    ok = (completed.returncode == 0 and "OK (1 test)" in output
+          and "qwen3LocalSource=EXACT_SOURCE_VERIFIED" in output
+          and "qwen3Bytes=1282439264" in output
+          and "qwen3Sha256=d2387ca2dbfee2ffabce7120d3770dadca0b293052bc2f0e138fdc940d9bc7b5" in output
+          and "INSTRUMENTATION_CODE: -1" in output)
+    return {"passed": ok, "exit": completed.returncode, "output": output[-16000:]}
+
+
 TOKEN = load_token()
 
 
@@ -168,6 +202,15 @@ class Handler(BaseHTTPRequestHandler):
         if not self._require_auth():
             return
         path = urlsplit(self.path).path
+        if path in ("/v1/resources", "/v1/qwen3-existing-source-check"):
+            try:
+                result = fixed_resources() if path == "/v1/resources" else fixed_qwen3_source_check()
+            except (RuntimeError, subprocess.TimeoutExpired) as exc:
+                self._json(503, {"error": str(exc)})
+                return
+            status = 200 if path == "/v1/resources" or result["passed"] else 409
+            self._json(status, result)
+            return
         if path == "/v1/probe":
             self._json(200, fixed_probe())
             return

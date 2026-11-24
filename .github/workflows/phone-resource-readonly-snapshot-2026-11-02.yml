@@ -17,19 +17,29 @@ jobs:
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import os, platform, subprocess
-          print('SOURCE_SHA='+os.environ.get('GITHUB_SHA',''))
-          print('RUNNER_NAME='+os.environ.get('RUNNER_NAME',''))
-          print('HOST_ARCH='+platform.machine())
-          if platform.machine() not in ('aarch64','arm64'):
-              raise SystemExit('FAIL_ARCH')
-          rish='/data/data/com.termux/files/usr/bin/rish'
-          for kind,command in (('BATTERY','dumpsys battery'),('THERMAL','dumpsys thermalservice')):
-              result=subprocess.run([rish,'-c',command],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=40)
-              print(kind+'_EXIT='+str(result.returncode))
-              print(kind+'_OUTPUT_BYTES='+str(len(result.stdout.encode())))
-              if result.returncode != 0 or len(result.stdout.strip()) < 10:
-                  raise SystemExit('FAIL_'+kind)
-              print(kind+'_SERVICE=PASS')
-          print('PHONE_READONLY_RESOURCES=PASS')
+          import json, os, pathlib, platform, urllib.request, urllib.error
+          print("SOURCE_SHA="+os.environ.get("GITHUB_SHA",""), flush=True)
+          print("RUNNER_NAME="+os.environ.get("RUNNER_NAME",""), flush=True)
+          print("HOST_ARCH="+platform.machine(), flush=True)
+          if platform.machine() not in ("aarch64","arm64"):
+              raise SystemExit("FAIL_ARCH")
+          token_path=pathlib.Path("/data/data/com.termux/files/home/.liliya-physical-bridge-token")
+          token=token_path.read_text().strip()
+          req=urllib.request.Request("http://127.0.0.1:18765/v1/resources",headers={"Authorization":"Bearer "+token})
+          try:
+              with urllib.request.urlopen(req,timeout=110) as response:
+                  payload=json.load(response)
+          except urllib.error.HTTPError as exc:
+              raise SystemExit("BRIDGE_HTTP_ERROR="+str(exc.code)+" "+exc.read(1000).decode("utf-8","replace"))
+          if payload.get("evidenceClass")!="phone-readonly-resources-v1":
+              raise SystemExit("RESOURCE_EVIDENCE_CLASS_MISMATCH")
+          for kind in ("battery","thermal"):
+              item=payload.get(kind,{})
+              output=item.get("output","")
+              print(kind.upper()+"_EXIT="+str(item.get("exit")),flush=True)
+              print(kind.upper()+"_OUTPUT_BYTES="+str(len(output.encode())),flush=True)
+              if item.get("exit")!=0 or len(output.strip())<10:
+                  raise SystemExit("FAIL_"+kind.upper())
+              print(kind.upper()+"_SERVICE=PASS",flush=True)
+          print("PHONE_READONLY_RESOURCES=PASS",flush=True)
           PY
