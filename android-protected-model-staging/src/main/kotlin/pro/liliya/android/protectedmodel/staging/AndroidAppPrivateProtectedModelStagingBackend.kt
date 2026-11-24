@@ -58,7 +58,8 @@ fun interface AndroidProtectedModelPhysicalEngineLoaderPort {
 class AndroidAppPrivateProtectedModelStagingBackend private constructor(
     context: Context,
     private val policy: AndroidProtectedModelStagingPolicy,
-    private val tokenSource: TokenSource
+    private val tokenSource: TokenSource,
+    private val beforeSealDigest: () -> Unit = {}
 ) : LargeProtectedModelStagingBackend {
 
     constructor(
@@ -79,6 +80,13 @@ class AndroidAppPrivateProtectedModelStagingBackend private constructor(
         policy = policy,
         tokenSource = LambdaTokenSource(tokenSource)
     )
+
+    internal constructor(
+        context: Context,
+        policy: AndroidProtectedModelStagingPolicy,
+        tokenSource: () -> String,
+        beforeSealDigest: () -> Unit
+    ) : this(context.applicationContext, policy, LambdaTokenSource(tokenSource), beforeSealDigest)
 
     override val backendId: LargeProtectedModelStagingBackendId =
         LargeProtectedModelStagingBackendId(BACKEND_ID)
@@ -265,6 +273,7 @@ class AndroidAppPrivateProtectedModelStagingBackend private constructor(
                 // The atomic move is already visible. Any subsequent digest read failure must
                 // poison this record rather than leave a moved file marked WORKING.
                 record.state = PhysicalState.POISONED
+                beforeSealDigest()
                 record.sealedDigest = sha256(target)
                 record.state = PhysicalState.SEALED
                 LargeProtectedModelStagingSealResult.Sealed(
